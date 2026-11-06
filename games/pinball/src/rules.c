@@ -480,6 +480,7 @@ void game_new(game *g, int table_id, int players, uint32_t seed) {
   g->skill_lane = (int)(seed % (uint32_t)(g->T.lane_n > 0 ? g->T.lane_n : 1));
   g->skill_t = 1;
   g->hash = 2166136261u;
+  g->launch_was = true; /* the button that started the game may still be down */
   serve(g);
   if (g->players > 1) say(g, MSG_TEXT, "PLAYER 1", "BALL 1", 0, SEC(2));
   else say(g, MSG_TEXT, g->T.name, "PLUNGE TO START", 0, SEC(3));
@@ -544,10 +545,10 @@ void game_step(game *g, const input *in) {
   /* the plunger: hold to pull it back, let go to fire */
   int pb = ball_on_plunger(g);
   if (in->launch && !g->tilted) {
-    if (!g->launch_was) fx(g, FX_PLUNGER_PULL, 0, 1);
+    if (!g->launch_was) fx(g, FX_PLUNGER_PULL, 0, 1), g->pull_armed = true;
     g->plunge = fminf(1, g->plunge + 1.3f * TICK);
   } else if (g->launch_was) {
-    if (pb >= 0) {
+    if (pb >= 0 && g->pull_armed) {
       g->W.b[pb].vy = 0.8f + 4.4f * g->plunge;
       g->launches++;
       fx(g, FX_LAUNCH, 0, g->plunge);
@@ -557,7 +558,7 @@ void game_step(game *g, const input *in) {
         g->skill_t = SEC(4);
       }
     }
-    g->plunge = 0;
+    g->plunge = 0, g->pull_armed = false;
   } else g->plunge = fmaxf(0, g->plunge - 4 * TICK);
   g->launch_was = in->launch;
   /* multiball's extra balls come up the shooter lane by themselves, a second apart */

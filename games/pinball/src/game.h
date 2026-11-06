@@ -171,7 +171,7 @@ typedef struct game {
   int balls_in_play;       /* balls on the table now */
   int ball_save_t;         /* ticks of ball save left */
   float plunge;            /* the plunger's pull 0..1 */
-  bool launch_was;
+  bool launch_was, pull_armed; /* a release fires only a pull that began in play (not the press that started the game) */
   int tilt_warn;           /* warnings this ball */
   float tilt_meter;
   bool tilted;

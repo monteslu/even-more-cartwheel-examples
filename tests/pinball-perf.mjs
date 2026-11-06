@@ -1,7 +1,7 @@
 // pinball perf gate: pinball_bench (the bot with three balls on the table all the time: the flashers, the pops, the
 // inserts and their lights, the mirror ball's probe) at 1920x1080, High, natively on the test GPU (the 890M), GL and
-// WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (the mean of the bench's last three
-// 120-frame windows) at 6 ms on every table. Every run must draw everything (no "not in any program table" line)
+// WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (the median of the bench's five
+// 120-frame windows: one window the shared machine stalls does not decide it) at 4.1 ms on every table (crawler's bound). Every run must draw everything (no "not in any program table" line)
 // and keep its three balls. Controls, which must fail: GL at 3840x2160 (four times the pixels) against the same
 // bound, and WebGPU against an impossible 0.5 ms.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs) for one table at a time.
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
-const BOUND = 6;
+const BOUND = 4.1;
 if (!process.env.CW_GPU_SUITE_INNER) { // one lock hold per table, so the GPU is shared in short turns
   const quick = process.argv.includes('--quick');
   let status = 0;
@@ -41,9 +41,9 @@ function run(gpu, extra = {}) {
   if (pin) pin.check('native', (/WebGPU adapter: (.*)/.exec(err) || [])[1]);
   else if (gl) gl.check('native', err);
   const lines = err.split('\n');
-  const win = lines.filter((l) => l.startsWith('bench_passes')).slice(-3).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
+  const win = lines.filter((l) => l.startsWith('bench_passes')).slice(-5).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]).sort((a, b) => a - b);
   const last = lines.filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  return { status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
+  return { status: r.status, gpu: win.length ? win[win.length >> 1] : NaN, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
     lights: +((/lights=(\d+)/.exec(last) || [])[1]), skipped: /in none of the app's program tables|not in any program table/.test(err),
     passes: lines.filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }

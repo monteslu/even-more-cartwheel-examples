@@ -437,7 +437,7 @@ static void hud_play(cw_vec2 cs, float u) {
   y += text(g->T.name, cs.x * 0.165f, y, 34 * u, tcol(th->col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 6 * u;
   bool plunging = false;
   for (int i = 0; i < PB_MAXB; i++) if (g->W.b[i].state == BS_FREE && g->W.b[i].x > 0.219f && g->W.b[i].y < 0.08f) plunging = true;
-  if (plunging || g->tick < 60 * 12) {
+  if (plunging || g->ball_ticks < 60 * 12) {
     float x = cs.x * 0.165f;
     y += 14 * u;
     cw_prompt_text(font, "{launch}: hold, let go to launch", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
