@@ -130,7 +130,7 @@ navmesh (the path tiles), steered by one flow field from the core; the crowd kee
   edges are unlit hulls sharing the bodies' instance buffers. Towers, pads, shells, beams and lightning instanced too.
 - The ground and path baked and drawn unlit; moving lights clustered and pooled on the ground as splats.
 - Perf gate (`tests/towers-perf.mjs`): towers at level 3 on every pad of a late map, 2400 creeps kept on its paths,
-  1920 x 1080 High on the 890M, GL and WebGPU, about 4 ms of GPU a frame.
+  1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame (3.85 to 4.24 ms measured across six maps).
 
 ## Feel
 

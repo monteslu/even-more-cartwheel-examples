@@ -295,7 +295,7 @@ if (CONTROLS) { // each broken map must fail its own check
     if (want === 'clear' && !SOAK) continue;
     const text = readFileSync(join(BROKEN, f), 'utf8');
     const r = checkMap(text, { bakeDir: join(BROKEN, 'lightmaps') });
-    if (want === 'clear' && !r.fails.length) { const c = await clear(join(BROKEN, f)); if (c.code !== 0) r.fails.push({ check: 'clear', msg: c.line }); }
+    if (want === 'clear') { const c = await clear(join(BROKEN, f)); if (c.code !== 0) r.fails.push({ check: 'clear', msg: c.line }); }
     const hit = r.fails.filter((x) => x.check === want);
     if (!hit.length) { bad++; console.log(`CONTROL PASSED (a failure): ${f} should fail [${want}] (${r.fails.map((x) => x.check).join(', ') || 'nothing failed'})`); }
     else console.log(`ok   control ${f} fails [${want}]: ${hit[0].msg}`);

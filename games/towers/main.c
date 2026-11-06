@@ -572,6 +572,10 @@ static void hud(void) {
   if (G.banner_t > 0 && cw_shell_screen_now() != CW_SHELL_PAUSE && G.S.state == ST_PLAY) {
     float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1), y = cs.y * 0.3f;
     if (G.banner_kind == 0) {
+      { /* a band behind the map's name: it reads over any ground */
+        cw_text_metrics nm = measure(G.S.m.name[0] ? G.S.m.name : "TOWERS", 72 * u);
+        cw_r2d_rect(cw_rect_make(0, y - 10 * u, cs.x, nm.height + 34 * u + 30 * u), rgba(0.02f, 0.03f, 0.06f, 0.55f * a));
+      }
       y += text(G.S.m.name[0] ? G.S.m.name : "TOWERS", cs.x * 0.5f, y, 72 * u, rgba(1, 0.88f, 0.5f, a), CW_ALIGN_CENTER).height;
       snprintf(b, sizeof b, "%s   %d WAVES", THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MP_THEMES - 1)], G.S.m.waves);
       y += text(b, cs.x * 0.5f, y, 34 * u, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER).height + 10 * u;
