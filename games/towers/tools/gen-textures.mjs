@@ -54,8 +54,7 @@ const grey = (k) => [k, k, k];
 function grass(u, v, s, speck) {
   const clump = fbm(u, v, 8, 4, s);
   let k = 0.78 + 0.22 * clump;
-  const bx = u * 160, by = v * 160 + 0.35 * u * 160;
-  const blade = vnoise(bx * 1.0, by * 0.22, 160, s + 3);
+  const blade = 0.6 * vnoise(u * 128, v * 128, 128, s + 3) + 0.4 * vnoise(u * 256, v * 256, 256, s + 5);
   k *= 0.86 + 0.24 * blade;
   const gap = smooth(0.62, 0.78, fbm(u, v, 6, 3, s + 9));
   k *= 1 - 0.18 * gap;

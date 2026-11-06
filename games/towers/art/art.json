@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Two players hold a desert crossing: chain lightning leaps through a column of bloaters on the way to the core"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "A crystal vale late in the game, a wave pouring through frost and beam fire from both sides"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Autumn woods: two shares of pads along a winding path, each player's cursor and build prompts on screen"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "The volcano: mortars burst in the creeps' path while the beams burn the strongest"
+    }
+  ]
+}

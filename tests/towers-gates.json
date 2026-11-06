@@ -5,9 +5,51 @@
     "app": "towers_auto",
     "frames": 2400,
     "maxGt16": 0.3,
-    "fields": ["game.state", "game.map", "game.wave", "game.core", "game.enemies", "game.kills", "game.leaks", "game.towers", "game.next_wave", "player.gold", "player.slot", "game.hash"],
-    "hosts": ["native"],
-    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.3, "vsGl": 0.3 }
+    "fields": [
+      "game.state",
+      "game.map",
+      "game.wave",
+      "game.core",
+      "game.enemies",
+      "game.kills",
+      "game.leaks",
+      "game.towers",
+      "game.next_wave",
+      "player.gold",
+      "player.slot",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.3,
+      "vsGl": 0.3
+    },
+    "expect": {
+      "game.map": 1,
+      "game.wave": 1,
+      "game.towers": 4,
+      "game.kills": 36,
+      "game.core": 20,
+      "player.gold": [
+        65,
+        65,
+        0,
+        0
+      ],
+      "player.slot": [
+        1,
+        8,
+        0,
+        0
+      ],
+      "game.hash": 3386763978
+    }
   },
   {
     "name": "towers-build",
@@ -17,8 +59,44 @@
     "input": "towers-play.json",
     "controlInput": "towers-play-control.json",
     "maxGt16": 0.3,
-    "fields": ["game.phase", "game.map", "game.wave", "game.towers", "player.gold", "player.slot", "game.hash"],
-    "hosts": ["native"],
-    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.3, "vsGl": 0.3 }
+    "fields": [
+      "game.phase",
+      "game.map",
+      "game.wave",
+      "game.towers",
+      "player.gold",
+      "player.slot",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.3,
+      "vsGl": 0.3
+    },
+    "expect": {
+      "game.phase": 1,
+      "game.map": 1,
+      "game.wave": 1,
+      "game.towers": 3,
+      "player.gold": [
+        155,
+        0,
+        0,
+        0
+      ],
+      "player.slot": [
+        16,
+        0,
+        0,
+        0
+      ],
+      "game.hash": 3674031457
+    }
   }
 ]

@@ -548,7 +548,14 @@ static void hud(void) {
       int secs = (G.S.next_t + 59) / 60;
       if (G.S.wave == 0) snprintf(b, sizeof b, "the first wave in %d   {call}: send it now", secs);
       else snprintf(b, sizeof b, "the next wave in %d   {call}: send it now, +%d gold each", secs, G.S.next_t / 60);
-      pill(b, -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 1, 1, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+      cw_vec2 tsz = pill(b, -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 1, 1, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+      int ks[2], nk = sim_wave_kinds(&G.S, G.S.wave + 1, ks);
+      if (nk) { /* what comes next, so the towers can be chosen for it */
+        static const char *const KN[CK_KINDS] = { "skitters", "ghouls", "hounds", "imps", "sporelings", "bloaters", "shades", "ogres" };
+        bool boss = (G.S.wave + 1) % 10 == 0 || G.S.wave + 1 == G.S.m.waves;
+        snprintf(b, sizeof b, "next: %s%s%s%s", KN[ks[0]], nk > 1 ? " and " : "", nk > 1 ? KN[ks[1]] : "", boss ? ", and a boss" : "");
+        pill(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, rgba(1, 0.85f, 0.7f, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+      }
     } else if (G.S.state == ST_PLAY && G.S.next_t < 0)
       pill("THE LAST WAVE", -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 0.7f, 0.5f, 1), rgba(0.02f, 0.03f, 0.06f, 0.6f));
   }

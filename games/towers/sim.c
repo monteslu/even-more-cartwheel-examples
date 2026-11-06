@@ -575,6 +575,12 @@ static void add_group(sim *s, int kind, int count, int spawn, int every, float h
       return;
     }
 }
+int sim_wave_kinds(const sim *s, int w, int out[2]) {
+  if (w < 1 || w > s->m.waves) return 0;
+  int avail = kinds_by(s, w);
+  out[0] = s->m.kind[(w - 1) % avail], out[1] = s->m.kind[avail - 1];
+  return out[0] == out[1] ? 1 : 2;
+}
 static void start_wave(sim *s) {
   if (s->wave >= s->m.waves) return;
   int w = ++s->wave;

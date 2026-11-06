@@ -121,6 +121,7 @@ int sim_sell_value(const tower *t);
 float sim_tower_range(int kind, int level);
 int sim_wave_count(const sim *s);                 /* the map's waves */
 int sim_wave_size(const sim *s, int w);           /* how many creeps wave w (1..) sends */
+int sim_wave_kinds(const sim *s, int w, int out[2]); /* the kinds wave w (1..) brings: their count (1 or 2), into out */
 float sim_creep_radius(int kind);
 void towers_bot(const sim *s, int i, input *in);   /* bot.c */
 
