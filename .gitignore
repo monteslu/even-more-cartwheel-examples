@@ -1,0 +1,9 @@
+/deps/
+/build/
+/out/
+/worktrees/
+.cwcache/
+*.wasm
+*.wasc
+*.sav
+.claude

@@ -1,0 +1,118 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
+
+env:
+  # every game in the repo (the release ships one cart each); empty until the first game lands
+  GAMES: ""
+  # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
+  AUTO_GAMES: ""
+  # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
+  PROMPT_GAMES: ""
+
+# The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
+# cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
+# only the games compile.
+jobs:
+  carts:
+    name: Carts
+    # a v* tag does not rebuild: the release job takes the carts main already built
+    if: github.ref_type != 'tag'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build mesa-vulkan-drivers libvulkan1 libgles2 libegl1
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: deps-sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
+      - name: Fetch the SDKs
+        run: scripts/fetch-deps.sh
+      # controls are shown with the engine's button prompts (cartwheel/prompt.h), never a maker's button names
+      - name: Check prompts
+        run: for g in $PROMPT_GAMES; do node deps/cartwheel-engine/tools/check-prompts.mjs games/$g || exit 1; done
+      # pushes to main link the carts as releases ship (ThinLTO, wasm-opt), so a
+      # v* tag publishes these very carts; pull requests link dev carts, the same simulation
+      - name: Build the carts (each game, and its self-playing <game>_auto where it has one)
+        run: |
+          [ "${GITHUB_EVENT_NAME}" = pull_request ] || export RELEASE=1
+          [ -n "$GAMES" ] || { echo "no games yet"; exit 0; }
+          TARGETS=cart-wgpu scripts/build.sh $GAMES $(for g in $AUTO_GAMES; do echo ${g}_auto; done)
+      # every release cart carries its launcher art (games/<game>/art, project.cwproj art/description/author)
+      - name: Cart art
+        if: env.GAMES != ''
+        run: node tests/cart-art.mjs $GAMES
+      - name: Smoke test (each game's cart in wasmcart's Node host on lavapipe, WebGPU)
+        if: env.GAMES != ''
+        run: VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json node tests/cart-smoke.mjs --frames 60 $GAMES
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: cart-smoke
+          path: out/cart-smoke/
+          retention-days: 7
+      - name: Collect carts
+        run: |
+          mkdir -p carts
+          for g in $GAMES; do cp build/cart-wgpu/carts/$g.wasc carts/$g.wasc; done
+          ls -l carts
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-carts
+          path: carts/*.wasc
+          retention-days: 30
+          if-no-files-found: ${{ env.GAMES != '' && 'error' || 'ignore' }}
+
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write # a v* tag publishes the carts as a GitHub release
+      actions: read # the carts artifact of the tagged commit's run on main
+    steps:
+      - uses: actions/checkout@v7 # CHANGELOG.md: the release notes
+      # tag only commits whose push to main has a green run: its release-carts are the release
+      - name: The carts from the tagged commit's run on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push \
+            --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
+          [ -n "$id" ] || { echo "no green CI run on main for $GITHUB_SHA: push it to main and wait for green before tagging" >&2; exit 1; }
+          gh run download "$id" -R "$GITHUB_REPOSITORY" -n release-carts -D files
+      - name: Release (v* tags)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l files
+          for g in $GAMES; do [ -f files/$g.wasc ] || { echo "no $g.wasc" >&2; exit 1; }; done
+          # the notes are the version's CHANGELOG.md section
+          v="${GITHUB_REF_NAME#v}"
+          awk -v v="$v" '$1 == "##" { if (on) exit; on = ($2 == v) ; next } on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "CHANGELOG.md has no ## $v section" >&2; exit 1; }
+          cat notes.md
+          if gh release view "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --notes-file notes.md
+          else
+            gh release create "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --title "$GITHUB_REF_NAME" --notes-file notes.md
+          fi
+          gh release upload "$GITHUB_REF_NAME" -R "$GITHUB_REPOSITORY" --clobber files/*.wasc
