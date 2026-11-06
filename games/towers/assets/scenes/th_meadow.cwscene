@@ -1,0 +1,54 @@
+[scene format=1]
+
+; towers' meadow theme: its light (the lamps and glows are in each map's bake)
+[node name="meadow" type="Node3D"]
+
+; the key: the sun, low enough to model the banks and the creeps, from the north-west
+[node name="Sun" parent="." type="DirectionalLight3D"]
+rotation = vec3(-1.12, 0.75, 0)
+position = vec3(-20, 40, -20)
+color = color(1, 0.93, 0.8, 1)
+energy = 3.6
+shadow = false
+fog_energy = 0.5
+bake_direct = true
+
+; the fill: the sky's colour from the other side, so nothing goes flat or black
+[node name="Fill" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.7, 2.6, 0)
+position = vec3(20, 30, 20)
+color = color(0.55, 0.7, 1, 1)
+energy = 0.9
+fog_energy = 0
+bake_direct = true
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.2, 0.32, 0.18, 1)
+ambient_color = color(0.55, 0.65, 0.8, 1)
+ambient_energy = 0.55
+sky_color = color(0.6, 0.75, 1, 1)
+ground_color = color(0.25, 0.3, 0.15, 1)
+hemi_energy = 0.5
+fog_mode = EXP2
+fog_color = color(0.6, 0.7, 0.8, 1)
+fog_density = 0.0004
+
+[node name="Post" parent="." type="PostProcess"]
+depth_prepass = false
+fuse_distortion = true
+tonemap = ACES_FILMIC
+exposure = 1.0
+bloom = true
+bloom_intensity = 0.22
+bloom_threshold = 1.0
+bloom_knee = 0.6
+ssao = false
+ssr = false
+aa = FXAA
+grade = true
+grade_intensity = 0.6
+lut = "grade/meadow.cube"
+vignette = true
+vignette_intensity = 0.3
+vignette_smoothness = 0.7
+grain = false

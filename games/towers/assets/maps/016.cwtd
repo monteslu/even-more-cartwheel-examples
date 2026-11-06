@@ -1,0 +1,275 @@
+towers-map 1
+# written by tools/gen-maps.mjs (seed 127704)
+map 16
+name Snowcap Sound
+theme snow
+size 36 20
+seed 127704
+waves 18
+diff 1.14
+kinds ghoul skitter hound sporeling bloater imp
+grid
+gggggggggggggggggggggggggggggggggggg
+ggggggggggggggggggggggggggggg......g
+ggggggggggggggggggggggggggggg......g
+ggggggggggggggggggggggggggggg..gg..g
+gggogggggogogggoggggggggggggg..go..g
+...................gggggggggg..gg..g
+...................gggggggggg..go..g
+g..ogogogogoggogo..gggggggggo..gg..g
+g..gggggggggggggg..oggggggggg..gg..g
+g..oggggggggggggo..gggggggggg..og..g
+g..gggggggggggggg..gggggggggg..gg..g
+g..oggggggggggggg..gggggggggg..gg..g
+g..gggggggggggggg..gggggggggg..gg..g
+g..gggggggggggggg..gggggggggg..gg..g
+g..oggggggggggggg..oggggggggg..gg..g
+g..gggggggggggggo..gggggggggggggg..g
+g..ogoggggggggogg..ogogoggogggggg..g
+g..............go..................g
+g..............gg..................g
+ggggggggggggg..ggggggggggggggggggggg
+end
+spawn 0 5
+spawn 13 19
+core 29 13
+slot 32 4 1 2 1
+slot 31 9 1 2 3
+slot 32 6 1 2 1
+slot 3 7 0 0 0
+slot 16 7 1 1 1
+slot 3 16 0 0 2
+slot 19 16 1 2 3
+slot 16 17 1 1 3
+slot 3 14 0 0 2
+slot 3 9 0 0 2
+slot 5 16 0 0 2
+slot 5 7 0 0 0
+slot 21 16 1 2 3
+slot 16 9 1 1 1
+slot 19 14 1 2 3
+slot 14 7 0 1 2
+slot 16 15 1 1 3
+slot 3 4 0 0 0
+slot 15 4 0 1 0
+slot 14 16 0 1 2
+slot 26 16 1 2 3
+slot 23 16 1 2 3
+slot 11 7 0 1 2
+slot 7 7 0 0 0
+slot 28 7 1 2 1
+slot 9 7 0 1 0
+slot 9 4 0 0 0
+slot 19 8 1 1 1
+slot 11 4 0 1 0
+slot 3 11 0 0 2
+prop 29 0 lamp 0 2
+prop 35 2 lamp 0 3
+prop 6 4 lamp 0 2
+prop 28 4 lamp 0 1
+prop 19 6 lamp 0 3
+prop 35 8 lamp 0 3
+prop 28 10 lamp 0 1
+prop 32 11 lamp 0 1
+prop 16 13 lamp 0 1
+prop 29 15 lamp 0 0
+prop 0 16 lamp 0 1
+prop 11 16 lamp 0 2
+prop 3 19 lamp 0 0
+prop 8 19 lamp 0 0
+prop 15 19 lamp 0 3
+prop 20 19 lamp 0 0
+prop 27 19 lamp 0 0
+prop 32 19 lamp 0 0
+prop 0 0 decor 3 0
+prop 1 0 decor 0 3
+prop 4 0 decor 1 0
+prop 6 0 decor 2 3
+prop 7 0 decor 1 2
+prop 8 0 decor 0 2
+prop 9 0 decor 3 1
+prop 11 0 decor 3 1
+prop 13 0 decor 5 3
+prop 15 0 decor 0 3
+prop 17 0 decor 0 0
+prop 18 0 decor 0 0
+prop 19 0 decor 2 2
+prop 20 0 decor 1 0
+prop 23 0 decor 0 1
+prop 24 0 decor 2 0
+prop 25 0 decor 2 0
+prop 27 0 decor 3 2
+prop 0 1 decor 2 0
+prop 1 1 decor 3 3
+prop 2 1 decor 1 1
+prop 5 1 decor 1 1
+prop 6 1 decor 1 2
+prop 7 1 decor 5 3
+prop 8 1 decor 1 3
+prop 11 1 decor 2 3
+prop 13 1 decor 1 0
+prop 14 1 decor 3 2
+prop 15 1 decor 7 3
+prop 18 1 decor 2 0
+prop 19 1 decor 7 3
+prop 20 1 decor 2 2
+prop 21 1 decor 2 0
+prop 22 1 decor 2 0
+prop 24 1 decor 3 3
+prop 25 1 decor 2 3
+prop 26 1 decor 0 0
+prop 27 1 decor 7 0
+prop 0 2 decor 0 2
+prop 1 2 decor 1 3
+prop 2 2 decor 7 2
+prop 3 2 decor 1 0
+prop 4 2 decor 6 2
+prop 7 2 decor 6 2
+prop 9 2 decor 2 1
+prop 10 2 decor 1 1
+prop 11 2 decor 3 2
+prop 12 2 decor 3 0
+prop 13 2 decor 3 2
+prop 16 2 decor 2 3
+prop 19 2 decor 7 2
+prop 20 2 decor 0 3
+prop 21 2 decor 2 2
+prop 22 2 decor 0 1
+prop 23 2 decor 3 3
+prop 25 2 decor 2 1
+prop 26 2 decor 3 1
+prop 27 2 decor 0 2
+prop 0 3 decor 6 1
+prop 1 3 decor 2 0
+prop 2 3 decor 5 0
+prop 3 3 decor 4 0
+prop 5 3 decor 5 1
+prop 6 3 decor 2 3
+prop 7 3 decor 3 0
+prop 12 3 decor 6 0
+prop 13 3 decor 0 2
+prop 14 3 decor 4 3
+prop 15 3 decor 6 0
+prop 18 3 decor 6 0
+prop 20 3 decor 6 0
+prop 21 3 decor 1 1
+prop 22 3 decor 4 1
+prop 23 3 decor 0 0
+prop 26 3 decor 0 0
+prop 27 3 decor 1 0
+prop 20 4 decor 1 1
+prop 22 4 decor 4 0
+prop 23 4 decor 2 3
+prop 24 4 decor 2 0
+prop 25 4 decor 3 1
+prop 26 4 decor 2 3
+prop 27 4 decor 2 3
+prop 20 5 decor 1 2
+prop 23 5 decor 1 2
+prop 24 5 decor 0 2
+prop 25 5 decor 0 2
+prop 27 5 decor 2 3
+prop 20 6 decor 1 0
+prop 22 6 decor 2 0
+prop 23 6 decor 1 0
+prop 24 6 decor 0 2
+prop 25 6 decor 2 2
+prop 26 6 decor 6 0
+prop 21 7 decor 3 1
+prop 22 7 decor 2 2
+prop 26 7 decor 7 3
+prop 5 8 decor 5 0
+prop 10 8 decor 7 0
+prop 14 8 decor 5 1
+prop 21 8 decor 6 3
+prop 22 8 decor 2 2
+prop 25 8 decor 2 2
+prop 7 9 decor 3 1
+prop 9 9 decor 2 3
+prop 10 9 decor 4 3
+prop 13 9 decor 2 1
+prop 22 9 decor 6 3
+prop 23 9 decor 4 0
+prop 24 9 decor 4 2
+prop 25 9 decor 0 3
+prop 26 9 decor 6 3
+prop 27 9 decor 2 2
+prop 6 10 decor 1 0
+prop 9 10 decor 1 1
+prop 12 10 decor 2 1
+prop 13 10 decor 1 1
+prop 14 10 decor 7 2
+prop 15 10 decor 4 2
+prop 20 10 decor 2 1
+prop 21 10 decor 3 2
+prop 22 10 decor 1 3
+prop 24 10 decor 0 0
+prop 25 10 decor 2 0
+prop 27 10 decor 0 3
+prop 5 11 decor 2 1
+prop 6 11 decor 5 1
+prop 8 11 decor 7 2
+prop 9 11 decor 1 1
+prop 10 11 decor 3 0
+prop 12 11 decor 3 1
+prop 13 11 decor 1 2
+prop 14 11 decor 4 2
+prop 22 11 decor 2 1
+prop 23 11 decor 2 1
+prop 4 12 decor 4 1
+prop 5 12 decor 4 0
+prop 6 12 decor 2 2
+prop 8 12 decor 3 3
+prop 11 12 decor 3 2
+prop 13 12 decor 1 0
+prop 14 12 decor 5 1
+prop 15 12 decor 2 0
+prop 24 12 decor 4 0
+prop 25 12 decor 0 1
+prop 26 12 decor 4 0
+prop 5 13 decor 1 2
+prop 7 13 decor 2 3
+prop 8 13 decor 0 0
+prop 10 13 decor 4 3
+prop 12 13 decor 3 0
+prop 13 13 decor 3 1
+prop 14 13 decor 3 3
+prop 21 13 decor 0 1
+prop 22 13 decor 1 0
+prop 23 13 decor 0 0
+prop 24 13 decor 5 0
+prop 25 13 decor 0 3
+prop 26 13 decor 0 2
+prop 8 14 decor 3 0
+prop 9 14 decor 2 2
+prop 10 14 decor 1 2
+prop 11 14 decor 2 3
+prop 12 14 decor 1 1
+prop 14 14 decor 0 2
+prop 23 14 decor 3 1
+prop 24 14 decor 3 2
+prop 5 15 decor 6 3
+prop 6 15 decor 7 3
+prop 7 15 decor 1 1
+prop 8 15 decor 7 0
+prop 10 15 decor 1 0
+prop 15 15 decor 7 0
+prop 23 15 decor 4 3
+light 29 0 1.5 1 0.8 0.55 45 7
+light 35 2 1.5 1 0.8 0.55 45 7
+light 6 4 1.5 1 0.8 0.55 45 7
+light 28 4 1.5 1 0.8 0.55 45 7
+light 19 6 1.5 1 0.8 0.55 45 7
+light 35 8 1.5 1 0.8 0.55 45 7
+light 28 10 1.5 1 0.8 0.55 45 7
+light 32 11 1.5 1 0.8 0.55 45 7
+light 16 13 1.5 1 0.8 0.55 45 7
+light 29 15 1.5 1 0.8 0.55 45 7
+light 0 16 1.5 1 0.8 0.55 45 7
+light 11 16 1.5 1 0.8 0.55 45 7
+light 3 19 1.5 1 0.8 0.55 45 7
+light 8 19 1.5 1 0.8 0.55 45 7
+light 15 19 1.5 1 0.8 0.55 45 7
+light 20 19 1.5 1 0.8 0.55 45 7
+light 27 19 1.5 1 0.8 0.55 45 7
+light 32 19 1.5 1 0.8 0.55 45 7

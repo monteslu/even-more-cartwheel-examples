@@ -1,0 +1,54 @@
+[scene format=1]
+
+; towers' snow theme: its light (the lamps and glows are in each map's bake)
+[node name="snow" type="Node3D"]
+
+; the key: the sun, low enough to model the banks and the creeps, from the north-west
+[node name="Sun" parent="." type="DirectionalLight3D"]
+rotation = vec3(-1.12, 0.7, 0)
+position = vec3(-20, 40, -20)
+color = color(1, 0.95, 0.88, 1)
+energy = 3.0
+shadow = false
+fog_energy = 0.5
+bake_direct = true
+
+; the fill: the sky's colour from the other side, so nothing goes flat or black
+[node name="Fill" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.7, 2.6, 0)
+position = vec3(20, 30, 20)
+color = color(0.45, 0.6, 1, 1)
+energy = 1.1
+fog_energy = 0
+bake_direct = true
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.5, 0.58, 0.7, 1)
+ambient_color = color(0.55, 0.65, 0.85, 1)
+ambient_energy = 0.55
+sky_color = color(0.55, 0.7, 1, 1)
+ground_color = color(0.4, 0.45, 0.55, 1)
+hemi_energy = 0.5
+fog_mode = EXP2
+fog_color = color(0.75, 0.82, 0.95, 1)
+fog_density = 0.0004
+
+[node name="Post" parent="." type="PostProcess"]
+depth_prepass = false
+fuse_distortion = true
+tonemap = ACES_FILMIC
+exposure = 0.95
+bloom = true
+bloom_intensity = 0.22
+bloom_threshold = 1.0
+bloom_knee = 0.6
+ssao = false
+ssr = false
+aa = FXAA
+grade = true
+grade_intensity = 0.6
+lut = "grade/snow.cube"
+vignette = true
+vignette_intensity = 0.3
+vignette_smoothness = 0.7
+grain = false

@@ -1,0 +1,24 @@
+[
+  {
+    "name": "towers-match",
+    "note": "towers_auto: two bots hold map 1 for 2400 ticks: they hop their cursors across their own shares, build, upgrade and call a wave, and the creeps come down the path on the crowd. Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "app": "towers_auto",
+    "frames": 2400,
+    "maxGt16": 0.3,
+    "fields": ["game.state", "game.map", "game.wave", "game.core", "game.enemies", "game.kills", "game.leaks", "game.towers", "game.next_wave", "player.gold", "player.slot", "game.hash"],
+    "hosts": ["native"],
+    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.3, "vsGl": 0.3 }
+  },
+  {
+    "name": "towers-build",
+    "note": "towers, one player on a pad: start, choose map 1, then the build diamond: north builds a bolt on the first pad, a hop right, west a frost, a hop down, east a beam, and a shoulder calls the first wave early. Three towers, the gold they cost, the cursor's pad and the wave are pinned. The control hops the same way and presses no build button: no towers, so it must differ.",
+    "app": "towers",
+    "frames": 330,
+    "input": "towers-play.json",
+    "controlInput": "towers-play-control.json",
+    "maxGt16": 0.3,
+    "fields": ["game.phase", "game.map", "game.wave", "game.towers", "player.gold", "player.slot", "game.hash"],
+    "hosts": ["native"],
+    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.3, "vsGl": 0.3 }
+  }
+]
