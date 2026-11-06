@@ -1,0 +1,64 @@
+[scene format=1]
+
+; pinball's main scene: the camera and the room's light. Each table is built in code (src/view.c) under it.
+[node name="Main" type="Node3D"]
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 0.78, 0.96)
+fov = 36
+cull_layers = 3
+near = 0.05
+far = 6
+
+; the key: a soft white light from above the player's head, the one shadow (the ball's, the posts')
+[node name="Key" parent="." type="DirectionalLight3D"]
+rotation = vec3(-1.05, 0.12, 0)
+position = vec3(0.1, 1.2, 0.6)
+color = color(1, 0.97, 0.92, 1)
+energy = 1.6
+shadow = true
+shadow_size = 2048
+shadow_extent = 0.75
+shadow_far = 3
+shadow_bias = -0.0004
+shadow_normal_bias = 0.0
+fog_energy = 0
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.012, 0.01, 0.016, 1)
+ambient_color = color(0.55, 0.55, 0.65, 1)
+ambient_energy = 0.35
+sky_color = color(0.6, 0.62, 0.75, 1)
+ground_color = color(0.15, 0.1, 0.08, 1)
+hemi_energy = 0.55
+
+[node name="Lighting" parent="." type="LightingSettings"]
+mode = CLUSTERED
+shadow_atlas = false
+
+; the ball's mirror: the table round it, refreshed so the flashers and inserts show in it
+[node name="Probe" parent="." type="ReflectionProbe3D"]
+position = vec3(-0.017, 0.03, 0)
+size = vec3(0.6, 0.3, 1.2)
+box_projection = true
+blend_distance = 0.05
+ambient = false
+resolution = 128
+update_mode = EVERY_N_FRAMES
+update_every = 3
+cull_mask = 1
+near = 0.005
+far = 3
+
+[node name="Post" parent="." type="PostProcess"]
+msaa = 4
+tonemap = AGX
+exposure = 1.25
+bloom = true
+bloom_intensity = 0.12
+bloom_threshold = 1.0
+bloom_knee = 0.5
+ssao = false
+vignette = true
+vignette_intensity = 0.35
+vignette_smoothness = 0.6
