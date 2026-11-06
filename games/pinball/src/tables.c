@@ -465,7 +465,7 @@ static void neon_fair(void) {
   /* a scoop centre left */
   WALL(MAT_METAL, 0.004f, 0.03f, { -0.085f, 0.53f }, { -0.085f, 0.58f }, { -0.05f, 0.618f }, { -0.015f, 0.58f }, { -0.015f, 0.53f });
   int scoop = hole(-0.05f, 0.575f, -95, 1.4f, 3.5f, 2);
-  drop_bank(0.125f, 0.45f, 0.165f, 0.52f, 2, 3, true);
+  drop_bank(0.125f, 0.45f, 0.165f, 0.52f, 2, 3, false);
   int a_lo = arrow(-0.235f, 0.47f, 90, 2), a_lr = arrow(-0.147f, 0.465f, 90, 0), a_sc = arrow(-0.05f, 0.49f, 90, 2), a_rr = arrow(0.063f, 0.485f, 90, 3), a_ro = arrow(0.201f, 0.49f, 90, 2);
   int s_lo = shot_add("LEFT ORBIT", a_lo), s_lr = shot_add("LEFT RAMP", a_lr), s_sc = shot_add("SCOOP", a_sc), s_rr = shot_add("RIGHT RAMP", a_rr), s_ro = shot_add("RIGHT ORBIT", a_ro);
   T->el[lo].shot = s_lo, T->el[lr].shot = s_lr, T->el[scoop].shot = s_sc, T->el[rr].shot = s_rr, T->el[ro].shot = s_ro;

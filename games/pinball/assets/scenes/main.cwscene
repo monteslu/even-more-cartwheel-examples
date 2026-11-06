@@ -46,7 +46,7 @@ ambient = false
 resolution = 128
 update_mode = EVERY_N_FRAMES
 update_every = 3
-cull_mask = 1
+cull_mask = 5
 near = 0.005
 far = 3
 

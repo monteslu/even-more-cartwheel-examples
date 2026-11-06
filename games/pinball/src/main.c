@@ -121,7 +121,7 @@ static bool warmup(void *u) {
   cw_node root = cw_tree_root(cw_scene_app_tree());
   G.camera = cw_node_get(root, "Main/Camera");
   view_init(root);
-  game_new(&G.g, 0, 1, 1);
+  if (!G.in_match) game_new(&G.g, 0, 1, 1); /* a table to draw behind the title (an autopilot is already playing) */
   view_build(&G.g);
   G.built = true;
   return true;
@@ -321,6 +321,12 @@ static void fixed_update(void *u, double dt) {
 
 /* ── the dot display ─────────────────────────────────────────────────── */
 
+/* centred text at a scale, one size down (and a few dots lower) when it would not fit the panel */
+static void dmd_fit(dmd *d, const char *s, int y, int scale, int v) {
+  while (scale > 1 && dmd_text_width(s, scale) > 126) scale--, y += 4;
+  dmd_text_c(d, s, 64, y, scale, v);
+}
+
 static void dmd_draw(void) {
   dmd *d = &G.D;
   const game *g = &G.g;
@@ -328,7 +334,7 @@ static void dmd_draw(void) {
   char a[48], b[48];
   int t = g->tick;
   if (G.phase == PH_SELECT) {
-    dmd_text_c(d, table_name(G.sel_table), 64, 3, 2, 15);
+    dmd_fit(d, table_name(G.sel_table), 3, 2, 15);
     snprintf(a, sizeof a, "%d PLAYER%s", G.sel_players, G.sel_players > 1 ? "S" : "");
     dmd_text_c(d, a, 64, 23, 1, 9);
   } else if (G.phase == PH_ENTRY) {
@@ -345,7 +351,7 @@ static void dmd_draw(void) {
     bool blink = (mt / 6) % 2;
     switch (g->msg) {
     case MSG_JACKPOT: case MSG_MULTIBALL: case MSG_SKILL: case MSG_EXTRA:
-      if (blink || g->msg == MSG_MULTIBALL) dmd_text_c(d, g->msg_a, 64, g->msg_value ? 1 : 9, 2, 15);
+      if (blink || g->msg == MSG_MULTIBALL) dmd_fit(d, g->msg_a, g->msg_value ? 1 : 9, 2, 15);
       if (g->msg_value) fmt_score(g->msg_value, a, sizeof a), dmd_text_c(d, a, 64, 18, 2, 13);
       else if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 25, 1, 10);
       for (int k = 0; k < 6; k++) { /* sparks */
@@ -354,11 +360,11 @@ static void dmd_draw(void) {
       }
       break;
     case MSG_MODE:
-      dmd_text_c(d, g->msg_a, 64, 2, 2, 15);
+      dmd_fit(d, g->msg_a, 2, 2, 15);
       dmd_text_c(d, g->msg_b, 64, 22, 1, mt < 30 && blink ? 15 : 10);
       break;
     case MSG_TILT: case MSG_WARN:
-      dmd_text_c(d, g->msg_a, 64, g->msg_b[0] ? 2 : 9, 2, blink ? 15 : 6);
+      dmd_fit(d, g->msg_a, g->msg_b[0] ? 2 : 9, 2, blink ? 15 : 6);
       if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 23, 1, 12);
       break;
     case MSG_BONUS:
@@ -373,7 +379,8 @@ static void dmd_draw(void) {
       dmd_text_c(d, g->msg_b, 64, 25, 1, 9);
       break;
     default:
-      dmd_text_c(d, g->msg_a, 64, g->msg_b[0] ? 3 : 9, 2, 15);
+      if (dmd_text_width(g->msg_a, 2) > 126) dmd_text_c(d, g->msg_a, 64, g->msg_b[0] ? 6 : 12, 1, 15);
+      else dmd_fit(d, g->msg_a, g->msg_b[0] ? 3 : 9, 2, 15);
       if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 23, 1, 11);
       break;
     }

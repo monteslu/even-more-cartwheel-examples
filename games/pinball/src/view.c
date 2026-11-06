@@ -246,7 +246,7 @@ void view_build(const game *g) {
     /* the apron: a metal plate over the bottom, below the flippers */
     t3_vec3 ac = tw(-0.02f, 0.01f, 0.004f);
     gb_box(&a, ac.x, ac.y, ac.z, 0.24f, 0.004f, 0.03f, 0);
-    piece(V.table, "Apron", gb_geometry(&a), std_mat(0.25f, 0.25f, 0.28f, 0.35f, 0.8f), true);
+    piece(V.table, "Apron", gb_geometry(&a), std_mat(th->col[3][0] * 0.3f + 0.05f, th->col[3][1] * 0.3f + 0.05f, th->col[3][2] * 0.3f + 0.05f, 0.35f, 0.7f), true);
   }
   /* plastics: coloured translucent sheets on posts */
   for (int i = 0; i < T->ndec; i++) {
@@ -391,9 +391,9 @@ void view_build(const game *g) {
     float p[24][2];
     int n;
     gb b = { 0 }, r = { 0 };
-    flipper_outline(F, -0.001f, p, &n);
+    flipper_outline(F, -0.0018f, p, &n);
     gb_prism(&b, (const float (*)[2])p, n, 0.002f, 0.024f);
-    flipper_outline(F, 0.0005f, p, &n);
+    flipper_outline(F, 0.0008f, p, &n);
     gb_prism(&r, (const float (*)[2])p, n, 0.008f, 0.018f);
     cw_node fn = piece(V.table, "Flipper", gb_geometry(&b), std_mat(0.92f, 0.92f, 0.9f, 0.3f, 0), true);
     t3_material *rm = std_mat(th->col[0][0] * 0.8f, th->col[0][1] * 0.8f, th->col[0][2] * 0.8f, 0.6f, 0);
@@ -413,9 +413,11 @@ void view_build(const game *g) {
       V.lamp_im[s] = NULL;
       if (!count[s]) continue;
       t3_material *m = t3_mesh_basic_material_new(0xffffff);
+      m->side = T3_DOUBLE_SIDE;
       t3_instanced_mesh *im = t3_instanced_mesh_new(lamp_shape(s), m, count[s]);
       t3_release(m);
       im->mesh.base.cast_shadow = false, im->mesh.base.receive_shadow = false;
+      im->mesh.base.frustum_culled = false; /* small and always on the table */
       for (int i = 0; i < count[s]; i++) t3_instanced_mesh_set_color_at(im, i, (t3_color){ 0, 0, 0 });
       im->instance_color->usage = T3_DYNAMIC_DRAW;
       for (int i = 0; i < T->nlamp; i++) {
@@ -423,7 +425,7 @@ void view_build(const game *g) {
         if (l->shape != s) continue;
         t3_mat4 mx;
         float a = l->ang * CW_PI / 180.0f;
-        t3_mat4_compose(&mx, tw(l->x, l->y, 0.0003f), (t3_quat){ 0, sinf(a * 0.5f), 0, cosf(a * 0.5f) }, (t3_vec3){ l->size, 1, l->size });
+        t3_mat4_compose(&mx, tw(l->x, l->y, 0.0006f), (t3_quat){ 0, sinf(a * 0.5f), 0, cosf(a * 0.5f) }, (t3_vec3){ l->size, 1, l->size });
         t3_instanced_mesh_set_matrix_at(im, V.lamp_slot[i], &mx);
       }
       cw_node n = cw_node_new("Node3D", "Inserts");
@@ -461,6 +463,30 @@ void view_build(const game *g) {
     V.flash_light[V.nflash] = omni(V.table, "FlashLight", lin(th->col[d->col], 1), 0, 0.6f);
     cw_node3d_set_position(V.flash_light[V.nflash], tw(d->x, d->y, d->z + 0.02f));
     V.nflash++;
+  }
+  /* what the mirror ball sees above it: the cabinet's lit canopy, bright tubes over a dark board. On a layer only the
+   * reflection probe draws (the camera never shows it) */
+  {
+    gb b = { 0 };
+    for (int k = 0; k < 4; k++) {
+      t3_vec3 c = tw(-0.2f + (float)k * 0.13f, 0.55f, 0.55f);
+      gb_box(&b, c.x, c.y, c.z, 0.012f, 0.004f, 0.62f, 0);
+    }
+    t3_vec3 c = tw(-0.017f, 1.0f, 0.5f);
+    gb_box(&b, c.x, c.y, c.z, 0.3f, 0.004f, 0.02f, 0);
+    t3_material *m = t3_mesh_basic_material_new(0xffffff);
+    m->color = (t3_color){ th->light[0] * 6, th->light[1] * 6, th->light[2] * 6 };
+    m->side = T3_DOUBLE_SIDE;
+    cw_node n = piece(V.table, "Canopy", gb_geometry(&b), m, false);
+    cw_node_set(n, "layers", cw_val_int(4));
+    gb d = { 0 };
+    t3_vec3 dc = tw(-0.017f, 0.55f, 0.56f);
+    gb_box(&d, dc.x, dc.y, dc.z, 0.4f, 0.002f, 0.75f, 0);
+    t3_material *dm = t3_mesh_basic_material_new(0xffffff);
+    dm->color = (t3_color){ th->base2[0] * 0.25f + 0.02f, th->base2[1] * 0.25f + 0.02f, th->base2[2] * 0.25f + 0.02f };
+    dm->side = T3_DOUBLE_SIDE;
+    cw_node dn = piece(V.table, "CanopyBoard", gb_geometry(&d), dm, false);
+    cw_node_set(dn, "layers", cw_val_int(4));
   }
   /* the balls */
   for (int i = 0; i < PB_MAXB; i++) {
@@ -553,7 +579,7 @@ void view_sync(const game *g, float alpha, float dt) {
     *lv += (want - *lv) * fminf(1, dt * (want > *lv ? 40.0f : 14.0f));
     t3_instanced_mesh *im = V.lamp_im[l->shape];
     if (!im) continue;
-    float k = 0.07f + *lv * 7.0f;
+    float k = 0.25f + *lv * 3.2f; /* lit: the insert colour run past one into the bloom, still coloured */
     t3_instanced_mesh_set_color_at(im, V.lamp_slot[i], lin(th->col[l->col], k));
     if (*lv > 0.3f) order[nl++] = i, V.st.lamps_lit++;
   }
@@ -564,7 +590,7 @@ void view_sync(const game *g, float alpha, float dt) {
       const lamp *l = &T->lamps[order[i]];
       cw_node3d_set_position(V.lamp_light[i], tw(l->x, l->y, 0.01f));
       cw_node_set(V.lamp_light[i], "color", cw_val_color(th->col[l->col][0], th->col[l->col][1], th->col[l->col][2], 1));
-      cw_node_set(V.lamp_light[i], "energy", cw_val_float(V.lamp_level[order[i]] * 0.0025f * (l->size / 0.01f)));
+      cw_node_set(V.lamp_light[i], "energy", cw_val_float(V.lamp_level[order[i]] * 0.004f * (l->size / 0.01f)));
     } else cw_node_set(V.lamp_light[i], "energy", cw_val_float(0));
   }
   V.st.lights = NGI + V.nflash + T->npop + (nl < NLAMPLIGHT ? nl : NLAMPLIGHT);
@@ -585,8 +611,8 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt) {
   float sh = g->nudge_t > 0 ? (float)g->nudge_t / 18.0f : 0;
   float nx = g->nudge_x * sh * 0.004f, ny = sh * 0.003f;
   float k = g_cam_k;
-  V.eye = tw(-0.017f + nx, -0.42f * k + f * 0.5f + ny, 0.78f * k);
-  V.at = tw(-0.017f + nx, 0.47f + f + ny, 0);
+  V.eye = tw(-0.017f + nx, -0.56f * k + f * 0.5f + ny, 1.0f * k);
+  V.at = tw(-0.017f + nx, 0.45f + f + ny, 0);
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });

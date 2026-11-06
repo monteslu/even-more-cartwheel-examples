@@ -117,12 +117,12 @@ static void pattern(const table *T) {
         if ((h & 1023) < 3) c = mixc(c, (col3){ 1, 1, 1 }, 0.8f);
         float gx = fmodf(fabsf(x + 0.26f), 0.065f), gy = fmodf(y, 0.065f);
         if (y < 0.36f && (gx < 0.0012f || gy < 0.0012f)) c = scl(c, 0.5f);
-        if (y < 0.36f) c = mixc(c, (col3){ 0.18f, 0.17f, 0.2f }, 0.55f);
+        if (y < 0.36f) c = mixc(c, scl(b1, 0.5f), 0.3f);
       } else { /* the fair: a sunburst from the top, stripes, a warm glow */
         float ang = atan2f(y - 1.0f, x + 0.0165f), ray = sinf(ang * 26);
         c = scl(c, 0.78f + 0.3f * (ray > 0 ? 1.0f : 0.0f) * (0.4f + 0.6f * v));
         float stripe = fmodf((x - y) * 22 + 100, 1.0f);
-        if (y < 0.4f) c = mixc(c, stripe < 0.5f ? scl(C(th->col[2]), 0.35f) : scl(b0, 0.9f), 0.5f);
+        if (y < 0.4f) c = mixc(c, stripe < 0.5f ? scl(C(th->col[2]), 0.3f) : scl(b0, 0.9f), 0.2f + 0.25f * (0.4f - y));
         c = scl(c, 0.9f + 0.18f * n);
       }
       buf[py * AW + px] = c;
