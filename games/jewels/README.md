@@ -46,7 +46,8 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
   degrees on its own slow rhythm) sweeps facets across the lamps: the scintillation of a real stone.
 - **Glints** are six-spoked, tinted toward the colours of a diffraction spike at their tips, from the brightest
   pixels only, with a tight glow; the frame is never hazy.
-- **The tray**: black velvet cushions with a sheen at their rims, a gold lattice, a walnut frame with a gold bead,
+- **The tray**: midnight velvet with a seat pressed into it for each stone (its sheen rises on the seat's walls),
+  gold studs where four seats meet, a walnut frame with a gold bead, the panel's plaques pressed into the same velvet,
   each stone's shadow and the caustic light it throws on the velvet (traced on the CPU at load through the same
   facets, coloured by wavelength).
 - **The effects** scale with the clear: cells, run length, crossings (an L, a T) and the step of a cascade set each
@@ -63,7 +64,7 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
 |---|---|
 | `tests/jewels-rules.mjs` | the C game plays exactly as the original Lua game: its own `main.lua` and `board.lua` driven through their pad input (`tests/jewels-rules-driver.lua`), every step of three traces compared, and every deadlocked board of a family reshuffled the same; controls break the cascade's pay, the refills and the hint |
 | `tests/jewels-soak.mjs` | an hour of play a seed through every input path, every tick checked (the score never falls, an idle board has a move and no match, every move comes to rest); control: a broken cell |
-| `tests/jewels-gates.json` | a game on the pad and a game by touch and the mouse (`tests/jewels-inputs.mjs` plans them), and the bot, the same on every host, GL and WebGPU; each with a control that must fail |
+| `tests/jewels-gates.json` | a game on the pad and a game by touch and the mouse (`tests/jewels-inputs.mjs` plans them), and the bot, the same on every host, GL and WebGPU; the panel's layout with every element showing (no two text boxes overlap); each with a control that must fail |
 | `tests/jewels-effects.mjs` | the effects grow with the clear and with each cascade step, in the logged state and in the frames; control: flat effects |
 | `tests/jewels-look.mjs` | a dark board and light stones in every cell, mid-key, never washed out, the stones in colour; control: the frames flattened |
 | `tests/jewels-perf.mjs` | the worst case (long cascades of big clears) within its GPU budget at 1080p High; controls: 4K, an impossible bound |

@@ -155,6 +155,20 @@ static void build_steps(jw_cut *c, const outline *o, float girdle, const step *c
   }
 }
 
+/* a brilliant's pavilion alone on any outline: n mains, each with two lower girdle halves, from the girdle's bottom
+ * edge (phase: the first main's azimuth); for the mixed cuts, under a stepped crown */
+static void pavilion_brilliant(jw_cut *c, const outline *o, float girdle, float angle, float rise, int n, float phase) {
+  float g = girdle * 0.5f, half = 180.0f / (float)n;
+  for (int k = 0; k < n; k++) {
+    float psi = RAD(phase + 360.0f / (float)n * (float)k);
+    facet(c, RAD(angle), psi, support(o, psi), -g, false);
+    for (int s = -1; s <= 1; s += 2) {
+      float q = psi + RAD(half * 0.5f) * (float)s;
+      facet(c, RAD(angle + rise), q, support(o, q), -g, false);
+    }
+  }
+}
+
 /* ── the polyhedron: corners, live facets, extents ──────────────────── */
 
 static bool solve3(const jw_plane *a, const jw_plane *b, const jw_plane *c, float out[3]) {
@@ -246,12 +260,14 @@ void jw_cuts_build(void) {
     }
     outline_poly(&o, xy, 8);
     step crown[] = { { 40, 0.10f }, { 27, 0.13f } };
-    step pav[] = { { 60, 0.07f }, { 54, 0.07f }, { 48, 0.08f }, { 44, 0.10f }, { 41, 0.70f } };
-    build_steps(c, &o, 0.03f, crown, 2, pav, 5);
+    step pav[] = { { 62, 0.05f } };
+    build_steps(c, &o, 0.03f, crown, 2, pav, 1);
+    pavilion_brilliant(c, &o, 0.03f, 41.5f, 3.0f, 8, 0);
+    pavilion_brilliant(c, &o, 0.03f, 44.0f, 4.0f, 8, 22.5f);
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.762f, 0.018f, 1.6f, 0.08f, 3.5f, 3.0f, 0.80f, 0.04f, 0.06f);
+  optics(c, 1.762f, 0.018f, 1.6f, 0.06f, 4.2f, 3.4f, 0.80f, 0.04f, 0.06f);
 
   /* 2 topaz: a trillion, point up, clipped corners */
   c = &jw_cuts[1];
@@ -267,12 +283,14 @@ void jw_cuts_build(void) {
     }
     outline_poly(&o, xy, 6);
     step crown[] = { { 38, 0.12f }, { 24, 0.10f } };
-    step pav[] = { { 52, 0.10f }, { 44, 0.12f }, { 40, 0.6f } };
-    build_steps(c, &o, 0.03f, crown, 2, pav, 3);
+    step pav[] = { { 56, 0.05f } };
+    build_steps(c, &o, 0.03f, crown, 2, pav, 1);
+    pavilion_brilliant(c, &o, 0.03f, 41.0f, 3.0f, 6, 90);
+    pavilion_brilliant(c, &o, 0.03f, 43.5f, 3.5f, 6, 120);
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.62f, 0.014f, 1.5f, 0.03f, 0.35f, 2.6f, 1.0f, 0.55f, 0.06f);
+  optics(c, 1.62f, 0.014f, 1.5f, 0.02f, 0.45f, 2.2f, 1.0f, 0.55f, 0.06f);
 
   /* 3 emerald: the emerald cut, a tall rectangle with cut corners, three steps above and below: a hall of mirrors */
   c = &jw_cuts[2];
@@ -282,12 +300,12 @@ void jw_cuts_build(void) {
     float xy[] = { hw, -hh + k, hw, hh - k, hw - k, hh, -hw + k, hh, -hw, hh - k, -hw, -hh + k, -hw + k, -hh, hw - k, -hh };
     outline_poly(&o, xy, 8);
     step crown[] = { { 48, 0.07f }, { 36, 0.08f }, { 24, 0.08f } };
-    step pav[] = { { 60, 0.10f }, { 52, 0.12f }, { 46, 0.12f }, { 42, 0.6f } };
-    build_steps(c, &o, 0.03f, crown, 3, pav, 4);
+    step pav[] = { { 62, 0.07f }, { 56, 0.07f }, { 50, 0.08f }, { 45, 0.09f }, { 41, 0.6f } };
+    build_steps(c, &o, 0.03f, crown, 3, pav, 5);
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.577f, 0.014f, 1.4f, 2.8f, 0.42f, 1.5f, 0.02f, 0.5f, 0.12f);
+  optics(c, 1.577f, 0.014f, 1.4f, 3.2f, 0.85f, 1.25f, 0.02f, 0.5f, 0.12f);
 
   /* 4 sapphire: a pear, point up, brilliant-cut */
   c = &jw_cuts[3];

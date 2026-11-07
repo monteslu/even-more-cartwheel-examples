@@ -15,6 +15,6 @@ char *jw_shader_gem(bool wgsl, const jw_cut *c, char **vs);
 char *jw_shader_under(bool wgsl, char **vs);
 char *jw_shader_spark(bool wgsl, char **vs);
 char *jw_shader_mark(bool wgsl, char **vs);
-char *jw_shader_glint(bool wgsl, int stage); /* 0 the bright pass, 1 the spokes, 2 over the picture */
+char *jw_shader_glint(bool wgsl, int stage, char **vs); /* 0 the bright pass, 1 the spokes, 2 over the board (with its vertex stage) */
 
 #endif

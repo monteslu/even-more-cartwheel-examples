@@ -64,7 +64,7 @@ static void make_pins(void) {
     float th = (6.0f + 46.0f * sqrtf(((float)i + 0.5f) / 28.0f)) * 3.14159265f / 180.0f, ph = (float)i * 2.39996323f + 0.4f;
     pins[i].a[0] = sinf(th) * cosf(ph), pins[i].a[1] = sinf(th) * sinf(ph), pins[i].a[2] = cosf(th);
     pins[i].r = 0.011f + 0.008f * (float)((i * 7) % 5) / 4.0f;
-    float k = 30.0f + 30.0f * (float)((i * 3) % 4) / 3.0f, warm = (float)(i % 3) * 0.06f;
+    float k = 45.0f + 45.0f * (float)((i * 3) % 4) / 3.0f, warm = (float)(i % 3) * 0.06f;
     pins[i].i[0] = k, pins[i].i[1] = k * (0.97f - warm * 0.5f), pins[i].i[2] = k * (0.93f - warm);
   }
 }
@@ -318,12 +318,18 @@ static const char *TRAY_GL =
     "  return d;\n"
     "}\n"
     /* velvet: dark, with a sheen that rises at grazing view (the edges of a cushion catch the light) */
+    /* a seat: the velvet pressed down round the cell's middle, a rounded square with soft walls */
+    "float seatH(vec2 lp) {\n"
+    "  vec2 qa = abs(lp) / 50.0;\n"
+    "  float q = pow(pow(qa.x, 4.0) + pow(qa.y, 4.0), 0.25);\n"
+    "  return -11.0 * (1.0 - smoothstep(0.6, 1.08, q));\n"
+    "}\n"
     "vec3 velvet(vec3 P, vec3 N, float tone) {\n"
     "  vec3 V = normalize(u_cam.xyz - P);\n"
     "  float nl = max(dot(N, KEY), 0.0), nv = max(dot(N, V), 0.0);\n"
-    "  vec3 alb = vec3(0.0065, 0.0068, 0.0085) * tone;\n"
-    "  vec3 sh = vec3(0.20, 0.20, 0.24) * tone;\n"
-    "  float sheen = pow(1.0 - nv, 2.6) * (0.25 + 0.75 * nl);\n"
+    "  vec3 alb = vec3(0.0042, 0.0050, 0.0105) * tone;\n"
+    "  vec3 sh = vec3(0.34, 0.38, 0.62) * tone;\n"
+    "  float sheen = pow(1.0 - nv, 1.5) * (0.3 + 0.7 * nl);\n"
     "  vec3 fs; vec3 fd = flashes(P, N, 8.0, fs);\n"
     "  return alb * (nl * keyCol() + 0.12 + fd) + sh * sheen * (keyCol() * 0.5 + fd * 0.5) + alb * fs * 0.4;\n"
     "}\n"
@@ -410,31 +416,25 @@ static const char *TRAY_GL =
     "  float dB = sdBox(c - bc, bh + 30.0, 22.0), dP = sdBox(c - pc, ph + 30.0, 22.0);\n"
     "  vec2 qb = abs(c - bc) - bh, qp = abs(c - pc) - ph;\n"
     "  if (qb.x < 0.0 && qb.y < 0.0) {\n"
-    /* the board: velvet cushions in a lattice of gold */
+    /* the board: a seat pressed into the velvet for each stone, gold studs where four seats meet */
     "    vec2 g = (c - (bc - bh)) / 120.0;\n"
-    "    vec2 ci = floor(g), f = fract(g) - 0.5;\n"
-    "    vec2 e = (0.5 - abs(f)) * 120.0;\n"
-    "    float em = min(e.x, e.y);\n"
-    "    if (em < 4.5) {\n"
-    "      float k = em / 4.5;\n"
-    "      vec2 dir = e.x < e.y ? vec2(sign(f.x), 0.0) : vec2(0.0, -sign(f.y));\n"
-    "      vec3 N = normalize(vec3(dir * k * 1.3, sqrt(max(1.0 - k * k, 0.04))));\n"
-    "      col = gold(P, N, 0.06) * 0.72;\n"
+    "    vec2 ci = floor(g), lp = (fract(g) - 0.5) * 120.0;\n"
+    "    vec2 sd = c - (bc - bh) - floor((c - (bc - bh)) / 120.0 + 0.5) * 120.0;\n"
+    "    float ds = length(sd);\n"
+    "    if (ds < 5.0) {\n"
+    "      vec2 o = sd / 5.0;\n"
+    "      vec3 N = normalize(vec3(o.x, -o.y, sqrt(max(1.0 - dot(o, o), 0.03))));\n"
+    "      col = gold(P, N, 0.05) * 0.9;\n"
     "    } else {\n"
-    "      vec2 lp = f * 120.0;\n"
-    "      float hs = 55.5;\n"
-    "      vec2 qa = abs(lp) / hs;\n"
-    "      float q6 = pow(pow(qa.x, 6.0) + pow(qa.y, 6.0), 1.0 / 6.0);\n"
-    "      float dq = pow(min(q6, 1.0), 3.0);\n"
-    "      vec2 gq = q6 > 1e-4 ? sign(lp) * pow(qa, vec2(5.0)) / pow(max(q6, 1e-4), 5.0) / hs : vec2(0.0);\n"
-    "      vec2 grad = -14.0 * 3.0 * dq / max(min(q6, 1.0), 1e-3) * gq;\n"
-    "      vec3 N = normalize(vec3(-grad, 1.0));\n"
-    "      float tone = ((int(ci.x) + int(ci.y)) % 2 == 0) ? 1.0 : 0.86;\n"
-    "      tone *= 0.82 + 0.36 * fbm(c * 0.035 + ci * 7.3);\n"
-    "      tone *= 0.85 + 0.3 * h21(floor(c * 1.3));\n"
+    "      vec2 e = vec2(1.0, 0.0);\n"
+    "      float h0 = seatH(lp);\n"
+    "      vec2 gr = vec2(seatH(lp + e.xy) - seatH(lp - e.xy), seatH(lp - e.yx) - seatH(lp + e.yx)) * 0.5;\n"
+    "      vec3 N = normalize(vec3(-gr, 1.0));\n"
+    "      float tone = 0.86 + 0.28 * fbm(c * 0.03 + ci * 7.3);\n"
+    "      tone *= 0.82 + 0.36 * h21(floor(c * 1.4));\n"
     "      col = velvet(P, N, tone);\n"
-    "      col *= 0.35 + 0.65 * smoothstep(4.5, 14.0, em);\n" /* tucked under the lattice */
-    "      col += vec3(0.03, 0.06, 0.09) * u_misc.w * (0.5 + 0.5 * sin(c.x * 0.02 - u_misc.x * 6.0));\n"
+    "      col *= 0.7 + 0.3 * smoothstep(-10.0, -2.0, h0) + 0.25 * smoothstep(-1.5, 0.0, h0);\n"
+    "      col *= 0.55 + 0.45 * smoothstep(5.0, 9.0, ds);\n" /* a stud's shadow */
     "    }\n"
     "  } else if (dB < 0.0) {\n"
     "    col = frame(c, P, bc, bh, 1.7);\n"
@@ -445,6 +445,14 @@ static const char *TRAY_GL =
     "    col = velvet(P, N, tone);\n"
     "    float edge = min(-qp.x, -qp.y);\n"
     "    col *= 0.35 + 0.65 * smoothstep(0.0, 10.0, edge);\n"
+    /* two plaques pressed into it, each in a thin gold rim: the score, then the best and the moves */
+    "    for (int i = 0; i < 2; i++) {\n"
+    "      vec2 pcn = i == 0 ? vec2(1600.0, 192.0) : vec2(1600.0, 430.0), phs = i == 0 ? vec2(212.0, 112.0) : vec2(212.0, 104.0);\n"
+    "      float dq = sdBox(c - pcn, phs, 20.0);\n"
+    "      if (dq < 0.0 && dq > -2.6) col = gold(P, normalize(vec3(0.0, 0.25, 1.0)), 0.04) * 0.85;\n"
+    "      else if (dq <= -2.6) col = velvet(P, vec3(0.0, 0.0, 1.0), 0.75) * (0.55 + 0.45 * smoothstep(-2.6, -16.0, dq));\n"
+    "      else col *= 0.6 + 0.4 * smoothstep(0.0, 8.0, dq);\n"
+    "    }\n"
     "    vec2 btc = vec2(1600.0, 932.0), bth = vec2(220.0, 64.0);\n"
     "    float db = sdBox(c - btc, bth, 26.0);\n"
     "    vec2 ee = vec2(1.0, 0.0);\n"
@@ -918,7 +926,38 @@ static const char *GLINT_GL[3] = {
   "}\n",
 };
 
-char *jw_shader_glint(bool w, int stage) {
+/* the spokes laid over the board, added to the scene before the temporal resolve (it steadies them as it steadies
+ * the stones): a quad over the board and its frame only, no full-screen pass */
+static const char *GLINT_OVER_VS =
+    "uniform vec4 u_rect;\n"
+    "void main() {\n"
+    "  int c = gl_VertexID % 6;\n"
+    "  vec2 q = c == 1 ? vec2(1.0, 0.0) : (c == 2 || c == 4) ? vec2(1.0) : c == 5 ? vec2(0.0, 1.0) : vec2(0.0);\n"
+    "  vec2 p = mix(u_rect.xy, u_rect.zw, q);\n"
+    "  gl_Position = vec4(p.x / 960.0 - 1.0, 1.0 - p.y / 540.0, 0.0, 1.0);\n"
+    "}\n";
+static const char *GLINT_OVER_FS =
+    "uniform sampler2D u_t0;\n"
+    "uniform vec4 u_view;\n"
+    "uniform vec4 u_px;\n"
+    "out vec4 o;\n"
+    "void main() { o = vec4(texture(u_t0, gl_FragCoord.xy * u_view.zw).rgb * u_px.z, 0.0); }\n";
+static const char *GLINT_OVER_WG =
+    "struct U { u_view: vec4f, u_rect: vec4f, u_px: vec4f };\n@group(0) @binding(0) var<uniform> u: U;\n@group(0) @binding(1) var u_t0: texture_2d<f32>;\n"
+    "fn corner(c: i32) -> vec2f { if (c == 1) { return vec2f(1.0, 0.0); } if (c == 2 || c == 4) { return vec2f(1.0); } if (c == 5) { return vec2f(0.0, 1.0); } return vec2f(0.0); }\n"
+    "@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {\n"
+    "  let p = mix(u.u_rect.xy, u.u_rect.zw, corner(i32(vi) % 6));\n"
+    "  return vec4f(p.x / 960.0 - 1.0, (1.0 - p.y / 540.0) * cw_target.flip, 0.5, 1.0);\n"
+    "}\n"
+    "@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n"
+    "  return vec4f(textureSampleLevel(u_t0, cw_linear, cw_frag_coord(pos) * u.u_view.zw, 0.0).rgb * u.u_px.z, 0.0);\n"
+    "}\n";
+
+char *jw_shader_glint(bool w, int stage, char **vs) {
+  if (stage == 2) {
+    if (!w) *vs = strdup(GLINT_OVER_VS);
+    return strdup(w ? GLINT_OVER_WG : GLINT_OVER_FS);
+  }
   return strdup(w ? WG_GLINT[stage] : GLINT_GL[stage]);
 }
 

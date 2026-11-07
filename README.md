@@ -100,7 +100,7 @@ nothing floats, and every region passes a look check.
 
 ### jewels
 
-![jewels: cut stones on black velvet in a gold lattice, a hint showing two stones to swap](docs/screenshots/jewels.jpg)
+![jewels: cut stones in velvet seats on a midnight tray, a cascade breaking stones into shards](docs/screenshots/jewels.jpg)
 
 A calm, untimed match-three for one player, readable from a couch (working
 title): swap two neighbouring stones to line up three or more. The board never

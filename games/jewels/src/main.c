@@ -364,57 +364,102 @@ static void fmt_num(int64_t v, char *out, size_t cap) {
   out[o] = 0;
 }
 
+/* the panel's text boxes this frame: any two that overlap are a layout bug (debug field hud.overlaps, the worst
+ * frame so far; tests/jewels-gates.json's jewels-hud gate holds it at 0 with every element showing) */
+static struct { cw_rect r[32]; int n; } LAY;
+static int32_t hud_overlaps;
+static void lay(float x, float y, float w, float h) {
+  if (LAY.n < 32) LAY.r[LAY.n++] = cw_rect_make(x, y, w, h);
+}
+static float ptext(cw_font f, const char *s, float x, float y, float size, cw_color c, float spacing) {
+  cw_text_style st = { .size = size, .color = c, .letter_spacing = spacing, .shadow_color = rgba(0, 0, 0, 0.75f), .shadow_offset = cw_v2(0, size * 0.05f),
+                       .shadow_softness = size * 0.08f };
+  cw_text_metrics m = cw_font_measure(f, s, &st);
+  cw_r2d_text(f, s, cw_v2(x - m.width * 0.5f, y), &st);
+  /* the ink's box: the line's height less the font's leading */
+  lay(x - m.width * 0.5f, y + m.height * 0.12f, m.width, m.height * 0.76f);
+  return m.height;
+}
+static void pprompt(cw_font f, const char *s, float x, float y, float size, cw_color c) {
+  cw_vec2 sz = cw_prompt_text_size(f, s, -1, size);
+  cw_prompt_text(f, s, -1, cw_v2(x, y), size, c, CW_ALIGN_CENTER);
+  lay(x - sz.x * 0.5f, y + sz.y * 0.12f, sz.x, sz.y * 0.76f);
+}
+static void lay_check(void) {
+  int n = 0;
+  for (int i = 0; i < LAY.n; i++)
+    for (int j = i + 1; j < LAY.n; j++) {
+      const cw_rect *a = &LAY.r[i], *b = &LAY.r[j];
+      if (a->x < b->x + b->w && b->x < a->x + a->w && a->y < b->y + b->h && b->y < a->y + a->h) n++;
+    }
+  if (n > hud_overlaps) hud_overlaps = n;
+  LAY.n = 0;
+}
+
 static void hud(void) {
   const jw_game *g = &G.g;
   const jw_fx *fx = &G.fx;
   float px = JW_PANEL_X + JW_PANEL_W * 0.5f;
   char b[64];
   float t = (float)cw_time();
-  /* the score: it swells a little when it grows */
-  text(serif, "SCORE", px, 96, 30, QUIET, CW_ALIGN_CENTER, 6);
-  fmt_num(g->score, b, sizeof b);
-  float pop = g->last_gain_t > 0 ? 1.0f + 0.12f * (float)g->last_gain_t / 60.0f : 1.0f;
-  text(serif, b, px, 138 - (pop - 1) * 40, 92 * pop, g->last_gain_t > 0 ? GOLD : PALE, CW_ALIGN_CENTER, 0);
-  if (g->last_gain_t > 0) {
+  /* JEWELS_HUD_ALL (the layout gate): every element at once */
+  static int all = -1;
+  if (all < 0) all = getenv("JEWELS_HUD_ALL") != NULL;
+  int64_t gain = all ? 450 : g->last_gain;
+  int gain_t = all ? 60 : g->last_gain_t;
+  int combo = all ? 6 : fx->combo_shown;
+  bool combo_on = all || (fx->combo_shown >= 2 && (fx->combo_hold > 0 || g->state != JW_IDLE));
+  int status = all ? 2 : g->status;
+  /* the score, on its plaque: it swells a little when it grows */
+  ptext(serif, "SCORE", px, 92, 30, QUIET, 6);
+  fmt_num(all ? 1234567 : g->score, b, sizeof b);
+  float pop = gain_t > 0 ? 1.0f + 0.10f * (float)gain_t / 60.0f : 1.0f;
+  ptext(serif, b, px, 132 - (pop - 1) * 40, 84 * pop, gain_t > 0 ? GOLD : PALE, 0);
+  if (gain_t > 0) {
     snprintf(b, sizeof b, "+");
-    fmt_num(g->last_gain, b + 1, sizeof b - 1);
-    text(serif, b, px, 250, 44, rgba(GOLD.r, GOLD.g, GOLD.b, fminf(1, (float)g->last_gain_t / 30.0f)), CW_ALIGN_CENTER, 0);
+    fmt_num(gain, b + 1, sizeof b - 1);
+    ptext(serif, b, px, 246, 40, rgba(GOLD.r, GOLD.g, GOLD.b, fminf(1, (float)gain_t / 30.0f)), 0);
   }
-  text(serif, "BEST", px, 330, 26, QUIET, CW_ALIGN_CENTER, 6);
+  /* the best and the moves, on the second plaque */
+  ptext(serif, "BEST", px, 336, 26, QUIET, 6);
   fmt_num(g->best, b, sizeof b);
-  text(serif, b, px, 362, 56, PALE, CW_ALIGN_CENTER, 0);
-  text(serif, "MOVES", px, 452, 26, QUIET, CW_ALIGN_CENTER, 6);
+  ptext(serif, b, px, 366, 52, PALE, 0);
+  ptext(serif, "MOVES", px, 440, 26, QUIET, 6);
   snprintf(b, sizeof b, "%d", g->moves);
-  text(serif, b, px, 484, 50, PALE, CW_ALIGN_CENTER, 0);
+  ptext(serif, b, px, 470, 46, PALE, 0);
   /* the cascade: a counter that builds a step at a time */
-  if (fx->combo_shown >= 2 && (fx->combo_hold > 0 || g->state != JW_IDLE)) {
-    float k = fminf(1, fx->combo_t * 5), a = fminf(1, fmaxf(fx->combo_hold, 0) * 2 + (g->state != JW_IDLE));
-    float sz = 64 + 10 * (float)(fx->combo_shown > 6 ? 6 : fx->combo_shown);
-    float s = sz * (1.3f - 0.3f * k);
-    text(serif, "CASCADE", px, 584, 28, rgba(1, 0.86f, 0.58f, a), CW_ALIGN_CENTER, 8);
-    snprintf(b, sizeof b, "x%d", fx->combo_shown);
-    text(serif, b, px, 618 - (s - sz) * 0.5f, s, rgba(1, 0.80f + 0.03f * (float)fx->combo_shown, 0.42f, a), CW_ALIGN_CENTER, 0);
+  if (combo_on) {
+    float k = all ? 1 : fminf(1, fx->combo_t * 5), a = all ? 1 : fminf(1, fmaxf(fx->combo_hold, 0) * 2 + (g->state != JW_IDLE));
+    float sz = 56 + 6 * (float)(combo > 6 ? 6 : combo);
+    float s = sz * (1.2f - 0.2f * k);
+    ptext(serif, "CASCADE", px, 556, 26, rgba(1, 0.86f, 0.58f, a), 8);
+    snprintf(b, sizeof b, "x%d", combo);
+    ptext(serif, b, px, 588 - (s - sz) * 0.5f, s, rgba(1, 0.80f + 0.03f * (float)(combo > 6 ? 6 : combo), 0.42f, a), 0);
   }
   /* how to play, for the device in hand */
   cw_prompt_device dev = cw_prompt_device_of(0);
-  float hy = 734;
+  float hy = 718;
   cw_color hc = rgba(0.93f, 0.90f, 0.84f, 0.92f);
-  text(sans, "Line up three of a kind.", px, hy, 28, hc, CW_ALIGN_CENTER, 0);
-  hy += 42;
+  ptext(sans, "Line up three of a kind.", px, hy, 27, hc, 0);
+  hy += 38;
   if (dev == CW_PROMPT_TOUCH || dev == CW_PROMPT_MOUSE) {
-    text(sans, "Tap a jewel, then its neighbour,", px, hy, 26, hc, CW_ALIGN_CENTER, 0);
-    text(sans, "or drag it across.", px, hy + 36, 26, hc, CW_ALIGN_CENTER, 0);
+    ptext(sans, "Tap a jewel, then its neighbour,", px, hy, 26, hc, 0);
+    ptext(sans, "or drag it across.", px, hy + 34, 26, hc, 0);
   } else {
-    cw_prompt_text(sans, "{move_left|move_right|move_up|move_down}: move   {pick}: pick up", -1, cw_v2(px, hy), 26, hc, CW_ALIGN_CENTER);
-    text(sans, "then push it toward its neighbour", px, hy + 40, 26, hc, CW_ALIGN_CENTER, 0);
+    pprompt(sans, "{move_left|move_right|move_up|move_down}: move   {pick}: pick up", px, hy, 26, hc);
+    ptext(sans, "then push it toward its neighbour", px, hy + 36, 26, hc, 0);
   }
+  /* a status line just over the button */
+  float sy = getenv("JEWELS_HUD_BREAK") ? JW_HINT_Y - 44 : JW_HINT_Y - 36; /* the layout gate's control: the old place */
+  if (getenv("JEWELS_HUD_BREAK")) sy = 790;
+  float sa = all ? 1 : fminf(1, (float)g->status_t / 20.0f);
+  if (status == 1) ptext(sans, "Swap these two.", px, sy, 24, rgba(0.6f, 0.95f, 1, sa), 0);
+  if (status == 2) ptext(sans, "No moves left: reshuffled.", px, sy, 24, rgba(0.6f, 0.95f, 1, sa), 0);
   /* the hint button's label (the button itself is drawn on the panel, in the scene) */
   float by = JW_HINT_Y + JW_HINT_H * 0.5f;
-  if (dev == CW_PROMPT_PAD || dev == CW_PROMPT_KEYBOARD) cw_prompt_text(serif, "{hint}  HINT", -1, cw_v2(px, by - 26), 44, PALE, CW_ALIGN_CENTER);
-  else text(serif, "HINT", px, by - 26, 48, PALE, CW_ALIGN_CENTER, 6);
-  /* a status line over the button */
-  if (g->status == 1) text(sans, "Swap these two.", px, JW_HINT_Y - 44, 26, rgba(0.6f, 0.95f, 1, fminf(1, (float)g->status_t / 20.0f)), CW_ALIGN_CENTER, 0);
-  if (g->status == 2) text(sans, "No moves left: reshuffled.", px, JW_HINT_Y - 44, 26, rgba(0.6f, 0.95f, 1, fminf(1, (float)g->status_t / 20.0f)), CW_ALIGN_CENTER, 0);
+  if (dev == CW_PROMPT_PAD || dev == CW_PROMPT_KEYBOARD) pprompt(serif, "{hint}  HINT", px, by - 26, 44, PALE);
+  else ptext(serif, "HINT", px, by - 26, 48, PALE, 6);
+  lay_check();
   /* the gains, rising from where they cleared, outlined so they read over the stones */
   for (int i = 0; i < fx->npops; i++) {
     const jw_pop *p = &fx->pops[i];
@@ -520,6 +565,7 @@ static void init(void *u) {
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_field("game.grid", G.g.grid.c, CW_DBG_U8, JW_W * JW_H); /* the board, row by row (tests/jewels-inputs.mjs plans its moves from it) */
   cw_debug_u32("game.rng", &G.g.rng.s);
+  cw_debug_i32("hud.overlaps", &hud_overlaps);
 #if JEWELS_AUTOPILOT
   cw_set_raw_input_filter(bot_filter, NULL);
   cw_shell_start(1);

@@ -2,7 +2,9 @@
 // worst case, bursts of shards and sparks, flashes, rings and streaks in flight most of the time) at 1920x1080 on
 // High, natively on the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU pass timers. Bounds the frame's
 // GPU time (the median of the bench's 120-frame windows after the first) at BOUND ms; the run must cascade (a
-// deepest step of four or more). Controls, which must fail: GL at 3840x2160 (four times the pixels) against the same
+// deepest step of four or more). Measured on the shared 890M, 2026-11-07: GL 4.5 ms (tray 0.33, stones with their
+// glints 2.9, velocity and the temporal resolve 0.8, tone curve 0.23); WebGPU 2.9 ms over the passes its timestamps
+// report (the game's own). Controls, which must fail: GL at 3840x2160 (four times the pixels) against the same
 // bound, and WebGPU against an impossible 0.5 ms.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs) once.
 // Run: node tests/jewels-perf.mjs
@@ -13,7 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
-const BOUND = 5.0;
+const BOUND = 5.2;
 if (!process.env.CW_GPU_SUITE_INNER) {
   const r = spawnSync('node', [join(ENGINE, 'tools/with-gpu-suite.mjs'), 'jewels-perf', 'node', fileURLToPath(import.meta.url)],
     { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });

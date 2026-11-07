@@ -158,9 +158,11 @@ static bool build(void) {
   R.mark = R.wg ? cw_pass_program_wgsl("jw_mark", src) : cw_pass_program_vs("jw_mark", vs, src);
   free(src), free(vs), vs = NULL;
   for (int i = 0; i < 3; i++) {
-    src = jw_shader_glint(R.wg, i);
+    vs = NULL;
+    src = jw_shader_glint(R.wg, i, &vs);
     static const char *names[] = { "jw_glint_pre", "jw_glint_streak", "jw_glint_add" };
-    unsigned pr = R.wg ? cw_pass_program_wgsl(names[i], src) : cw_pass_program(names[i], src);
+    unsigned pr = R.wg ? cw_pass_program_wgsl(names[i], src) : vs ? cw_pass_program_vs(names[i], vs, src) : cw_pass_program(names[i], src);
+    free(vs), vs = NULL;
     if (i == 0) R.glint_pre = pr;
     else if (i == 1) R.glint_streak = pr;
     else R.glint_add = pr;
@@ -323,6 +325,8 @@ static void under_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, bool selecte
   cw_pass_draw(6);
 }
 
+static void glints(cw_pass_ctx *ctx);
+
 static void gems_exec(cw_pass_ctx *ctx, void *u) {
   (void)u;
   need_frame(ctx);
@@ -455,45 +459,42 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
     cw_pass_uniform4f(R.mark, "u_mark2", 0, 0, 0, 0);
     cw_pass_draw(6);
   }
+  if (q.glint && !getenv("JEWELS_NO_GLINT")) glints(ctx);
   cw_pass_set_blend(CW_PASS_BLEND_NONE);
 }
 
 /* ── the star glints ─────────────────────────────────────────────────── */
 
-static bool glint_active(const cw_pass_ctx *ctx, void *u) {
-  (void)ctx, (void)u;
-  return quality_now().glint && !getenv("JEWELS_NO_GLINT");
-}
-
-static void glint_exec(cw_pass_ctx *ctx, void *u) {
-  (void)u;
-  if (!build() || !ctx->src || !ctx->dst) return;
-  /* a quarter of the canvas whatever the output's size: the spokes cost the same at 4K, and reach as far */
+/* the star glints: the brightest light at a quarter of the canvas (whatever the output's size, so the spokes cost and
+ * reach the same at 4K), six spokes from it, added over the board in the scene's own target */
+static void glints(cw_pass_ctx *ctx) {
+  if (!ctx->scene || !ctx->scene->tex) return;
   int w = 480, h = 270;
   const cw_rt *a = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false), *b = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false);
   if (!a || !b) return;
-  /* the brightest light, at half size */
+  cw_pass_set_blend(CW_PASS_BLEND_NONE);
   cw_pass_bind_target(ctx, a);
   cw_pass_use(R.glint_pre);
-  cw_pass_bind_texture(0, ctx->src->tex);
+  cw_pass_bind_texture(0, ctx->scene->tex);
   if (!R.wg) cw_pass_uniform1i(R.glint_pre, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_pre, "u_px", 1.0f / (float)ctx->src->w, 1.0f / (float)ctx->src->h, 3.2f, 0);
+  cw_pass_uniform4f(R.glint_pre, "u_px", 1.0f / (float)ctx->scene->w, 1.0f / (float)ctx->scene->h, 5.0f, 0);
   cw_pass_fullscreen();
-  /* six spokes */
   cw_pass_bind_target(ctx, b);
   cw_pass_use(R.glint_streak);
   cw_pass_bind_texture(0, a->tex);
   if (!R.wg) cw_pass_uniform1i(R.glint_streak, "u_t0", 0);
   cw_pass_uniform4f(R.glint_streak, "u_px", 1.0f / (float)w, 1.0f / (float)h, 1.0f, 0.2f + 0.05f * sinf((float)R.f.time * 0.07f));
   cw_pass_fullscreen();
-  /* over the picture */
-  cw_pass_bind_target(ctx, ctx->dst);
+  cw_pass_bind_target(ctx, ctx->scene);
+  cw_pass_set_blend(CW_PASS_BLEND_ADD);
   cw_pass_use(R.glint_add);
-  cw_pass_bind_texture(0, ctx->src->tex);
-  cw_pass_bind_texture(1, b->tex);
-  if (!R.wg) cw_pass_uniform1i(R.glint_add, "u_t0", 0), cw_pass_uniform1i(R.glint_add, "u_t1", 1);
-  cw_pass_uniform4f(R.glint_add, "u_px", 1.0f / (float)ctx->dst->w, 1.0f / (float)ctx->dst->h, 0.42f, 0);
-  cw_pass_fullscreen();
+  cw_pass_bind_texture(0, b->tex);
+  if (!R.wg) cw_pass_uniform1i(R.glint_add, "u_t0", 0);
+  cw_pass_uniform4f(R.glint_add, "u_view", (float)ctx->width, (float)ctx->height, 1.0f / (float)ctx->width, 1.0f / (float)ctx->height);
+  cw_pass_uniform4f(R.glint_add, "u_rect", 30, 20, 1314, 1060);
+  cw_pass_uniform4f(R.glint_add, "u_px", 0, 0, 0.38f, 0);
+  cw_pass_draw(6);
+  cw_pass_set_blend(CW_PASS_BLEND_NONE);
   cw_pass_rt_release(ctx, a);
   cw_pass_rt_release(ctx, b);
 }
@@ -625,6 +626,4 @@ void jw_render_init(jw_frame_fn fn, void *user) {
                                            .execute = tray_exec, .webgpu = true });
   cw_pipeline_add_pass(p, &(cw_pass_desc){ .name = "jw_gems", .phase = CW_PHASE_OPAQUE, .order = 10, .writes = CW_RES_COLOR,
                                            .execute = gems_exec, .webgpu = true });
-  cw_pipeline_add_pass(p, &(cw_pass_desc){ .name = "jw_glint", .phase = CW_PHASE_POST, .order = 320, .reads = CW_RES_COLOR, .writes = CW_RES_COLOR,
-                                           .active = glint_active, .execute = glint_exec, .webgpu = true });
 }
