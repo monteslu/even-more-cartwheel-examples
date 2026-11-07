@@ -1,0 +1,16 @@
+
+depth+xcluster_plain_gi
+standard+shadow+l1001+xcluster_plain_gi
+basic+instbig+icol
+standard+map+shadow+l1001+xcluster_plain_gi
+standard+trans+shadow+l1001+xcluster_plain_gi
+standard+trans+shadow+ds+l1001+xcluster_plain_gi
+standard+l1001+xcluster_plain_gi
+depth+xcluster_gi
+standard+shadow+l1001+xcluster_gi
+standard+map+shadow+l1001+xcluster_gi
+standard+trans+shadow+l1001+xcluster_gi
+standard+trans+shadow+ds+l1001+xcluster_gi
+standard+l1001+xcluster_gi
+basic+instbig+ds+icol
+basic+ds
