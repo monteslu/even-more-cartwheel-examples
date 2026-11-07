@@ -926,7 +926,7 @@ static const scenery_mood MOODS[PARK_COUNT] = {
     .ground_near = { 0.46f, 0.66f, 0.3f }, .ground_far = { 0.58f, 0.6f, 0.38f }, .rock = { 0.66f, 0.56f, 0.46f }, .water = { 0.04f, 0.42f, 0.55f },
     .shadow_soft = 0.0f, .glow = 1.4f },
   /* Civic Plaza: a bright hazy morning */
-  { .time = 10.2f, .north = 140, .sun_energy = 4.6f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = -0.15f, .hemi = 0.1f, .lm_gain = 0.6f,
+  { .time = 10.2f, .north = 140, .sun_energy = 4.6f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = 0.0f, .hemi = 0.1f, .lm_gain = 0.6f,
     .zenith = { 0.1f, 0.32f, 0.86f }, .horizon = { 0.82f, 0.9f, 1.0f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.78f, 0.84f, 0.92f }, .fog_density = 0.0026f,
     .ground_near = { 0.45f, 0.62f, 0.32f }, .ground_far = { 0.5f, 0.58f, 0.42f }, .rock = { 0.6f, 0.58f, 0.55f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 1.0f, .glow = 1.2f },
@@ -936,12 +936,12 @@ static const scenery_mood MOODS[PARK_COUNT] = {
     .ground_near = { 0.78f, 0.68f, 0.4f }, .ground_far = { 0.72f, 0.58f, 0.4f }, .rock = { 0.8f, 0.5f, 0.34f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 1.2f },
   /* Rooftops: sunset, the windows and the signs coming on */
-  { .time = 18.75f, .north = 100, .sun_energy = 5.5f, .sky_energy = 1.7f, .mie = 0.7f, .rayleigh = 1.3f, .exposure = 2.6f, .hemi = 0.24f, .lm_gain = 2.0f,
+  { .time = 18.75f, .north = 100, .sun_energy = 5.5f, .sky_energy = 1.7f, .mie = 0.7f, .rayleigh = 1.3f, .exposure = 2.75f, .hemi = 0.24f, .lm_gain = 2.0f,
     .zenith = { 0.2f, 0.22f, 0.55f }, .horizon = { 1.0f, 0.6f, 0.42f }, .cloud = { 1.0f, 0.62f, 0.56f }, .fog = { 0.8f, 0.58f, 0.56f }, .fog_density = 0.0024f,
     .ground_near = { 0.4f, 0.5f, 0.3f }, .ground_far = { 0.45f, 0.45f, 0.4f }, .rock = { 0.5f, 0.45f, 0.42f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 2.6f, .windows_lit = 1.6f },
   /* Timber Yard: early morning, gold light through cool air */
-  { .time = 8.1f, .north = 300, .sun_energy = 4.8f, .sky_energy = 1.6f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = -0.88f, .hemi = 0.08f, .lm_gain = 0.6f,
+  { .time = 8.1f, .north = 300, .sun_energy = 4.8f, .sky_energy = 1.6f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = -0.68f, .hemi = 0.08f, .lm_gain = 0.6f,
     .zenith = { 0.2f, 0.42f, 0.82f }, .horizon = { 0.95f, 0.86f, 0.72f }, .cloud = { 1.0f, 0.92f, 0.82f }, .fog = { 0.78f, 0.84f, 0.9f }, .fog_density = 0.0028f,
     .ground_near = { 0.4f, 0.58f, 0.28f }, .ground_far = { 0.3f, 0.46f, 0.26f }, .rock = { 0.56f, 0.56f, 0.6f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 1.2f },

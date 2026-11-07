@@ -210,7 +210,7 @@ static void g_tile(float u, float v, texel *t) {
   float id = h01(ix & 7, iy & 7, 101), id2 = h01(ix & 7, iy & 7, 103);
   float n = fbm(u, v, 16, 4, 102), stain = clamp01((fbm(u, v, 3, 3, 104) - 0.55f) * 3);
   /* slabs of a few stones (some warmer, some greyer), worn and stained */
-  float c = 0.47f + 0.08f * (id - 0.5f) + 0.07f * (n - 0.5f) - 0.12f * stain;
+  float c = 0.4f + 0.08f * (id - 0.5f) + 0.07f * (n - 0.5f) - 0.12f * stain;
   float warm = id2 > 0.75f ? 0.03f : id2 < 0.2f ? -0.025f : 0;
   rgb(t, mixf(c + warm, 0.5f, grout), mixf(c * 0.98f, 0.49f, grout), mixf(c * 0.95f - warm, 0.47f, grout));
   t->h = 0.35f + 0.5f * clamp01(e * 25) * (1 - grout);

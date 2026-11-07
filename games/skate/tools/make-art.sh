@@ -12,7 +12,8 @@ node "$ROOT/tests/skate-shot.mjs" \
   skate_auto 727 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=0 -- \
   skate_auto 742 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=2 -- \
   skate_auto 662 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=1 -- \
-  skate_auto 634 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=3 -- \
+  skate_auto 800 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=3 -- \
+  skate_auto 900 "$OUT/readme.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=4 SKATE_PLAYERS=4 -- \
   skate_auto 173 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 SKATE_PARK=0 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
   skate_auto 293 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 SKATE_PARK=4 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
   skate_auto 752 "$OUT/key-2.png" gl CW_RENDER_SCALE=3 SKATE_PARK=2 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1
@@ -26,4 +27,5 @@ convert "$OUT/key-1.png" -gravity center -crop 1440x2160+0+0 +repage -resize 120
 convert "$OUT/key-2.png" -resize 1920x1080! -brightness-contrast -18x-5 -quality 88 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -8x0 \( -size 1920x420 gradient:"rgba(10,20,60,0.75)"-"rgba(10,20,60,0)" \) -gravity north -composite \( "$ART/logo.png" -resize 1100x \) -gravity north -geometry +0+40 -composite -quality 90 "$ART/title.jpg"
 convert "$OUT/key-0.png" -gravity center -crop 1600x1600+0+0 +repage -resize 512x512! "$ART/icon.png"
+convert "$OUT/readme.png" -resize 1280x720! -quality 86 "$ROOT/docs/screenshots/skate.jpg"
 ls -la "$ART"

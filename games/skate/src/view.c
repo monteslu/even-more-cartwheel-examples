@@ -354,6 +354,7 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.fog, "height_falloff", cw_val_float(0.06f));
     cw_node_set(VW.fog, "start_distance", cw_val_float(70));
     cw_node_set(VW.fog, "use_sky_color", cw_val_bool(false));
+    cw_node_set(VW.fog, "sky_distance", cw_val_float(90)); /* the sky stays blue: the haze is on the ground's distance, not on it */
     cw_node_set(VW.fog, "color", cw_val_color(0.55f, 0.7f, 0.95f, 1));
     VW.post = cw_node_new("PostProcess", "Post");
     cw_node_add_child(root, VW.post);

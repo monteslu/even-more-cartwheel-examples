@@ -40,7 +40,7 @@ substepped so it never passes through a wall or a flipper at any speed.
 
 ### skate
 
-![skate: four players in a four-way split at the Timber Yard's wooden ramps](docs/screenshots/skate.jpg)
+![skate: four players in a four-way split at the Timber Yard, pine hills and board stacks round the wooden ramps](docs/screenshots/skate.jpg)
 
 Skateboarding for one to four players in split screen (working title), in five
 original parks, each with its own setting to the horizon and its own light: a
