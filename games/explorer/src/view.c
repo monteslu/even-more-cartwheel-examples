@@ -563,7 +563,7 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
     glowing(2.4f);
     cw_r2d_round_rect((cw_rect){ x - 0.16f, y - 2.02f, 0.32f, 0.46f }, 0.05f, 4, rgba(1, 0.62f, 0.24f, 1));
     glowing(1);
-    if (lights_on) light(core.x, core.y, 6.5f, rgba(1, 0.66f, 0.32f, 1), 0.7f * flick, false);
+    if (lights_on) light(core.x, core.y, 6.0f, rgba(1, 0.66f, 0.32f, 1), 0.5f * flick, false);
     return;
   } else if (e->sub == 8) { /* a pilot light: a steel jet with a small blue flame */
     core = v2(x, y - 0.75f);
@@ -861,7 +861,7 @@ static void draw_boss(const sim *s, float t) {
   float f = b->facing_left ? -1.0f : 1.0f, x = b->x, y = b->y, hw = boss_hw(b->idx), hh = boss_hh(b->idx);
   bool tell = b->state == ES_TELL;
   float tk = tell ? (float)b->t / (float)boss_tell_ticks(b->move) : 0;
-  static const uint32_t BODY[NBOSSES] = { 0x5f8a3a, 0x7fd4f0, 0xc89a48, 0x2f9aa0, 0xe8e8f4, 0x9a3a58 };
+  static const uint32_t BODY[NBOSSES] = { 0x5f8a3a, 0x3f8cb8, 0xc89a48, 0x2f9aa0, 0xc8c8dc, 0x9a3a58 }; /* (mid values: lit, they stay shapes) */
   static const uint32_t GLOW[NBOSSES] = { 0xd6ff6a, 0xbff6ff, 0xffd060, 0x8affe6, 0xffe6a0, 0xffb060 };
   cw_color body = hexc(BODY[b->idx], 1), gl = hexc(GLOW[b->idx], 1);
   if (b->flash > 0) body = mixc(body, rgba(1, 1, 1, 1), 0.6f);
@@ -1212,11 +1212,11 @@ void view_draw(const sim *s, float t) {
     if (e->sub == 8 && e->hold == HOLD_FLOOR) acc = rgba(0.45f, 0.75f, 1, 1); /* (a pilot light: blue) */
     cw_color sk = hexc(REGIONS[s->w->rooms[e->room].region].sky, 1);
     if (e->hold == HOLD_FLOOR && (e->sub == 5 || e->sub == 6) && sk.r > sk.b + 0.05f) acc = rgba(0.42f, 0.7f, 1, 1); /* (as the lamp) */
-    if (e->sub == 9 && e->hold == HOLD_FLOOR) acc = rgba(1, 0.6f, 0.22f, 1);   /* (a lantern post: amber) */
+    if (e->sub == 9 && e->hold == HOLD_FLOOR) acc = rgba(1, 0.52f, 0.14f, 1);   /* (a lantern post: amber) */
     float cy = e->hold == HOLD_CEIL ? e->y + (float)e->arg * 0.45f + 0.35f : e->sub == 7 ? e->y - 1.1f : e->sub == 8 ? e->y - 0.75f : e->sub == 9 ? e->y - 1.79f : e->y - 0.55f;
     float fl = 0.85f + 0.15f * sinf(t * 7 + e->x);
     bool tinted = e->hold == HOLD_FLOOR && (e->sub == 8 || e->sub == 9 || acc.b > acc.r + 0.3f); /* (a coloured core: the accent stays its colour) */
-    glow(e->x, cy, (tinted ? 2.6f : 1.6f) * fl, scalec(acc, tinted ? 0.6f : 0.45f));
+    glow(e->x, cy, (tinted ? 2.2f : 1.6f) * fl, scalec(acc, tinted ? 0.62f : 0.45f));
     glow(e->x, cy, 0.5f, tinted ? scalec(acc, 0.7f) : rgba(1, 1, 0.9f, 0.8f));
   }
   for (int i = 0; i < s->players; i++) { /* the lantern's glow and the strike's arc */

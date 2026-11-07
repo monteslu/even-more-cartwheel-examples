@@ -11,10 +11,11 @@
 //   commonest hue (no one-hue region)
 // CONTROL, which must fail: the same frames flattened halfway to their own mean (a washed-out grade).
 //
-//   node tests/explorer-look.mjs              draws the frames on Mesa's software Vulkan (lavapipe, off the GPU) into
-//                                             out/look-explorer, then measures them
+//   node tests/explorer-look.mjs              draws the frames on Mesa's software Vulkan (lavapipe) into
+//                                             out/look-explorer, two at a time inside one hold of the GPU suite lock
+//                                             (lavapipe is heavy on the CPU other suites time on), then measures them
 //   node tests/explorer-look.mjs --dir <d>    measures r<region>.png frames already in d
-//   --gpu                                     draws them on the test GPU through the GPU suite lock instead
+//   --gpu                                     draws them on the test GPU instead (in the same lock hold)
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -119,7 +120,7 @@ function shot(room, out, gpu) {
     EXPLORER_IDLE: '1', EXPLORER_NO_HUD: '1', EXPLORER_ROOM: String(room) };
   if (gpu) {
     env.CW_GPU = 'gl';
-    return new Promise((ok) => spawn('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'explorer-look', join(BIN, 'explorer_auto')], { env, stdio: 'ignore' }).on('exit', ok));
+    return new Promise((ok) => spawn(join(BIN, 'explorer_auto'), [], { env, stdio: 'ignore' }).on('exit', ok));
   }
   for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY']) delete env[k];
   Object.assign(env, { SDL_VIDEODRIVER: 'offscreen', VK_ICD_FILENAMES: '/usr/share/vulkan/icd.d/lvp_icd.json', CW_GPU: 'webgpu' });
@@ -129,12 +130,17 @@ function shot(room, out, gpu) {
 if (import.meta.url !== `file://${process.argv[1]}`) { /* imported */ } else {
 const argv = process.argv.slice(2);
 let dir = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1] : null;
+if (!dir && !process.env.CW_GPU_SUITE_INNER) { /* the captures run inside one hold of the lock */
+  const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'explorer-look', 'node', fileURLToPath(import.meta.url), ...argv],
+    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+  process.exit(r.status ?? 1);
+}
 if (!dir) {
   dir = join(ROOT, 'out/look-explorer');
   mkdirSync(dir, { recursive: true });
   const pick = rooms(), gpu = argv.includes('--gpu');
-  if (gpu) for (const r of REGIONS) await shot(pick[r], join(dir, `r${r}.png`), true);
-  else await Promise.all(REGIONS.map((r) => shot(pick[r], join(dir, `r${r}.png`), false)));
+  for (let i = 0; i < REGIONS.length; i += 2) /* two at a time */
+    await Promise.all(REGIONS.slice(i, i + 2).map((r) => shot(pick[r], join(dir, `r${r}.png`), gpu)));
 }
 const files = readdirSync(dir).filter((f) => /^r\d+\.png$/.test(f)).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
 if (!files.length) { console.error(`no r<region>.png frames in ${dir}`); process.exit(2); }

@@ -2,14 +2,18 @@
 # The launcher art (art/) from the game's own frames: rooms of six regions and a warden fight, drawn by explorer_auto
 # and explorer_bench (EXPLORER_ROOM picks the room, EXPLORER_IDLE leaves the controls alone, EXPLORER_NO_HUD hides the
 # HUD for the key art), cropped and composited with ImageMagick; the logo is the working title set in DejaVu Sans Bold.
-# Frames come through the GPU suite lock on the test GPU; EXPLORER_ART_SOFTWARE=1 draws them on Mesa's software
-# Vulkan (lavapipe) instead, off the GPU.
+# The whole batch runs inside one hold of the GPU suite lock (the script re-runs itself under with-gpu-suite.mjs), one
+# frame at a time: on the test GPU, or with EXPLORER_ART_SOFTWARE=1 on Mesa's software Vulkan (lavapipe), which still
+# takes the lock (it is heavy on the CPU that other suites time on).
 #   games/explorer/tools/make-art.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 OUT="$ROOT/out/art-explorer"; ART="$ROOT/games/explorer/art"
 BIN="$ROOT/build/native/project/games/explorer"
 [ -x "$BIN/explorer_auto" ] || BIN="$ROOT/build/native/games/explorer"
+if [ -z "${CW_GPU_SUITE_INNER:-}" ]; then
+  CW_GPU_SUITE_INNER=1 exec node "$ROOT/deps/cartwheel-engine/tools/with-gpu-suite.mjs" explorer-art bash "$0" "$@"
+fi
 mkdir -p "$OUT" "$ART"
 shot() { # <app> <frames> <out> <scale> [ENV=v ...]
   local app=$1 frames=$2 out=$3 scale=$4; shift 4
@@ -19,7 +23,7 @@ shot() { # <app> <frames> <out> <scale> [ENV=v ...]
       "$BIN/$app" >/dev/null 2>&1
   else
     env CW_GPU=gl CW_FRAMES="$frames" CW_WARMUP_SPREAD=0 SDL_AUDIODRIVER=dummy CW_RENDER_SCALE="$scale" CW_SCREENSHOT="$out" "$@" \
-      node "$ROOT/deps/cartwheel-engine/tools/with-gpu-suite.mjs" "explorer-art" "$BIN/$app" >/dev/null
+      "$BIN/$app" >/dev/null 2>&1
   fi
 }
 shot explorer_auto 900 "$OUT/play-0.png" 1.5

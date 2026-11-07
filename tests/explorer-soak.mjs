@@ -3,13 +3,18 @@
 // Each run must exit 0 and end with "soak ok", keep positions and health finite and every player out of the rock every
 // tick, keep resident memory within 5% of the first minute, and clear the game: every pickup, all six wardens, the
 // heart down (won 1). The control puts a NaN into the player's speed and the checks must catch it (exit 1).
-// Run: node tests/explorer-soak.mjs   (after TARGETS=native scripts/build.sh explorer_soak)
+// Holds the GPU suite lock while it runs. Run: node tests/explorer-soak.mjs   (after TARGETS=native scripts/build.sh explorer_soak)
 import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+if (!process.env.CW_GPU_SUITE_INNER) { /* (inside one hold of the GPU suite lock: other suites time on this CPU) */
+  const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'explorer-soak', 'node', fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+  process.exit(r.status ?? 1);
+}
 const exe = [join(ROOT, 'build/native/project/games/explorer/explorer_soak'), join(ROOT, 'build/native/games/explorer/explorer_soak')].find(existsSync);
 const assets = join(ROOT, 'games/explorer/assets');
 const MINUTES = 240, PICKUPS = 38, WARDENS = 6;
