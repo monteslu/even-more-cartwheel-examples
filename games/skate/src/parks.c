@@ -18,7 +18,7 @@
 const char *const PARK_NAMES[PARK_COUNT] = { "Sunnyside", "Civic Plaza", "Big Sky", "Rooftops", "Timber Yard" };
 
 /* colours (sRGB) */
-static const float C_CONC[3] = { 0.80f, 0.78f, 0.74f }, C_CONC2[3] = { 0.72f, 0.72f, 0.70f }, C_DECK[3] = { 0.86f, 0.84f, 0.80f };
+static const float C_YARD[3] = { 0.86f, 0.84f, 0.79f }, C_CONC[3] = { 0.80f, 0.78f, 0.74f }, C_CONC2[3] = { 0.72f, 0.72f, 0.70f }, C_DECK[3] = { 0.86f, 0.84f, 0.80f };
 static const float C_TEAL[3] = { 0.10f, 0.62f, 0.68f }, C_ORANGE[3] = { 1.0f, 0.52f, 0.14f }, C_YELLOW[3] = { 1.0f, 0.82f, 0.18f };
 static const float C_MAGENTA[3] = { 0.90f, 0.24f, 0.52f }, C_BLUE[3] = { 0.22f, 0.45f, 0.92f }, C_GREEN[3] = { 0.36f, 0.74f, 0.30f };
 static const float C_STEEL[3] = { 0.80f, 0.82f, 0.86f }, C_RED[3] = { 0.86f, 0.22f, 0.18f }, C_WOOD[3] = { 0.92f, 0.74f, 0.50f };
@@ -582,7 +582,7 @@ static void build_barn(kit *b, int variant) {
   k->theme = 4;
   snprintf(k->blurb, sizeof k->blurb, "wooden ramps: a vert halfpipe, a spine, a mini");
   kit_piece(b);
-  kit_ground(b, -40, -40, 40, 40, NULL, 0, MAT_CONCRETE, C_CONC);
+  kit_ground(b, -40, -40, 40, 40, NULL, 0, MAT_CONCRETE, C_YARD); /* (the yard's slab, pale and new) */
   kit_piece(b);
   kit_fence(b, -40, -40, 40, 40, 1.1f, MAT_WOOD, C_WOOD);
   /* the vert halfpipe: two quarters 8 m apart (flat bottom), facing each other along z */
