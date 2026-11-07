@@ -27,13 +27,13 @@
 #include "cartwheel/vfs.h"
 #include "game.h"
 
-const char *const REGION_NAME[RG_COUNT] = { "THE GREEN HOLLOW", "THE AMBER CANYON", "THE TIDEMARSH", "THE EMBER KEEP" };
+const char *const REGION_NAME[RG_COUNT] = { "THE GREEN HOLLOW", "THE AMBER CANYON", "THE TIDEMARSH", "THE EMBER KEEP", "THE FROSTSPINE HEIGHTS", "THE UNDERWAY", "THE WINDWARD SPIRE", "THE GLOWCAP WOOD" };
 
 wobj g_obj[MAXOBJ];
 int g_nobj;
 wfoe g_foe[MAXE];
 int g_nfoe;
-wroute g_route[96];
+wroute g_route[256];
 int g_nroute;
 int g_world_paged;
 
@@ -68,6 +68,13 @@ static float fbm(float x, float z, uint32_t s, int oct) {
 }
 static float smooth01(float e0, float e1, float x) { return cw_smoothstep(e0, e1, x); }
 
+/* the flora's species (see flora at the end), and the trees the builders set by hand */
+enum { SP_OAK, SP_BIRCH, SP_ASPEN, SP_WILLOW, SP_PINE, SP_FIR, SP_WINDSWEPT, SP_DEEPWOOD, SP_GLOWCAP, SP_COUNT };
+typedef struct fixedtree { int rg, sp; float x, z, s; } fixedtree;
+static fixedtree FIXED[64];
+static int nfixed;
+static void flora_fixed(int rg, int sp, float x, float z, float s) { if (nfixed < 64) FIXED[nfixed++] = (fixedtree){ rg, sp, x, z, s }; }
+
 /* ── the shape of the land ─────────────────────────────────────────── */
 typedef struct zone { int rect; float cx, cz, rx, rz, h, fall, noise; int region, paint; } zone;
 /* paint: the terrain layer the zone's flat ground takes (0 grass, 1 meadow flowers, 2 path, 3 sand, 4 rock, 5 mud,
@@ -85,6 +92,12 @@ static const zone ZONES[] = {
   { 0, 60, 168, 46, 82, 19, 16, 1.0f, RG_KEEP, 7 },        /* the keep hill */
   { 1, 64, 206, 17, 13, 22, 3, 0.0f, RG_KEEP, 6 },         /* the courtyard */
   { 1, 55, 108, 16, 16, 30, 3, 0.0f, RG_KEEP, 6 },         /* the throne top */
+  { 0, 432, 118, 62, 56, 46, 14, 2.0f, RG_HEIGHTS, 1 },    /* the frostspine heights: a snowy plateau east of the canyon */
+  { 1, 270, 66, 7, 30, 20, 4, 0.4f, RG_HEIGHTS, 4 },       /* the gorge the cliff path bridges (its floor a way of its own) */
+  { 1, 176, 360, 7, 36, 6, 3, 0.0f, RG_UNDER, 2 },         /* the underway: a cutting under the hollow's south hills, roofed */
+  { 0, 195, 474, 72, 56, 16, 18, 1.2f, RG_SPIRE, 0 },      /* the windward spire's downs */
+  { 1, 202, 470, 11, 11, 16, 3, 0.0f, RG_SPIRE, 6 },       /* the spire's court */
+  { 0, 482, 336, 86, 96, 13, 20, 2.0f, RG_WOOD, 5 },       /* the glowcap wood */
 };
 #define NZONES ((int)(sizeof ZONES / sizeof ZONES[0]))
 /* ramps: the ground along a segment, at a height running from one end to the other (stairs get a ramp 0.35 m under
@@ -107,6 +120,26 @@ static const ramp RAMPS[] = {
   { 160, 252, 12.2f, 205, 228, 12.4f, 1.8f, 2, 2 },
   { 160, 176, 20, 160, 103, 19.65f, 2.0f, 2, 2 },
   { 248, 144, 9.2f, 270, 238, 7.6f, 1.8f, 2, 2 },
+  /* the switchbacks up the cliffs from the marsh to the heights */
+  { 304, 168, 8.4f, 336, 150, 18, 2.6f, 3, 2 },
+  { 336, 150, 18, 316, 126, 28, 2.6f, 3, 2 },
+  { 316, 126, 28, 352, 108, 38, 2.6f, 3, 2 },
+  { 352, 108, 38, 378, 118, 46, 2.6f, 3, 2 },
+  /* the cliff path west from the heights, over the gorge (a bridge), down to the Thornwarden's ring */
+  { 376, 98, 46, 300, 70, 44, 2.4f, 3, 4 },
+  { 300, 70, 44, 282, 70, 44, 2.4f, 2, 4 },               /* the abutments either side of the bridge */
+  { 258, 70, 43.2f, 240, 70, 42, 2.4f, 2, 4 },
+  { 240, 70, 42, 214, 68, 38, 2.4f, 3, 4 },
+  { 214, 68, 38, 181, 70, 27.2f, 2.6f, 3, 2 },
+  /* the gorge floor: from the marsh shrine up under the bridge */
+  { 252, 136, 9.4f, 270, 98, 20, 2.4f, 3, 2 },
+  /* the underway: down out of the hollow, along the cutting, up onto the spire's downs */
+  { 160, 300, 12.6f, 168, 326, 6, 3.0f, 2, 2 },
+  { 184, 394, 6, 192, 420, 16, 3.0f, 2, 2 },
+  { 192, 420, 16, 200, 458, 16, 1.8f, 2, 2 },
+  /* the marsh east to the glowcap wood */
+  { 306, 246, 8.2f, 360, 282, 14, 3.0f, 4, 2 },
+  { 360, 282, 14, 404, 304, 13, 2.4f, 3, 2 },
 };
 #define NRAMPS ((int)(sizeof RAMPS / sizeof RAMPS[0]))
 
@@ -132,12 +165,12 @@ static float ramp_w(const ramp *r, float x, float z, float *h, float *along) {
   return 1 - smooth01(r->hw, r->hw + r->edge, d);
 }
 /* the analytic land (the terrain samples it at whole metres) */
-static float land(float x, float z, int *paint, int *region) {
+static float land_ex(float x, float z, int *paint, int *region, int *over, int *blend) {
   float h = 31 + 9 * fbm(x / 55, z / 55, 7, 4); /* the highlands between the regions */
   float bd = fminf(fminf(x, WORLD_N - x), fminf(z, WORLD_N - z));
-  h += 16 * (1 - smooth01(0, 28, bd)); /* mountains round the edge */
-  int pt = 4, rg = -1;
-  float best = 0;
+  h += 26 * (1 - smooth01(0, 60, bd)) + 10 * fbm(x / 23, z / 23, 9, 3) * (1 - smooth01(0, 90, bd)); /* mountains round the edge, craggy */
+  int pt = 4, rg = -1, opt = -1;
+  float best = 0, ob = 0;
   for (int i = 0; i < NZONES; i++) {
     const zone *zn = &ZONES[i];
     float w = zone_w(zn, x, z);
@@ -148,7 +181,7 @@ static float land(float x, float z, int *paint, int *region) {
     if (w > best) best = w, rg = zn->region;
   }
   if (best < 0.5f) { /* the highlands take the colour of the nearest region: grass, sand, moss, ash */
-    static const int HIGH[RG_COUNT] = { 0, 4, 0, 7 };
+    static const int HIGH[RG_COUNT] = { 0, 4, 0, 7, 1, 4, 0, 5 };
     float bd = 1e30f;
     int nr = 0;
     for (int i = 0; i < NZONES; i++) {
@@ -162,12 +195,16 @@ static float land(float x, float z, int *paint, int *region) {
     float w = ramp_w(&RAMPS[i], x, z, &rh, NULL);
     if (w <= 0) continue;
     h = h + (rh - h) * w;
-    if (w > 0.6f) pt = RAMPS[i].paint;
+    if (w > 0.7f) pt = RAMPS[i].paint, ob = 0;
+    else if (w > 0.1f && (w - 0.1f) / 0.6f > ob) ob = (w - 0.1f) / 0.6f, opt = RAMPS[i].paint; /* a soft edge into what is beside it */
   }
   if (paint) *paint = pt;
   if (region) *region = rg;
+  if (over) *over = opt == pt ? pt : opt;
+  if (blend) *blend = opt == pt ? 0 : (int)(ob * 255);
   return h;
 }
+static float land(float x, float z, int *paint, int *region) { return land_ex(x, z, paint, region, NULL, NULL); }
 float world_height(float x, float z) { return W_terrain ? cw_terrain_height_at(W_terrain, x, z) : land(x, z, NULL, NULL); }
 
 int world_region_at(float x, float z) {
@@ -239,12 +276,13 @@ static void col_box(int rg, float cx, float cy, float cz, float hx, float hy, fl
 }
 
 /* the box catalogue: each box remembers its region and material; walkable tops are found by world_ground */
-typedef struct sbox { float cx, cy, cz, hx, hy, hz, yaw; int rg, mt; } sbox;
+typedef struct sbox { float cx, cy, cz, hx, hy, hz, yaw; int rg, mt; bool span; } sbox;
+static bool g_span; /* boxes added while set are spans (a bridge deck): they stand on their ends */
 static sbox *BOX;
 static int nbox, capbox;
 static void box_add(int rg, int mt, float cx, float cy, float cz, float hx, float hy, float hz, float yaw, bool solid) {
   if (nbox == capbox) capbox = capbox * 2 + 256, BOX = realloc(BOX, sizeof(sbox) * (size_t)capbox);
-  BOX[nbox++] = (sbox){ cx, cy, cz, hx, hy, hz, yaw, rg, mt };
+  BOX[nbox++] = (sbox){ cx, cy, cz, hx, hy, hz, yaw, rg, mt, g_span };
   static const float TILE[MT_COUNT] = { 2.4f, 2.4f, 3.0f, 2.5f, 2.2f, 2.0f, 2.0f };
   mb_box(&MB[rg][mt], cx, cy, cz, hx, hy, hz, yaw, TILE[mt]);
   if (solid) col_box(rg, cx, cy, cz, hx, hy, hz, yaw);
@@ -276,6 +314,18 @@ static void wall(int rg, int mt, float x0, float z0, float x1, float z1, float h
   float cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
   float lo = ground_min(cx, cz, len / 2, thick / 2, yaw) - 0.6f, hi = ground_max(cx, cz, len / 2, thick / 2, yaw) + h;
   box_add(rg, mt, cx, (lo + hi) / 2, cz, len / 2, (hi - lo) / 2, thick / 2, yaw, true);
+  /* weathering: a broken course or two standing up from the top, a fallen block at the foot */
+  uint32_t hs = (uint32_t)(int)(cx * 13 + cz * 7);
+  float c = cw_cos(yaw), s = cw_sin(yaw);
+  for (int k = 0; k < 2 && len > 3; k++) {
+    float t = (hash01((int)hs, k, 801) - 0.5f) * (len - 1.2f), w = 0.4f + 0.5f * hash01((int)hs, k, 802), hh = 0.15f + 0.35f * hash01((int)hs, k, 803);
+    box_add(rg, mt, cx + c * t, hi + hh / 2 - 0.02f, cz - s * t, w / 2, hh / 2 + 0.02f, thick / 2 - 0.04f, yaw, true);
+  }
+  if (h > 1.4f && hash01((int)hs, 3, 804) < 0.7f) {
+    float t = (hash01((int)hs, 4, 805) - 0.5f) * (len - 1), side = hash01((int)hs, 5, 806) < 0.5f ? -1.f : 1.f, d = thick / 2 + 0.45f;
+    float rx = cx + c * t + s * d * side, rz = cz - s * t + c * d * side, g = ground_min(rx, rz, 0.3f, 0.25f, yaw + 0.4f);
+    box_add(rg, mt, rx, g + 0.12f, rz, 0.3f, 0.16f, 0.25f, yaw + 0.4f, true);
+  }
 }
 /* a flight of stairs up from a to b (the steps are solid blocks down into the ground), with low side walls */
 static void stairs(int rg, int mt, float ax, float az, float ay, float bx, float bz, float by, float width, bool sides) {
@@ -405,6 +455,29 @@ static int obj_add(wobj o) {
   if (g_nobj >= MAXOBJ) return -1;
   g_obj[g_nobj] = o;
   return g_nobj++;
+}
+static void dress(int rg, float x, float z, int seed) {
+  static const char *const KIND[5] = { "barrel", "crate", "sacks", "barrel", "cart" };
+  for (int k = 0; k < 3; k++) {
+    int kind = (int)(hash01(seed, k, 820) * 5);
+    float a = hash01(seed, k, 821) * CW_TAU, r = 0.8f * (float)k;
+    float px = x + cw_cos(a) * r, pz = z + cw_sin(a) * r;
+    if (kind == 4 && k) continue; /* one cart at most, first */
+    float fr = kind == 4 ? 1.3f : 0.4f;
+    prop_solid(rg, KIND[kind], px, pz, a, 1.0f, fr, 0.02f, kind == 4 ? 1.0f : 0.35f, kind == 4 ? 1.1f : 0.8f);
+  }
+}
+static void lamp_post(int rg, float x, float z, float yaw) {
+  cw_node n = prop(rg, "lantern_post", x, z, yaw, 1.0f, 0.15f, 0.05f, true);
+  if (!n.id) return;
+  t3_vec3 p = cw_node3d_position(n);
+  col_box(rg, x, p.y + 1.2f, z, 0.08f, 1.2f, 0.08f, 0);
+  cw_node l = cw_node_new("OmniLight3D", "LampLight");
+  cw_node_add_child(W_region_node[rg], l);
+  cw_node_set(l, "color", cw_val_color(1, 0.7f, 0.38f, 1));
+  cw_node_set(l, "energy", cw_val_float(10));
+  cw_node_set(l, "range", cw_val_float(8));
+  cw_node3d_set_position(l, (t3_vec3){ x + cw_sin(yaw) * 0.48f, p.y + 1.85f, z + cw_cos(yaw) * 0.48f });
 }
 static int shrine_obj[8], nshrine;
 int world_shrine_obj(int s) { return s >= 0 && s < nshrine ? shrine_obj[s] : -1; }
@@ -630,10 +703,10 @@ static void paint_and_shape(void) {
   const int N = WORLD_N + 1;
   float *h = malloc(sizeof(float) * (size_t)N * N);
   uint32_t *ctl = malloc(sizeof(uint32_t) * (size_t)N * N);
-  int *pt = malloc(sizeof(int) * (size_t)N * N);
+  int *pt = malloc(sizeof(int) * (size_t)N * N), *ov = malloc(sizeof(int) * (size_t)N * N), *bl = malloc(sizeof(int) * (size_t)N * N);
   const cw_terrain_def *d = cw_terrain_get_def(W_terrain);
   for (int z = 0; z < N; z++)
-    for (int x = 0; x < N; x++) h[z * N + x] = land((float)x, (float)z, &pt[z * N + x], NULL) - d->origin.y;
+    for (int x = 0; x < N; x++) h[z * N + x] = land_ex((float)x, (float)z, &pt[z * N + x], NULL, &ov[z * N + x], &bl[z * N + x]) - d->origin.y;
   cw_terrain_set_heights_m(W_terrain, 0, 0, N, N, h);
   /* paint: the zone's layer on the flat, rock on the steep, grass and flowers blended in the meadow, a path's edge
    * softened into what is beside it */
@@ -645,9 +718,11 @@ static void paint_and_shape(void) {
       int base = pt[i], over = base;
       int blend = 0;
       float n = fbm((float)x / 9, (float)z / 9, 501, 3);
-      if (base == 0) { over = 1, blend = (int)(cw_clampf((n - 0.45f) * 3.0f, 0, 1) * 255); }        /* flowers in drifts */
+      if (base == 0) { over = 5, blend = (int)(cw_clampf((n - 0.62f) * 2.0f, 0, 1) * 150); }        /* darker moss in patches */
+      if (base == 1) { over = 4, blend = (int)(cw_clampf((n - 0.45f) * 3.0f, 0, 1) * 230); }        /* rock through the snow, in broad patches */
       if (base == 5) { over = 0, blend = (int)(cw_clampf((h[i] + d->origin.y - 8.6f) * 1.2f, 0, 1) * 200); } /* grass on the marsh's dry humps */
       if (base == 7) { over = 4, blend = (int)(cw_clampf((n - 0.5f) * 2.0f, 0, 1) * 160); }
+      if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
       if (slope > 0.9f) base = 4, blend = 0;
       ctl[i] = cw_terrain_control(base, over, blend, (int)(hash01(x / 4, z / 4, 9) * 15), 0, false);
@@ -656,7 +731,7 @@ static void paint_and_shape(void) {
   cw_terrain_sync_physics(W_terrain);
   cw_terrain_scatter_invalidate(W_terrain);
   for (int i = 0; i < N * N; i += 97) W_hash = (W_hash ^ (uint32_t)(int)(h[i] * 1000)) * 16777619u;
-  free(h), free(ctl), free(pt);
+  free(h), free(ctl), free(pt), free(ov), free(bl);
 }
 
 static void build_meadow(void) {
@@ -666,6 +741,8 @@ static void build_meadow(void) {
   house(R, 186, 246, 7, 7, 2.6f, 3, false);
   house(R, 147, 226, 6, 5, 2.2f, 0, false);
   house(R, 178, 268, 6, 5, 3.0f, 2, true);
+  dress(R, 141.5f, 256, 1), dress(R, 190.5f, 250.5f, 2), dress(R, 150, 222, 3), dress(R, 174, 272, 4);
+  lamp_post(R, 156, 270, 0.4f), lamp_post(R, 165, 246, 2.8f), lamp_post(R, 155, 222, 0.2f);
   /* field walls along the path, broken in places */
   wall(R, MT_STONE, 150, 268, 150, 258, 0.9f, 0.6f);
   wall(R, MT_STONE, 170, 262, 170, 246, 0.9f, 0.6f);
@@ -686,7 +763,7 @@ static void build_meadow(void) {
   barrier(OB_GATE, RG_KEEP, MT_IRON, 104, 236, CW_PI / 2, 6.2f, 4.6f, 0.3f, 3, 9, 0);
   /* trees and stones round the hollow */
   static const float TREES[][3] = { { 128, 272, 0.4f }, { 196, 280, 1.1f }, { 120, 255, 2.0f }, { 205, 248, 0.7f }, { 141, 213, 1.6f }, { 182, 216, 2.6f }, { 112, 266, 0.2f }, { 214, 268, 1.9f } };
-  for (int i = 0; i < (int)(sizeof TREES / sizeof TREES[0]); i++) prop_solid(R, "tree", TREES[i][0], TREES[i][1], TREES[i][2], 1.0f + 0.15f * (float)(i % 3), 0.45f, 0.3f, 0.35f, 3);
+  for (int i = 0; i < (int)(sizeof TREES / sizeof TREES[0]); i++) flora_fixed(R, i % 3 == 2 ? SP_BIRCH : SP_OAK, TREES[i][0], TREES[i][1], 1.0f + 0.15f * (float)(i % 3));
   static const float ROCKS[][3] = { { 172, 290, 0.3f }, { 145, 288, 1.2f }, { 192, 258, 2.1f }, { 130, 240, 0.8f } };
   for (int i = 0; i < (int)(sizeof ROCKS / sizeof ROCKS[0]); i++) prop_solid(R, "rock", ROCKS[i][0], ROCKS[i][1], ROCKS[i][2], 0.9f + 0.2f * (float)(i % 2), 0.9f, 0.25f, 0.8f, 1.0f);
   /* foes: raiders on the road and in the ruins */
@@ -703,7 +780,7 @@ static void build_canyon(void) {
   static const float SPIRES[][4] = { { 132, 160, 0.3f, 1.3f }, { 188, 160, 1.1f, 1.5f }, { 140, 104, 2.2f, 1.2f }, { 184, 98, 0.8f, 1.4f }, { 125, 128, 1.7f, 1.1f }, { 196, 150, 2.9f, 1.2f } };
   for (int i = 0; i < 6; i++) prop_solid(R, "rock_tall", SPIRES[i][0], SPIRES[i][1], SPIRES[i][2], SPIRES[i][3], 0.8f, 0.4f, 0.9f * SPIRES[i][3], 3.4f * SPIRES[i][3]);
   static const float GOLD[][2] = { { 145, 145 }, { 176, 168 }, { 168, 118 }, { 136, 120 }, { 205, 98 } };
-  for (int i = 0; i < 5; i++) prop_solid(R, "tree_gold", GOLD[i][0], GOLD[i][1], (float)i, 1.0f, 0.4f, 0.3f, 0.3f, 2.4f);
+  for (int i = 0; i < 5; i++) flora_fixed(R, SP_ASPEN, GOLD[i][0], GOLD[i][1], 1.1f);
   /* stairs: up to the ring (with buttresses), up to the west ledge */
   stairs(R, MT_STONE, 160, 103, 19.65f, 160, 86, 27.0f, 6.0f, true);
   stairs(R, MT_STONE, 133, 142, 19.8f, 124, 121, 25.0f, 3.6f, false);
@@ -738,7 +815,7 @@ static void build_marsh(void) {
   shrine(R, 249, 143, -CW_PI / 2);
   /* stilt trees and reeds */
   static const float MANG[][2] = { { 262, 165 }, { 290, 172 }, { 252, 196 }, { 296, 214 }, { 258, 228 }, { 288, 240 }, { 246, 262 }, { 300, 258 } };
-  for (int i = 0; i < 8; i++) prop_solid(R, "mangrove", MANG[i][0], MANG[i][1], (float)i * 0.8f, 1.0f, 0.6f, 0.2f, 0.4f, 3);
+  for (int i = 0; i < 8; i++) flora_fixed(R, SP_WILLOW, MANG[i][0], MANG[i][1], 1.0f + 0.1f * (float)(i % 3));
   for (int i = 0; i < 18; i++) {
     float x = 240 + hash01(i, 1, 33) * 60, z = 150 + hash01(i, 2, 33) * 110;
     prop(R, "reeds", x, z, (float)i, 1.0f, 0, 0.05f, false);
@@ -775,6 +852,7 @@ static void build_keep(void) {
   wall(R, MT_STONE_RED, 46, 192, 58, 192, 3.4f, 1.0f);
   wall(R, MT_STONE_RED, 68, 192, 82, 192, 3.4f, 1.0f);
   wall(R, MT_STONE_RED, 82, 192, 82, 202, 3.4f, 1.0f);
+  dress(R, 50, 216, 8), dress(R, 78, 216, 9);
   /* the long ramp's walls, with a side door back down to the courtyard (opened from above) */
   wall(R, MT_STONE_RED, 57, 190, 52, 128, 2.2f, 0.8f);
   wall(R, MT_STONE_RED, 69, 190, 66, 168, 2.2f, 0.8f);
@@ -812,13 +890,13 @@ static void build_keep(void) {
 /* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, trees, pines, stilt trees, stones):
  * its placement is a pure function of the cell, so the trees get trunks to bump into and crowns the camera stops at,
  * and every instance joins the grounding check */
-#define MAXSCAT 2048
+#define MAXSCAT 8192
 static float SCAT[MAXSCAT][5];
 static int SCAT_LAYER[MAXSCAT], nscat;
 int world_scatter(const float (**pos)[5], const int **layer) { *pos = (const float (*)[5])SCAT; *layer = SCAT_LAYER; return nscat; }
 static void scatter_bodies(void) {
   nscat = 0;
-  for (int layer = 1; layer <= 4; layer++)
+  for (int layer = 1; layer <= 1; layer++) /* (the stones: the trees are the game's own, see flora) */
     for (int cz = -1; cz <= WORLD_N / 32 + 1; cz++)
       for (int cx = -1; cx <= WORLD_N / 32 + 1; cx++) {
         float buf[5 * 256];
@@ -841,9 +919,124 @@ static void scatter_bodies(void) {
   cw_info("adventure: %d scatter trees and stones given bodies", nscat);
 }
 
+static void lantern(int rg, float x, float y, float z, float r, float g, float b, float e) {
+  cw_node l = cw_node_new("OmniLight3D", "Lantern");
+  cw_node_add_child(W_region_node[rg], l);
+  cw_node_set(l, "color", cw_val_color(r, g, b, 1));
+  cw_node_set(l, "energy", cw_val_float(e));
+  cw_node_set(l, "range", cw_val_float(9));
+  cw_node3d_set_position(l, (t3_vec3){ x, y, z });
+}
+static void build_heights(void) {
+  const int R = RG_HEIGHTS;
+  shrine(R, 420, 128, CW_PI);
+  /* a broken watchtower at the top of the switchbacks, frozen ruins on the plateau */
+  box_add(R, MT_SLATE, 384, ground_min(384, 108, 2, 2, 0) + 3.5f, 108, 2, 4.2f, 2, 0.2f, true);
+  house(R, 450, 140, 7, 6, 2.4f, 2, false);
+  house(R, 404, 92, 6, 5, 1.8f, 1, false);
+  dress(R, 455, 146, 7);
+  wall(R, MT_STONE, 436, 150, 462, 150, 1.0f, 0.6f);
+  for (int k = 0; k < 7; k++) { float a = (float)k / 7 * CW_TAU, x = 432 + cw_cos(a) * 11, z = 112 + cw_sin(a) * 9; prop_solid(R, "rock_tall", x, z, a, 1.0f, 0.8f, 0.4f, 0.9f, 3.4f); }
+  chest(R, 455, 100, CW_PI / 2, IT_HEART, 10);
+  /* the bridge over the gorge on the cliff path: a timber deck on stone piers, rails both sides */
+  {
+    float x0 = 283, x1 = 257, y0 = 44.0f, y1 = 43.2f;
+    g_span = true;
+    for (int i = 0; i < 8; i++) {
+      float t = ((float)i + 0.5f) / 8, x = x0 + (x1 - x0) * t, y = y0 + (y1 - y0) * t, len = (x0 - x1) / 8;
+      box_add(R, MT_WOOD, x, y - 0.2f, 70, len / 2 + 0.02f, 0.2f, 1.7f, 0, true);
+      g_span = false;
+      for (int sd = -1; sd <= 1; sd += 2) box_add(R, MT_WOOD, x, y + 0.45f, 70 + (float)sd * 1.6f, len / 2, 0.45f, 0.08f, 0, true);
+      g_span = true;
+    }
+    g_span = false;
+    for (int k = 0; k < 2; k++) {
+      float x = k ? 274.5f : 265.5f, top = y0 + (y1 - y0) * (x0 - x) / (x0 - x1) - 0.4f, lo = ground_min(x, 70, 1, 1.4f, 0) - 0.5f;
+      box_add(R, MT_STONE, x, (top + lo) / 2, 70, 1.0f, (top - lo) / 2, 1.4f, 0, true);
+    }
+  }
+  pickup(R, 270, 46, IT_HEART, 15); /* the end of the gorge floor, under the bridge */
+  foe(K_BRUTE, R, 18, 430, 142, 3.0f);
+  foe(K_LANCER, R, 18, 405, 116, 2.0f);
+  foe(K_LANCER, R, 19, 446, 122, 3.6f);
+  foe(K_RAIDER, R, 19, 396, 100, 1.0f);
+  foe(K_RAIDER, R, 20, 272, 60, 3.1f);
+}
+static void build_under(void) {
+  const int R = RG_UNDER;
+  /* the roof over the cutting, on pillars along its sides, lanterns between */
+  for (int k = 0; k < 10; k++) {
+    float z = 331 + (float)k * 6.0f, x = 168 + (z - 326) * (16.0f / 68) + 6.0f, floor = 6;
+    box_add(R, MT_STONE, x, floor + 7.6f, z, 8.0f, 0.4f, 3.05f, 0, true);
+    for (int sd = -1; sd <= 1; sd += 2) box_add(R, MT_STONE, x + (float)sd * 5.6f, floor + 3.6f, z, 0.45f, 4.1f, 0.45f, 0, true);
+    if (k % 2 == 0) lantern(R, x, floor + 4.6f, z, 1, 0.62f, 0.3f, 26);
+  }
+  foe(K_RAIDER, R, 21, 175, 352, 3.1f);
+  foe(K_RAIDER, R, 21, 178, 372, 0.1f);
+}
+/* the spire: a stone tower with a stair winding round it to the top */
+#define SPIRE_X 202.0f
+#define SPIRE_Z 472.0f
+#define SPIRE_STEP 0.28f
+#define SPIRE_TURN 0.2618f
+static int spire_steps;
+static void build_spire(void) {
+  const int R = RG_SPIRE;
+  shrine(R, 190, 448, 0);
+  float base = world_height(SPIRE_X, SPIRE_Z), top = base + 30;
+  box_add(R, MT_STONE, SPIRE_X, (top + base - 1) / 2, SPIRE_Z, 3.0f, (top - base + 1) / 2, 3.0f, 0, true);
+  spire_steps = (int)((top - base) / SPIRE_STEP);
+  for (int i = 0; i < spire_steps; i++) {
+    float a = (float)i * SPIRE_TURN, y = base + (float)(i + 1) * SPIRE_STEP;
+    float cx = SPIRE_X + cw_cos(a) * 4.25f, cz = SPIRE_Z + cw_sin(a) * 4.25f, yaw = -a;
+    box_add(R, MT_STONE, cx, y - 0.18f, cz, 1.35f, 0.18f, 0.62f, yaw, true);
+    if (i % 2 == 0) box_add(R, MT_STONE, SPIRE_X + cw_cos(a) * 5.45f, y + 0.5f, SPIRE_Z + cw_sin(a) * 5.45f, 0.1f, 0.6f, 0.62f, yaw, true);
+  }
+  /* the top: a parapet on three sides (the stair arrives on the fourth) */
+  float la = (float)(spire_steps - 1) * SPIRE_TURN, ca = cw_cos(la), sa = cw_sin(la);
+  for (int sd = 0; sd < 4; sd++) {
+    float nx = sd == 0 ? 1.f : sd == 1 ? -1.f : 0, nz = sd == 2 ? 1.f : sd == 3 ? -1.f : 0;
+    if (nx * ca + nz * sa > 0.7f) continue;
+    box_add(R, MT_STONE, SPIRE_X + nx * 2.85f, top + 0.5f, SPIRE_Z + nz * 2.85f, nz != 0 ? 3.0f : 0.15f, 0.5f, nx != 0 ? 3.0f : 0.15f, 0, true);
+  }
+  chest(R, SPIRE_X - 1.2f * ca, SPIRE_Z - 1.2f * sa, la + CW_PI / 2, IT_HEART, 12);
+  lantern(R, SPIRE_X, top + 2.2f, SPIRE_Z, 1, 0.8f, 0.5f, 20);
+  house(R, 176, 488, 7, 5, 2.4f, 1, false);
+  house(R, 226, 455, 6, 6, 2.0f, 3, true);
+  dress(R, 172, 484, 5), dress(R, 230.5f, 459, 6);
+  lamp_post(R, 196, 448, 0.0f);
+  foe(K_RAIDER, R, 22, 188, 460, 0.2f);
+  foe(K_RAIDER, R, 22, 214, 486, 3.4f);
+  foe(K_LANCER, R, 22, 182, 478, 1.4f);
+  foe(K_BRUTE, R, 23, 212, 456, 2.2f);
+}
+static void build_wood(void) {
+  const int R = RG_WOOD;
+  shrine(R, 448, 322, -CW_PI / 2);
+  for (int k = 0; k < 9; k++) { float a = (float)k / 9 * CW_TAU, x = 492 + cw_cos(a) * 9, z = 348 + cw_sin(a) * 9; prop_solid(R, "rock_tall", x, z, a, 0.8f, 0.7f, 0.4f, 0.7f, 2.6f); }
+  chest(R, 510, 362, CW_PI, IT_CHARM, 11);
+  for (int k = 0; k < 5; k++) lantern(R, 460 + (float)k * 14, world_height(460 + (float)k * 14, 340) + 1.5f, 340 + (float)(k % 2) * 12, 0.3f, 0.9f, 1, 18);
+  foe(K_RAIDER, R, 24, 470, 330, 1.0f);
+  foe(K_RAIDER, R, 24, 482, 346, 2.0f);
+  foe(K_RAIDER, R, 25, 500, 320, 3.0f);
+  foe(K_RAIDER, R, 25, 462, 362, 4.0f);
+  foe(K_LANCER, R, 26, 520, 350, 2.4f);
+  foe(K_LANCER, R, 26, 506, 376, 2.0f);
+  foe(K_BRUTE, R, 27, 530, 334, 3.4f);
+}
+static void route_spire(bool up) {
+  /* the stair round the spire, a point every second step's turn (30 degrees), at the stair's outer half */
+  for (int k = 0; k <= spire_steps / 2; k++) {
+    int i = up ? k * 2 : spire_steps - 1 - k * 2;
+    if (i < 0) i = 0;
+    float a = (float)i * SPIRE_TURN;
+    route(SPIRE_X + cw_cos(a) * 4.6f, SPIRE_Z + cw_sin(a) * 4.6f, RA_GO, -1, -1);
+  }
+}
 static void build_route(void) {
   /* the autopilot's way through the game, in order: rest, the canyon, the maul, the Thornwarden, the passage, the
-   * marsh, the Tidecaller, the lever, the meadow's cellar, the gate, the keep, the Ember King */
+   * marsh, the Tidecaller, the charm, the glowcap wood, the switchbacks to the heights, the cliff path and its bridge
+   * back to the canyon, the hollow's cellar, the underway, the spire's stair, back, the gate, the keep, the Ember King */
   route(160, 282, RA_REST, world_shrine_obj(0), -1);
   route(160, 252, RA_GO, -1, -1);
   route(160, 214, RA_GO, -1, -1);
@@ -869,14 +1062,56 @@ static void build_route(void) {
   route(276, 270, RA_FIGHT, -1, 100 + K_TIDE);
   route(276, 270, RA_GO, -1, -1);
   route(300, 188, RA_GO, -1, 6);
-  route(258, 214, RA_GO, -1, -1);
-  route(231, 214, RA_USE, -1, 7);
-  route(216, 220, RA_GO, -1, -1);
-  route(190, 236, RA_GO, -1, -1);
+  /* the glowcap wood */
+  route(306, 246, RA_GO, -1, -1);
+  route(360, 282, RA_GO, -1, -1);
+  route(404, 304, RA_GO, -1, -1);
+  route(445, 322, RA_REST, world_shrine_obj(6), -1);
+  route(508, 360, RA_USE, -1, 11);
+  route(404, 304, RA_GO, -1, -1);
+  route(360, 282, RA_GO, -1, -1);
+  route(306, 246, RA_GO, -1, -1);
+  /* up the switchbacks to the heights */
+  route(304, 168, RA_GO, -1, -1);
+  route(336, 150, RA_GO, -1, -1);
+  route(316, 126, RA_GO, -1, -1);
+  route(352, 108, RA_GO, -1, -1);
+  route(378, 118, RA_GO, -1, -1);
+  route(418, 131, RA_REST, world_shrine_obj(4), -1);
+  route(453, 102, RA_USE, -1, 10);
+  /* the cliff path, the bridge, down to the Thornwarden's ring */
+  route(376, 98, RA_GO, -1, -1);
+  route(300, 70, RA_GO, -1, -1);
+  route(270, 70, RA_GO, -1, -1);
+  route(240, 70, RA_GO, -1, -1);
+  route(214, 68, RA_GO, -1, -1);
+  route(181, 70, RA_GO, -1, -1);
+  route(160, 104, RA_GO, -1, -1);
+  route(160, 176, RA_GO, -1, -1);
+  route(160, 214, RA_GO, -1, -1);
+  route(160, 252, RA_GO, -1, -1);
+  /* the hollow's cellar */
   route(140, 240, RA_GO, -1, -1);
   route(129, 234, RA_HIT, -1, 1);
   route(123, 234, RA_GO, -1, 2);
   route(129.5f, 235, RA_GO, -1, -1);
+  /* the underway and the spire */
+  route(160, 262, RA_GO, -1, -1);
+  route(160, 300, RA_GO, -1, -1);
+  route(168, 326, RA_GO, -1, -1);
+  route(176, 360, RA_GO, -1, -1);
+  route(184, 394, RA_GO, -1, -1);
+  route(192, 420, RA_GO, -1, -1);
+  route(190, 451, RA_REST, world_shrine_obj(5), -1);
+  route_spire(true);
+  route(SPIRE_X, SPIRE_Z, RA_USE, -1, 12);
+  route_spire(false);
+  route(192, 420, RA_GO, -1, -1);
+  route(184, 394, RA_GO, -1, -1);
+  route(168, 326, RA_GO, -1, -1);
+  route(160, 300, RA_GO, -1, -1);
+  route(150, 262, RA_GO, -1, -1);
+  /* the gate, the keep */
   route(116, 239, RA_GO, -1, -1);
   route(108, 237, RA_USE, -1, 9);
   route(96, 232, RA_GO, -1, -1);
@@ -888,6 +1123,8 @@ static void build_route(void) {
   route(55, 108, RA_FIGHT, -1, 100 + K_EMBER);
 }
 
+static void build_flora(void);
+static void build_sky(cw_node world);
 void world_build(cw_tree *tree) {
   W_tree = tree;
   W_root = cw_tree_root(tree);
@@ -905,12 +1142,18 @@ void world_build(cw_tree *tree) {
     W_region_node[r] = cw_node_new("Node3D", nm);
     cw_node_add_child(world, W_region_node[r]);
   }
-  g_nobj = g_nfoe = g_nroute = nbox = nprop = nshrine = 0;
+  g_nobj = g_nfoe = g_nroute = nbox = nprop = nshrine = nfixed = 0;
   build_meadow();
   build_canyon();
   build_marsh();
   build_keep();
+  build_heights();
+  build_under();
+  build_spire();
+  build_wood();
   build_route();
+  build_flora();
+  build_sky(world);
   scatter_bodies();
   /* the merged buildings: one mesh per region and material */
   for (int r = 0; r < RG_COUNT; r++)
@@ -941,14 +1184,31 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
   if (getenv("ADV_PROBE_TERRAINQ")) cw_terrain_set_quality(W_terrain, atoi(getenv("ADV_PROBE_TERRAINQ")));
   if (getenv("ADV_PROBE_NOBUILD")) for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOBLOOM")) cw_node_set(W_post, "bloom", cw_val_bool(false)), cw_node_set(W_post, "vignette", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOWATER")) cw_node_free(cw_node_get(W_root, "World/Water"));
+  if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
+  if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
+  if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
+  if (getenv("ADV_PROBE_PREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(true));
+  if (getenv("ADV_PROBE_NOAA")) cw_node_set(W_post, "aa", cw_val_enum("NONE"));
+  if (getenv("ADV_PROBE_FORWARD")) cw_node_set(cw_node_get(W_root, "World/Lighting"), "mode", cw_val_enum("FORWARD"));
   cw_info("adventure: probe land %.2f terrain %.2f ground %.2f", land(160, 281, NULL, NULL), world_height(160, 281), world_ground(160, 281, 100));
   cw_info("adventure: world built: %d boxes, %d props, %d objects, %d foes, %d route points, hash %08x", nbox, nprop, g_nobj, g_nfoe, g_nroute, W_hash);
 }
 
 /* ── paging: the player's region and its neighbours are live ───────── */
-static const int NEAR[RG_COUNT] = { (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH) | (1 << RG_KEEP), (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH),
-                                    (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH), (1 << RG_MEADOW) | (1 << RG_KEEP) };
+#define B(r) (1 << (r))
+static const int NEAR[RG_COUNT] = {
+  [RG_MEADOW] = B(RG_MEADOW) | B(RG_CANYON) | B(RG_MARSH) | B(RG_KEEP) | B(RG_UNDER),
+  [RG_CANYON] = B(RG_MEADOW) | B(RG_CANYON) | B(RG_MARSH) | B(RG_HEIGHTS),
+  [RG_MARSH] = B(RG_MEADOW) | B(RG_CANYON) | B(RG_MARSH) | B(RG_HEIGHTS) | B(RG_WOOD),
+  [RG_KEEP] = B(RG_MEADOW) | B(RG_KEEP),
+  [RG_HEIGHTS] = B(RG_CANYON) | B(RG_MARSH) | B(RG_HEIGHTS),
+  [RG_UNDER] = B(RG_MEADOW) | B(RG_UNDER) | B(RG_SPIRE),
+  [RG_SPIRE] = B(RG_UNDER) | B(RG_SPIRE),
+  [RG_WOOD] = B(RG_MARSH) | B(RG_WOOD),
+};
 void world_page(float x, float z, int region) {
   (void)z;
   /* the marsh water only where it can be seen: from the marsh and the ways into it (its refraction copies the frame) */
@@ -965,15 +1225,24 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.6f, 0.76f, 0.98f }, 0.003f, { 1, 0.95f, 0.85f }, 0.35f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.05f },
-  /* the canyon: amber light, a warm rose haze */
-  { { 1.0f, 0.72f, 0.52f }, 0.0032f, { 1, 0.85f, 0.7f }, 0.4f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.6f, 1.0f },
+  { { 0.6f, 0.76f, 0.98f }, 0.003f, { 1, 0.95f, 0.85f }, 0.35f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.3f },
+  /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
+  { { 0.7f, 0.66f, 0.86f }, 0.0032f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 0.98f },
   /* the marsh: teal and violet, a thicker cool mist */
-  { { 0.42f, 0.7f, 0.72f }, 0.012f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.08f },
+  { { 0.3f, 0.56f, 0.6f }, 0.0055f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.2f },
   /* the keep: a crimson sunset, ember haze */
-  { { 0.85f, 0.45f, 0.36f }, 0.008f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 1.02f },
+  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 0.94f },
+  /* the heights: cold bright air, blue shadows on the snow */
+  { { 0.66f, 0.78f, 0.95f }, 0.0035f, { 0.85f, 0.92f, 1 }, 0.35f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.7f, { 1, 0.96f, 0.9f }, 3.2f, 0.62f },
+  /* the underway: lantern light under the roof */
+  { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 1.8f },
+  /* the spire's downs: wind, a high clear sky */
+  { { 0.58f, 0.74f, 0.96f }, 0.003f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.2f },
+  /* the glowcap wood: deep green under the canopy, teal glow */
+  { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.45f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.45f },
 };
 static look CUR;
+static const float g_amb_k = 0.26f; /* the fill under the sun kept low, so shadows have depth */
 static bool CUR_SET;
 void world_colour(float x, float z, float dt) {
   /* weights: each zone's pull at the point (the strongest zone of each region), softened */
@@ -999,10 +1268,10 @@ void world_colour(float x, float z, float dt) {
   cw_node_set(W_env, "fog_color", cw_val_color(CUR.fog[0], CUR.fog[1], CUR.fog[2], 1));
   cw_node_set(W_env, "fog_density", cw_val_float(CUR.density));
   cw_node_set(W_env, "ambient_color", cw_val_color(CUR.amb[0], CUR.amb[1], CUR.amb[2], 1));
-  cw_node_set(W_env, "ambient_energy", cw_val_float(CUR.amb_e));
+  cw_node_set(W_env, "ambient_energy", cw_val_float(CUR.amb_e * g_amb_k));
   cw_node_set(W_env, "sky_color", cw_val_color(CUR.sky[0], CUR.sky[1], CUR.sky[2], 1));
   cw_node_set(W_env, "ground_color", cw_val_color(CUR.gnd[0], CUR.gnd[1], CUR.gnd[2], 1));
-  cw_node_set(W_env, "hemi_energy", cw_val_float(CUR.hemi));
+  cw_node_set(W_env, "hemi_energy", cw_val_float(CUR.hemi * g_amb_k));
   cw_node_set(W_sun, "color", cw_val_color(CUR.sun[0], CUR.sun[1], CUR.sun[2], 1));
   cw_node_set(W_sun, "energy", cw_val_float(CUR.sun_e));
   cw_node_set(W_post, "exposure", cw_val_float(CUR.expo));
@@ -1025,18 +1294,22 @@ int world_ground_check(float *worst_out) {
      * it is set into (a lintel let into its towers) */
     const sbox *b = &BOX[i];
     float s = cw_sin(b->yaw), c = cw_cos(b->yaw), bottom = b->cy - b->hy, hi = -1e30f;
+    int ends = 0;
     for (int k = 0; k < 5; k++) {
       float lx = k == 4 ? 0 : (k & 1 ? 1 : -1) * b->hx * 0.95f, lz = k == 4 ? 0 : (k & 2 ? 1 : -1) * b->hz * 0.95f;
+      if (b->span) { if (k > 1) break; lx = (k ? 1 : -1) * (b->hx + 0.03f), lz = 0; }
       float x = b->cx + lx * c + lz * s, z = b->cz - lx * s + lz * c;
       float g = world_ground(x, z, bottom + 0.02f);
       for (int j = 0; j < nbox; j++) { /* set into another box */
         const sbox *o = &BOX[j];
-        if (j == i || o->cy - o->hy > bottom || o->cy + o->hy < bottom) continue;
+        if (j == i || o->cy - o->hy > bottom + (b->span ? 0.15f : 0) || o->cy + o->hy < bottom) continue;
         float dx = x - o->cx, dz = z - o->cz, so = cw_sin(o->yaw), co = cw_cos(o->yaw);
         if (fabsf(dx * co - dz * so) <= o->hx && fabsf(dx * so + dz * co) <= o->hz) g = bottom;
       }
+      if (b->span) ends += g >= bottom - 0.03f;
       if (g > hi) hi = g;
     }
+    if (b->span) hi = ends == 2 ? bottom : -1e30f; /* a span holds when both its ends rest on something */
     float gap = bottom - hi;
     if (gap > 0.03f) { bad++; cw_warn("adventure: box %d floats %.3f m at (%.1f, %.1f)", i, gap, b->cx, b->cz); }
     if (gap > worst) worst = gap;
@@ -1048,4 +1321,244 @@ int world_ground_check(float *worst_out) {
   }
   *worst_out = worst;
   return bad;
+}
+
+/* ── flora: trees placed per region, instanced per species, their crowns swaying in the wind ─────────────────────
+ * Each species glb has a Trunk and a Crown (leaf cards, alpha-tested). A tree stands where its region's ground is
+ * the kind it grows on, not on a path, a building, a prop, an object or the bot's way; it gets a trunk to bump
+ * into and a crown the camera stops at. The crowns turn a little about the top of the trunk every frame. */
+static const char *const SP_FILE[SP_COUNT] = { "flora_oak", "flora_birch", "flora_aspen", "flora_willow", "flora_pine", "flora_fir", "flora_windswept", "flora_deepwood", "flora_glowcap" };
+static const float SP_PIVOT[SP_COUNT] = { 3.4f, 4.0f, 3.0f, 3.0f, 1.0f, 1.0f, 2.2f, 6.0f, 3.4f }; /* where the crown hinges */
+static const float SP_SWAY[SP_COUNT] = { 0.03f, 0.04f, 0.045f, 0.035f, 0.02f, 0.02f, 0.035f, 0.02f, 0.008f };
+typedef struct tree { float x, y, z, yaw, s, phase; int sp, rg; } tree;
+#define MAXTREE 4096
+static tree TREE[MAXTREE];
+static int ntree;
+typedef struct fbatch { int sp, rg, first, n; t3_instanced_mesh *trunk, *crown; cw_node node; } fbatch;
+static fbatch FB[RG_COUNT * SP_COUNT];
+static int nfb;
+int world_trees(const float (**unused)[5]) { (void)unused; return ntree; }
+
+/* what grows where: per region, a cell size, the share of cells with a tree, the ground it needs (paint bits), two
+ * species and how often the second */
+typedef struct grove { float cell, chance; uint32_t paints; int a, b; float b_share; } grove;
+static const grove GROVE[RG_COUNT] = {
+  [RG_MEADOW] = { 11, 0.55f, 1u << 0, SP_OAK, SP_BIRCH, 0.35f },
+  [RG_CANYON] = { 20, 0.35f, (1u << 3), SP_ASPEN, SP_ASPEN, 0 },
+  [RG_MARSH] = { 12, 0.45f, (1u << 5) | (1u << 0), SP_WILLOW, SP_BIRCH, 0.15f },
+  [RG_KEEP] = { 10, 0.5f, (1u << 7) | (1u << 0), SP_PINE, SP_PINE, 0 },
+  [RG_HEIGHTS] = { 10, 0.5f, (1u << 1), SP_FIR, SP_PINE, 0.25f },
+  [RG_UNDER] = { 1000, 0, 0, SP_OAK, SP_OAK, 0 },
+  [RG_SPIRE] = { 15, 0.45f, 1u << 0, SP_WINDSWEPT, SP_BIRCH, 0.4f },
+  [RG_WOOD] = { 8, 0.6f, (1u << 5) | (1u << 0), SP_DEEPWOOD, SP_GLOWCAP, 0.4f },
+};
+static bool clear_of_things(float x, float z) {
+  for (int i = 0; i < nbox; i++) {
+    const sbox *b = &BOX[i];
+    float r = fmaxf(b->hx, b->hz) + 2.5f;
+    if (dist2(x, z, b->cx, b->cz) < r * r) return false;
+  }
+  for (int i = 0; i < nprop; i++) if (dist2(x, z, PROP[i].x, PROP[i].z) < (PROP[i].r + 3) * (PROP[i].r + 3)) return false;
+  for (int i = 0; i < g_nobj; i++) if (dist2(x, z, g_obj[i].x, g_obj[i].z) < 5 * 5) return false;
+  for (int i = 0; i < g_nfoe; i++) if (dist2(x, z, g_foe[i].x, g_foe[i].z) < 3 * 3) return false;
+  for (int i = 0; i + 1 < g_nroute; i++) { /* the bot's way: a segment between route points kept clear */
+    float ax = g_route[i].x, az = g_route[i].z, ex = g_route[i + 1].x - ax, ez = g_route[i + 1].z - az, l2 = ex * ex + ez * ez + 1e-6f;
+    float t = cw_clampf(((x - ax) * ex + (z - az) * ez) / l2, 0, 1), qx = ax + ex * t - x, qz = az + ez * t - z;
+    if (qx * qx + qz * qz < 3.5f * 3.5f) return false;
+  }
+  return true;
+}
+static void add_tree(int rg, int sp, float x, float z, float s, float yaw, float phase) {
+  if (ntree >= MAXTREE) return;
+  if (sp == SP_DEEPWOOD) s *= 1.25f;
+  tree *t = &TREE[ntree++];
+  *t = (tree){ x, world_height(x, z) - 0.25f * s, z, yaw, s, phase, sp, rg };
+  col_box(rg, x, t->y + 1.5f * s, z, 0.32f * s, 1.5f * s, 0.32f * s, 0);
+  float cr = sp == SP_PINE || sp == SP_FIR ? 1.4f : sp == SP_GLOWCAP ? 1.9f : sp == SP_DEEPWOOD ? 3.0f : 2.0f;
+  float cy = sp == SP_PINE || sp == SP_FIR ? 3.6f : sp == SP_DEEPWOOD ? 8.0f : sp == SP_GLOWCAP ? 4.1f : SP_PIVOT[sp] + 1.4f;
+  crown(rg, x, t->y, z, cr * s, 1.3f * s, cy * s);
+}
+static void place_trees(void) {
+  ntree = 0;
+  for (int i = 0; i < nfixed; i++) add_tree(FIXED[i].rg, FIXED[i].sp, FIXED[i].x, FIXED[i].z, FIXED[i].s, hash01(i, 1, 770) * CW_TAU, hash01(i, 2, 770) * CW_TAU);
+  for (int rg = 0; rg < RG_COUNT; rg++) {
+    const grove *g = &GROVE[rg];
+    if (g->chance <= 0) continue;
+    int nc = (int)((float)WORLD_N / g->cell);
+    for (int cz = 0; cz < nc; cz++)
+      for (int cx = 0; cx < nc; cx++) {
+        if (hash01(cx, cz, 700 + (uint32_t)rg) > g->chance || ntree >= MAXTREE) continue;
+        float x = ((float)cx + 0.15f + 0.7f * hash01(cx, cz, 710 + (uint32_t)rg)) * g->cell, z = ((float)cz + 0.15f + 0.7f * hash01(cx, cz, 720 + (uint32_t)rg)) * g->cell;
+        if (x < 30 || z < 30 || x > WORLD_N - 30 || z > WORLD_N - 30) continue;
+        int paint = 0, over = 0, blend = 0, zr = -1;
+        land_ex(x, z, &paint, &zr, &over, &blend);
+        if (zr != rg || !((g->paints >> paint) & 1) || blend > 40) continue;
+        float h0 = world_height(x, z), dx = world_height(x + 1.5f, z) - world_height(x - 1.5f, z), dz = world_height(x, z + 1.5f) - world_height(x, z - 1.5f);
+        if (sqrtf(dx * dx + dz * dz) / 3 > 0.45f) continue;
+        if (rg == RG_MARSH && h0 < 7.9f) continue; /* not out in the deep water */
+        if (!clear_of_things(x, z)) continue;
+        int sp = hash01(cx, cz, 730 + (uint32_t)rg) < g->b_share ? g->b : g->a;
+        add_tree(rg, sp, x, z, 0.8f + 0.45f * hash01(cx, cz, 740 + (uint32_t)rg), hash01(cx, cz, 750) * CW_TAU, hash01(cx, cz, 760) * CW_TAU);
+      }
+  }
+}
+static t3_mesh *first_mesh(t3_object *o) {
+  if (!o) return NULL;
+  if (o->type == T3_MESH) return (t3_mesh *)o;
+  for (int i = 0; i < o->child_count; i++) { t3_mesh *m = first_mesh(o->children[i]); if (m) return m; }
+  return NULL;
+}
+static void qmul(const float *a, const float *b, float *o) {
+  float x = a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], y = a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0];
+  float z = a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], w = a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2];
+  o[0] = x, o[1] = y, o[2] = z, o[3] = w;
+}
+static void qrot(const float *q, const float *v, float *o) {
+  float p[4] = { v[0], v[1], v[2], 0 }, c[4] = { -q[0], -q[1], -q[2], q[3] }, t[4], r[4];
+  qmul(q, p, t), qmul(t, c, r);
+  o[0] = r[0], o[1] = r[1], o[2] = r[2];
+}
+/* a tree's crown matrix: its trunk's transform, turned by the sway about the top of the trunk */
+static void crown_matrix(const tree *t, float sway_x, float sway_z, t3_mat4 *m) {
+  float sy = cw_sin(t->yaw * 0.5f), cy = cw_cos(t->yaw * 0.5f);
+  float qy[4] = { 0, sy, 0, cy };
+  float ax = sway_x, az = sway_z, ang = sqrtf(ax * ax + az * az);
+  float qs[4] = { 0, 0, 0, 1 };
+  if (ang > 1e-6f) { float s = cw_sin(ang * 0.5f) / ang; qs[0] = ax * s, qs[2] = az * s, qs[3] = cw_cos(ang * 0.5f); }
+  /* sway in world axes: q = qs * qy */
+  float q[4];
+  qmul(qs, qy, q);
+  float piv[3] = { 0, SP_PIVOT[t->sp] * t->s, 0 }, rp[3];
+  qrot(qs, piv, rp);
+  t3_vec3 pos = { t->x + piv[0] - rp[0], t->y + piv[1] - rp[1], t->z + piv[2] - rp[2] };
+  t3_mat4_compose(m, pos, (t3_quat){ q[0], q[1], q[2], q[3] }, (t3_vec3){ t->s, t->s, t->s });
+}
+static void build_flora(void) {
+  place_trees();
+  /* the trees in batch order (region, then species; placement order inside a batch) */
+  static tree SORTED[MAXTREE];
+  int k = 0;
+  nfb = 0;
+  for (int rg = 0; rg < RG_COUNT; rg++)
+    for (int sp = 0; sp < SP_COUNT; sp++) {
+      int first = k;
+      for (int i = 0; i < ntree; i++) if (TREE[i].rg == rg && TREE[i].sp == sp) SORTED[k++] = TREE[i];
+      if (k > first) FB[nfb++] = (fbatch){ sp, rg, first, k - first, NULL, NULL, { 0 } };
+    }
+  memcpy(TREE, SORTED, sizeof(tree) * (size_t)k);
+  for (int f = 0; f < nfb; f++) {
+    fbatch *b = &FB[f];
+    t3_object *o = prop_obj(SP_FILE[b->sp]);
+    t3_mesh *tm = first_mesh(o ? t3_object_get_by_name(o, "Trunk") : NULL), *cm = first_mesh(o ? t3_object_get_by_name(o, "Crown") : NULL);
+    char nm[32];
+    snprintf(nm, sizeof nm, "Flora%d_%d", b->rg, b->sp);
+    b->node = cw_node_new("Node3D", nm);
+    cw_node_add_child(W_region_node[b->rg], b->node);
+    for (int part = 0; part < 2; part++) {
+      t3_mesh *src = part ? cm : tm;
+      if (!src) continue;
+      t3_instanced_mesh *im = t3_instanced_mesh_new(src->geometry, src->materials[0], b->n);
+      im->mesh.base.cast_shadow = !(part && getenv("ADV_PROBE_NOCROWNSHADOW")), im->mesh.base.receive_shadow = true;
+      im->instance_matrix->usage = part ? T3_DYNAMIC_DRAW : T3_STATIC_DRAW;
+      for (int i = 0; i < b->n; i++) {
+        t3_mat4 m;
+        crown_matrix(&TREE[b->first + i], 0, 0, &m);
+        t3_instanced_mesh_set_matrix_at(im, i, &m);
+      }
+      cw_node mn = cw_node_new("MeshInstance3D", part ? "Crowns" : "Trunks");
+      cw_node_add_child(b->node, mn);
+      cw_mesh3d_set_procedural(mn, &im->mesh);
+      if (part) b->crown = im; else b->trunk = im;
+      t3_release(im);
+    }
+    if (o) t3_release(o);
+  }
+  if (getenv("ADV_PROBE_NOTREES")) for (int f = 0; f < nfb; f++) cw_node_set(FB[f].node, "visible", cw_val_bool(false));
+  cw_info("adventure: %d trees in %d batches", ntree, nfb);
+}
+/* the wind, every frame (render only): the crowns of the live regions turn about the tops of their trunks */
+void world_wind(float t) {
+  static float last = -1;
+  static int still = -1;
+  if (still < 0) still = getenv("ADV_PROBE_NOWIND") != NULL;
+  if (still) return;
+  if (t - last < 1.0f / 40) return; /* (40 updates a second is smooth for a sway) */
+  last = t;
+  for (int f = 0; f < nfb; f++) {
+    fbatch *b = &FB[f];
+    if (!b->crown || !((g_world_paged >> b->rg) & 1)) continue;
+    float amp = SP_SWAY[b->sp];
+    for (int i = 0; i < b->n; i++) {
+      const tree *tr = &TREE[b->first + i];
+      float ph = tr->phase + tr->x * 0.05f;
+      float gust = 0.6f + 0.4f * cw_sin(t * 0.37f + tr->z * 0.02f);
+      float sx = amp * gust * (cw_sin(t * 1.3f + ph) + 0.35f * cw_sin(t * 2.9f + ph * 1.7f)), sz = amp * 0.4f * cw_sin(t * 1.1f + ph * 0.6f);
+      t3_mat4 m;
+      crown_matrix(tr, sz, sx, &m);
+      t3_instanced_mesh_set_matrix_at(b->crown, i, &m);
+    }
+    b->crown->instance_matrix->version++;
+  }
+}
+int world_tree_check(float *worst) {
+  int bad = 0;
+  for (int i = 0; i < ntree; i++) {
+    float gap = TREE[i].y - world_height(TREE[i].x, TREE[i].z);
+    if (gap > 0.03f) { bad++; cw_warn("adventure: tree %d floats %.3f m at (%.1f, %.1f)", i, gap, TREE[i].x, TREE[i].z); }
+    if (gap > *worst) *worst = gap;
+  }
+  return bad;
+}
+
+/* ── the sky's clouds: a dome round the camera, the cloud sheet drifting across it ── */
+static cw_node SKY_DOME;
+static t3_texture *CLOUD_TEX;
+static void build_sky(cw_node world) {
+  enum { RINGS = 14, SEG = 48 };
+  const float R = 650;
+  int nv = (RINGS + 1) * (SEG + 1), ni = RINGS * SEG * 6;
+  float *p = malloc(sizeof(float) * 3 * (size_t)nv), *uv = malloc(sizeof(float) * 2 * (size_t)nv), *n = malloc(sizeof(float) * 3 * (size_t)nv);
+  uint32_t *ix = malloc(sizeof(uint32_t) * (size_t)ni);
+  int v = 0, k = 0;
+  for (int r = 0; r <= RINGS; r++) {
+    float el = 0.04f + 1.45f * (float)r / RINGS; /* from just over the horizon up to near the zenith */
+    float ce = cw_cos(el), se = cw_sin(el);
+    for (int s = 0; s <= SEG; s++, v++) {
+      float az = (float)s / SEG * CW_TAU, ca = cw_cos(az), sa = cw_sin(az);
+      float dx = ce * ca, dy = se, dz = ce * sa;
+      p[v * 3] = dx * R, p[v * 3 + 1] = dy * R - 60, p[v * 3 + 2] = dz * R;
+      n[v * 3] = -dx, n[v * 3 + 1] = -dy, n[v * 3 + 2] = -dz;
+      float k2 = 1.0f / (dy + 0.12f); /* a flat cloud deck seen in perspective */
+      uv[v * 2] = dx * k2 * 0.35f, uv[v * 2 + 1] = dz * k2 * 0.35f;
+    }
+  }
+  for (int r = 0; r < RINGS; r++)
+    for (int s = 0; s < SEG; s++) {
+      uint32_t a = (uint32_t)(r * (SEG + 1) + s), b = a + 1, c = a + SEG + 1, d = c + 1;
+      ix[k++] = a, ix[k++] = c, ix[k++] = b, ix[k++] = b, ix[k++] = c, ix[k++] = d;
+    }
+  t3_geometry *g = t3_geometry_new();
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, p, nv, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, n, nv, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, nv, 2));
+  t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, ix, ni, 1));
+  free(p), free(uv), free(n), free(ix);
+  t3_material *m = t3_mesh_basic_material_new(0xffffff);
+  CLOUD_TEX = load_tex("textures/clouds_c.png", true);
+  if (CLOUD_TEX) t3_material_set_texture(m, T3_MAP, CLOUD_TEX);
+  m->transparent = true, m->depth_write = false, m->fog = false, m->side = T3_DOUBLE_SIDE;
+  m->color = (t3_color){ 1.25f, 1.25f, 1.3f };
+  t3_mesh *mesh = t3_mesh_new(g, m);
+  mesh->base.cast_shadow = false, mesh->base.receive_shadow = false, mesh->base.frustum_culled = false;
+  mesh->base.render_order = -100;
+  SKY_DOME = cw_node_new("MeshInstance3D", "Clouds");
+  cw_node_add_child(world, SKY_DOME);
+  cw_mesh3d_set_procedural(SKY_DOME, mesh);
+  t3_release(mesh), t3_release(g), t3_release(m);
+  if (getenv("ADV_PROBE_NOCLOUDS")) cw_node_set(SKY_DOME, "visible", cw_val_bool(false));
+}
+void world_sky(t3_vec3 cam, float t) {
+  if (!SKY_DOME.id) return;
+  cw_node3d_set_position(SKY_DOME, (t3_vec3){ cam.x, cam.y, cam.z });
+  if (CLOUD_TEX) CLOUD_TEX->offset = (t3_vec2){ t * 0.0016f, t * 0.0007f };
 }

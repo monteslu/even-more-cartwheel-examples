@@ -26,8 +26,8 @@
 #define MAXA (MAXP + MAXE)
 
 /* ── the world ─────────────────────────────────────────────────────── */
-#define WORLD_N 320  /* terrain quads a side, 1 m each */
-enum { RG_MEADOW, RG_CANYON, RG_MARSH, RG_KEEP, RG_COUNT };
+#define WORLD_N 640  /* terrain quads a side, 1 m each */
+enum { RG_MEADOW, RG_CANYON, RG_MARSH, RG_KEEP, RG_HEIGHTS, RG_UNDER, RG_SPIRE, RG_WOOD, RG_COUNT };
 extern const char *const REGION_NAME[RG_COUNT];
 
 /* structure materials */
@@ -57,7 +57,7 @@ extern int g_nfoe;
 /* a route point for the autopilot */
 typedef struct wroute { float x, z; int need_flag; int act; int obj; } wroute;
 enum { RA_GO, RA_USE, RA_REST, RA_FIGHT, RA_HIT, RA_SWAP };
-extern wroute g_route[96];
+extern wroute g_route[256];
 extern int g_nroute;
 
 typedef struct shrine_pos { float x, y, z, yaw; int region; } shrine_pos;
@@ -78,6 +78,9 @@ extern int g_world_paged; /* regions live */
 typedef struct wprop { float x, y, z, r; const char *what; int region; } wprop;
 int world_props(const wprop **out);
 int world_ground_check(float *worst);
+int world_tree_check(float *worst);
+void world_wind(float t);
+void world_sky(t3_vec3 cam, float t);
 int world_box_count(void);
 
 /* ── the rules ─────────────────────────────────────────────────────── */

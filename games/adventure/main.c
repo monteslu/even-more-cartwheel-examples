@@ -119,6 +119,7 @@ static bool build_step(void) {
   if (getenv("ADV_GROUND_CHECK")) {
     float worst;
     int bad = world_ground_check(&worst);
+    bad += world_tree_check(&worst);
     const wprop *pp;
     extern int world_scatter(const float (**pos)[5], const int **layer);
     const float (*sp)[5];
@@ -445,6 +446,8 @@ static void render(void *u, double alpha) {
     }
     G.cam_p[1] = G.cam_p[0], G.cam_p[0] = p, G.cam_n++;
     world_colour(p.x, p.z, cw_frame_dt());
+    world_wind(t);
+    world_sky(p, t);
     double t0 = wall_s();
     view_sync((float)alpha);
     fx_events();

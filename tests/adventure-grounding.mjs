@@ -23,8 +23,8 @@ function run(extra = {}) {
 let bad = 0;
 const r = run();
 if (!r.m || r.status !== 0) { bad++; console.log(`FAIL no check ran (status ${r.status})`); }
-else if (r.m.floating || r.m.props < 60 || r.m.boxes < 100 || r.m.scatter < 50) { bad++; console.log(`FAIL ${r.m.floating} floating of ${r.m.props} props, ${r.m.boxes} boxes and ${r.m.scatter} scattered trees and stones (worst ${r.m.worst} cm)\n  ${r.lines.slice(0, 10).join('\n  ')}`); }
-else console.log(`ok   ${r.m.props} props, ${r.m.boxes} boxes and ${r.m.scatter} scattered trees and stones all on the ground (worst ${r.m.worst} cm)`);
+else if (r.m.floating || r.m.props < 60 || r.m.boxes < 100 || r.m.scatter < 50) { bad++; console.log(`FAIL ${r.m.floating} floating of ${r.m.props} props, ${r.m.boxes} boxes and ${r.m.scatter} scattered stones (worst ${r.m.worst} cm)\n  ${r.lines.slice(0, 10).join('\n  ')}`); }
+else console.log(`ok   ${r.m.props} props, ${r.m.boxes} boxes and ${r.m.scatter} scattered stones all on the ground (worst ${r.m.worst} cm)`);
 const c = run({ ADV_FLOAT_BUG: '1' });
 if (!c.m || !c.m.floating) { bad++; console.log('FAIL control: a tree lifted half a metre was not caught'); }
 else console.log(`ok   control fails as it must: ${c.m.floating} floating, worst ${c.m.worst} cm`);

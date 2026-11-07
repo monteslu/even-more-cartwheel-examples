@@ -5,7 +5,7 @@
 //   node games/adventure/tools/make-world-assets.mjs [textures] [props]
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { Glb } from './chars/gltf-writer.mjs';
 import { Mesher } from './chars/mesher.mjs';
 import { clamp, lerp, smooth, hash2, fbm, cells, save, writeSet } from './chars/texlib.mjs';
@@ -26,40 +26,47 @@ const LAYERS = {
   // 0 lush grass: two greens in clumps, blade streaks, a yellow-green sheen where it is high
   grass: (u, v) => {
     const g = fbm(u, v, 6, 5, 11), clump = fbm(u, v, 14, 3, 12), blade = fbm(u * 4, v * 40, 32, 3, 13);
-    let c = mix3([0.16, 0.36, 0.08], [0.36, 0.56, 0.12], clamp(g * 1.2 - 0.1));
+    let c = mix3([0.09, 0.19, 0.08], [0.4, 0.56, 0.2], clamp(g * 1.5 - 0.25));
     c = mix3(c, [0.52, 0.62, 0.16], smooth(0.6, 0.8, clump) * 0.5);
-    c = mul3(c, 0.8 + 0.4 * blade);
+    c = mul3(c, 0.55 + 0.9 * blade);
+    const [f1, , id] = cells(u, v, 48, 14, 1);
+    const fl = smooth(0.16, 0.08, f1) * smooth(0.6, 0.8, fbm(u, v, 5, 3, 15));
+    c = mix3(c, id < 0.5 ? [0.98, 0.84, 0.2] : id < 0.8 ? [0.66, 0.4, 0.92] : [0.96, 0.96, 0.9], fl);
     return { c, h: 0.3 + 0.5 * blade * clump, ro: 0.92 };
   },
-  // 1 the meadow: grass full of yellow and violet flowers and white clover
-  meadow: (u, v) => {
-    const base = LAYERS.grass(u * 1.3 + 0.21, v * 1.3 + 0.37);
-    const [f1, , id] = cells(u, v, 40, 21, 1);
-    const fl = smooth(0.22, 0.12, f1) * smooth(0.45, 0.7, fbm(u, v, 5, 3, 22));
-    const col = id < 0.45 ? [0.98, 0.82, 0.12] : id < 0.75 ? [0.62, 0.35, 0.9] : [0.95, 0.95, 0.88];
-    return { c: mix3(base.c, col, fl), h: clamp(base.h + fl * 0.3), ro: 0.9 };
+  // 1 snow: wind-packed, faintly blue in the hollows, sparkle-free (it is lit by the sun, not by the texture)
+  snow: (u, v) => {
+    const g = fbm(u, v, 5, 5, 21), drift = fbm(u * 0.5 + 0.3, v * 2, 3, 3, 22), fine = fbm(u, v, 40, 2, 23);
+    const rip = Math.sin((u * 0.3 + v + fbm(u, v, 4, 3, 24) * 0.35) * Math.PI * 26) * 0.5 + 0.5; // wind ripples (sastrugi)
+    let c = mix3([0.42, 0.52, 0.74], [0.92, 0.94, 0.98], clamp(g * 0.9 + drift * 0.6 - 0.25));
+    c = mul3(c, (0.82 + 0.22 * fine) * (0.86 + 0.16 * rip));
+    return { c, h: 0.3 + 0.35 * drift + 0.1 * fine + 0.15 * rip, ro: 0.7 };
   },
-  // 2 the worn path: warm packed earth with pebbles
+  // 2 the worn path: packed earth, fine grit and a few small stones half sunk in it, ruts along it
   dirt: (u, v) => {
-    const g = fbm(u, v, 8, 5, 31), [f1, , id] = cells(u, v, 24, 32, 0.9);
-    const peb = smooth(0.3, 0.18, f1) * smooth(0.5, 0.75, hash2(Math.floor(id * 1000), 1, 33));
-    let c = mix3([0.42, 0.29, 0.17], [0.6, 0.45, 0.28], g);
-    c = mix3(c, mix3([0.55, 0.52, 0.48], [0.75, 0.7, 0.62], id), peb);
-    return { c, h: 0.3 + 0.3 * g + peb * 0.5, ro: 0.95 - peb * 0.2 };
+    const g = fbm(u, v, 8, 5, 31), grit = fbm(u, v, 64, 2, 34), rut = fbm(u * 0.4, v * 6, 4, 3, 35);
+    const [f1, , id] = cells(u, v, 18, 32, 0.9);
+    const peb = smooth(0.2, 0.1, f1) * smooth(0.6, 0.85, hash2(Math.floor(id * 1000), 1, 33));
+    let c = mix3([0.24, 0.16, 0.09], [0.56, 0.41, 0.26], clamp(g * 1.1 + rut * 0.4 - 0.25));
+    c = mul3(c, 0.75 + 0.45 * grit);
+    c = mix3(c, mix3([0.42, 0.38, 0.33], [0.56, 0.5, 0.42], id), peb * 0.6);
+    return { c, h: 0.35 + 0.25 * g + 0.15 * grit + peb * 0.35 - rut * 0.15, ro: 0.95 - peb * 0.1 };
   },
   // 3 sandstone: the canyon floor and its ramps, layered in bands of amber and rose
   sand: (u, v) => {
     const g = fbm(u, v, 6, 5, 41), band = Math.sin((v + fbm(u, v, 3, 3, 42) * 0.25) * Math.PI * 10) * 0.5 + 0.5;
-    let c = mix3([0.78, 0.46, 0.22], [0.92, 0.66, 0.38], band * 0.6 + g * 0.4);
-    c = mix3(c, [0.82, 0.4, 0.32], smooth(0.62, 0.8, fbm(u, v, 4, 3, 43)) * 0.5);
-    return { c, h: 0.4 + 0.3 * g + 0.2 * band, ro: 0.88 };
+    let c = mix3([0.36, 0.22, 0.14], [0.9, 0.7, 0.5], band * 0.6 + g * 0.4);
+    c = mix3(c, [0.7, 0.3, 0.24], smooth(0.62, 0.8, fbm(u, v, 4, 3, 43)) * 0.5);
+    const [f1, f2] = cells(u, v, 9, 44, 1), crack = 1 - smooth(0.0, 0.05, f2 - f1), grit = fbm(u, v, 48, 2, 45);
+    c = mul3(c, (1 - crack * 0.7) * (0.7 + 0.5 * grit));
+    return { c, h: clamp(0.4 + 0.3 * g + 0.2 * band - crack * 0.4), ro: 0.88 };
   },
   // 4 cliff rock: cool violet-grey slabs with dark cracks and lichen
   rock: (u, v) => {
     const g = fbm(u, v, 5, 6, 51), [f1, f2] = cells(u, v, 6, 52, 1), crack = 1 - smooth(0.0, 0.08, f2 - f1);
-    let c = mix3([0.3, 0.27, 0.36], [0.5, 0.45, 0.52], g);
+    let c = mix3([0.2, 0.18, 0.26], [0.6, 0.55, 0.6], clamp(g * 1.3 - 0.15));
     c = mix3(c, [0.55, 0.62, 0.3], smooth(0.65, 0.82, fbm(u, v, 9, 3, 53)) * 0.6);
-    c = mul3(c, 1 - crack * 0.6);
+    c = mul3(c, 1 - crack * 0.75);
     return { c, h: clamp(0.5 + 0.4 * g - crack * 0.5), ro: 0.85 };
   },
   // 5 marsh: dark teal moss and wet mud, glossy where it is wet
@@ -73,7 +80,7 @@ const LAYERS = {
   cobble: (u, v) => {
     const [f1, f2, id] = cells(u, v, 12, 71, 0.85), g = fbm(u, v, 8, 4, 72);
     const stone = smooth(0.0, 0.12, f2 - f1), dome = clamp(1 - f1 * 1.6);
-    let c = mix3([0.5, 0.26, 0.2], [0.72, 0.44, 0.34], id * 0.7 + g * 0.3);
+    let c = mix3([0.46, 0.4, 0.36], [0.68, 0.6, 0.52], id * 0.7 + g * 0.3);
     c = mul3(c, lerp(0.35, 1, stone) * (0.85 + 0.2 * dome));
     return { c, h: clamp(stone * (0.5 + 0.5 * dome)), ro: lerp(0.98, 0.8, stone) };
   },
@@ -104,10 +111,21 @@ function terrainLayer(name, f, N = 512) {
   console.log('terrain', name);
 }
 
+// weathering over any surface: moss in the joints and in patches, damp stains running down, chipped corners
+function weather(px, seed, moss = 0.5) {
+  return (u, v, o) => {
+    px(u, v, o);
+    const m = smooth(0.52, 0.72, fbm(u, v, 5, 4, seed)) * moss + (o.h < 0.25 ? 0.35 * moss : 0) * smooth(0.4, 0.7, fbm(u, v, 12, 3, seed + 1));
+    const stain = smooth(0.55, 0.8, fbm(u * 3, v * 0.4, 4, 3, seed + 2)) * 0.3;
+    const g = fbm(u, v, 30, 3, seed + 3);
+    o.r = lerp(o.r, 0.24 + 0.1 * g, m) * (1 - stain); o.g = lerp(o.g, 0.4 + 0.14 * g, m) * (1 - stain); o.b = lerp(o.b, 0.12 + 0.06 * g, m) * (1 - stain * 0.8);
+    o.h += m * 0.15 * g; o.ro = Math.min(1, o.ro + m * 0.1);
+  };
+}
 // ── building materials (texture sets: _c, _n, _orm) ─────────────────────
 const SETS = {
-  stone: () => [bake(512, brick({ cols: [[0.78, 0.74, 0.64], [0.72, 0.68, 0.6], [0.66, 0.64, 0.58]], mortar: [0.5, 0.48, 0.42], seed: 101, rows: 8, nx: 3, soot: 0.15 })), 2.4],
-  stone_red: () => [bake(512, brick({ cols: [[0.62, 0.24, 0.18], [0.55, 0.2, 0.16], [0.5, 0.22, 0.2]], mortar: [0.3, 0.22, 0.2], seed: 102, rows: 8, nx: 3, soot: 0.3 })), 2.4],
+  stone: () => [bake(512, weather(brick({ cols: [[0.74, 0.7, 0.6], [0.66, 0.62, 0.55], [0.6, 0.58, 0.52]], mortar: [0.42, 0.4, 0.35], seed: 101, rows: 8, nx: 3, soot: 0.25 }), 111, 0.55)), 2.6],
+  stone_red: () => [bake(512, weather(brick({ cols: [[0.62, 0.24, 0.18], [0.55, 0.2, 0.16], [0.5, 0.22, 0.2]], mortar: [0.3, 0.22, 0.2], seed: 102, rows: 8, nx: 3, soot: 0.35 }), 112, 0.25)), 2.6],
   marble: () => [bake(512, slabs({ base: [0.78, 0.86, 0.86], n: 2, seed: 103, tint: [0.95, 1.02, 1.04] })), 1.6],
   flag: () => [bake(512, slabs({ base: [0.62, 0.58, 0.52], n: 3, seed: 104 })), 2.0],
   wood: () => [bake(512, planks({ color: [0.46, 0.3, 0.17], n: 6, seed: 105 })), 2.2],
@@ -131,6 +149,7 @@ const DEFS = {
   glow_amber: { set: null, tint: [1.0, 0.7, 0.3], rough: 0.3, metal: 0, emissive: [4, 2.2, 0.5] },
   glow_violet: { set: null, tint: [0.7, 0.4, 1.0], rough: 0.2, metal: 0, emissive: [2.2, 0.9, 4.0] },
   ember: { set: null, tint: [1.0, 0.45, 0.1], rough: 0.5, metal: 0, emissive: [6, 2.2, 0.4] },
+  cloth_sack: { set: null, tint: [0.62, 0.52, 0.36], rough: 1, metal: 0 },
   glass: { set: null, tint: [0.45, 0.9, 0.5], rough: 0.05, metal: 0, emissive: [0.4, 1.6, 0.6] },
 };
 class Mats {
@@ -296,6 +315,25 @@ function banner(m) { // a crimson banner on a pole (the keep)
   m.box('cloth_red', [0, 3.0, 0.38], [0.04, 1.7, 0.66], { uv: 1 });
   m.box('gold', [0, 3.0, 0.38], [0.05, 0.3, 0.3], { uv: 0.3 });
 }
+function barrel(m) { // staves and iron hoops
+  lathe(m, 'wood', [[0, 0.3], [0.2, 0.36], [0.45, 0.38], [0.7, 0.36], [0.9, 0.3]], { n: 14, uv: 0.6 });
+  for (const y of [0.12, 0.78]) m.cyl('iron', [0, y, 0], 0.335, 0.06, { n: 14, uv: 0.5, caps: false });
+  m.cyl('iron', [0, 0.45, 0], 0.385, 0.06, { n: 14, uv: 0.5, caps: false });
+}
+function crate(m) { m.box('wood', [0, 0.35, 0], [0.7, 0.7, 0.7], { uv: 0.7 }); for (const y of [0.06, 0.64]) m.box('iron', [0, y, 0], [0.72, 0.06, 0.72], { uv: 0.5 }); }
+function cart(m) { // a hand cart, tipped onto its shafts
+  m.box('wood', [0, 0.75, 0], [1.3, 0.12, 2.0], { uv: 0.8 });
+  for (const sx of [-1, 1]) { m.box('wood', [sx * 0.62, 1.0, 0], [0.08, 0.45, 2.0], { uv: 0.8 }); m.cyl('wood', [sx * 0.75, 0.48, 0.2], 0.48, 0.08, { axis: 'x', n: 14, uv: 0.6 }); m.cyl('iron', [sx * 0.75, 0.48, 0.2], 0.5, 0.05, { axis: 'x', n: 14, uv: 0.6, caps: false }); }
+  for (const sx of [-1, 1]) m.box('wood', [sx * 0.4, 0.36, -1.6], [0.07, 0.07, 1.6], { uv: 0.6 });
+  m.box('wood', [0, 0.1, -2.35], [0.9, 0.07, 0.07], { uv: 0.6 });
+}
+function lanternPost(m) { // an iron post with a hanging lantern (the game lights it)
+  m.cyl('iron', [0, 1.2, 0], 0.05, 2.4, { n: 8, uv: 0.5 });
+  m.box('iron', [0, 2.38, 0.25], [0.06, 0.06, 0.55], { uv: 0.5 });
+  m.box('iron', [0, 2.0, 0.48], [0.22, 0.04, 0.22], { uv: 0.4 }); m.box('iron', [0, 1.72, 0.48], [0.24, 0.04, 0.24], { uv: 0.4 });
+  m.box('glow_amber', [0, 1.86, 0.48], [0.16, 0.24, 0.16], { uv: 0.3 });
+}
+function sacks(m) { blob(m, 'cloth_sack', [0, 0.28, 0], 0.32, { nu: 8, nv: 6, rough: 0.1, seed: 31, sy: 0.85, flat: 0.8 }); blob(m, 'cloth_sack', [0.45, 0.24, 0.1], 0.28, { nu: 8, nv: 6, rough: 0.12, seed: 32, sy: 0.85, flat: 0.8 }); }
 function grassTuft(m) { // reeds for the marsh edge
   for (let i = 0; i < 9; i++) { const a = i * 2.4, r = 0.15 + 0.08 * (i % 3); m.cyl('leaf_teal', [Math.cos(a) * r, 0.55, Math.sin(a) * r], 0.02, 1.1, { r1: 0.004, n: 4, uv: 1 }); }
 }
@@ -307,8 +345,131 @@ if (want('textures')) {
 if (want('props')) {
   for (const [n, f] of [['sword', sword], ['maul', maul], ['cleaver', cleaver], ['spear', spear], ['bigaxe', bigaxe], ['heart', heart], ['charm', charm], ['tonic', tonic],
     ['chest', chest], ['chest_lid', chestLid], ['shrine', shrine], ['crystal', crystal], ['tree', tree], ['tree_gold', treeGold], ['mangrove', mangrove], ['pine', pine],
-    ['rock', rock], ['rock_tall', rockTall], ['brazier', brazier], ['lever', lever], ['lever_arm', leverArm], ['pillar', pillar], ['banner', banner], ['reeds', grassTuft]]) writeProp(n, f);
+    ['rock', rock], ['rock_tall', rockTall], ['brazier', brazier], ['lever', lever], ['lever_arm', leverArm], ['pillar', pillar], ['banner', banner], ['reeds', grassTuft], ['barrel', barrel], ['crate', crate], ['cart', cart], ['lantern_post', lanternPost], ['sacks', sacks]]) writeProp(n, f);
   { const m0 = new Mesher(); }
   writeProp('key_sun', (m) => key(m, 'gold')());
   writeProp('key_moon', (m) => key(m, 'glow_violet')());
+}
+
+// ── flora: trees with leaf-card crowns, one glb per species with two nodes, Trunk and Crown (the game instances them
+// per region and sways the crown in the wind about the top of the trunk) ──
+function leafTexture(path, N = 512, seed = 5) {
+  const px = new Uint8Array(N * N * 4);
+  const leaves = [];
+  for (let i = 0; i < 90; i++) {
+    const a = hash2(i, 1, seed) * Math.PI * 2, r = Math.sqrt(hash2(i, 2, seed)) * 0.42;
+    leaves.push({ x: 0.5 + Math.cos(a) * r, y: 0.5 + Math.sin(a) * r, rot: hash2(i, 3, seed) * Math.PI, len: 0.07 + 0.04 * hash2(i, 4, seed), k: 0.62 + 0.38 * hash2(i, 5, seed) });
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N;
+    let best = null, bd = 1;
+    for (const l of leaves) {
+      const dx = u - l.x, dy = v - l.y, c = Math.cos(l.rot), s = Math.sin(l.rot);
+      const lx = (dx * c + dy * s) / l.len, ly = (-dx * s + dy * c) / (l.len * 0.45);
+      const d = lx * lx + ly * ly;
+      if (d < 1 && d < bd) bd = d, best = { l, lx, ly };
+    }
+    const o = (y * N + x) * 4;
+    if (!best) { px[o] = 90; px[o + 1] = 120; px[o + 2] = 60; px[o + 3] = 0; continue; }
+    const vein = Math.abs(best.ly) < 0.08 ? 0.82 : 1, edge = 1 - 0.25 * bd;
+    const k = best.l.k * vein * edge;
+    px[o] = Math.round(200 * k); px[o + 1] = Math.round(230 * k); px[o + 2] = Math.round(170 * k); px[o + 3] = 255;
+  }
+  save(path, N, N, 4, px);
+}
+const LEAF_PNG = join(TEX, 'leaves_c.png');
+/** a cluster of crossed leaf cards: three quads through c, normals pointing out from the crown's middle (soft light) */
+function cards(m, mat, c, r, mid, seed, droop = 0) {
+  const rot = hash2(seed, 7, 3) * Math.PI;
+  const axes = [[Math.cos(rot), 0, Math.sin(rot)], [-Math.sin(rot), 0, Math.cos(rot)]];
+  const nrm = (p) => { const d = [p[0] - mid[0], (p[1] - mid[1]) * 0.6 + 0.4, p[2] - mid[2]], l = Math.hypot(...d) || 1; return d.map((x) => x / l); };
+  const quad = (A, B, C, D) => m.quad(mat, A, B, C, D, null, [0, 1], [1, 1], [1, 0], [0, 0], [nrm(A), nrm(B), nrm(C), nrm(D)]);
+  for (const ax of axes) { // two upright cards
+    const h = r * (1 + droop);
+    quad([c[0] - ax[0] * r, c[1] - h, c[2] - ax[2] * r], [c[0] + ax[0] * r, c[1] - h, c[2] + ax[2] * r], [c[0] + ax[0] * r, c[1] + r * 0.9, c[2] + ax[2] * r], [c[0] - ax[0] * r, c[1] + r * 0.9, c[2] - ax[2] * r]);
+  }
+  const a = axes[0], b = axes[1]; // and one lying flat
+  quad([c[0] - a[0] * r - b[0] * r, c[1], c[2] - a[2] * r - b[2] * r], [c[0] + a[0] * r - b[0] * r, c[1], c[2] + a[2] * r - b[2] * r], [c[0] + a[0] * r + b[0] * r, c[1], c[2] + a[2] * r + b[2] * r], [c[0] - a[0] * r + b[0] * r, c[1], c[2] - a[2] * r + b[2] * r]);
+}
+/** clusters spread over an ellipsoid crown */
+function crownOf(m, mat, mid, rad, n, r, seed, droop = 0) {
+  cards(m, mat, mid, r * 1.2, mid, seed, droop);
+  for (let i = 0; i < n; i++) {
+    const u = hash2(i, 1, seed) * 2 - 1, a = hash2(i, 2, seed) * Math.PI * 2, k = 0.55 + 0.45 * hash2(i, 3, seed), s = Math.sqrt(1 - u * u);
+    cards(m, mat, [mid[0] + Math.cos(a) * s * rad[0] * k, mid[1] + u * rad[1] * k, mid[2] + Math.sin(a) * s * rad[2] * k], r * (0.8 + 0.4 * hash2(i, 4, seed)), mid, seed * 31 + i, droop);
+  }
+}
+const SPECIES = {
+  oak: { bark: [0.55, 0.42, 0.34], leaf: [0.34, 0.6, 0.16], trunk: (m) => { lathe(m, 'bark', [[-0.3, 0.42], [0.3, 0.32], [2.4, 0.24], [3.6, 0.18]], { n: 10, uv: 1 }); for (const [x, z] of [[1, 0.3], [-0.8, -0.6], [0.1, 0.9]]) m.cyl('bark', [x * 0.5, 3.6, z * 0.5], 0.12, 1.4, { r1: 0.06, n: 6, uv: 1 }); }, crown: { mid: [0, 4.9, 0], rad: [2.5, 1.7, 2.5], n: 16, r: 1.15 } },
+  birch: { bark: [0.92, 0.9, 0.84], leaf: [0.6, 0.76, 0.22], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.22], [0.3, 0.18], [4.5, 0.1]], { n: 8, uv: 1 }), crown: { mid: [0, 5.2, 0], rad: [1.5, 2.2, 1.5], n: 12, r: 0.9 } },
+  aspen: { bark: [0.85, 0.8, 0.7], leaf: [0.98, 0.66, 0.14], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.24], [0.3, 0.2], [3.4, 0.12]], { n: 8, uv: 1 }), crown: { mid: [0, 4.0, 0], rad: [1.7, 1.6, 1.7], n: 12, r: 0.95 } },
+  willow: { bark: [0.45, 0.36, 0.3], leaf: [0.24, 0.6, 0.48], trunk: (m) => { for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; m.cyl('bark', [Math.cos(a) * 0.45, 0.45, Math.sin(a) * 0.45], 0.08, 1.3, { r1: 0.12, n: 6, uv: 1 }); } lathe(m, 'bark', [[0.8, 0.3], [3.4, 0.2]], { n: 8, uv: 1 }); }, crown: { mid: [0, 4.0, 0], rad: [2.4, 1.2, 2.4], n: 16, r: 1.1, droop: 0.9 } },
+  pine: { bark: [0.42, 0.3, 0.24], leaf: [0.14, 0.38, 0.2], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.26], [6.0, 0.08]], { n: 8, uv: 1 }), crown: { tiers: [[1.6, 2.0], [2.6, 1.7], [3.6, 1.35], [4.6, 1.0], [5.5, 0.65], [6.2, 0.35]], r: 0.8 } },
+  fir: { bark: [0.4, 0.3, 0.26], leaf: [0.62, 0.74, 0.74], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.24], [5.4, 0.08]], { n: 8, uv: 1 }), crown: { tiers: [[1.4, 1.8], [2.4, 1.5], [3.4, 1.2], [4.4, 0.85], [5.2, 0.5], [5.8, 0.3]], r: 0.75 } },
+  windswept: { bark: [0.5, 0.42, 0.36], leaf: [0.4, 0.64, 0.2], trunk: (m) => { lathe(m, 'bark', [[-0.3, 0.3], [1.5, 0.22]], { n: 8, uv: 1 }); m.cyl('bark', [0.6, 2.4, 0], 0.18, 2.0, { r1: 0.1, n: 6, uv: 1 }); }, crown: { mid: [1.6, 3.6, 0], rad: [2.6, 1.0, 1.6], n: 12, r: 1.0 } },
+  deepwood: { bark: [0.36, 0.3, 0.3], leaf: [0.12, 0.5, 0.42], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.5], [0.4, 0.4], [6.5, 0.22]], { n: 10, uv: 1 }), crown: { mid: [0, 8.0, 0], rad: [3.2, 2.4, 3.2], n: 22, r: 1.4 } },
+};
+function writeSpecies(name, sp) {
+  const glb = new Glb();
+  const bark = glb.pbr('bark_' + name, TEX, 'wood', { tint: sp.bark, rough: 0.95 });
+  const leaf = glb.pbr('leaf_' + name, TEX, null, { tint: sp.leaf, rough: 0.82, metal: 0, alphaMode: 'MASK', alphaCutoff: 0.45, doubleSided: true });
+  glb.materials[leaf].pbrMetallicRoughness.baseColorTexture = { index: glb.tex(LEAF_PNG) };
+  const t = new Mesher(), c = new Mesher();
+  sp.trunk(t);
+  const cr = sp.crown;
+  if (cr.tiers) cr.tiers.forEach(([y, rr], i) => { for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + i; cards(c, 'leaf', [Math.cos(a) * rr * 0.6, y, Math.sin(a) * rr * 0.6], cr.r * (rr / 1.6 + 0.4), [0, y - 0.6, 0], i * 13 + k, 0.2); } });
+  else crownOf(c, 'leaf', cr.mid, cr.rad, cr.n, cr.r, name.length * 7 + 3, cr.droop ?? 0);
+  glb.sceneNodes.push(glb.node({ name: 'Trunk', mesh: glb.mesh(name + '_trunk', t.prims({ bark })) }));
+  glb.sceneNodes.push(glb.node({ name: 'Crown', mesh: glb.mesh(name + '_crown', c.prims({ leaf })) }));
+  glb.write(join(MOD, 'flora_' + name + '.glb'));
+  console.log('flora', name);
+}
+function glowcap() { // the wood's giant mushroom: a pale stem, a glowing cap (the crown)
+  const glb = new Glb();
+  const stem = glb.pbr('stem', TEX, null, { tint: [0.86, 0.82, 0.7], rough: 0.7, metal: 0 });
+  const cap = glb.pbr('cap', TEX, null, { tint: [0.16, 0.06, 0.34], rough: 0.45, metal: 0, emissive: [0.015, 0.09, 0.11] });
+  const t = new Mesher(), c = new Mesher();
+  lathe(t, 'stem', [[-0.2, 0.5], [0.3, 0.38], [3.2, 0.3], [3.6, 0.34]], { n: 12, uv: 1 });
+  lathe(c, 'cap', [[3.4, 0.4], [3.5, 2.0], [3.75, 2.1], [4.2, 1.7], [4.7, 0.9], [4.95, 0.0]], { n: 18, uv: 1 });
+  glb.sceneNodes.push(glb.node({ name: 'Trunk', mesh: glb.mesh('glowcap_stem', t.prims({ stem })) }));
+  glb.sceneNodes.push(glb.node({ name: 'Crown', mesh: glb.mesh('glowcap_cap', c.prims({ cap })) }));
+  glb.write(join(MOD, 'flora_glowcap.glb'));
+  console.log('flora glowcap');
+}
+if (want('flora')) {
+  leafTexture(LEAF_PNG);
+  for (const [n, sp] of Object.entries(SPECIES)) writeSpecies(n, sp);
+  glowcap();
+}
+
+// ── the sky's clouds: a tileable sheet of soft cumulus (white, alpha the cloud), drawn on a dome round the camera ──
+if (want('clouds')) {
+  const N = 1024, px = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    const u = x / N, v = y / N;
+    const base = fbm(u, v, 4, 6, 91), detail = fbm(u, v, 16, 4, 92);
+    const d = smooth(0.5, 0.78, base * 0.8 + detail * 0.3);
+    const shade = 0.78 + 0.22 * smooth(0.3, 0.9, detail); // brighter tops, greyer bellies
+    const o = (y * N + x) * 4;
+    px[o] = Math.round(255 * shade); px[o + 1] = Math.round(255 * shade); px[o + 2] = Math.round(255 * Math.min(1, shade * 1.04)); px[o + 3] = Math.round(255 * d);
+  }
+  save(join(TEX, 'clouds_c.png'), N, N, 4, px);
+  console.log('clouds');
+}
+
+// ── the grade: a contrast S-curve and a little saturation, as a 33^3 .cube the PostProcess applies after tone mapping
+if (want('luts')) {
+  mkdirSync(join(ROOT, 'grade'), { recursive: true });
+  const N = 33, a = 8.6, mid = 0.4;
+  const sig = (x) => 1 / (1 + Math.exp(-a * (x - mid)));
+  const s0 = sig(0), s1 = sig(1), curve = (x) => (sig(x) - s0) / (s1 - s0);
+  const lines = ['TITLE "adventure contrast"', `LUT_3D_SIZE ${N}`];
+  for (let b = 0; b < N; b++) for (let g = 0; g < N; g++) for (let r = 0; r < N; r++) {
+    let c = [r / (N - 1), g / (N - 1), b / (N - 1)].map((x) => Math.max(0, (x - 0.06) / 0.94)).map((x) => x * 0.1 + curve(x) * 0.9); // a black point under the fog and the sky fill, then the S-curve
+    const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+    c = c.map((x) => Math.min(1, Math.max(0, l + (x - l) * 0.88)));
+    lines.push(c.map((x) => x.toFixed(5)).join(' '));
+  }
+  writeFileSync(join(ROOT, 'grade', 'contrast.cube'), lines.join('\n') + '\n');
+  console.log('lut');
 }

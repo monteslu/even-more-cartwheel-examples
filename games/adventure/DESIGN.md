@@ -17,7 +17,13 @@ The order through the world:
 3. The maul breaks the cracked wall across the passage east: the Tidemarsh (shrine). An island: the stamina charm.
    The temple: the Tidecaller, who gives the Moon Key and a heart. A lever opens the door west, back into the hollow.
 4. Back in the hollow the maul opens the ruined cellar (a heart). The keep's gate takes both keys.
-5. The Ember Keep: the courtyard (shrine), the long walled ramp (its side door opens back down to the courtyard),
+5. East of the marsh, the Glowcap Wood (shrine): a second stamina charm in a chest among the giant mushrooms.
+6. North of the marsh a switchback road climbs the cliffs to the Frostspine Heights (shrine): a heart in a chest. The
+   cliff path runs west over a timber bridge (under it the gorge floor, a way of its own with a heart at its end) and
+   down into the Thornwarden's ring: the long way round comes back as a shortcut.
+7. South of the hollow, through the cellar, the Underway: a roofed cutting lit by lanterns, out onto the Windward
+   Downs (shrine), where a stair winds round the Spire to a heart on its top.
+8. The Ember Keep: the courtyard (shrine), the long walled ramp (its side door opens back down to the courtyard),
    the throne top: the Ember King. The end.
 
 ## Combat
@@ -45,16 +51,23 @@ never sinks under the ground. With two players it frames both.
 
 ## The world
 
-One 320 m terrain (Terrain3D, 1 m samples) shaped from tables: zones (the meadow bowl, the canyon floor, the boss
-rings, the marsh basin, the keep hill), ramps between them, and highlands between the regions. Painted by zone and
-slope; grass, trees, pines, stilt trees and stones scattered by the engine on their own layers. Buildings are boxes
+One 640 m terrain (Terrain3D, 1 m samples) shaped from tables: zones (the meadow bowl, the canyon floor, the boss
+rings, the marsh basin, the keep hill, the heights plateau and its gorge, the underway cutting, the downs round the
+spire, the wood), ramps between them (stairs, switchbacks, a cliff path), highlands between the regions and mountains
+round the edge. Painted by zone and slope, with soft edges where a path meets the grass; grass and stones scattered by
+the engine. Trees are the game's own: nine species (oak, birch, aspen, willow, pine, fir, windswept, deepwood and the
+glowcap), a few per region, each a trunk and a crown of alpha-cut leaf cards, drawn as one instanced mesh per species
+and region; the crowns sway in the wind about the top of the trunk. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
-regions more than one step from the player's are hidden and their foes stop.
+regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
+their feet; barrels, crates, sacks, carts and lantern posts dress the villages.
 
 Mood comes from colour, not darkness: each region has its own light (fog colour and density, ambient, sky and ground
 light, the sun's colour, exposure), blended by where the camera is: a clear gold morning in the hollow, amber in the
-canyon, teal and violet mist on the marsh, a crimson sunset at the keep.
+canyon under a cool lavender haze, teal and violet mist on the marsh, a crimson sunset at the keep, cold bright air on
+the heights, lantern light in the underway, deep green and a violet glow in the wood. A contrast grade (an S-curve
+with a black point, a 3D LUT after tone mapping) keeps every region mid-key with real darks (tests/adventure-look.mjs).
 
 ## Characters
 

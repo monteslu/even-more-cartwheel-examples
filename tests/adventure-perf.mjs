@@ -1,7 +1,8 @@
 // adventure perf gate: adventure_bench (the bot in the Tidecaller's fight at the marsh temple: the boss, its foes, the
 // water, the temple's columns, the sun's cascades; nobody falls, so the fight holds) at 1920x1080, High, natively on
-// the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU pass timers; then the same from three more places
-// (the meadow's start, the canyon's ring with the Thornwarden, the keep's throne with the Ember King: ADV_FROM).
+// the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU pass timers; then the same from seven more places
+// (the meadow, the canyon ring with the Thornwarden, the glowcap wood, the heights, the underway, the spire, the keep's
+// throne with the Ember King: ADV_FROM).
 // Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows) at 4.5 ms, every run drawing
 // everything (no "not in any program table" line) with its characters on screen. Controls, which must fail: GL at
 // 3840x2160 (4 times the pixels) and WebGPU against an impossible 1 ms bound.
@@ -53,7 +54,7 @@ const g = run('gl'), w = run('webgpu');
 check('the Tidecaller fight GL', g, BOUND);
 check('the Tidecaller fight WebGPU', w, BOUND);
 if (!quick)
-  for (const [name, from] of [['the meadow', '1'], ['the Thornwarden', '12'], ['the Ember King', '40']])
+  for (const [name, from] of [['the meadow', '1'], ['the Thornwarden', '12'], ['the glowcap wood', '28'], ['the heights', '39'], ['the underway', '57'], ['the spire', '61'], ['the Ember King', '183']])
     for (const gpu of ['gl', 'webgpu']) check(`${name} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { ADV_FROM: from }), BOUND);
 check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), BOUND, true);
 check('WebGPU against 1 ms', w, 1, true);

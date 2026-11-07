@@ -5,7 +5,7 @@ time. `games/adventure/`.
 
 ## The world
 
-Four regions on one terrain, joined so that the way back is often a shortcut:
+Eight regions on one 640 m terrain, joined so that the way back is often a shortcut:
 
 - **The Green Hollow**, a meadow with a ruined village and the first shrine. Stairs climb north to the canyon; the
   keep's gate stands to the west (it wants two keys); a door to the east only opens from the marsh side.
@@ -16,8 +16,14 @@ Four regions on one terrain, joined so that the way back is often a shortcut:
   the marble temple at the south end; a lever opens the door back to the hollow.
 - **The Ember Keep**, a red keep on an ember hill: a courtyard with a shrine, a long walled ramp, and the Ember King
   on the throne top.
+- **The Frostspine Heights**, a snowy plateau up a switchback road cut into the cliffs east of the marsh, with a
+  heart in a chest. A cliff path runs west from it over a timber bridge (the gorge floor under it is a way of its
+  own, with a heart at its end) and down into the Thornwarden's ring: the long way round becomes a shortcut.
+- **The Underway**, a roofed cutting under the hollow's south hills, lit by lanterns.
+- **The Windward Spire**, open downs with a stone tower: a stair winds round it to a chest on the top.
+- **The Glowcap Wood**, a deep wood of giant glowing mushrooms east of the marsh, with a second stamina charm.
 
-Things to find: four heart vessels (two in the world, one from each of the first two bosses), a stamina charm, the
+Things to find: seven heart vessels (five in the world, one from each of the first two bosses), two stamina charms, the
 Stonebreaker, the Sun Key and the Moon Key. Shrines heal you, refill the flask, bring the foes back and save; a fall
 wakes you at the last one you rested at.
 
@@ -48,10 +54,13 @@ their later phases: charges, and shockwaves that run out along the ground (roll 
 | `adventure_auto` | the bot plays the whole game through the controls (hosts that send no input, the gates, the soak) |
 | `adventure_bench` | the perf gate's scene: the bot in the Tidecaller's fight |
 | `tools/chars/make-characters.mjs` | the characters (from the brawler's generator, with this game's cast and clips) |
-| `tools/make-world-assets.mjs` | the terrain layers, building textures and props |
+| `tools/make-world-assets.mjs` | the terrain layers, building textures, props, the trees and glowcaps (leaf cards), the cloud layer and the contrast grade |
 | `tools/survey.sh` | the program table from software GL runs (off the shared GPU) |
 | `tools/swshot.sh` | a screenshot on software GL |
+| `tools/capture-look.sh` | one play frame from each region, for the look check |
 
 Tests: `node tests/adventure-soak.mjs` (the whole game on software GL, with a control that must fail),
 `node tests/adventure-grounding.mjs` (no floating props, with a control that must fail),
-`node tests/adventure-perf.mjs` (1080p High on the 890M, GL and WebGPU), and the gates in `tests/adventure-gates.json`.
+`node tests/adventure-perf.mjs` (1080p High on the 890M, GL and WebGPU), `node tests/adventure-look.mjs out/look` (each
+region mid-key, with real contrast and more than one hue family, with a control that must fail), and the gates in
+`tests/adventure-gates.json`.

@@ -1402,7 +1402,7 @@ function writeFace(sp) {
 function shading(cls, t, sp) {
   t = t ?? [1, 1, 1];
   const ext = {};
-  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.3 * (0.02 + 0.3 * x)), sheenRoughnessFactor: 0.85 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
+  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.2 * (0.02 + 0.3 * x)), sheenRoughnessFactor: 0.9 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; } // matte
   if (cls === 'skin') {
     const sk = hexRaw(sp.colors.skin), dark = 1 - (sk[0] + sk[1] + sk[2]) / 3;
     ext.KHR_materials_sheen = { sheenColorFactor: [0.1 * (0.1 + 0.35 * t[0]), 0.1 * (0.05 + 0.2 * t[1]), 0.1 * (0.04 + 0.15 * t[2])], sheenRoughnessFactor: 0.7 };
@@ -1417,7 +1417,7 @@ function shading(cls, t, sp) {
   // (the cards: the gloss comes from the core under them; bright cards read as white flakes on the front of the roll)
   if (cls === 'pomade') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.02 + 0.06 * x), sheenRoughnessFactor: 0.5 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.25, anisotropyRotation: PI / 2 }; }
   if (cls === 'fur') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.02 + 0.15 * x), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.15 }; }
-  if (cls === 'leather') ext.KHR_materials_clearcoat = { clearcoatFactor: 0.35, clearcoatRoughnessFactor: 0.38 };
+  if (cls === 'leather') ext.KHR_materials_clearcoat = { clearcoatFactor: 0.14, clearcoatRoughnessFactor: 0.5 }; // a slight sheen, never a shine
   if (cls === 'eye') { ext.KHR_materials_clearcoat = { clearcoatFactor: 0.7, clearcoatRoughnessFactor: 0.09 }; ext.KHR_materials_ior = { ior: 1.376 }; }
   if (cls === 'enamel') ext.KHR_materials_specular = { specularFactor: 0.6 };
   return { ext };
@@ -1596,7 +1596,7 @@ export const SPECS = [
     face: { eyeR: 0.165, noseLen: 0.9, noseW: 0.85, tipUp: 0.6, lipU: 1.1, lipL: 1.15, mw: 0.23, cheek: 1.2, jawAng: 0.75, chin: 0.85, chinW: 0.85, brow: 0.7, browThick: 0.045, browArch: 0.05, tilt: 0.05, naso: 0.4 },
     paint: { freckles: 0.8, iris: [0.2, 0.42, 0.3], hairline: true },
     scale: 1.02, width: 1.05, sw: 0.2, arm: 1.1, leg: 1.05, head: 1.08, hand: 1.15, hair: 'ponytail', gloves: true, belt: true, boots: true, bracers: true,
-    top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'vest', outerFab: 'leather', openFront: 0.3, bottom: 'tight', pantsFab: 'leather',
+    top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.4, coatHem: 0.05, bottom: 'tight', pantsFab: 'leather',
     colors: { skin: 0xd8a47c, shirt: 0x169c9c, pants: 0x3a2048, shoes: 0x4a2a18, hair: 0xb8501c, accent: 0xf0b030, outer: 0xc07a28, glove: 0x5a3018, belt: 0x3a2010, metal: 0xd8c070 } },
   // the warden (player two, drop-in): broad, a crimson tunic, steel shoulder plates and a chest plate, a short beard
   { name: 'warden', shoulders: 2.35, heads: 7.35, skull: { chinZ: 1.04, slope: 0.45, chin: 1.1 }, face: { noseW: 1.1, hook: 0.4, brow: 1.3, browThick: 0.07, jawAng: 1.4, chin: 1.25, cleft: 0.3 },

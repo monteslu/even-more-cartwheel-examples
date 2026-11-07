@@ -9,7 +9,7 @@ shot() { local name="$1" from="$2" frames="$3"; shift 3; ADV_NO_HUD=1 ADV_FROM="
 shot meadow 1 260 &
 shot fight 6 520 &
 shot marsh 20 330 &
-shot keep 37 260 &
+shot keep 180 260 &
 wait
 shot boss 22 700 &
 shot vista 2 200 ADV_CAM_DIST=16 ADV_CAM_PITCH=-0.32 &

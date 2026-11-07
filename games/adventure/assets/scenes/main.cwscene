@@ -26,6 +26,9 @@ bloom_threshold = 1.2
 bloom_knee = 0.5
 aa = FXAA
 vignette = true
+grade = true
+grade_intensity = 1
+lut = "grade/contrast.cube"
 vignette_intensity = 0.25
 vignette_smoothness = 0.6
 
@@ -39,6 +42,7 @@ sun_energy = 3.4
 sky_energy = 1.6
 rayleigh = 1.0
 mie = 0.8
+sun_disk_intensity = 0.35
 
 [node name="Sun" parent="." type="DirectionalLight3D"]
 color = color(1, 0.94, 0.82, 1)
@@ -51,23 +55,23 @@ shadow_distance = 40
 position = vec3(160, 20, 300)
 fov = 60
 near = 0.15
-far = 700
+far = 1400
 
 [node name="Terrain" parent="." type="Terrain3D"]
-position = vec3(160, 0, 160)
-size_x = 320
-size_z = 320
+position = vec3(320, 0, 320)
+size_x = 640
+size_z = 640
 region_size = 64
 vertex_spacing = 1
 min_height = -4
-max_height = 60
+max_height = 90
 grid_quads = 32
 far_distance = 140
 layer0_albedo = "textures/terrain/grass_ah.png"
 layer0_normal = "textures/terrain/grass_nr.png"
 layer0_uv_scale = 0.22
-layer1_albedo = "textures/terrain/meadow_ah.png"
-layer1_normal = "textures/terrain/meadow_nr.png"
+layer1_albedo = "textures/terrain/snow_ah.png"
+layer1_normal = "textures/terrain/snow_nr.png"
 layer1_uv_scale = 0.2
 layer2_albedo = "textures/terrain/dirt_ah.png"
 layer2_normal = "textures/terrain/dirt_nr.png"
@@ -91,7 +95,7 @@ layer7_uv_scale = 0.18
 [node name="Grass" parent="Terrain" type="TerrainScatter3D"]
 shape = GRASS
 density = 1.3
-layers = 3
+layers = 1
 min_slope = 30
 scale_min = 0.7
 scale_max = 1.25
@@ -99,54 +103,6 @@ visible_range = 28
 fade = 10
 lod_distance = 16
 seed = 1
-
-[node name="Trees" parent="Terrain" type="TerrainScatter3D"]
-mesh = "models/tree.glb"
-density = 0.004
-layers = 1
-min_slope = 20
-scale_min = 0.8
-scale_max = 1.3
-align = false
-sink = 0.3
-visible_range = 220
-fade = 40
-lod_distance = 90
-knob = SCATTER
-cast_shadow = true
-seed = 3
-
-[node name="Pines" parent="Terrain" type="TerrainScatter3D"]
-mesh = "models/pine.glb"
-density = 0.006
-layers = 128
-min_slope = 24
-scale_min = 0.8
-scale_max = 1.4
-align = false
-sink = 0.3
-visible_range = 220
-fade = 40
-lod_distance = 90
-knob = SCATTER
-cast_shadow = true
-seed = 4
-
-[node name="Mangroves" parent="Terrain" type="TerrainScatter3D"]
-mesh = "models/mangrove.glb"
-density = 0.005
-layers = 32
-min_slope = 15
-scale_min = 0.8
-scale_max = 1.3
-align = false
-sink = 0.2
-visible_range = 200
-fade = 40
-lod_distance = 90
-knob = SCATTER
-cast_shadow = true
-seed = 5
 
 [node name="Stones" parent="Terrain" type="TerrainScatter3D"]
 shape = ROCK
@@ -171,11 +127,14 @@ wave0 = vec4(20, 6, 0.04, 0.5)
 wave1 = vec4(75, 3, 0.02, 0.5)
 wave_count = 2
 color = color(0.55, 0.9, 0.85, 1)
-deep_color = color(0.02, 0.12, 0.14, 1)
-shallow_color = color(0.1, 0.45, 0.42, 1)
+deep_color = color(0.01, 0.06, 0.09, 1)
+shallow_color = color(0.12, 0.5, 0.46, 1)
+normal_scale = 0.32
+detail = 0.8
+glint = 1.6
 reflection = false
 refraction = true
 murk = 0.6
-clarity = 2.5
+clarity = 4
 shore_foam = 0.4
-crest_foam = 0
+crest_foam = 0.15
