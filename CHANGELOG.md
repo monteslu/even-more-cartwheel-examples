@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.7.0
+
+- **Ember Throne**: a third-person action adventure for one player, with a drop-in second. The wanderer gathers the
+  Sun Key and the Moon Key to open the Ember Keep and face the Ember King on his throne. One connected world of eight
+  regions (a ruined hollow, an amber canyon, a marsh with a temple, a glowcap wood of giant mushrooms, frozen heights
+  over a gorge, a lantern-lit underway, a windward spire and the keep), with switchbacks, a cliff path over a timber
+  bridge and doors that open back as shortcuts. Lock-on sword fights with a roll, stamina and a healing flask, a maul
+  that breaks cracked stone, three bosses with phases, shrines that save. Feet stay planted on slopes and stairs, the
+  camera keeps out of walls and foliage, and every prop is checked to stand on the ground. Known open item: the
+  meadow runs over its speed target on the reference laptop GPU and is being worked on.
+- explorer is now **Lanternfall**: the game, its carts (lanternfall.wasc), apps, tests and launcher art carry the new
+  name. Holes through floors now read as drops into dusk and mist with roots, icicles or chains hanging over them;
+  the undersides of overhangs are shaped instead of stepped; each of the 13 regions has its own rock (sandstone,
+  slate, basalt columns, ore veins, crystal, coral, cloudstone and more). It also runs faster (3.0 ms on GL and 3.2 ms
+  on WebGPU on the reference laptop GPU, from 3.4 and 3.8). Saved games from the earlier name do not carry over.
+- towers: pools are real water with irregular shorelines, deep colour, drifting sky glints and wet banks; lava pools
+  have a cracked crust with heat shimmer; rock outcrops are faceted cliffs with strata, boulders at the foot and moss,
+  sand, snow or ash on top. Two players' cursor labels no longer overlap.
+
 ## 0.6.0
 
 - demolition is now **Destructo**: the game, its carts (destructo.wasc), apps, tests and launcher art carry the
