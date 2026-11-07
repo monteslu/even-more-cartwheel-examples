@@ -83,15 +83,17 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 
 /* ── the match ───────────────────────────────────────────────────────── */
 
-static void load_level(int level) {
+static void load_level_as(int level, bool settle) {
   game_new(&G.g, level, G.players, G.mode);
-  game_settle(&G.g, 180); /* the level settles before anyone sees it (levelcheck holds it still from here) */
+  if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
   if (G.built) view_level(&G.g);
   G.last_cur = 0, G.turn_banner = 0;
   G.result_sound = false;
 }
+static void load_level(int level) { load_level_as(level, true); }
+static void preview_level(int level) { load_level_as(level, false); }
 
 static void begin_level(int level) {
   G.sel = level;
@@ -119,7 +121,7 @@ static void start(int players, void *u) {
   G.mode = CW_CLAMP(save()->last_mode, 0, 1);
   int last = save()->last_level;
   G.sel = last >= 0 && last < NLEVELS ? last : 0;
-  load_level(G.sel); /* the level behind the choice */
+  preview_level(G.sel); /* the level behind the choice */
 #endif
 }
 
@@ -130,7 +132,7 @@ static bool warmup(void *u) {
   G.camera = cw_node_get(root, "Main/Camera");
   view_init(root);
   fx_init(root);
-  if (!G.have_game) G.players = 1, load_level(start_level()); /* a structure behind the title */
+  if (!G.have_game) G.players = 1, preview_level(start_level()); /* a structure behind the title */
   G.built = true;
   view_level(&G.g);
   return true;
@@ -250,7 +252,7 @@ static void fixed_update(void *u, double dt) {
   case PH_SELECT: {
     int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
     int n = G.sel + dx + dy * 6;
-    if ((dx || dy) && n >= 0 && n <= unlocked()) G.sel = n, sound_menu(0), load_level(G.sel);
+    if ((dx || dy) && n >= 0 && n <= unlocked()) G.sel = n, sound_menu(0), preview_level(G.sel);
     if (pressed(G.ammo, -1) && G.players > 1) G.mode ^= 1, sound_menu(0);
     if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), begin_level(G.sel);
     G.players = CW_MAX(1, cw_shell_players());
@@ -292,7 +294,7 @@ static void fixed_update(void *u, double dt) {
       } else if (ui("ui_back")) {
         sound_menu(2);
         G.phase = PH_SELECT, G.phase_t = 0;
-        load_level(G.sel);
+        preview_level(G.sel);
       }
     }
 #endif
