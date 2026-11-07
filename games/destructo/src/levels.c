@@ -162,15 +162,31 @@ static int last_block(const game *g) {
   return best;
 }
 
-/* a stepped roof: square slabs, each smaller, from width w down to a point, a gilded finial on top; returns the
- * finial's block. eaves: how far the first slab reaches past the walls */
+/* a stepped roof from width w up to a point, a gilded finial on top; returns the finial's block. eaves: how far the
+ * first step reaches past the walls. A wide step is a ring of four boards, rim wide (each course hands the corners
+ * to the other pair, as the walls do), so the roof weighs a third of solid slabs and a tall tower can carry one; the
+ * small steps at the top are solid */
+#define ROOF_RIM 0.5f
 static int roof(game *g, float cx, float cz, float w, float y, float step_in, float slab_h, int roof_paint, float eaves) {
   paint(g, roof_paint);
   float ww = w + eaves * 2;
+  if (step_in > ROOF_RIM * 0.36f) step_in = ROOF_RIM * 0.36f; /* each board's middle stays over the ring below it */
+  int c = 0;
   while (ww > 0.55f) {
-    game_add_block(g, M_WOOD, v3(cx, y + slab_h * 0.5f, cz), v3(ww * 0.5f - GAP, slab_h * 0.5f - GAP * 0.5f, ww * 0.5f - GAP), 0);
+    float hy = slab_h * 0.5f - GAP * 0.5f, yc = y + slab_h * 0.5f, hw = ww * 0.5f;
+    if (ww < ROOF_RIM * 2 + 0.5f) game_add_block(g, M_WOOD, v3(cx, yc, cz), v3(hw - GAP, hy, hw - GAP), 0);
+    else {
+      float r = ROOF_RIM * 0.5f;
+      bool xo = (c & 1) == 0; /* this ring's x boards run the full width, the z boards fit between them */
+      float lx = xo ? hw : hw - ROOF_RIM, lz = xo ? hw - ROOF_RIM : hw;
+      for (int k = -1; k <= 1; k += 2) {
+        game_add_block(g, M_WOOD, v3(cx, yc, cz + k * (hw - r)), v3(lx - GAP, hy, r - GAP), 0);
+        game_add_block(g, M_WOOD, v3(cx + k * (hw - r), yc, cz), v3(r - GAP, hy, lz - GAP), 0);
+      }
+    }
     y += slab_h;
     ww -= step_in * 2;
+    c++;
   }
   paint(g, P_GOLD);
   game_add_block(g, M_WOOD, v3(cx, y + 0.2f, cz), v3(0.12f, 0.2f - GAP, 0.12f), 0);
@@ -187,13 +203,14 @@ static void banner_on_last(game *g, float h, int colour) {
 
 /* a storeyed square tower; returns the top. targets: put on the top floors first */
 /* the look a structure's towers share (each kit sets it) */
-static struct { int wall, trim, base, roof, banner; bool timber; } style;
+static struct { int wall, trim, base, roof, banner; bool timber, tall_roof; } style;
 
 static float tower(game *g, float cx, float cz, float w, int storeys, int courses, int *targets_left, int mat, bool crown) {
   float y = 0;
   float tops[16];
   int nt = 0;
   bool roofed = crown && rnd() < 0.6f && storeys <= 4; /* a heavy roof on a tall tower sways for ever: tall ones stay crenellated */
+  if (crown && style.tall_roof && storeys > 4) roofed = true; /* the lone tower kit's tall ones carry a ring roof on their top floor */
   for (int s = 0; s < storeys; s++) {
     bool glassy = s > 0 && rnd() < 0.8f;
     bool timber = style.timber && s == storeys - 1 && storeys > 2;
@@ -219,12 +236,14 @@ static float tower(game *g, float cx, float cz, float w, int storeys, int course
     banner_on_last(g, 1.6f + w * 0.2f, style.banner);
     paint(g, P_NONE);
   } else if (roofed) {
-    /* an attic of three courses (the top floor's crystal stands under it), then the roof */
-    for (int c = 0; c < 3; c++) {
+    /* an attic of three courses (the top floor's crystal stands under it), then the roof; a tall tower's roof stands
+     * on its top floor (every course more on a six-storey tower is a lean that creeps for a minute: levelcheck) */
+    int attic = storeys > 4 ? 0 : 3;
+    for (int c = 0; c < attic; c++) {
       paint(g, c == 2 ? style.trim : style.wall);
       room_from(g, mat, cx, cz, w, w, y + c * BH, 1, c == 1 ? 0 : 99, 1, 2, c);
     }
-    y += 3 * BH;
+    y += attic * BH;
     paint(g, P_NONE);
     int fin = roof(g, cx, cz, w, y, 0.18f + rnd() * 0.12f, 0.22f, style.roof, 0.12f);
     if (fin >= 0) game_add_banner(g, fin, v3(0, g->b[fin].half.y, 0), 1.2f, style.banner);
@@ -241,7 +260,7 @@ static float tower(game *g, float cx, float cz, float w, int storeys, int course
 static void build_tower(game *g, const level_def *L) {
   int t = L->targets;
   style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = rnd() < 0.5f ? P_ROOF_RED : P_ROOF_SLATE;
-  style.banner = rndi(4), style.timber = true;
+  style.banner = rndi(4), style.timber = true, style.tall_roof = true;
   float w = 3.0f + (L->size > 4 ? 1.2f : 0.6f);
   tower(g, 0, 0, w, L->size, 6, &t, M_STONE, true);
   /* any crystals left over stand on crates beside it */
@@ -513,7 +532,7 @@ static void build_keep(game *g, const level_def *L) {
 
 void level_build(game *g, const level_def *L) {
   rnd_state = L->seed * 2654435761u + 12345u;
-  style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = P_ROOF_RED, style.banner = 0, style.timber = false;
+  style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = P_ROOF_RED, style.banner = 0, style.timber = false, style.tall_roof = false;
   g->paint_now = P_NONE;
   switch (L->kind) {
   case K_TOWER: build_tower(g, L); break;
