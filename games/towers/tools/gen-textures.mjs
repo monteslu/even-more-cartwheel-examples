@@ -1,5 +1,6 @@
 // towers' terrain textures: one tiling 512 x 512 sheet each per theme for the ground, the path's floor, the plaza
-// (the floor's wide stretches) and the outcrops (<theme>_ground.png, _path.png, _plaza.png, _rock.png).
+// (the floor's wide stretches), the outcrops and the pools (<theme>_ground.png, _path.png, _plaza.png, _rock.png,
+// _water.png: water, the volcano's lava, the crystal vale's light).
 // The map's vertex colours carry each theme's hue (mapbuild.c's palettes), so these carry the detail: values round
 // 0.85 with the relief painted in (grass blades, sand ripples, snow drifts, cracked basalt; the floors as materials big
 // enough to read at the play camera: packed earth, cobbles, sandstone flags, frozen gravel, ash crust, flagstones;
@@ -163,25 +164,52 @@ function paving(u, v, s) {
   const joint = 1 - smooth(0.012, 0.03, edge);
   return grey(mix(k, 0.55, joint));
 }
-// outcrop stone: weathered in big facets and small grain, cracked, pale lichen
+// outcrop stone: grain and weathering stains, long fracture lines (ridged noise, not cells), pits; the facets and
+// strata come from the outcrop's shape
 function stone(u, v, s) {
-  const f = voronoi(u, v, 4, s, 0.9);
-  let k = 0.78 + 0.16 * (hash(f.id, 1, s + 1) - 0.5) + 0.14 * (fbm(u, v, 8, 5, s + 3) - 0.5);
-  const crack = 1 - smooth(0.0, 0.03, f.edge);
-  k = mix(k, 0.32, crack * 0.9);
-  const fine = voronoi(u, v, 18, s + 5, 0.9);
-  k *= 1 - 0.18 * (1 - smooth(0.0, 0.03, fine.edge));
-  const lichen = smooth(0.66, 0.74, fbm(u, v, 10, 3, s + 7));
-  return grey(mix(k, 1.0, lichen * 0.55));
+  let k = 0.82 + 0.1 * (fbm(u, v, 6, 4, s + 3) - 0.5) + 0.1 * (fbm(u, v, 48, 3, s + 9) - 0.5);
+  k += 0.05 * (hash(Math.floor(u * 512), Math.floor(v * 512), s + 11) - 0.5); // grain
+  const ridge = (o) => 1 - Math.abs(2 * fbm(u + 0.13 * fbm(u, v, 4, 2, s + o + 1), v, 5, 4, s + o) - 1);
+  k *= 1 - 0.16 * smooth(0.94, 0.985, ridge(21)) - 0.08 * smooth(0.95, 0.99, ridge(41)); // fractures
+  k *= 1 - 0.14 * smooth(0.6, 0.75, fbm(u, v, 12, 3, s + 7)); // weathering stains
+  return grey(k);
+}
+// pool water: long soft swell, a web of light (caustics) over it, sparkles of the sky
+function water(u, v, s) {
+  const w = fbm(u, v, 3, 3, s);
+  const swell = fbm(u, v, 6, 3, s + 13);
+  // two webs of light at two sizes, bent and broken up, so no cells read
+  const wu = 0.22 * (w - 0.5), wv = 0.22 * (fbm(u, v, 3, 3, s + 7) - 0.5);
+  const big = voronoi(u + wu, v + wv, 6, s + 3, 1), small = voronoi(u + wu * 1.7 + 0.31, v - wv * 1.4, 15, s + 5, 1);
+  const web = (1 - smooth(0.0, 0.11, big.edge)) * smooth(0.35, 0.65, fbm(u, v, 4, 3, s + 9)) + 0.6 * (1 - smooth(0.0, 0.09, small.edge)) * smooth(0.45, 0.7, fbm(u, v, 5, 3, s + 15));
+  let k = 0.8 + 0.08 * swell + 0.1 * Math.min(1, web);
+  if (hash(Math.floor(u * 256), Math.floor(v * 256), s + 11) > 0.996) k = 1;
+  return grey(k);
+}
+// lava: dark crust in plates, molten light in the cracks between them and in finer cracks across them, hot patches
+function lava(u, v, s) {
+  const wu = 0.18 * (fbm(u, v, 3, 3, s + 9) - 0.5), wv = 0.18 * (fbm(u, v, 3, 3, s + 11) - 0.5);
+  const vo = voronoi(u + wu, v + wv, 5, s, 1), fine = voronoi(u + wu * 1.5, v + wv * 1.5, 13, s + 3, 1);
+  const n = fbm(u, v, 8, 4, s + 5), hot = smooth(0.5, 0.78, fbm(u, v, 3, 3, s + 7)), live = smooth(0.25, 0.6, fbm(u, v, 6, 3, s + 13));
+  let c = [0.07 + 0.06 * n, 0.055 + 0.04 * n, 0.05 + 0.03 * n]; // the crust, nearly black
+  c = mix3(c, [0.55, 0.16, 0.04], hot * 0.6); // molten patches showing through
+  c = mix3(c, [0.95, 0.5, 0.18], (1 - smooth(0.0, 0.03, fine.edge)) * live * (0.3 + 0.5 * hot)); // fine cracks, some cooled dark
+  return mix3(c, [1.0, 0.78, 0.4], (1 - smooth(0.0, 0.05, vo.edge)) * (0.45 + 0.55 * live)); // the plates' cracks
+}
+// crystal light: the water's web, cut in facets that each catch the light their own way
+function crystalpool(u, v, s) {
+  const f = voronoi(u, v, 6, s, 0.8), w = water(u, v, s + 20)[0];
+  let k = w * (0.86 + 0.18 * hash(f.id, 1, s + 1));
+  return grey(mix(k, 1.0, (1 - smooth(0.0, 0.04, f.edge)) * 0.5));
 }
 
 const THEMES = {
-  meadow: { ground: (u, v) => grass(u, v, 101, [1.0, 0.95, 0.6]), path: (u, v) => earth(u, v, 111), plaza: (u, v) => paving(u, v, 121), rock: (u, v) => stone(u, v, 131) },
-  autumn: { ground: (u, v) => grass(u, v, 201, [1.0, 0.55, 0.3]), path: (u, v) => cobbles(u, v, 211), plaza: (u, v) => paving(u, v, 221), rock: (u, v) => stone(u, v, 231) },
-  desert: { ground: sand, path: (u, v) => sandflags(u, v, 241), plaza: (u, v) => paving(u, v, 251), rock: (u, v) => stone(u, v, 261) },
-  snow: { ground: snow, path: (u, v) => gravel(u, v, 271), plaza: (u, v) => paving(u, v, 281), rock: (u, v) => stone(u, v, 291) },
-  volcano: { ground: basalt, path: (u, v) => ash(u, v, 301), plaza: (u, v) => paving(u, v, 311), rock: (u, v) => stone(u, v, 321) },
-  crystal: { ground: (u, v) => grass(u, v, 401, [0.6, 1.0, 0.95]), path: (u, v) => flags(u, v, 411, [0.55, 0.5, 0.65]), plaza: (u, v) => paving(u, v, 421), rock: (u, v) => stone(u, v, 431) },
+  meadow: { ground: (u, v) => grass(u, v, 101, [1.0, 0.95, 0.6]), path: (u, v) => earth(u, v, 111), plaza: (u, v) => paving(u, v, 121), rock: (u, v) => stone(u, v, 131), water: (u, v) => water(u, v, 141) },
+  autumn: { ground: (u, v) => grass(u, v, 201, [1.0, 0.55, 0.3]), path: (u, v) => cobbles(u, v, 211), plaza: (u, v) => paving(u, v, 221), rock: (u, v) => stone(u, v, 231), water: (u, v) => water(u, v, 241) },
+  desert: { ground: sand, path: (u, v) => sandflags(u, v, 241), plaza: (u, v) => paving(u, v, 251), rock: (u, v) => stone(u, v, 261), water: (u, v) => water(u, v, 341) },
+  snow: { ground: snow, path: (u, v) => gravel(u, v, 271), plaza: (u, v) => paving(u, v, 281), rock: (u, v) => stone(u, v, 291), water: (u, v) => water(u, v, 441) },
+  volcano: { ground: basalt, path: (u, v) => ash(u, v, 301), plaza: (u, v) => paving(u, v, 311), rock: (u, v) => stone(u, v, 321), water: (u, v) => lava(u, v, 541) },
+  crystal: { ground: (u, v) => grass(u, v, 401, [0.6, 1.0, 0.95]), path: (u, v) => flags(u, v, 411, [0.55, 0.5, 0.65]), plaza: (u, v) => paving(u, v, 421), rock: (u, v) => stone(u, v, 431), water: (u, v) => crystalpool(u, v, 641) },
 };
 
 // ── PNG (RGB, 8 bit) ────────────────────────────────────────────────
@@ -203,11 +231,11 @@ function png(w, h, rgb) {
 mkdirSync(out, { recursive: true });
 let n = 0;
 for (const [theme, fns] of Object.entries(THEMES))
-  for (const part of ['ground', 'path', 'plaza', 'rock']) {
+  for (const part of ['ground', 'path', 'plaza', 'rock', 'water']) {
     const px = Buffer.alloc(N * N * 3);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const c = fns[part]((x + 0.5) / N, (y + 0.5) / N);
-      for (let k = 0; k < 3; k++) px[(y * N + x) * 3 + k] = Math.round(clamp(0.84 + (c[k] - 0.84) * DETAIL) * 255); // the detail pushed: crisp ground up close
+      for (let k = 0; k < 3; k++) px[(y * N + x) * 3 + k] = Math.round(clamp(theme === 'volcano' && part === 'water' ? c[k] : 0.84 + (c[k] - 0.84) * DETAIL) * 255); // (the lava's crust and light as they are) // the detail pushed: crisp ground up close
     }
     writeFileSync(join(out, `${theme}_${part}.png`), png(N, N, px));
     n++;

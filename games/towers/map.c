@@ -353,17 +353,6 @@ float map_plaza_d(const tdmap *m, float x, float y) {
   return CW_MAX(d + MP_CURB + 0.1f, (4.4f - w) * 0.5f);
 }
 
-static float bump(float t) { return t >= 1 ? 0 : 0.5f + 0.5f * cw_cos(3.14159265f * t); }
-void map_feat_at(const tdmap *m, float x, float y, float *rock, float *water) {
-  *rock = 0, *water = 0;
-  for (int k = 0; k < m->nfeat; k++) {
-    const mp_feat *f = &m->feat[k];
-    float b = bump(sqrtf((x - f->x) * (x - f->x) + (y - f->y) * (y - f->y)) / f->r);
-    if (f->kind == FEAT_ROCK) *rock = CW_MAX(*rock, f->h * cw_pow(b, 0.55f)); /* steep sided, round topped */
-    else *water = CW_MAX(*water, b);
-  }
-}
-
 static float hnoise(int x, int y, uint32_t seed) {
   uint32_t h = (uint32_t)x * 374761393u + (uint32_t)y * 668265263u + seed * 2246822519u;
   h = (h ^ (h >> 13)) * 1274126177u;
@@ -377,6 +366,100 @@ static float vnoise2(float x, float y, uint32_t seed) {
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
 }
 
+static float bump(float t) { return t >= 1 ? 0 : 0.5f + 0.5f * cw_cos(3.14159265f * t); }
+/* a feature's own numbers (0..1) from where it stands, so it takes the same shape wherever it is built or checked */
+static float feat_n(const mp_feat *f, int k) { return hnoise((int)floorf(f->x * 64 + 0.5f), (int)floorf(f->y * 64 + 0.5f), 300u + (uint32_t)k); }
+
+/* a pool's bowl (0 at its rim, 1 at its deepest): an organic shoreline, never a circle. The distance is stretched along
+ * one axis, by lobes round the pool (three harmonics) and by a little noise, never shrunk, so the bowl stays inside its
+ * radius (the generator's clearances hold), and squared, so the banks are short and the water wide */
+static float pool_bowl(const mp_feat *f, float x, float y) {
+  float dx = x - f->x, dy = y - f->y;
+  if (dx * dx + dy * dy >= f->r * f->r) return 0;
+  float a = feat_n(f, 0) * 3.14159265f, ca = cw_cos(a), sa = cw_sin(a);
+  float u = dx * ca + dy * sa, v = (dy * ca - dx * sa) * (1.0f + 0.45f * feat_n(f, 1));
+  float th = atan2f(v, u);
+  float g = cw_sin(2 * th + 6.2831853f * feat_n(f, 2)) + 0.7f * cw_sin(3 * th + 6.2831853f * feat_n(f, 3)) + 0.45f * cw_sin(5 * th + 6.2831853f * feat_n(f, 4));
+  float t = sqrtf(u * u + v * v) / f->r * (1 + 0.42f * (0.5f + 0.5f * g / 2.15f) + 0.14f * vnoise2(x * 1.3f, y * 1.3f, 77));
+  return bump(t * t);
+}
+
+/* an outcrop: a block of rock with a polygon's outline (seven fracture planes round it, inside its radius), cliffs at its
+ * edge, a roof of three tilted planes broken into strata (ledges and risers), and loose boulders round its foot */
+/* the two largest of n values: the difference of the earlier one (by index) and the later one, so it changes sign
+ * exactly where they cross (a crease between two planes) */
+static float crease(const float *v, int n) {
+  int i1 = 0, i2 = -1;
+  for (int i = 1; i < n; i++)
+    if (v[i] > v[i1]) i2 = i1, i1 = i;
+    else if (i2 < 0 || v[i] > v[i2]) i2 = i;
+  return i2 < 0 ? 1 : v[CW_MIN(i1, i2)] - v[CW_MAX(i1, i2)];
+}
+/* cr (when wanted): the outcrop's creases at the point as four fields that change sign across them (the cliff's top, the
+ * strata's ledges and risers, the roof's planes, the walls' corners), so the terrain can be cut along them */
+static float rock_h(const mp_feat *f, float x, float y, float *cr) {
+  float dx = (x - f->x) / f->r, dy = (y - f->y) / f->r, d2 = dx * dx + dy * dy;
+  if (cr) cr[0] = cr[1] = cr[2] = cr[3] = 1;
+  if (d2 >= 1) return 0;
+  float P = sqrtf(d2), a0 = feat_n(f, 10) * 6.2831853f, h = 0, wall[8], roof[4];
+  for (int i = 0; i < 7; i++) {
+    float a = a0 + (float)i * 0.8975979f + (feat_n(f, 11 + i) - 0.5f) * 0.45f, rho = 0.56f + 0.3f * feat_n(f, 20 + i);
+    wall[i] = (dx * cw_cos(a) + dy * cw_sin(a)) / rho;
+    P = CW_MAX(P, wall[i]);
+  }
+  wall[7] = sqrtf(d2);
+  if (P < 1) {
+    float cliff = CW_MIN((1 - P) / 0.13f, 1.0f), top = 1;
+    roof[3] = -1;
+    for (int j = 0; j < 3; j++) {
+      float a = feat_n(f, 30 + j) * 6.2831853f, m = 0.45f + 0.65f * feat_n(f, 33 + j), c = 0.92f + 0.12f * feat_n(f, 36 + j);
+      float t = c - m * (dx * cw_cos(a) + dy * cw_sin(a));
+      top = CW_MIN(top, t), roof[j] = -t;
+    }
+    h = CW_MAX(CW_MIN(cliff, top), 0.0f) * f->h;
+    float st = f->h / (float)(2 + (int)(feat_n(f, 40) * 2.99f)), u = h / st, fl = floorf(u), fr = u - fl;
+    h += (st * (fl + CW_CLAMP((fr - 0.62f) / 0.38f, 0.0f, 1.0f)) - h) * 0.7f;
+    if (cr) cr[0] = (1 - P) / 0.13f - top, cr[1] = fr < 0.62f ? -fr * (0.62f - fr) : (fr - 0.62f) * (1 - fr), cr[2] = crease(roof, 4), cr[3] = crease(wall, 8);
+  }
+  int nb = 3 + (int)(feat_n(f, 50) * 2.99f);
+  for (int b = 0; b < nb; b++) {
+    float rb = 0.11f + 0.08f * feat_n(f, 51 + b * 4), ab = feat_n(f, 52 + b * 4) * 6.2831853f, db = 1 - rb * 1.45f - 0.05f * feat_n(f, 53 + b * 4);
+    float bx = (dx - cw_cos(ab) * db) / rb, by = (dy - cw_sin(ab) * db) / rb, pb = bx * bx + by * by, side[6];
+    if (pb >= 1) continue;
+    pb = side[5] = sqrtf(pb);
+    for (int i = 0; i < 5; i++) {
+      float a = ab + (float)i * 1.2566371f + feat_n(f, 54 + b * 4) * 1.2f, rho = 0.7f + 0.25f * feat_n(f, 80 + b * 5 + i);
+      side[i] = (bx * cw_cos(a) + by * cw_sin(a)) / rho;
+      pb = CW_MAX(pb, side[i]);
+    }
+    float hb = pb < 1 ? CW_MIN(f->h * 0.3f, 0.5f) * CW_MIN((1 - pb) / 0.4f, 1.0f) * (0.85f + 0.15f * by) : 0;
+    if (hb > h) {
+      h = hb;
+      if (cr) cr[0] = (1 - pb) / 0.4f - 1, cr[1] = cr[2] = 1, cr[3] = crease(side, 6);
+    }
+  }
+  return h;
+}
+
+void map_rock_creases(const tdmap *m, float x, float y, float cr[4]) {
+  float best = 0, c[4];
+  cr[0] = cr[1] = cr[2] = cr[3] = 1;
+  for (int k = 0; k < m->nfeat; k++) {
+    if (m->feat[k].kind != FEAT_ROCK) continue;
+    float h = rock_h(&m->feat[k], x, y, c);
+    if (h > best) best = h, memcpy(cr, c, sizeof c);
+  }
+}
+
+void map_feat_at(const tdmap *m, float x, float y, float *rock, float *water) {
+  *rock = 0, *water = 0;
+  for (int k = 0; k < m->nfeat; k++) {
+    const mp_feat *f = &m->feat[k];
+    if (f->kind == FEAT_ROCK) *rock = CW_MAX(*rock, rock_h(f, x, y, NULL));
+    else *water = CW_MAX(*water, pool_bowl(f, x, y));
+  }
+}
+
 float map_ground_h(const tdmap *m, float x, float y) {
   float d = map_floor_d(m, x, y, NULL);
   float t = CW_CLAMP(d / MP_CURB, 0.0f, 1.0f), h = MP_GROUND_H * t * t * (3 - 2 * t);
@@ -385,10 +468,7 @@ float map_ground_h(const tdmap *m, float x, float y) {
   if (mp_in(m, tx, ty) && m->t[ty][tx] == T_WATER) h = CW_MIN(h, -0.4f);
   float rock, water;
   map_feat_at(m, x, y, &rock, &water);
-  if (rock > 0) { /* an outcrop: weathered lumps and ledges over its dome */
-    float k = CW_MIN(rock / 0.5f, 1.0f);
-    h += rock * (h / MP_GROUND_H) + k * (0.22f * (vnoise2(x * 1.6f, y * 1.6f, 91) - 0.5f) + 0.1f * (vnoise2(x * 4.1f, y * 4.1f, 93) - 0.5f));
-  }
+  if (rock > 0) h += rock * (h / MP_GROUND_H); /* an outcrop stands on the raised ground */
   if (water > 0) h = CW_MIN(h, MP_GROUND_H - (MP_GROUND_H + 0.6f) * water);
   return h;
 }

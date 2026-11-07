@@ -13,7 +13,7 @@
 //   floor      let the creeps walk the floor (map_walkable: the path tiles' part of the routes' floor, the pads' level
 //              ground pushed out of it) from every gate to the core with room to pass
 //   bake       have its bake: lightmaps/<n>.cwlm present and lightmaps/<n>.hash equal to the map's bake hash (a map
-//              or a kit changed after its bake fails)
+//              or a kit or the way the terrain is built (mapbuild.h MB_TERRAIN) changed after its bake fails)
 //   clear      be held by the bots in the soak build (--soak <towers_soak>): two bots from the start hold the core
 //              through every wave with the game's rules
 // The controls (tools/maps-broken/*.cwtd, each broken on purpose in one way, named <check>-<what>.cwtd) must each
@@ -98,6 +98,7 @@ function parse(text) {
 }
 
 // ── the bake hash (map.c map_bake_hash, mapbuild.c mapbuild_bake_hash) ──
+const TERRAIN = readFileSync(join(GAME, 'mapbuild.h'), 'utf8').match(/#define MB_TERRAIN "([^"]*)"/)[1];
 const FNV = 0xcbf29ce484222325n, PRIME = 0x100000001b3n, MASK = (1n << 64n) - 1n;
 const fold = (h, bytes) => { for (const c of bytes) h = ((h ^ BigInt(c)) * PRIME) & MASK; return h; };
 function bakeHash(text, theme, models) {
@@ -118,6 +119,7 @@ function bakeHash(text, theme, models) {
     h = fold(h, b);
     h = ((h ^ BigInt(b.length)) * PRIME) & MASK;
   }
+  h = fold(h, Buffer.from(TERRAIN, 'latin1')); // how the terrain is built (mapbuild.h MB_TERRAIN)
   return h.toString(16).padStart(16, '0');
 }
 
