@@ -720,7 +720,7 @@ static void paint_and_shape(void) {
       float n = fbm((float)x / 9, (float)z / 9, 501, 3);
       if (base == 0) { over = 5, blend = (int)(cw_clampf((n - 0.62f) * 2.0f, 0, 1) * 150); }        /* darker moss in patches */
       if (base == 1) { over = 4, blend = (int)(cw_clampf((n - 0.4f) * 3.0f, 0, 1) * 230); }        /* rock through the snow, in broad patches */
-      if (base == 5 && rgn[i] == RG_WOOD) { over = 0, blend = (int)(cw_clampf((n - 0.42f) * 2.5f, 0, 1) * 220); } /* the wood: a moss floor, grass in the clearings */
+      if (base == 5 && rgn[i] == RG_WOOD) { base = 0, over = 5, blend = (int)(cw_clampf((0.62f - n) * 2.5f, 0, 1) * 220); } /* the wood: grass, dark moss in the hollows */
       else if (base == 5) { over = 0, blend = (int)(cw_clampf((h[i] + d->origin.y - 8.6f) * 1.2f, 0, 1) * 200); } /* grass on the marsh's dry humps */
       if (base == 7) { over = 4, blend = (int)(cw_clampf((n - 0.5f) * 2.0f, 0, 1) * 160); }
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
@@ -1211,10 +1211,11 @@ static const int NEAR[RG_COUNT] = {
   [RG_WOOD] = B(RG_MARSH) | B(RG_WOOD),
 };
 void world_page(float x, float z, int region) {
-  (void)z;
-  /* the marsh water only where it can be seen: from the marsh and the ways into it (its refraction copies the frame) */
+  /* the marsh water only where it can be seen: from the marsh and within 40 m of it (its refraction copies the frame;
+   * from the wood and the heights it is hidden behind the hills anyway) */
   static int water = -1;
-  int want = x > 196 || region == RG_MARSH;
+  float wdx = fmaxf(fmaxf(213 - x, x - 323), 0), wdz = fmaxf(fmaxf(120 - z, z - 310), 0);
+  int want = region == RG_MARSH || wdx * wdx + wdz * wdz < 40 * 40;
   if (want != water) { cw_node w = cw_node_get(W_root, "World/Water"); if (w.id) cw_node_set(w, "visible", cw_val_bool(want)), cw_node_set(w, "refraction", cw_val_bool(want)); water = want; }
   int live = NEAR[CW_CLAMP(region, 0, RG_COUNT - 1)];
   if (live == g_world_paged) return;
@@ -1226,9 +1227,9 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.35f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.62f },
+  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.25f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.9f, 1.52f },
   /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
-  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.26f },
+  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.36f },
   /* the marsh: teal and violet, a thicker cool mist */
   { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.36f },
   /* the keep: a crimson sunset, ember haze */
@@ -1240,7 +1241,7 @@ static const look LOOK[RG_COUNT] = {
   /* the spire's downs: wind, a high clear sky */
   { { 0.48f, 0.64f, 0.9f }, 0.0018f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.4f },
   /* the glowcap wood: deep green under the canopy, teal glow */
-  { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.45f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.95f },
+  { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.9f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.95f },
 };
 static look CUR;
 static const float g_amb_k = 0.26f; /* the fill under the sun kept low, so shadows have depth */
@@ -1344,14 +1345,14 @@ int world_trees(const float (**unused)[5]) { (void)unused; return ntree; }
  * species and how often the second */
 typedef struct grove { float cell, chance; uint32_t paints; int a, b; float b_share; } grove;
 static const grove GROVE[RG_COUNT] = {
-  [RG_MEADOW] = { 11, 0.55f, 1u << 0, SP_OAK, SP_BIRCH, 0.35f },
+  [RG_MEADOW] = { 13, 0.55f, 1u << 0, SP_OAK, SP_BIRCH, 0.35f },
   [RG_CANYON] = { 20, 0.35f, (1u << 3), SP_ASPEN, SP_ASPEN, 0 },
   [RG_MARSH] = { 12, 0.45f, (1u << 5) | (1u << 0), SP_WILLOW, SP_BIRCH, 0.15f },
   [RG_KEEP] = { 10, 0.5f, (1u << 7) | (1u << 0), SP_PINE, SP_PINE, 0 },
-  [RG_HEIGHTS] = { 10, 0.5f, (1u << 1), SP_FIR, SP_PINE, 0.25f },
+  [RG_HEIGHTS] = { 12, 0.5f, (1u << 1), SP_FIR, SP_PINE, 0.25f },
   [RG_UNDER] = { 1000, 0, 0, SP_OAK, SP_OAK, 0 },
   [RG_SPIRE] = { 15, 0.45f, 1u << 0, SP_WINDSWEPT, SP_BIRCH, 0.4f },
-  [RG_WOOD] = { 8, 0.6f, (1u << 5) | (1u << 0), SP_DEEPWOOD, SP_GLOWCAP, 0.4f },
+  [RG_WOOD] = { 12, 0.55f, (1u << 5) | (1u << 0), SP_DEEPWOOD, SP_GLOWCAP, 0.5f },
 };
 static bool clear_of_things(float x, float z) {
   for (int i = 0; i < nbox; i++) {
