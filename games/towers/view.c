@@ -24,7 +24,8 @@
 
 t3_color lin(float r, float g, float b) { return mb_lin(r, g, b); }
 const float PCOL[MAXP][3] = { { 0.25f, 0.65f, 1.0f }, { 1.0f, 0.55f, 0.12f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.8f } };
-const float TCOL[TK_KINDS][3] = { { 0.55f, 0.8f, 1.0f }, { 0.6f, 0.95f, 1.0f }, { 1.0f, 0.3f, 0.75f }, { 1.0f, 0.6f, 0.2f } };
+/* each tower kind its own hue, far apart round the wheel: violet bolt, ice-cyan frost, rose beam, amber mortar */
+const float TCOL[TK_KINDS][3] = { { 0.66f, 0.46f, 1.0f }, { 0.32f, 0.86f, 1.0f }, { 1.0f, 0.28f, 0.52f }, { 1.0f, 0.62f, 0.14f } };
 
 static const t3_mat4 ZERO;
 #define PAD_H 0.12f /* a pad's top: the towers stand on it */
@@ -45,6 +46,7 @@ static struct {
   partv base[TK_KINDS], head[TK_KINDS];
   float muzzle[TK_KINDS][3][3];
   t3_instanced_mesh *pad, *pad_glow, *pad_trim;
+  t3_color tint[TK_KINDS][2]; /* a tower's body in its kind's hue: the base lighter, the head deeper */
   t3_instanced_mesh *core[4], *core_glow[4];
   int core_frames;
   t3_instanced_mesh *portal, *portal_glow, *shell, *shell_glow;
@@ -308,16 +310,20 @@ bool view_init_step(cw_node root, int *done_, int *total) {
     kind_load(s - S_KINDS);
   } else if (s >= S_TOWERS && s < S_PARTS) {
     int k = s - S_TOWERS;
+    for (int part = 0; part < 2; part++) {
+      float a = part ? 0.8f : 0.55f;
+      V.tint[k][part] = lin(1 - a + a * TCOL[k][0], 1 - a + a * TCOL[k][1], 1 - a + a * TCOL[k][2]);
+    }
     static const char *const ID[TK_KINDS] = { "bolt", "frost", "beam", "mortar" };
     char f[64];
     snprintf(f, sizeof f, "models/tower_%s_base.cwchar", ID[k]);
     V.base[k].n = model_parts(f, "TowerBase", V.base[k].surf, V.base[k].glow, V.base[k].trim, 3, MAXT, fb_tower, 0.4f);
     snprintf(f, sizeof f, "models/tower_%s_head.cwchar", ID[k]);
     V.head[k].n = model_parts(f, "TowerHead", V.head[k].surf, V.head[k].glow, V.head[k].trim, 3, MAXT, fb_head, 0.3f);
-    { /* the towers pop: a bright warm rim round every part, lit from the camera's side, so a tower reads at a glance */
+    { /* the towers pop: a rim of the kind's own hue round every part, lit from the camera's side */
       cw_rim_light_desc rd = cw_rim_light_default();
-      rd.color = (t3_color){ 1.0f, 0.92f, 0.78f };
-      rd.strength = 1.6f, rd.power = 2.4f, rd.near = 0, rd.far = 1, rd.close = 1;
+      rd.color = lin(TCOL[k][0], TCOL[k][1], TCOL[k][2]);
+      rd.strength = 1.2f, rd.power = 2.4f, rd.near = 0, rd.far = 1, rd.close = 1;
       for (int l = 0; l < 3; l++) {
         if (V.base[k].surf[l]) cw_rim_light_apply(V.base[k].surf[l]->mesh.materials[0], &rd);
         if (V.head[k].surf[l]) cw_rim_light_apply(V.head[k].surf[l]->mesh.materials[0], &rd);
@@ -575,7 +581,7 @@ static void sync_towers(const sim *s, float time) {
     if (fb >= 0 && b->surf[fb] && nb[kd][fb] < MAXT) {
       int n = nb[kd][fb]++;
       put_s(b->surf[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC);
-      t3_instanced_mesh_set_color_at(b->surf[fb], n, gl);
+      t3_instanced_mesh_set_color_at(b->surf[fb], n, (t3_color){ gl.r * V.tint[kd][0].r, gl.g * V.tint[kd][0].g, gl.b * V.tint[kd][0].b });
       if (b->glow[fb]) put_s(b->glow[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC), t3_instanced_mesh_set_color_at(b->glow[fb], n, glc);
       if (b->trim[fb]) put_s(b->trim[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC), t3_instanced_mesh_set_color_at(b->trim[fb], n, lin(pc[0], pc[1], pc[2]));
     }
@@ -585,7 +591,7 @@ static void sync_towers(const sim *s, float time) {
     if (fh >= 0 && h->surf[fh] && nh[kd][fh] < MAXT) {
       int n = nh[kd][fh]++;
       put(h->surf[fh], n, x, hy, z, yaw, grow * TSC);
-      t3_instanced_mesh_set_color_at(h->surf[fh], n, gl);
+      t3_instanced_mesh_set_color_at(h->surf[fh], n, (t3_color){ gl.r * V.tint[kd][1].r, gl.g * V.tint[kd][1].g, gl.b * V.tint[kd][1].b });
       if (h->glow[fh]) put(h->glow[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->glow[fh], n, glc);
       if (h->trim[fh]) put(h->trim[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->trim[fh], n, lin(pc[0], pc[1], pc[2]));
     }
@@ -593,7 +599,7 @@ static void sync_towers(const sim *s, float time) {
     cw_splats_add(V.shadows, (t3_vec3){ x + 0.5f, 0, z + 0.45f }, 2.4f, 1.8f, 0.6f, 0, (t3_color){ 1, 1, 1 }, 0.75f);
     if (kd == TK_FROST) {
       float r = TOWER[TK_FROST].range[L];
-      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, r * 2, r * 2, time * 0.3f, 0, (t3_color){ 0.25f, 0.65f, 1.0f }, 0.35f + 0.1f * cw_sin(time * 2.5f + (float)k));
+      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, r * 2, r * 2, time * 0.3f, 0, (t3_color){ 0.25f, 0.65f, 1.0f }, 0.16f + 0.05f * cw_sin(time * 2.5f + (float)k));
     } else
       cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 2.6f, 2.6f, 0, 0, lin(tc[0], tc[1], tc[2]), 0.35f * pulse);
     cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 3.2f, 3.2f, 0, 0, lin(pc[0], pc[1], pc[2]), 0.9f); /* a lit disc of the owner's colour under every tower */

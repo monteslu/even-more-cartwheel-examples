@@ -25,6 +25,10 @@
  *                                  middle and radius in tiles (fractions allowed); the tiles under it stay ground
  *   light <x> <y> <height> <r> <g> <b> <energy> <range>   a light in the bake only (lamps, glows): its tile centre
  *                                  and height in metres, colour 0..1, energy and range as OmniLight3D
+ *   route <x> <y> <w> <x> <y> <w> ...   a path as the generator drew it: its waypoints (tile units, the grid's corner
+ *                                  at 0 0) and its width there, joined by a Catmull-Rom curve. The ground's shape
+ *                                  follows the routes (map_floor_d), the rules the tiles (and the floor's part of
+ *                                  them); a map without routes draws its path from the tiles
  *
  * Tile (x, y) is column x, row y; row 0 is the far (north, top of the screen) side. Its centre in the world is
  * x = (x - w / 2 + 0.5) * 2, z = (y - h / 2 + 0.5) * 2 metres. */
@@ -39,7 +43,7 @@
 #define MP_TILE 2.0f   /* metres a tile */
 #define MP_GROUND_H 0.5f /* raised ground's height over the path */
 #define MP_ROCK_H 1.6f   /* rock's */
-enum { MP_MAXSPAWN = 4, MP_MAXSLOT = 64, MP_MAXPROP = 400, MP_MAXLIGHT = 96, MP_MAXKIND = 8, MP_MAXFEAT = 16 };
+enum { MP_MAXSPAWN = 4, MP_MAXSLOT = 64, MP_MAXPROP = 400, MP_MAXLIGHT = 96, MP_MAXKIND = 8, MP_MAXFEAT = 16, MP_MAXROUTE = 6, MP_MAXWP = 48 };
 enum { MP_THEME_MEADOW, MP_THEME_AUTUMN, MP_THEME_DESERT, MP_THEME_SNOW, MP_THEME_VOLCANO, MP_THEME_CRYSTAL, MP_THEMES };
 extern const char *const MP_THEME_ID[MP_THEMES];
 
@@ -53,6 +57,7 @@ typedef struct mp_light { uint8_t x, y; float h, r, g, b, energy, range; } mp_li
  * ground) or a pool (a bowl down under its water); x, y its middle and r its radius in tiles */
 enum { FEAT_ROCK, FEAT_WATER };
 typedef struct mp_feat { uint8_t kind; float x, y, r, h; } mp_feat;
+typedef struct mp_route { int n; float wp[MP_MAXWP][3]; } mp_route; /* its waypoints: x, y, width (tiles) */
 
 typedef struct tdmap {
   int num, theme, w, h, waves;
@@ -60,7 +65,7 @@ typedef struct tdmap {
   float diff;
   char name[48];
   uint8_t t[MP_MAX_H][MP_MAX_W]; /* [y][x] tile kind */
-  int nspawn, nslot, nprop, nlight, nkind, nfeat;
+  int nspawn, nslot, nprop, nlight, nkind, nfeat, nroute;
   uint8_t spawn[MP_MAXSPAWN][2];
   uint8_t core[2];
   uint8_t kind[MP_MAXKIND];
@@ -68,6 +73,7 @@ typedef struct tdmap {
   mp_prop prop[MP_MAXPROP];
   mp_light light[MP_MAXLIGHT];
   mp_feat feat[MP_MAXFEAT];
+  mp_route route[MP_MAXROUTE];
 } tdmap;
 
 /* Parse a .cwtd from its text; false with a message in err when it is not a valid map. kind_by_name names the creeps
@@ -96,7 +102,24 @@ static inline void mp_gate_pos(const tdmap *m, int k, float *x, float *z) {
 static inline void mp_core_pos(const tdmap *m, float *x, float *z) { *x = mp_wx(m, m->core[0]) + MP_TILE * 0.5f, *z = mp_wz(m, m->core[1]) + MP_TILE * 0.5f; }
 /* the slot's owner when n play (0 when one plays) */
 static inline int mp_owner(const mp_slot *s, int n) { return n <= 1 ? 0 : s->own[(n > 4 ? 4 : n) - 1]; }
-/* the hash of what a map's bake depends on: FNV-1a 64 over its text's theme, size, grid, feature, prop and light lines (each trimmed, with a newline), in file order. The bake tool writes it beside the .cwlm (lightmaps/<n>.hash,
+/* ── the ground's shape (the view draws it, the rules walk its floor; tools/check-maps.mjs mirrors it) ──
+ * Points in tile units over the grid (tile (x, y) spans [x, x + 1] x [y, y + 1]). */
+#define MP_CURB 0.25f  /* tiles: the curb's width, the floor's edge up to the ground */
+#define MP_INSET 0.15f /* the floor's half-width: the route's less this (its tiles reach a little past it) */
+#define MP_PAD_R 0.5f  /* the level ground round a slot's middle */
+/* the path's floor: the signed distance (tiles) from its edge, negative on the floor. The routes' curves and the
+ * core's yard run together smoothly, pushed back round every slot so its pad stands on level ground. wide: the
+ * route's width at the nearest point (NULL when not wanted). */
+float map_floor_d(const tdmap *m, float x, float y, float *wide);
+/* where the floor is paved as a plaza (negative): the wide stretches, a curb's width in from the floor's edge */
+float map_plaza_d(const tdmap *m, float x, float y);
+/* the outcrops' height (m) over the ground at a point (the highest dome) and the pools' depth there (0 .. 1) */
+void map_feat_at(const tdmap *m, float x, float y, float *rock, float *water);
+/* the ground's height (m): the floor at 0, the curb rising to MP_GROUND_H, outcrops on the ground, pools sunk in */
+float map_ground_h(const tdmap *m, float x, float y);
+/* a point the creeps may walk: on a path tile and on the floor */
+bool map_walkable(const tdmap *m, float x, float y);
+/* the hash of what a map's bake depends on: FNV-1a 64 over its text's theme, size, grid, feature, prop, light, slot and route lines (each trimmed, with a newline), in file order. The bake tool writes it beside the .cwlm (lightmaps/<n>.hash,
  * 16 hex digits); tools/check-maps.mjs computes the same from the text and compares. */
 uint64_t map_bake_hash(const char *text);
 

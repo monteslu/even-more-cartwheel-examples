@@ -6,25 +6,25 @@ theme snow
 size 36 20
 seed 135623
 waves 18
-diff 1.902
+diff 2.101
 kinds ghoul skitter hound sporeling bloater imp
 grid
 ggggggggggggggggggg..ggggggggggggggg
-ggggggogogogogogogg..goggo...ggggggg
+ggggggogogogogogogg..ggggg...ggggggg
 ................................gggg
 .................................ggg
-gggggo.............o...gogggggo..ggg
-ggggggggogogoggogoggg....gogog...ggg
+gggogg.............g...gogggggg..ggg
+gggggggogogogogoggogo....gogog...ggg
 gggggggggggggggggggggg.....gg...gggg
 gggggggggggggggggggggogg........gggg
-gggggggggggogggggggggggo......gggggg
-ggggg.........gggggg........oggggggg
-gggg......................oggggggggg
-gggg..gogo......gggggggggggggggggggg
-gggg...gggggoggggggggggggggggggggggg
-ggggg..ogggggggggggggggggggggggggggg
-ggggg...gggggggggggggggggggggggggggg
-ggggggg...gggggggggggo....gggggggggg
+gggggggggogogogggggggggo......gggggg
+ggggg.........gggggg........gogggggg
+gggg......................gogggggggg
+gggg..gogg......gggggggggggggggggggg
+gggg...ggoggoggggggggggggggggggggggg
+ggggg..ggggggggggggggggggggggggggggg
+ggggg...ggoggggggggggggggggggggggggg
+ggggggg...ggoggggggggg....gggggggggg
 gggggggg...................ggggggggg
 gggggggggg.................ggggggggg
 ggggggggggggggggggggggoggggggggggggg
@@ -33,143 +33,130 @@ end
 spawn 0 2
 spawn 19 0
 core 25 16
-slot 24 4 1 2 1
 slot 28 5 1 2 3
+slot 24 4 1 2 1
 slot 23 8 1 2 3
 slot 26 5 1 2 1
-slot 19 4 1 1 1
 slot 7 11 0 0 2
-slot 30 4 1 2 1
-slot 21 7 1 1 3
-slot 22 1 1 1 1
-slot 16 1 0 1 0
-slot 9 11 0 0 2
-slot 7 13 0 0 2
-slot 26 10 1 2 3
-slot 15 5 0 1 2
-slot 12 5 0 1 2
+slot 20 5 1 1 1
+slot 21 7 1 2 3
+slot 16 1 1 1 1
+slot 9 12 0 0 2
+slot 11 5 0 0 0
+slot 9 5 0 0 0
+slot 18 5 1 1 1
 slot 10 1 0 0 0
-slot 10 5 0 0 2
-slot 14 1 0 1 0
-slot 25 1 1 2 1
-slot 28 9 1 2 3
+slot 15 5 1 1 1
+slot 13 5 0 1 2
+slot 14 1 1 1 1
 slot 8 1 0 0 0
-slot 12 1 0 0 0
-slot 21 15 1 1 3
-slot 5 4 0 0 0
-slot 8 5 0 0 0
-slot 17 5 1 1 1
-slot 11 8 0 0 2
-slot 22 18 1 2 3
+slot 12 1 0 1 0
+slot 11 8 0 1 2
 slot 6 1 0 0 0
+slot 27 10 1 2 3
+slot 22 18 1 2 3
 slot 12 12 0 1 2
-feature water 34.52 16.98 2.78 0.00
-feature water 1.97 18.99 3.27 0.00
-feature rock 32.53 11.59 2.38 1.66
-feature rock 34.02 11.38 1.79 2.10
-feature rock 33.81 10.06 1.56 1.89
-feature rock 34.26 9.20 1.19 1.05
-feature rock 35.41 9.50 0.96 1.92
-prop 0 1 lamp 0 2
-prop 30 1 lamp 0 2
-prop 2 4 lamp 0 0
-prop 5 8 lamp 0 2
-prop 13 8 lamp 0 2
-prop 17 9 lamp 0 2
-prop 20 11 lamp 0 0
-prop 3 12 lamp 0 1
-prop 9 14 lamp 0 2
-prop 5 15 lamp 0 0
-prop 17 15 lamp 0 2
-prop 14 18 lamp 0 0
-prop 19 18 lamp 0 0
-prop 0 0 decor 0 0
+slot 7 5 0 0 0
+slot 9 8 0 0 2
+slot 10 14 0 0 2
+slot 29 9 1 2 3
+slot 3 4 0 0 0
+slot 12 15 0 1 2
+slot 13 8 1 1 3
+route -2 3 2 2 3 2 10.75 3.681 2.346 17.5 3.389 2.432 24.25 2.604 2.011 31 3 2.2 31 6.5 2.079 24.75 9.718 2.473 18.5 10.418 1.45 12.25 10.592 2.476 6 10 2.2 6 13.5 2.005 11 16.922 1.45 18 16.923 2.204 25 16.548 2.401 26 17 2
+route 20 -2 2 20 2 2 22.341 5.134 2.149 27.871 8.476 2
+feature water 34.39 15.47 2.86 0.00
+feature water 4.41 18.37 1.80 0.00
+feature rock 1.09 10.50 1.45 1.83
+feature rock 0.30 11.37 0.99 1.59
+feature rock 1.11 14.84 2.17 1.35
+feature rock -0.74 15.20 1.52 1.23
+feature rock 1.00 9.77 1.56 1.48
+feature rock 1.14 10.80 1.09 1.35
+feature rock 1.94 8.80 1.04 2.12
+prop 21 0 lamp 0 3
+prop 3 1 lamp 0 2
+prop 33 3 lamp 0 3
+prop 32 7 lamp 0 3
+prop 25 11 lamp 0 0
+prop 22 14 lamp 0 2
+prop 15 15 lamp 0 2
+prop 8 17 lamp 0 0
+prop 20 18 lamp 0 0
 prop 1 0 decor 3 1
-prop 2 0 decor 2 0
-prop 3 0 decor 1 2
-prop 4 0 decor 2 3
-prop 8 0 decor 4 0
-prop 10 0 decor 4 0
-prop 12 0 decor 7 2
-prop 17 0 decor 7 3
-prop 31 0 decor 2 3
-prop 32 0 decor 2 1
-prop 33 0 decor 3 1
-prop 35 0 decor 0 0
-prop 33 1 decor 1 3
-prop 34 2 decor 2 0
-prop 35 2 decor 0 1
-prop 34 3 decor 0 1
-prop 35 3 decor 3 1
-prop 34 4 decor 0 0
-prop 1 5 decor 2 2
-prop 35 5 decor 3 2
-prop 2 6 decor 2 3
-prop 3 6 decor 4 2
-prop 5 6 decor 1 0
-prop 6 6 decor 0 1
-prop 7 6 decor 4 3
+prop 2 0 decor 2 1
+prop 7 0 decor 4 1
+prop 22 0 decor 0 1
+prop 23 0 decor 2 0
+prop 33 0 decor 1 3
+prop 34 0 decor 1 0
+prop 35 0 decor 2 2
+prop 35 2 decor 3 2
+prop 35 3 decor 3 2
+prop 35 4 decor 1 3
+prop 4 5 decor 7 0
+prop 34 5 decor 2 2
+prop 4 6 decor 4 0
+prop 6 6 decor 4 0
+prop 14 6 decor 7 2
+prop 17 6 decor 6 0
 prop 34 6 decor 1 3
-prop 35 6 decor 2 3
-prop 3 7 decor 1 0
-prop 7 7 decor 3 2
-prop 10 7 decor 7 1
-prop 11 7 decor 4 1
-prop 18 7 decor 1 2
-prop 0 8 decor 2 1
-prop 1 8 decor 2 2
-prop 2 8 decor 3 0
-prop 16 8 decor 1 2
-prop 0 10 decor 6 0
-prop 1 10 decor 2 0
-prop 0 11 decor 1 2
-prop 2 11 decor 4 3
-prop 1 12 decor 5 3
-prop 2 12 decor 7 2
-prop 18 12 decor 7 0
-prop 20 12 decor 7 3
-prop 21 12 decor 2 3
-prop 25 12 decor 3 3
-prop 27 12 decor 2 1
-prop 0 13 decor 0 3
-prop 1 13 decor 5 3
-prop 17 13 decor 1 2
-prop 19 13 decor 1 2
-prop 27 13 decor 2 2
-prop 3 14 decor 2 0
-prop 15 14 decor 6 2
-prop 16 14 decor 0 2
-prop 19 14 decor 3 0
-prop 29 14 decor 1 1
-prop 30 15 decor 3 3
-prop 30 16 decor 7 3
-prop 6 17 decor 0 0
-prop 29 17 decor 1 0
-prop 8 18 decor 3 3
-prop 29 18 decor 4 3
-prop 30 18 decor 0 3
-prop 6 19 decor 2 1
+prop 7 7 decor 3 1
+prop 13 7 decor 7 2
+prop 15 7 decor 1 1
+prop 17 7 decor 5 2
+prop 34 7 decor 2 2
+prop 35 7 decor 1 3
+prop 33 8 decor 0 0
+prop 35 8 decor 2 2
+prop 32 9 decor 1 2
+prop 35 9 decor 0 3
+prop 32 10 decor 0 1
+prop 33 10 decor 3 0
+prop 28 11 decor 4 1
+prop 32 11 decor 1 0
+prop 35 11 decor 0 0
+prop 8 12 decor 6 1
+prop 17 12 decor 1 3
+prop 21 12 decor 1 3
+prop 24 12 decor 1 0
+prop 25 12 decor 1 1
+prop 28 12 decor 0 0
+prop 29 12 decor 3 3
+prop 31 12 decor 0 1
+prop 13 13 decor 5 1
+prop 17 13 decor 4 0
+prop 18 13 decor 4 0
+prop 19 13 decor 7 2
+prop 22 13 decor 3 3
+prop 11 14 decor 4 0
+prop 12 14 decor 5 3
+prop 14 14 decor 3 3
+prop 15 14 decor 2 0
+prop 16 14 decor 5 0
+prop 17 14 decor 1 0
+prop 19 14 decor 0 0
+prop 30 14 decor 2 2
+prop 0 18 decor 2 0
+prop 7 18 decor 4 2
+prop 29 18 decor 1 0
+prop 30 18 decor 0 1
+prop 31 18 decor 0 3
 prop 8 19 decor 1 3
-prop 9 19 decor 1 3
-prop 10 19 decor 4 3
-prop 11 19 decor 3 3
-prop 13 19 decor 1 1
-prop 17 19 decor 1 1
-prop 18 19 decor 0 2
-prop 21 19 decor 4 3
-prop 29 19 decor 2 2
-prop 30 19 decor 1 0
-prop 31 19 decor 3 1
-light 0 1 1.5 1 0.8 0.55 45 7
-light 30 1 1.5 1 0.8 0.55 45 7
-light 2 4 1.5 1 0.8 0.55 45 7
-light 5 8 1.5 1 0.8 0.55 45 7
-light 13 8 1.5 1 0.8 0.55 45 7
-light 17 9 1.5 1 0.8 0.55 45 7
-light 20 11 1.5 1 0.8 0.55 45 7
-light 3 12 1.5 1 0.8 0.55 45 7
-light 9 14 1.5 1 0.8 0.55 45 7
-light 5 15 1.5 1 0.8 0.55 45 7
-light 17 15 1.5 1 0.8 0.55 45 7
-light 14 18 1.5 1 0.8 0.55 45 7
-light 19 18 1.5 1 0.8 0.55 45 7
+prop 9 19 decor 3 1
+prop 10 19 decor 0 1
+prop 15 19 decor 1 0
+prop 16 19 decor 0 3
+prop 17 19 decor 3 2
+prop 19 19 decor 3 2
+prop 29 19 decor 3 1
+prop 30 19 decor 0 1
+light 21 0 1.5 1 0.8 0.55 45 7
+light 3 1 1.5 1 0.8 0.55 45 7
+light 33 3 1.5 1 0.8 0.55 45 7
+light 32 7 1.5 1 0.8 0.55 45 7
+light 25 11 1.5 1 0.8 0.55 45 7
+light 22 14 1.5 1 0.8 0.55 45 7
+light 15 15 1.5 1 0.8 0.55 45 7
+light 8 17 1.5 1 0.8 0.55 45 7
+light 20 18 1.5 1 0.8 0.55 45 7

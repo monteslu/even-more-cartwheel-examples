@@ -9,7 +9,9 @@
 //   grounded   stand every prop on flat ground: the lowest point of every decor and lamp frame at the floor (1 cm),
 //              and the ground under its footprint (the model's reach, the heightfield as mapbuild.c builds it) flat at
 //              the ground's height, so nothing floats over a bank or sinks into one
-//   terrain    keep its rock outcrops and pools off the path and the pads (the heightfield flat over every one)
+//   terrain    keep its rock outcrops and pools off the path's floor and the pads (the ground flat over every one)
+//   floor      let the creeps walk the floor (map_walkable: the path tiles' part of the routes' floor, the pads' level
+//              ground pushed out of it) from every gate to the core with room to pass
 //   bake       have its bake: lightmaps/<n>.cwlm present and lightmaps/<n>.hash equal to the map's bake hash (a map
 //              or a kit changed after its bake fails)
 //   clear      be held by the bots in the soak build (--soak <towers_soak>): two bots from the start hold the core
@@ -23,6 +25,7 @@ import { dirname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { cpus } from 'node:os';
+import { fields, floorBlocked, PAD_R } from './fields.mjs';
 
 const GAME = join(dirname(fileURLToPath(import.meta.url)), '..');
 const A = join(GAME, 'assets');
@@ -35,12 +38,12 @@ const JOBS = Number(opt('--jobs') || Math.max(1, cpus().length - 2));
 const CONTROLS = !argv.includes('--no-controls');
 const THEMES = ['meadow', 'autumn', 'desert', 'snow', 'volcano', 'crystal'];
 const KINDS = ['skitter', 'ghoul', 'hound', 'imp', 'sporeling', 'bloater', 'shade', 'ogre'];
-const TILE = 2, GROUND_H = 0.5, RES = 6, MARGIN = 3;
+const TILE = 2, GROUND_H = 0.5;
 
 // ── the format (map.c) ──────────────────────────────────────────────
 function parse(text) {
   const lines = text.split('\n').map((l) => l.replace(/[\s\r]+$/, ''));
-  const m = { grid: [], spawn: [], slot: [], prop: [], light: [], kinds: [], feat: [] };
+  const m = { grid: [], spawn: [], slot: [], prop: [], light: [], kinds: [], feat: [], route: [] };
   let i = 0;
   const next = () => lines[i++];
   while (i < lines.length && (!lines[i] || lines[i][0] === '#')) i++;
@@ -72,6 +75,10 @@ function parse(text) {
     else if (k === 'prop') { if (!['decor', 'lamp'].includes(w[3])) throw new Error(`unknown prop ${w[3]}`); m.prop.push({ x: +w[1], y: +w[2], kind: w[3], frame: +w[4], turn: +w[5] & 3 }); }
     else if (k === 'feature') { if (!['rock', 'water'].includes(w[1]) || w.length !== 6 || !(+w[4] > 0.2 && +w[4] < 12)) throw new Error(`bad feature ${ln}`); m.feat.push({ kind: w[1], x: +w[2], y: +w[3], r: +w[4], h: +w[5] }); }
     else if (k === 'light') m.light.push(n);
+    else if (k === 'route') {
+      if (n.length < 6 || n.length % 3 || n.some((v) => !Number.isFinite(v)) || n.some((v, i) => i % 3 === 2 && !(v > 0.3 && v < 16))) throw new Error(`bad route ${ln.slice(0, 40)}`);
+      m.route.push(Array.from({ length: n.length / 3 }, (_, i) => n.slice(i * 3, i * 3 + 3)));
+    }
     else throw new Error(`unknown record ${k}`);
   }
   if (!m.theme || !m.grid.length || !m.spawn.length || !m.core || !m.slot.length || !m.kinds.length) throw new Error('missing theme, grid, spawn, core, slots or kinds');
@@ -101,7 +108,7 @@ function bakeHash(text, theme, models) {
     if (grid) { if (s === 'end') grid = false; else take = rows++ < hgt; if (!take) continue; }
     else if (s === 'grid') { grid = true; continue; }
     else if (s.startsWith('size ')) { hgt = +s.split(/\s+/)[2]; take = true; }
-    else take = s.startsWith('theme ') || s.startsWith('prop ') || s.startsWith('light ') || s.startsWith('feature ');
+    else take = s.startsWith('theme ') || s.startsWith('prop ') || s.startsWith('light ') || s.startsWith('feature ') || s.startsWith('slot ') || s.startsWith('route ');
     if (!take) continue;
     h = fold(h, Buffer.from(s, 'latin1'));
     h = fold(h, [10]);
@@ -145,51 +152,11 @@ function chrFrames(path) {
   return out;
 }
 
-// ── the heightfield (mapbuild.c vert_h without the rock's roughness: props never stand on rock) ──
-function heightfield(m) {
-  const tileAt = (x, y) => {
-    const cx = Math.min(Math.max(x, 0), m.w - 1), cy = Math.min(Math.max(y, 0), m.h - 1);
-    let t = m.grid[cy][cx];
-    const out = cx !== x || cy !== y;
-    if (out && t === 'o') t = 'g';
-    if (out && t === '.') {
-      const xo = x < 0 || x >= m.w, yo = y < 0 || y >= m.h;
-      const across = xo ? y === cy : x === cx;
-      if (!across || xo === yo) t = 'g';
-    }
-    return t;
-  };
-  const kh = (t) => (t === '.' ? 0 : t === '~' ? -0.4 : t === '#' ? 1.6 : GROUND_H);
-  const vh = (i, j) => {
-    let tx0 = Math.floor((i - 1) / RES) - MARGIN, tx1 = Math.floor(i / RES) - MARGIN;
-    let ty0 = Math.floor((j - 1) / RES) - MARGIN, ty1 = Math.floor(j / RES) - MARGIN;
-    if (i % RES) tx0 = tx1;
-    if (j % RES) ty0 = ty1;
-    let h = Infinity;
-    for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) h = Math.min(h, kh(tileAt(x, y)));
-    if (h > 0.01) { // a notch in a curve of path cut on the diagonal (mapbuild.c)
-      const fx = i / RES - MARGIN, fy = j / RES - MARGIN;
-      for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
-        if (tileAt(x, y) !== 'g') continue;
-        for (const [dx, dy] of [[1, -1], [1, 1], [-1, 1], [-1, -1]]) {
-          if (tileAt(x + dx, y) !== '.' || tileAt(x, y + dy) !== '.' || tileAt(x + dx, y + dy) !== '.') continue;
-          const sd = Math.abs(fx - x - (dx > 0 ? 1 : 0)) + Math.abs(fy - y - (dy > 0 ? 1 : 0));
-          h = Math.min(h, GROUND_H * Math.min(1, Math.max(0, (sd - 0.5) / Math.SQRT2 / 0.25)));
-        }
-      }
-    }
-    // the features (mapbuild.c feat_at): the highest outcrop dome added on ground, the deepest pool cut down
-    const px = i / RES - MARGIN, py = j / RES - MARGIN, bump = (t) => (t >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * t));
-    let rock = 0, water = 0;
-    for (const q of m.feat) { const b = bump(Math.hypot(px - q.x, py - q.y) / q.r); if (q.kind === 'rock') rock = Math.max(rock, q.h * b); else water = Math.max(water, b); }
-    if (h >= GROUND_H - 0.01) h += rock;
-    return water > 0 ? Math.min(h, GROUND_H - (GROUND_H + 0.6) * water) : h;
-  };
-  return (x, z) => {
-    const fi = (x / TILE + m.w / 2 + MARGIN) * RES, fj = (z / TILE + m.h / 2 + MARGIN) * RES;
-    const i = Math.floor(fi), j = Math.floor(fj), u = fi - i, v = fj - j;
-    return (vh(i, j) * (1 - u) + vh(i + 1, j) * u) * (1 - v) + (vh(i, j + 1) * (1 - u) + vh(i + 1, j + 1) * u) * v;
-  };
+// ── the ground (fields.mjs, map.c) in world metres ──
+function shapeOf(m) {
+  const F = fields({ w: m.w, h: m.h, tile: (x, y) => (x >= 0 && y >= 0 && x < m.w && y < m.h ? m.grid[y][x] : 'g'), routes: m.route, core: m.core, slots: m.slot, feats: m.feat });
+  F.hf = (x, z) => F.groundH(x / TILE + m.w / 2, z / TILE + m.h / 2);
+  return F;
 }
 // where a prop stands (mapbuild.c prop_place)
 function propPlace(m, p) {
@@ -253,7 +220,7 @@ function checkMap(text, { bakeDir = join(A, 'lightmaps'), models = join(A, 'mode
     }
   }
   // grounded
-  const hf = heightfield(m);
+  const F = shapeOf(m), hf = F.hf;
   for (const p of m.prop) {
     if (at(p.x, p.y) !== 'g') { fails.push({ check: 'grounded', msg: `a ${p.kind} at ${p.x} ${p.y} stands on '${at(p.x, p.y)}', not ground` }); continue; }
     const fr = chrFrames(join(models, p.kind === 'lamp' ? 'lamp.cwchar' : `decor_${m.theme}.cwchar`));
@@ -267,18 +234,19 @@ function checkMap(text, { bakeDir = join(A, 'lightmaps'), models = join(A, 'mode
       if (Math.abs(h - GROUND_H) > 0.02) { fails.push({ check: 'grounded', msg: `a ${p.kind} at ${p.x} ${p.y} reaches over a bank (ground ${h.toFixed(2)} m under its edge)` }); break; }
     }
   }
-  // terrain: the outcrops and pools leave every path tile and pad flat (sampled over each tile)
-  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+  // terrain: the outcrops and pools leave the floor and every pad level (sampled over each)
+  terrain: for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
     const t = m.grid[y][x];
     if (t !== '.' && t !== 'o') continue;
-    const want = t === '.' ? 0 : GROUND_H;
-    let bad = false;
-    for (const [a, b] of [[0.5, 0.5], [0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) {
-      const h = hf((x + a - m.w / 2) * TILE, (y + b - m.h / 2) * TILE);
-      if (Math.abs(h - want) > 0.02) bad = true;
+    for (let b = 0; b < 5; b++) for (let a = 0; a < 5; a++) {
+      const px = x + 0.1 + a * 0.2, py = y + 0.1 + b * 0.2;
+      if (t === '.' ? F.floorD(px, py).d > 0 : Math.hypot(px - x - 0.5, py - y - 0.5) > PAD_R) continue;
+      const { rock, water } = F.featAt(px, py), h = F.groundH(px, py), want = t === '.' ? 0 : GROUND_H;
+      if (rock > 0 || water > 0 || Math.abs(h - want) > 0.02) { fails.push({ check: 'terrain', msg: `the ${t === '.' ? 'floor' : 'pad'} at ${x} ${y} is not level (${h.toFixed(2)} m)` }); break terrain; }
     }
-    if (bad) { fails.push({ check: 'terrain', msg: `a feature reaches the ${t === '.' ? 'path' : 'pad'} at ${x} ${y}` }); break; }
   }
+  // floor: the creeps walk from every gate to the core
+  for (const [gx, gy] of floorBlocked(m, F)) fails.push({ check: 'floor', msg: `the floor from the gate at ${gx} ${gy} does not reach the core with room to pass` });
   // bake
   const id = String(m.num).padStart(3, '0');
   const lm = join(bakeDir, `${id}.cwlm`), hp = join(bakeDir, `${id}.hash`);

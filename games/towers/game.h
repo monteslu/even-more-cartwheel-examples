@@ -63,7 +63,8 @@ typedef struct creep {
   uint8_t kind, spawn;
   float hp, maxhp, x, y, face, speed, slow_k;
   int slow_t, frozen, flash, age, heal_cd, bounty, leak, healed; /* healed: the tick it was last healed (heals never stack) */
-  uint16_t prog; /* steps to the core (the flow field), for aiming at the first */
+  uint16_t prog, best; /* steps to the core (the flow field), for aiming at the first; the fewest it has had */
+  int stall;           /* ticks since it last got nearer the core (not counting frozen ones) */
   cw_crowd_agent agent;
 } creep;
 

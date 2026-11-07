@@ -4,9 +4,10 @@
  *
  * Under a Node3D "Level" added to the given parent:
  *   - "Light": the theme's light scene (scenes/th_<theme>.cwscene: Sun, Fill, Env, Post);
- *   - "Ground": the raised ground, the banks down to the path and the rock, one heightfield over the map and a margin
- *     round it (STATIC, its uv0 the lightmap layout), the theme's ground texture under vertex colours;
- *   - "Path": the low path the creeps walk (STATIC, the same layout), the theme's path texture;
+ *   - "Ground", "Path", "Plaza", "Rock": the terrain over the map and a margin round it (STATIC, each its uv0 over
+ *     its own bounds as its lightmap layout), cut along the ground's own curves (map.h: the path's floor and curb,
+ *     the plazas, the outcrops' feet, the pools' water line) so no edge between two materials follows the grid;
+ *     each the theme's texture for it under vertex colours;
  *   - "Water": a still sheet over the water tiles (not baked);
  *   - "Decor<f>_<g>", "Lamp_<g>": the props (surface and glow groups), STATIC instanced;
  *   - "BakeLights": the map's light records as bake-only lights, only while baking.
@@ -39,7 +40,7 @@ typedef struct mb_built {
   cw_lightmap_data *lm;
 } mb_built;
 
-/* the ground's height at a world point (the heightfield's, bilinear) */
+/* the ground's height at a world point (map_ground_h) */
 float mapbuild_height(const tdmap *m, float x, float z);
 /* Build the map under parent. The lightmap is not touched: call mapbuild_lightmap after the tree has run a frame
  * (the light scene places its sun). */

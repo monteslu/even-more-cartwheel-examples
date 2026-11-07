@@ -8,11 +8,11 @@ import { fileURLToPath } from 'node:url';
 
 const GRADES = { // more contrast than a gentle curve, blacks kept deep (a hair of lift), saturation held level: the
   // palettes carry the colour (mapbuild.c), the grade carries the punch
-  meadow: { contrast: 1.0, shadow: [-0.02, 0.0, 0.04], high: [0.04, 0.025, -0.03], sat: 0.85, lift: [0.0, 0.0, 0.004] },
-  autumn: { contrast: 1.0, shadow: [-0.02, -0.005, 0.05], high: [0.05, 0.02, -0.04], sat: 0.76, lift: [0.0, 0.0, 0.004] },
+  meadow: { contrast: 1.0, shadow: [-0.02, 0.0, 0.04], high: [0.04, 0.025, -0.03], sat: 0.74, lift: [0.0, 0.0, 0.004] },
+  autumn: { contrast: 1.0, shadow: [-0.02, -0.005, 0.05], high: [0.05, 0.02, -0.04], sat: 0.6, lift: [0.0, 0.0, 0.004] },
   desert: { contrast: 0.85, shadow: [-0.03, 0.0, 0.05], high: [0.04, 0.02, -0.04], sat: 0.88, lift: [0.0, 0.0, 0.004] },
-  snow: { contrast: 0.78, shadow: [-0.01, 0.01, 0.05], high: [0.03, 0.015, -0.03], sat: 1.3, lift: [0.0, 0.0, 0.006] },
-  volcano: { contrast: 0.6, shadow: [0.01, -0.01, 0.05], high: [0.05, 0.02, -0.04], sat: 0.88, lift: [0.004, 0.0, 0.006] },
+  snow: { contrast: 0.78, shadow: [-0.01, 0.01, 0.05], high: [0.03, 0.015, -0.03], sat: 1.7, lift: [0.0, 0.0, 0.006] },
+  volcano: { contrast: 0.6, shadow: [0.01, -0.01, 0.05], high: [0.0, 0.0, 0.0], sat: 0.88, lift: [0.004, 0.0, 0.006] },
   crystal: { contrast: 0.6, shadow: [0.0, -0.01, 0.04], high: [0.03, 0.03, -0.03], sat: 0.88, lift: [0.002, 0.0, 0.006] },
 };
 const out = resolve(process.argv[2] || join(dirname(fileURLToPath(import.meta.url)), '../assets/grade'));

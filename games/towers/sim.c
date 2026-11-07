@@ -78,7 +78,7 @@ static int flow_cell(const sim *s, float x, float y) {
 static void build_flow(sim *s) {
   memset(s->blocked, 1, sizeof s->blocked);
   for (int cy = 0; cy < s->fh; cy++)
-    for (int cx = 0; cx < s->fw; cx++) s->blocked[cy * FGW + cx] = s->m.t[cy / 2][cx / 2] != T_PATH;
+    for (int cx = 0; cx < s->fw; cx++) s->blocked[cy * FGW + cx] = !map_walkable(&s->m, ((float)cx + 0.5f) * 0.5f, ((float)cy + 0.5f) * 0.5f); /* the floor's cells */
   static int queue[FGW * FGH];
   for (int i = 0; i < FGW * FGH; i++) s->flow[i] = 0xffff;
   int qh = 0, qt = 0;
@@ -128,20 +128,22 @@ static bool on_path(const sim *s, float x, float y) {
   return mp_in(&s->m, tx, ty) && s->m.t[ty][tx] == T_PATH;
 }
 
-/* ── the navmesh: the map's path tiles ───────────────────────────────── */
+/* ── the navmesh: the floor of the map's path tiles (map_walkable), in sixths of a tile ───────────────── */
 
 static void nav_build(sim *s) {
   if (!CW_HANDLE_IS_NULL(s->nav)) cw_navmesh_free(s->nav);
   cw_nav_geom g = { 0 };
   const tdmap *m = &s->m;
-  for (int y = 0; y < m->h; y++) {
-    int x = 0;
-    while (x < m->w) {
-      if (m->t[y][x] != T_PATH) { x++; continue; }
-      int x0 = x;
-      while (x < m->w && m->t[y][x] == T_PATH) x++;
-      float cx = (mp_wx(m, (float)x0) + mp_wx(m, (float)(x - 1))) * 0.5f, cz = mp_wz(m, (float)y);
-      cw_nav_geom_add_box(&g, (t3_vec3){ cx, -0.25f, cz }, (t3_vec3){ (float)(x - x0) * MP_TILE * 0.5f, 0.25f, MP_TILE * 0.5f }, CW_NAV_AREA_WALK);
+  enum { SUB = 6 };
+  const float cs = MP_TILE / SUB;
+  for (int j = 0; j < m->h * SUB; j++) {
+    int i = 0;
+    while (i < m->w * SUB) {
+      if (!map_walkable(m, ((float)i + 0.5f) / SUB, ((float)j + 0.5f) / SUB)) { i++; continue; }
+      int i0 = i;
+      while (i < m->w * SUB && map_walkable(m, ((float)i + 0.5f) / SUB, ((float)j + 0.5f) / SUB)) i++;
+      float cx = ((float)(i0 + i) * 0.5f / SUB - (float)m->w * 0.5f) * MP_TILE, cz = (((float)j + 0.5f) / SUB - (float)m->h * 0.5f) * MP_TILE;
+      cw_nav_geom_add_box(&g, (t3_vec3){ cx, -0.25f, cz }, (t3_vec3){ (float)(i - i0) * cs * 0.5f, 0.25f, cs * 0.5f }, CW_NAV_AREA_WALK);
     }
   }
   cw_nav_config c = cw_nav_config_default();
@@ -181,7 +183,7 @@ static int spawn_creep(sim *s, int kind, float hp, float x, float y, int bounty)
   e->face = rf(s) * 6.28f;
   e->heal_cd = 30 + (int)(rf(s) * 30);
   int c = flow_cell(s, x, y);
-  e->prog = c >= 0 ? s->flow[c] : 0xffff;
+  e->prog = e->best = c >= 0 ? s->flow[c] : 0xffff;
   s->nenemies++;
   s->spawned_total++;
   return slot;
@@ -678,6 +680,25 @@ static void creeps_step(sim *s) {
     e->x = p.x, e->y = p.z;
     int c = flow_cell(s, e->x, e->y);
     if (c >= 0 && s->flow[c] != 0xffff) e->prog = s->flow[c];
+    /* a creep wedged where the crowd cannot move it on (a corner of the floor, a crush at a choke) for 6 s: set down on
+     * the open cell nearest the core within a metre and a half */
+    if (e->prog < e->best) e->best = e->prog, e->stall = 0;
+    else if (!e->frozen && ++e->stall > 360 && c >= 0) {
+      int cx = c % FGW, cy = c / FGW, bc = -1;
+      uint16_t bd = 0xffff;
+      for (int oy = -1; oy <= 1; oy++)
+        for (int ox = -1; ox <= 1; ox++) {
+          int nx = cx + ox, ny = cy + oy;
+          if (nx < 0 || ny < 0 || nx >= s->fw || ny >= s->fh || s->blocked[ny * FGW + nx]) continue;
+          if (s->flow[ny * FGW + nx] < bd) bd = s->flow[ny * FGW + nx], bc = ny * FGW + nx;
+        }
+      if (bc >= 0 && bd < e->prog) {
+        float tx = (float)(bc % FGW) + 0.5f - (float)s->m.w, ty = (float)(bc / FGW) + 0.5f - (float)s->m.h;
+        cw_crowd_teleport(s->crowd, e->agent, (t3_vec3){ tx, 0, ty });
+        e->x = tx, e->y = ty;
+      }
+      e->stall = 0;
+    }
     /* the core: a creep that reaches it is spent on it */
     float cx = e->x - s->core_x, cy = e->y - s->core_y;
     if (cx * cx + cy * cy < 1.5f * 1.5f) {

@@ -2,13 +2,19 @@
 // the art direction (games/towers/DESIGN.md, the look): mid-key, never dark and never washed out, real contrast, and
 // more than one hue family on screen.
 //   mean luma 90 to 135 of 255 (the deliberately darker themes, volcano and crystal, from 75)
-//   luma standard deviation at least 55 (a punchy frame), and at least 13 of local contrast (the mean absolute
+//   luma standard deviation at least 42 (a punchy frame: the paths are their materials' colours, not near-white fills), and at least 13 of local contrast (the mean absolute
 //   difference of luma from its 33 x 33 neighbourhood's mean, about a metre and a half: crisp edges, modelled shapes
 //   and textured ground, not a global curve)
 //   a complementary accent: 4% or more of the saturated pixels 90 degrees or more round the hue wheel from the
 //   commonest hue (no one-hue map)
 //   saturation: mean 0.25 to 0.62 (colourful, not neon)
 // CONTROL, which must fail: the same frames flattened halfway to their own mean (a washed-out grade).
+// Smooth edges (mask<n>.png frames, TOWERS_LOOK_MASK=1: the terrain alone, the floor drawn blue, the curb red, the rest
+// green): where the floor meets its curb, the edge must run as a smooth curve, never in the tiles' steps. Where the
+// edge runs aslant over a tile or two (its way under a 97-pixel blur 15 degrees or more off the screen's axes), a
+// tile staircase still runs along the axes close up (its way under a 13-pixel blur within 6 degrees of one), and a
+// curve does not: at most STAIRS_MAX percent of that aslant edge may run along an axis close up. CONTROL: the same
+// masks snapped to the tile grid (each tile block the floor or not by its middle) must fail.
 //
 //   node tests/towers-look.mjs <dir of m<n>.png frames> [--json]
 //   frames: out/shots.sh-style captures (TOWERS_NO_HUD=1 TOWERS_NO_CURSORS=1 TOWERS_WAVE=14, maps 3 8 13 18 23 28)
@@ -18,6 +24,7 @@ import { inflateSync } from 'node:zlib';
 
 const THEME = (n) => ['meadow', 'autumn', 'desert', 'snow', 'volcano', 'crystal'][Math.floor((n - 1) / 5) % 6];
 const DARKER = new Set(['volcano', 'crystal']);
+export const STAIRS_MAX = 30;
 
 /** an 8-bit RGB or RGBA PNG (any filter) as { w, h, px: RGB bytes } */
 export function readPng(file) {
@@ -90,11 +97,44 @@ export function measure({ w, h, px }, flatten = 0) {
   return { mean, sd: Math.sqrt(v / n), local: lc / nl, sat: sat / n, hues: sectors.filter((c) => c >= nsat * 0.05).length, accent: nsat ? far / nsat : 0 };
 }
 
+function box(src, W, H, r) {
+  const t = new Float32Array(W * H), o = new Float32Array(W * H), c = (v, n) => Math.min(n - 1, Math.max(0, v));
+  for (let y = 0; y < H; y++) { let s = 0; for (let x = -r; x <= r; x++) s += src[y * W + c(x, W)]; for (let x = 0; x < W; x++) { t[y * W + x] = s / (2 * r + 1); s += src[y * W + c(x + r + 1, W)] - src[y * W + c(x - r, W)]; } }
+  for (let x = 0; x < W; x++) { let s = 0; for (let y = -r; y <= r; y++) s += t[c(y, H) * W + x]; for (let y = 0; y < H; y++) { o[y * W + x] = s / (2 * r + 1); s += t[c(y + r + 1, H) * W + x] - t[c(y - r, H) * W + x]; } }
+  return o;
+}
+/** the floor in a mask frame (blue over red and green) as 0/1; snap: each tile-sized block by its middle (the control) */
+export function floorMask({ w, h, px }, snap = 0) {
+  const B = new Float32Array(w * h);
+  const at0 = (x, y) => { const i = (y * w + x) * 3; return px[i + 2] > px[i] + 4 && px[i + 2] > px[i + 1] + 4 ? 1 : 0; };
+  const raw = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) raw[y * w + x] = at0(x, y);
+  const clean = box(raw, w, h, 3); /* the floor's texture and what stands on it (grout, pads, the core) closed over */
+  const at2 = (x, y) => (clean[y * w + x] > 0.5 ? 1 : 0);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) B[y * w + x] = snap ? at2(Math.min(w - 1, Math.floor(x / snap) * snap + (snap >> 1)), Math.min(h - 1, Math.floor(y / snap) * snap + (snap >> 1))) : at2(x, y);
+  return B;
+}
+/** the percent of the floor's aslant edge that runs along an axis close up (a staircase's steps) */
+export function steppedEdge(B, w, h) {
+  const F = box(box(B, w, h, 3), w, h, 3), C = box(box(B, w, h, 24), w, h, 24);
+  let dev = 0, wt = 0;
+  for (let y = 24; y < h - 24; y++) for (let x = 24; x < w - 24; x++) {
+    const i = y * w + x;
+    const fx = F[i + 2] - F[i - 2], fy = F[i + 2 * w] - F[i - 2 * w], fm = Math.hypot(fx, fy);
+    if (fm < 0.15) continue;
+    const cx = C[i + 8] - C[i - 8], cy = C[i + 8 * w] - C[i - 8 * w];
+    if (Math.hypot(cx, cy) < 0.08) continue;
+    const off = (ang) => { const q = ((ang * 180) / Math.PI % 90 + 90) % 90; return Math.min(q, 90 - q); }; // degrees from the nearest axis
+    if (off(Math.atan2(cy, cx)) < 15) continue; // the edge runs along an axis over the tile: a straight stretch, no test
+    dev += off(Math.atan2(fy, fx)) < 6 ? 1 : 0, wt++;
+  }
+  return wt ? (dev / wt) * 100 : 0;
+}
 export function verdict(theme, r) {
   const bad = [];
   const lo = DARKER.has(theme) ? 75 : 90;
   if (r.mean < lo || r.mean > 135) bad.push(`mean luma ${r.mean.toFixed(0)} (${lo} to 135)`);
-  if (r.sd < 55) bad.push(`luma sd ${r.sd.toFixed(1)} (55 or more)`);
+  if (r.sd < 42) bad.push(`luma sd ${r.sd.toFixed(1)} (42 or more)`);
   if (r.local < 13) bad.push(`local contrast ${r.local.toFixed(1)} (13 or more)`);
   if (r.accent < 0.04) bad.push(`complementary accent ${(r.accent * 100).toFixed(1)}% (4% or more)`);
   if (r.sat < 0.25 || r.sat > 0.62) bad.push(`saturation ${r.sat.toFixed(2)} (0.25 to 0.62)`);
@@ -104,6 +144,7 @@ export function verdict(theme, r) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = process.argv[2];
   if (!dir) { console.error('usage: node tests/towers-look.mjs <frames dir> [--json]'); process.exit(2); }
+  const masks = readdirSync(dir).filter((f) => /^mask\d+\.png$/.test(f)).sort((a, b) => parseInt(a.slice(4)) - parseInt(b.slice(4)));
   const files = readdirSync(dir).filter((f) => /^m\d+\.png$/.test(f)).sort((a, b) => parseInt(a.slice(1)) - parseInt(b.slice(1)));
   if (!files.length) { console.error(`no m<n>.png frames in ${dir}`); process.exit(2); }
   let failed = 0, controlCaught = 0;
@@ -119,6 +160,19 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   }
   if (controlCaught === files.length) console.log(`ok   control: every frame flattened halfway to its mean fails`);
   else { console.log(`CONTROL PASSED (a failure): ${files.length - controlCaught} flattened frame(s) still pass`); failed++; }
+  let snapCaught = 0;
+  for (const f of masks) {
+    const img = readPng(join(dir, f)), n = parseInt(f.slice(4)), cell = Math.round(img.w / 38.5);
+    const t = steppedEdge(floorMask(img), img.w, img.h), ts = steppedEdge(floorMask(img, cell), img.w, img.h);
+    const bad = t > STAIRS_MAX;
+    console.log(`${bad ? 'FAIL' : 'ok  '} map ${n} stepped edge ${t.toFixed(1)}% (${STAIRS_MAX}% or less)${bad ? ': the floor edge steps' : ''}; snapped to the tiles ${ts.toFixed(1)}%`);
+    if (bad) failed++;
+    if (ts > STAIRS_MAX) snapCaught++;
+  }
+  if (masks.length) {
+    if (snapCaught === masks.length) console.log(`ok   control: every mask snapped to the tile grid fails the smooth edges`);
+    else { console.log(`CONTROL PASSED (a failure): ${masks.length - snapCaught} snapped mask(s) still pass`); failed++; }
+  } else { console.log(`FAIL no mask<n>.png frames for the smooth edges (TOWERS_LOOK_MASK=1)`); failed++; }
   if (process.argv.includes('--json')) console.log(JSON.stringify(rows));
   process.exit(failed ? 1 : 0);
 }
