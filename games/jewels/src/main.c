@@ -160,6 +160,10 @@ static void bot_plan(void) {
 static void bot_filter(cw_raw_input *in, uint64_t frame, void *u) {
   (void)frame, (void)u;
   if (!G.in_match || cw_shell_screen_now() != CW_SHELL_PLAY) return;
+  /* the bot's fingers and mouse button are up unless a step holds them (a host may keep the last frame's state) */
+  in->touches[1].active = in->touches[1].tapped = false;
+  in->touches[2].active = in->touches[2].tapped = false;
+  in->mouse_buttons &= ~1u, in->mouse_pressed &= ~1u;
   if (BOT.i >= BOT.n) {
     if (G.g.state != JW_IDLE) return;
     bot_plan();
