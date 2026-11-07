@@ -1,0 +1,10 @@
+jewels (working title): credits and licences
+
+Code: this repository (MIT, see LICENSE). The rules are a port of the same author's earlier Lua game of the same
+name. The stones' cuts, the tray, every effect, every sound and the music are made by code in this repository
+(src/cuts.c, src/shaders.c, src/render.c, src/fx.c, src/sound.c); no third-party art or audio is shipped.
+
+Font: Cinzel (assets/fonts/Cinzel.ttf), copyright 2020 The Cinzel Project Authors, SIL Open Font License 1.1
+(assets/fonts/Cinzel-OFL.txt).
+
+The launcher art (art/) is made from the game's own frames by tools/make-art.sh.

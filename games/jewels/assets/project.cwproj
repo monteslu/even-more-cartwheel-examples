@@ -1,0 +1,18 @@
+; jewels project settings
+name = Jewels
+app = jewels
+main_scene = scenes/main.cwscene
+version = 0.1.0
+app_id = org.cartwheel.jewels
+; the cursor: the d-pad, the left stick, the arrow keys and WASD
+input.move_left = key:left, key:a, pad:left, axis:lx-@0.5
+input.move_right = key:right, key:d, pad:right, axis:lx+@0.5
+input.move_up = key:up, key:w, pad:up, axis:ly-@0.5
+input.move_down = key:down, key:s, pad:down, axis:ly+@0.5
+; pick a stone up (or put it down, or swap it onto a neighbour picked next)
+input.pick = key:space, key:return, pad:south, pad:east
+; a hint, free and as often as wanted
+input.hint = key:h, key:tab, pad:west, pad:north
+render.width = 1920
+render.height = 1080
+render.vsync = true

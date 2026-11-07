@@ -1,0 +1,2 @@
+# three.c program states jewels draws: none. The tray, the stones and the effects are the game's own pipeline
+# passes (src/render.c, src/shaders.c), so the scene draws no three.c material.

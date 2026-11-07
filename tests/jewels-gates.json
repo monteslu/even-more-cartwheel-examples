@@ -1,0 +1,137 @@
+[
+  {
+    "name": "jewels-pad",
+    "app": "jewels",
+    "frames": 1006,
+    "input": "jewels-pad.json",
+    "controlInput": "jewels-pad-control.json",
+    "maxGt16": 0.01,
+    "fields": [
+      "game.score",
+      "game.best",
+      "game.moves",
+      "game.illegal",
+      "game.hints",
+      "game.picks",
+      "game.pad_swaps",
+      "game.cur_x",
+      "game.cur_y",
+      "game.sel",
+      "game.hash",
+      "game.cascade_max"
+    ],
+    "expect": {
+      "game.moves": 5,
+      "game.score": 695,
+      "game.illegal": 1,
+      "game.hints": 1,
+      "game.picks": 7,
+      "game.pad_swaps": 6
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "A game on the pad alone (tests/jewels-inputs.mjs writes it): Play, then five moves, each walking the cursor with the d-pad (one with the stick), picking the stone up with either pick button and pushing it toward its neighbour; a hint on its own button; an illegal swap that springs back and costs nothing; a stone picked up and put down. Every move's cascade comes to rest before the next. The control presses the hint button where this one picks, so no swap is made.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
+  },
+  {
+    "name": "jewels-touch",
+    "app": "jewels",
+    "frames": 951,
+    "input": "jewels-touch.json",
+    "controlInput": "jewels-touch-control.json",
+    "maxGt16": 0.01,
+    "fields": [
+      "game.score",
+      "game.best",
+      "game.moves",
+      "game.hints",
+      "game.picks",
+      "game.touch_swaps",
+      "game.tap_swaps",
+      "game.drag_swaps",
+      "game.sel",
+      "game.hash",
+      "game.cascade_max"
+    ],
+    "expect": {
+      "game.moves": 6,
+      "game.score": 1550,
+      "game.hints": 1,
+      "game.tap_swaps": 4,
+      "game.drag_swaps": 2,
+      "game.touch_swaps": 6,
+      "game.pad_swaps": 0
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "A game by touch and the mouse (the pad only presses Play): a stone tapped then its neighbour tapped by another finger, in pointer slots from 1 to 9; stones dragged onto their neighbours; the mouse clicking one then the other; the panel's hint button tapped; a stone tapped up and tapped down again. The control lands every touch and click on the frame under the board, so nothing is picked and no swap is made.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
+  },
+  {
+    "name": "jewels-play",
+    "app": "jewels_auto",
+    "frames": 1500,
+    "maxGt16": 0.01,
+    "fields": [
+      "game.score",
+      "game.moves",
+      "game.clears",
+      "game.hints",
+      "game.illegal",
+      "game.pad_swaps",
+      "game.touch_swaps",
+      "game.drag_swaps",
+      "game.tap_swaps",
+      "game.hash",
+      "game.cascade_max",
+      "fx.max_x100"
+    ],
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "The bot plays through the controls (the pad, taps, drags, the mouse and the hint, in turn) for 25 seconds: the same game, the same frames, on every host. The control stops a frame short.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
+  },
+  {
+    "name": "jewels-hud",
+    "app": "jewels_auto",
+    "frames": 900,
+    "env": {
+      "JEWELS_HUD_ALL": "1"
+    },
+    "controlEnv": {
+      "JEWELS_HUD_ALL": "1",
+      "JEWELS_HUD_BREAK": "1"
+    },
+    "fields": [
+      "hud.overlaps"
+    ],
+    "expect": {
+      "hud.overlaps": 0
+    },
+    "hosts": [
+      "native"
+    ],
+    "note": "The panel layout: every element showing at once (the score with its gain, the best, the moves, the cascade counter, the help for the pad and, as the bot turns to touch, for touch, the status line, the hint button), for 15 seconds of play; no two of its text boxes may overlap in any frame (hud.overlaps, the worst frame). The control puts the status line back where it once was, over the help."
+  }
+]
