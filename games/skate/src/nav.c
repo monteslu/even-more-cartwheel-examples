@@ -39,15 +39,13 @@ typedef struct nav {
   uint8_t *eseen, *eok, *drop;
   float *dist;
   int *from, *heap, nheap, cap_heap;
+  uint8_t *mem; /* every per-cell array, one block kept from park to park (no churn of the heap) */
+  size_t cap_mem;
 } nav;
 
 static nav NV[2];
 static int nv_next;
 
-static void nav_free(nav *n) {
-  free(n->h), free(n->ny), free(n->nx), free(n->nz), free(n->fl), free(n->band), free(n->eseen), free(n->eok), free(n->drop), free(n->dist), free(n->from), free(n->heap);
-  memset(n, 0, sizeof *n);
-}
 
 static void mark(nav *n, v3 p) {
   int x = (int)floorf((p.x - n->ox) / NAV_CS), z = (int)floorf((p.z - n->oz) / NAV_CS);
@@ -58,16 +56,26 @@ static void mark(nav *n, v3 p) {
 }
 
 static void nav_build(nav *n, const park *k) {
-  nav_free(n);
   n->key_t = k->t, n->key_nt = k->nt, n->key_ne = k->ne, n->key_blind = g_nav_ignore_walls;
   n->ox = k->lo.x - 1, n->oz = k->lo.z - 1, n->y0 = k->lo.y - 1;
   n->gx = (int)((k->hi.x - n->ox) / NAV_CS) + 2, n->gz = (int)((k->hi.z - n->oz) / NAV_CS) + 2;
   size_t nc = (size_t)n->gx * (size_t)n->gz;
-  n->h = calloc(nc, sizeof *n->h), n->ny = calloc(nc, sizeof *n->ny), n->nx = calloc(nc, sizeof *n->nx), n->nz = calloc(nc, sizeof *n->nz), n->fl = calloc(nc, 1), n->band = calloc(nc * NAV_WORDS, sizeof *n->band);
-  n->eseen = calloc(nc, 1), n->eok = calloc(nc, 1), n->drop = calloc(nc, 1);
-  n->dist = calloc(nc, sizeof *n->dist), n->from = calloc(nc, sizeof *n->from);
-  n->cap_heap = (int)nc * 2;
-  n->heap = calloc((size_t)n->cap_heap, sizeof *n->heap);
+  size_t need = nc * (4 * sizeof(float) + NAV_WORDS * sizeof(uint32_t) + sizeof(float) + sizeof(int) + 4);
+  if (need > n->cap_mem) n->mem = realloc(n->mem, need), n->cap_mem = need;
+  memset(n->mem, 0, need);
+  uint8_t *m = n->mem;
+  n->band = (uint32_t *)m, m += nc * NAV_WORDS * sizeof(uint32_t);
+  n->h = (float *)m, m += nc * sizeof(float);
+  n->ny = (float *)m, m += nc * sizeof(float);
+  n->nx = (float *)m, m += nc * sizeof(float);
+  n->nz = (float *)m, m += nc * sizeof(float);
+  n->dist = (float *)m, m += nc * sizeof(float);
+  n->from = (int *)m, m += nc * sizeof(int);
+  n->fl = m, m += nc;
+  n->eseen = m, m += nc;
+  n->eok = m, m += nc;
+  n->drop = m;
+  if (n->cap_heap < (int)nc * 2) n->cap_heap = (int)nc * 2, n->heap = realloc(n->heap, (size_t)n->cap_heap * sizeof *n->heap);
   /* what is in the way: every triangle that is not a skateable floor, sampled over its surface */
   for (int i = 0; i < k->nt; i++) {
     const ptri *t = &k->t[i];

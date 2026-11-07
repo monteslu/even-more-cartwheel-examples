@@ -48,10 +48,22 @@ round a bowl), and the points it stands on. src/parks.c lays out five:
 Each park lists its lines: a start point, a speed to push to, and a feature (a quarter pipe's air, a rail, a ledge, a
 gap, a manual pad). The back button cycles the start points.
 
+**The bots** (src/bot.c, the auto cart's skaters) go from line to line on the board. A route planner (src/nav.c) lays
+a half-metre grid over the park: each cell's floor, and everything that stands in the way (walls, ramps' faces,
+rails, a ledge's side) as bands of height, so a cell is blocked for a rider when something is in it from 4 cm to
+1.7 m over its floor. A bot moves to a neighbouring cell along the floor, up a bank only straight up its fall line
+with room either side, or off an edge onto a floor up to 4.2 m below (never up one). After a line it floods the park
+from where it is, picks a line whose start it can reach (the nearer the likelier, not the same one twice running)
+and skates there through the real controls: it follows the route a few metres ahead, pushes to a cruising speed,
+slows for a turn (a stop and a pivot for a turn about), takes a run at a bank and comes into the start along the
+line's heading. A start no wheels reach (the mega ramp's roll in, a higher roof, a ramp's deck) is walked to: back,
+as a person would carry the board up, about one start in five.
+
 **The park check** (tests/skate-parks.mjs, `skate_check parks`): nothing floats (each piece's footing stands on
-another piece within 2 cm, or on the ground) and every line is skateable (a bot skates it through the real controls
-and does its feature). Its controls must fail: a piece lifted 30 cm, a wall across a rail's approach, a kicker cut
-short under its gap.
+another piece within 2 cm, or on the ground), every line is skateable (a bot skates it through the real controls
+and does its feature) and the bots' routes hold (two bots skate each park for three minutes: no route given up).
+Its controls must fail: a piece lifted 30 cm, a wall across a rail's approach, a kicker cut short under its gap, a
+planner that goes straight through the park (its routes run into things).
 
 ## The board
 
@@ -69,7 +81,10 @@ slope; the game's solver sends none. At mega ramp speeds a tick is a third of a 
 - The air: ballistic, the step from the last point to the next cast against every surface (no tunnelling at any
   speed). Off a vertical wall the flight keeps to the plane of the coping, 5 cm out over the ramp, so the rider comes
   back down onto the vert and keeps the speed (a 10 m/s vert air gives back 9.99 m/s). The board follows the flight's
-  pitch, so a landing slope meets it square.
+  pitch, so a landing slope meets it square. Vert air is drawn with its real attitude: the board leaves at the angle of
+  the ramp's face where it took off and turns toward level about the coping's line only as far as the air's height
+  allows (a 2.5 m air a little over half way, at its top), back at the face's angle by the coping, so it lands
+  square on the wall.
 - Grinds: a press near a rail, a ledge's lip or a coping (within 55 cm across, moving along it) snaps the board on;
   it slides with gravity and friction along the linked runs; the balance meter wobbles harder the longer it goes.
 - Manuals: a balance meter on up and down.
@@ -96,7 +111,8 @@ with sunlit tops. The near facades carry sill courses and piers that stand out o
 LUT from tools/make-lut.mjs: a gentle S-curve and a little saturation) follows the tone curve. The ground is one radial mesh round the park, flat near it and rising into hills and
 mountains far off; the far skyline is an impostor, a band of towers painted on a ring at 650 m (alpha cut). Height fog
 in each park's haze colour, with the sun's scatter, gives the distance its air; the sky dome is the mood's own gradient
-and clouds.
+and clouds, dithered (a noise texture finer than a pixel, a level or so of the screen's 8 bits deep): a sunset's
+gradient over a few levels would otherwise band.
 
 The park itself is lightmapped: its surfaces are baked (`SKATE_BAKE=<dir>` on a native build writes
 `assets/lightmaps/park<n>.cwlm`): the sky's light with its occlusion (the dark under a coping's lip, the corner where a
@@ -116,20 +132,22 @@ a ragdoll (src/rag.c, after the brawler's) tumbling over the park's triangles, p
 the body from further back. A landing kicks up a puff of dust; a grind throws sparks.
 
 The cameras ride low behind each skater along its run, pull back and widen the lens with speed (62 to 76 degrees),
-and in vert air stay down at the coping's height and look up at the rider, so the height shows. They pull in when a
-wall is in the way. No camera ever shakes.
+and in vert air stay down at the coping's height and look up at the rider, so the height shows. When the run turns
+right about (down out of vert air, rolling back from a wall) the camera swings round the rider at up to 2.2 radians a
+second, to the side it last swung to. They pull in when a wall is in the way. No camera ever shakes.
 
 ## Tests
 
 | test | checks |
 |---|---|
 | tests/skate-physics.mjs | the board against ramp physics; the naive solver as the control |
-| tests/skate-parks.mjs | nothing floats, every line skateable; three controls and each park's bake made for its shape (a lifted piece as the control) |
+| tests/skate-parks.mjs | nothing floats, every line skateable, the bots' routes between lines hold; four controls (a straight-line planner among them) and each park's bake made for its shape (a lifted piece as the control) |
 | tests/skate-soak.mjs | 30 game minutes at 1 to 4 players, every park; a NaN control |
 | tests/skate-feel.mjs | a person's twelve seconds on a pad: every trick lands, the camera never jerks, the feet stay on the deck; a mistimed flip as the control |
 | tests/skate-gates.json | the auto cart on every host, frames and simulation state exact |
 | tests/skate-perf.mjs | the 890M at 1080p High, four-way split |
-| tests/skate-look.mjs | every park's chase-camera frames have contrast and are not washed out: mean luma 95 to 128, its spread 55 or more; two stops over as the control |
+| tests/skate-look.mjs | every park's chase-camera frames have contrast and are not washed out: mean luma 95 to 128, its spread 55 or more; two stops over as the control. The sunset sky does not band (40% or fewer of its pixels the colour of the one above; undithered as the control) |
+| tests/skate-cam.mjs | the chase camera comes back behind a rider after vert air (behind on 80% of the frames from one to two and a half seconds after each landing, never within 2.3 m); the old lerp toward the run as the control |
 
 ## Performance
 

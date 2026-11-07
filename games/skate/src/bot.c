@@ -9,7 +9,8 @@
  *            always goes there by back (it checks the line, not the way to it).
  *   go       skate to the line's start: follow the route a few metres ahead, push to a cruising speed, slow for a
  *            turn (a stop and a pivot for a turn about), take a run at a bank, and come into the start along the
- *            line's heading. A route that stops getting shorter is given up (back to the start, counted).
+ *            line's heading, an ollie now and then on a clear straight. A route that stops getting shorter is given
+ *            up (back to the start, counted).
  *   run      push up to the line's speed along its heading, steering back onto it
  *   feature  quarter pipes: a grab or a flip at the top of the air and a half turn to come down forward; kickers and gaps:
  *            a flip, a grab or a spin over the gap, let go in time; rails and ledges: crouch, pop just before the run,
@@ -160,7 +161,7 @@ static bool go(bot *b, const park *k, const skater *s, input *in) {
   v3 to = vsub(s->p, l->start);
   float along = vdot(to, d), lat = fabsf(vdot(to, R));
   v3 hv = sp > 0.6f ? vnorm(V(s->v.x, 0, s->v.z)) : vnorm(s->fakie ? V(-s->f.x, 0, -s->f.z) : V(s->f.x, 0, s->f.z));
-  if (fabsf(to.y) < 0.4f && along > -1.5f && along < 2.5f && lat < 1.0f && vdot(hv, d) > 0.82f) return true;
+  if (fabsf(to.y) < 0.4f && along > -1.5f && along < 2.5f && lat < 1.4f && vdot(hv, d) > 0.8f) return true;
   /* the route: planned now and then from where it is, and again when it is off it */
   int near_i = b->route_i;
   float near_d = 1e9f;
@@ -194,6 +195,8 @@ static bool go(bot *b, const park *k, const skater *s, input *in) {
   }
   /* (on it, or at its foot: the route until then, which comes to the foot square) */
   if (climb > 0.3f && top >= 0 && foot >= 0 && foot <= b->route_i + 2) aim = nav_point(k, b->route[top]);
+  /* at the start already, going more or less its way: straight on along the line (not back round to the route's end) */
+  if (vhlen(to) < 4.0f && fabsf(to.y) < 0.4f && vdot(hv, d) > 0.3f) aim = vmad(l->start, d, 3.0f);
   v3 want = V(aim.x - s->p.x, 0, aim.z - s->p.z);
   if (vlen(want) < 0.05f) want = d;
   want = vnorm(want);
@@ -204,6 +207,18 @@ static bool go(bot *b, const park *k, const skater *s, input *in) {
   if (ang > 1.1f) vd = 1.4f;
   if (climb > 0.3f && ang < 0.5f) vd = fminf(6.5f, sqrtf(2 * GRAV * climb) + 1.0f);
   in->sx = steer_to(s, want);
+  /* now and then, rolling straight over clear flat ground with a way to go: an ollie on the way, as a skater does */
+  bool clear = s->st == SK_ROLL && s->u.y > 0.97f && sp > 2.5f && ang < 0.25f && left > 9.0f && climb < 0.1f;
+  for (float x = 0.5f; x <= 4.0f && clear; x += 0.5f) {
+    phit gh;
+    if (!park_ground(k, vmad(s->p, hv, x), 0.3f, 0.3f, &gh) || gh.n.y < 0.97f) clear = false;
+  }
+  if (b->crouching > 0) {
+    in->ollie = ++b->crouching < 14; /* crouch, then let go: the pop */
+    if (b->crouching >= 14) b->crouching = 0;
+    return false;
+  }
+  if (clear && b->skill > 0 && b->t % 150 == 75) { b->crouching = 1, in->ollie = true; return false; }
   if (ang > 1.9f && sp > 1.0f) in->sy = -1; /* a turn about: stop, pivot, push off */
   else if (sp < vd - 0.2f && s->u.y > 0.85f && !(ang > 1.9f)) in->sy = 1;
   else if (sp > vd + 1.0f && s->u.y > 0.9f) in->sy = -0.7f;
