@@ -21,6 +21,8 @@ In progress:
 - **towers**: a tower defense game for one to four players: build along a
   winding route and hold off waves of thousands.
 - **pinball**: pinball tables with real ball physics, lit and rendered in 3D.
+- **demolition**: bring down towers, walls, bridges, castles and scaffolds of wood,
+  stone, glass and steel with a launcher, for one to four players taking turns.
 
 ## Building
 

@@ -14,11 +14,11 @@ concurrency:
 
 env:
   # every game in the repo (the release ships one cart each); empty until the first game lands
-  GAMES: ""
+  GAMES: "demolition"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: ""
+  AUTO_GAMES: "demolition"
   # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
-  PROMPT_GAMES: ""
+  PROMPT_GAMES: "demolition"
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):

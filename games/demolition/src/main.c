@@ -370,25 +370,25 @@ static void hud_play(cw_vec2 cs, float u) {
     text(b, cs.x * 0.5f, cs.y * 0.18f, 64 * u, c, CW_ALIGN_CENTER);
   }
   /* the launcher: ammunition, power, and the controls while aiming */
-  float bw = 760 * u, bx = cs.x * 0.5f - bw * 0.5f, by = cs.y - 210 * u;
+  float bw = 680 * u, bx = cs.x * 0.5f - bw * 0.5f, by = cs.y - 166 * u;
   if (g->state == GS_AIM) {
-    panel(bx, by, bw, 186 * u, u, SEAT[g->cur]);
-    float cw = 220 * u;
+    panel(bx, by, bw, 152 * u, u, SEAT[g->cur]);
+    float cw = 200 * u;
     for (int a = 0; a < NAMMO; a++) {
-      float cx = bx + 30 * u + a * (cw + 25 * u);
+      float cx = bx + 25 * u + a * (cw + 15 * u);
       bool sel = a == g->ammo_sel;
-      cw_r2d_round_rect(cw_rect_make(cx, by + 16 * u, cw, 62 * u), 8 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.9f) : rgba(0.15f, 0.16f, 0.22f, 0.85f));
+      cw_r2d_round_rect(cw_rect_make(cx, by + 12 * u, cw, 46 * u), 8 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.9f) : rgba(0.15f, 0.16f, 0.22f, 0.85f));
       snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
-      text(b, cx + cw * 0.5f, by + 30 * u, 26 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
+      text(b, cx + cw * 0.5f, by + 22 * u, 23 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
     }
     /* power */
-    float px = bx + 30 * u, py = by + 92 * u, pw = bw - 60 * u;
-    cw_r2d_round_rect(cw_rect_make(px, py, pw, 16 * u), 8 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
-    cw_r2d_round_rect(cw_rect_make(px, py, pw * g->power, 16 * u), 8 * u, 6, rgba(1, 0.35f + 0.5f * (1 - g->power), 0.15f, 1));
-    float sz = 24 * u;
+    float px = bx + 25 * u, py = by + 68 * u, pw = bw - 50 * u;
+    cw_r2d_round_rect(cw_rect_make(px, py, pw, 12 * u), 6 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
+    cw_r2d_round_rect(cw_rect_make(px, py, pw * g->power, 12 * u), 6 * u, 6, rgba(1, 0.35f + 0.5f * (1 - g->power), 0.15f, 1));
+    float sz = 21 * u;
     int seat = G.players > 1 ? g->cur : -1;
-    cw_prompt_text(font, "{aim_left|aim_right}: turn   {aim_up|aim_down}: raise   {power_down|power_up}: power", seat, cw_v2(cs.x * 0.5f, by + 118 * u), sz, WHITE, CW_ALIGN_CENTER);
-    cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 150 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+    cw_prompt_text(font, "{aim_left|aim_right}: turn   {aim_up|aim_down}: raise   {power_down|power_up}: power", seat, cw_v2(cs.x * 0.5f, by + 88 * u), sz, WHITE, CW_ALIGN_CENTER);
+    cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 116 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
   } else if (g->state == GS_SETTLE || g->state == GS_FLIGHT) {
     text(g->state == GS_FLIGHT ? "" : "Settling...", cs.x * 0.5f, cs.y - 70 * u, 28 * u, rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
   }

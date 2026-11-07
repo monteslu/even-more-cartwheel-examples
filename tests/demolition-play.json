@@ -1,0 +1,4 @@
+[{"frame": 20, "buttons": ["south"]}, {"frame": 23}, {"frame": 40, "buttons": ["south"]}, {"frame": 43}, {"frame": 60, "buttons": ["start"]}, {"frame": 63},
+ {"frame": 90, "buttons": ["south"]}, {"frame": 93},
+ {"frame": 130, "buttons": ["right"]}, {"frame": 136},
+ {"frame": 185, "buttons": ["r"]}, {"frame": 215}, {"frame": 240, "buttons": ["south"]}, {"frame": 243}, {"frame": 600}]
