@@ -43,7 +43,8 @@ shadow_atlas = false
 cluster_far = 120
 
 [node name="Post" parent="." type="PostProcess"]
-msaa = 4
+msaa = 0
+aa = SMAA
 tonemap = AGX
 exposure = 1.25
 bloom = true
