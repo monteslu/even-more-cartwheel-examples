@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0
+
+- towers gets a new look: paths are smooth curved roads of real materials per theme (packed earth with a brick
+  curb, slate cobbles, sandstone flags, frozen gravel, ash crust, pale flagstones) with a clear step from the
+  ground, wide stretches become paved plazas, rock outcrops are shaded stone, pools have shorelines and lava a
+  cooling crust, and each tower type has its own colour again (bolt violet, frost ice-cyan, beam rose, mortar
+  amber) with the owner's colour on its trim. Creeps walk only the drawn road, a creep stuck for 6 seconds is
+  moved on, and maps 11 to 30 are retuned for the new layouts. A look check measures each
+  theme's contrast and fails stair-stepped edges.
+
 ## 0.3.1
 
 - skate looks better: thinner, bluer haze so every horizon keeps its colour; cars with real shapes and glass
