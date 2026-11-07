@@ -7,7 +7,7 @@
 
 enum { L_SKY, L_WALL = 5, L_TILES, L_ACTORS, L_FX, L_WATER, L_FRONT, L_HUD };
 
-typedef struct view_stats { int sprites, lights, particles, enemies; } view_stats;
+typedef struct view_stats { int sprites, lights, particles, enemies; float submit_ms, end_ms; } view_stats;
 
 void view_init(void);
 /* camera follows the players inside the room; snap: no easing (a teleport) */

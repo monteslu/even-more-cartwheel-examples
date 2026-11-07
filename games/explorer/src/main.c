@@ -329,7 +329,7 @@ static void render(void *u, double alpha) {
   if (getenv("EXPLORER_BENCH") && sc == CW_SHELL_PLAY && G.t_n >= 120) {
     view_stats vs = view_get_stats();
     cw_pipeline *pl = cw_pipeline_of(cw_scene_app_tree());
-    fprintf(stderr, "bench frame_ms=%.2f draw_ms=%.3f gpu_ms=%.3f sprites=%d lights=%d particles=%d enemies=%d room=%d boss=%d\n", G.t_frame / G.t_n, G.t_gpu / G.t_n,
+    fprintf(stderr, "bench submit_ms=%.3f end_ms=%.3f frame_ms=%.2f draw_ms=%.3f gpu_ms=%.3f sprites=%d lights=%d particles=%d enemies=%d room=%d boss=%d\n", (double)vs.submit_ms, (double)vs.end_ms, G.t_frame / G.t_n, G.t_gpu / G.t_n,
             pl ? cw_pipeline_gpu_ms(pl) : -1.0, vs.sprites, vs.lights, vs.particles, vs.enemies, S.room, S.b.active);
     const cw_pass_stat *pst;
     int np = pl ? cw_pipeline_pass_stats(pl, &pst) : 0;

@@ -226,10 +226,10 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
   /* the opening lines */
   if (h->intro_t > 0) {
     float a = fminf(1, h->intro_t);
-    cw_r2d_rect((cw_rect){ 0, cs.y * 0.68f, cs.x, 200 * u }, rgba(0.04f, 0.05f, 0.08f, 0.6f * a));
-    text("The lanterns of the old city have gone out.", cs.x * 0.5f, cs.y * 0.68f + 24 * u, 36 * u, rgba(1, 0.92f, 0.75f, a), CW_ALIGN_CENTER);
-    text("Wake the five beacons, and the heart beneath them.", cs.x * 0.5f, cs.y * 0.68f + 76 * u, 36 * u, rgba(1, 0.92f, 0.75f, a), CW_ALIGN_CENTER);
-    pill("{map}: the map   {move_up}: rest at a shrine", cs.x * 0.5f, cs.y * 0.68f + 130 * u, 0.5f, 26 * u, rgba(1, 1, 1, a), rgba(0.1f, 0.12f, 0.18f, 0.8f * a));
+    cw_r2d_rect((cw_rect){ 0, cs.y * 0.12f, cs.x, 200 * u }, rgba(0.04f, 0.05f, 0.08f, 0.6f * a));
+    text("The lanterns of the old city have gone out.", cs.x * 0.5f, cs.y * 0.12f + 24 * u, 36 * u, rgba(1, 0.92f, 0.75f, a), CW_ALIGN_CENTER);
+    text("Wake the five beacons, and the heart beneath them.", cs.x * 0.5f, cs.y * 0.12f + 76 * u, 36 * u, rgba(1, 0.92f, 0.75f, a), CW_ALIGN_CENTER);
+    pill("{map}: the map   {move_up}: rest at a shrine", cs.x * 0.5f, cs.y * 0.12f + 130 * u, 0.5f, 26 * u, rgba(1, 1, 1, a), rgba(0.1f, 0.12f, 0.18f, 0.8f * a));
   }
   if (s->won) {
     float a = fminf(1, h->won_t);

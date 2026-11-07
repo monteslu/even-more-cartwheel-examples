@@ -18,6 +18,12 @@ cw_camera2d g_cam;
 bool g_gi = true; /* 2D global illumination (v0.37 engines): on unless a test or a slow host turns it off */
 static float zoom = 60; /* canvas units per tile */
 static view_stats VS;
+#include <time.h>
+static double now_ms(void) {
+  struct timespec ts;
+  clock_gettime(CLOCK_MONOTONIC, &ts);
+  return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec * 1e-6;
+}
 static float cur_tint[3];
 
 /* ── colours ── */
@@ -54,6 +60,7 @@ static float last_hp_t[MAXP];
 
 void view_init(void) {
   art_init();
+  if (getenv("EXPLORER_NO_GI")) g_gi = false; /* (the perf breakdown) */
   np = 0;
 }
 
@@ -108,11 +115,20 @@ static cw_vec2 polar(cw_vec2 o, float a, float l) { return (cw_vec2){ o.x + sinf
 static void glow(float x, float y, float r, cw_color c) {
   cw_r2d_sprite(&(cw_sprite){ .texture = A.soft, .pos = { x, y }, .size = { r * 2, r * 2 }, .pivot = { 0.5f, 0.5f }, .color = c });
 }
+/* the perf breakdown (development): EXPLORER_PERF_OFF=shadows,vol,post,water,dist,occl,lights turns parts off */
+static bool perf_off(const char *what) {
+  static const char *e;
+  static int read;
+  if (!read) e = getenv("EXPLORER_PERF_OFF"), read = 1;
+  return e && strstr(e, what);
+}
 static void light(float x, float y, float r, cw_color c, float e, bool shadows) {
+  if (perf_off("lights")) return;
+  if (perf_off("shadows")) shadows = false;
 #ifdef EXPLORER_R2D_V2
   /* soft penumbras from the distance field; a breath of glow in the air round each lamp */
   cw_r2d_light(&(cw_light2d){ .pos = { x, y }, .radius = r, .color = c, .energy = e * 1.25f, .falloff = 1.6f, .height = r * 0.35f, .shadows = shadows,
-                              .softness = 0.45f, .volumetric = shadows ? 0.03f : 0.015f });
+                              .softness = 0.45f, .volumetric = perf_off("vol") ? 0 : shadows ? 0.03f : 0.015f });
 #else
   cw_r2d_light(&(cw_light2d){ .pos = { x, y }, .radius = r, .color = c, .energy = e, .falloff = 1.6f, .height = r * 0.35f, .shadows = shadows });
 #endif
@@ -801,6 +817,7 @@ static void draw_water(const sim *s, float x0, float y0, float x1, float y1, flo
 }
 
 void view_draw(const sim *s, float t) {
+  double tv0 = now_ms();
   memset(&VS, 0, sizeof VS);
 
   if (!rockdist || rock_dirty) build_rockdist(s), rock_dirty = false;
@@ -823,7 +840,7 @@ void view_draw(const sim *s, float t) {
   post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .tone_knee = 0.78f,
                         .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
   static cw_r2d_gi gi = { .intensity = 0.8f };
-  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.78f), .time = t, .post = &post,
+  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.78f), .time = t, .post = perf_off("post") ? NULL : &post,
                                     .gi = g_gi ? &gi : NULL });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
   for (int l = L_WALL; l <= L_FRONT; l++)
@@ -860,7 +877,7 @@ void view_draw(const sim *s, float t) {
   cw_r2d_use_layer(L_TILES);
   draw_tiles(s, x0, y0, x1, y1, t);
 #ifdef EXPLORER_R2D_V2
-  submit_occluders(s, x0, y0, x1, y1);
+  if (!perf_off("occl")) submit_occluders(s, x0, y0, x1, y1);
 #endif
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
@@ -944,9 +961,9 @@ void view_draw(const sim *s, float t) {
   VS.particles = np;
   cw_r2d_use_layer(L_WATER);
 #ifdef EXPLORER_R2D_V2
-  draw_water_v2(s, x0, y0, x1, y1, t);
+  if (!perf_off("water")) draw_water_v2(s, x0, y0, x1, y1, t);
   cw_r2d_use_layer(L_FRONT); /* the distortion layer: shockwaves */
-  draw_waves();
+  if (!perf_off("dist")) draw_waves();
 #else
   draw_water(s, x0, y0, x1, y1, t);
 #endif
@@ -955,7 +972,9 @@ void view_draw(const sim *s, float t) {
     cw_r2d_use_layer(L_HUD);
     cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(flash_c.r, flash_c.g, flash_c.b, flash_c.a * flash_t));
   }
+  double te0 = now_ms();
   cw_r2d_end();
+  VS.end_ms = (float)(now_ms() - te0), VS.submit_ms = (float)(te0 - tv0);
   (void)cur_tint, (void)last_hp_t;
 }
 
