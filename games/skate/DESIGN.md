@@ -99,5 +99,14 @@ picture) and pull in when a wall is in the way. No camera ever shakes.
 | tests/skate-physics.mjs | the board against ramp physics; the naive solver as the control |
 | tests/skate-parks.mjs | nothing floats, every line skateable; three controls |
 | tests/skate-soak.mjs | 30 game minutes at 1 to 4 players, every park; a NaN control |
+| tests/skate-feel.mjs | a person's twelve seconds on a pad: every trick lands, the camera never jerks, the feet stay on the deck; a mistimed flip as the control |
 | tests/skate-gates.json | the auto cart on every host, frames and simulation state exact |
 | tests/skate-perf.mjs | the 890M at 1080p High, four-way split |
+
+## Performance
+
+The perf gate's scene (skate_bench): four bots on the mega ramp park in a four-way split, 1920x1080, High, on the
+890M: 2.6 ms of GPU a frame on GL, 3.5 ms on WebGPU (the bound is 4.5). What paid for it: no bloom (a sunny
+afternoon has little to bloom; 0.8 ms), the sun's map at 2048 texels when the screen is split three or four ways (a
+view is a quarter of the screen), one shadow map for every view (the pipeline draws it with the first view and the
+others reuse it), one mesh per surface kind for the whole park.
