@@ -21,8 +21,9 @@
  *                                  (0-based seats; one player owns every slot)
  *   prop <x> <y> <kind> <frame> <turn>   scenery on a ground tile: kind decor (the theme's kit, its frame) or lamp;
  *                                  turn in quarter turns (0..3)
- *   feature <rock|water> <x> <y> <r> <h>   a smooth rock outcrop (a dome h metres high) or a pool with banks: its
- *                                  middle and radius in tiles (fractions allowed); the tiles under it stay ground
+ *   feature <rock|water> <x> <y> <r> <h>   a rock outcrop (a faceted block about h metres high) or a pool with banks:
+ *                                  its middle and radius in tiles (fractions allowed), its shape inside that radius
+ *                                  from where it stands (map_feat_at); the tiles under it stay ground
  *   light <x> <y> <height> <r> <g> <b> <energy> <range>   a light in the bake only (lamps, glows): its tile centre
  *                                  and height in metres, colour 0..1, energy and range as OmniLight3D
  *   route <x> <y> <w> <x> <y> <w> ...   a path as the generator drew it: its waypoints (tile units, the grid's corner
@@ -53,8 +54,8 @@ enum { T_PATH, T_GROUND, T_SLOT, T_ROCK, T_WATER, T_KINDS };
 typedef struct mp_slot { uint8_t x, y, own[4]; } mp_slot; /* own[n - 1]: the owner when n play */
 typedef struct mp_prop { uint8_t x, y, kind, frame, turn; } mp_prop; /* kind 0 decor, 1 lamp */
 typedef struct mp_light { uint8_t x, y; float h, r, g, b, energy, range; } mp_light;
-/* a smooth terrain feature over the tiles (they stay ground for the rules): a rock outcrop (a dome h metres over the
- * ground) or a pool (a bowl down under its water); x, y its middle and r its radius in tiles */
+/* a terrain feature over the tiles (they stay ground for the rules): a rock outcrop (a faceted block about h metres
+ * over the ground) or a pool (a bowl down under its water); x, y its middle and r its radius in tiles */
 enum { FEAT_ROCK, FEAT_WATER };
 typedef struct mp_feat { uint8_t kind; float x, y, r, h; } mp_feat;
 typedef struct mp_route { int n; float wp[MP_MAXWP][3]; } mp_route; /* its waypoints: x, y, width (tiles) */
@@ -113,8 +114,13 @@ static inline int mp_owner(const mp_slot *s, int n) { return n <= 1 ? 0 : s->own
 float map_floor_d(const tdmap *m, float x, float y, float *wide);
 /* where the floor is paved as a plaza (negative): the wide stretches, a curb's width in from the floor's edge */
 float map_plaza_d(const tdmap *m, float x, float y);
-/* the outcrops' height (m) over the ground at a point (the highest dome) and the pools' depth there (0 .. 1) */
+/* the outcrops' height (m) over the ground at a point (the highest) and the pools' depth there (0 .. 1): an outcrop a
+ * polygon block with cliffs, a roof of tilted planes in strata and boulders round its foot, a pool a bowl with an
+ * organic shoreline, each inside its radius (tools/fields.mjs is the same in JS) */
 void map_feat_at(const tdmap *m, float x, float y, float *rock, float *water);
+/* the creases of the outcrop standing highest at a point, as four fields that change sign across them (its cliff's top,
+ * its strata, its roof's planes, its walls' corners; 1 off the rock): the terrain is cut along them (mapbuild.c) */
+void map_rock_creases(const tdmap *m, float x, float y, float cr[4]);
 /* the ground's height (m): the floor at 0, the curb rising to MP_GROUND_H, outcrops on the ground, pools sunk in */
 float map_ground_h(const tdmap *m, float x, float y);
 /* a point the creeps may walk: on a path tile and on the floor */

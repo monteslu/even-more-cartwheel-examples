@@ -32,11 +32,12 @@ reaches the core costs it health; hold the core through the last wave to take th
   `tools/gen-broken.mjs` writes the map check's controls.
 - `tools/mapview` (`towers_mapview`) builds a map as the game does (`mapbuild.c`) and bakes its lighting:
   `scripts/build.sh towers_mapview`, then `towers_mapview --bake games/towers/assets/lightmaps` (through the GPU
-  suite lock) bakes all 30 and writes each bake's hash beside it. As a cart it shows the maps for review.
+  suite lock) bakes all 30 and writes each bake's hash beside it. The hash covers the map, the theme's kit and
+  `MB_TERRAIN` in `mapbuild.h`: change that string with any change to how the terrain is built, and rebake. As a cart it shows the maps for review.
 - `tools/check-maps.mjs` (CI) fails a map whose gates cannot reach the core, whose pads are off the path or touch,
   whose shares are unfair, whose props float or sink, whose floor is shut to the creeps, whose bake is missing or stale, or that two bots cannot hold
   (`--soak build/native/games/towers/towers_soak`). The maps in `tools/maps-broken/` must each fail their own check.
-- `tools/gen-textures.mjs`, `tools/gen-luts.mjs` and `tools/gen-roots.mjs` write the terrain textures (ground, path floor, plaza, rock), the colour
+- `tools/gen-textures.mjs`, `tools/gen-luts.mjs` and `tools/gen-roots.mjs` write the terrain textures (ground, path floor, plaza, rock, and the pools' water, lava and crystal light), the colour
   grades and the pack list. The towers, pads, core, gates, lamps and decor are modelled by
   `tools/blender/towerkit.py` in headless Blender.
 

@@ -21,6 +21,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/particles.h"
 #include "game.h"
+#include "mapbuild.h"
 
 #define BIGS 3
 #define SMALLB 6
@@ -36,7 +37,7 @@ static struct {
   cw_node root;
   cw_node big[BIGS], small[SMALLB], wave[WAVES];
   int nb, ns, nw;
-  cw_node hit, spark, frost, shard, dust, sparkle, wisp, spiral, coins, gore, heal, trail, smoke, haze, flashp;
+  cw_node hit, spark, frost, shard, dust, sparkle, wisp, spiral, coins, gore, heal, trail, smoke, haze, flashp, lava_haze;
   cw_node light[LIGHTS];
   cw_node motes;
   int motes_theme;
@@ -155,6 +156,11 @@ static const char *const HAZE[] = { "amount", "1", "lifetime", "0.45", "explosiv
   "emission_shape", "POINT", "spread", "30", "speed_min", "0.3", "speed_max", "0.8", "direction", "vec3(0, 1, 0)",
   "blend", "DISTORT", "distort_strength", "0.08", "size", "1.2", "size_curve", "\"0 0.5, 1 1.4\"",
   "color_ramp", "\"0 1 1 1 0, 0.2 1 1 1 1, 1 1 1 1 0\"", "texture", "\"fx/haze.png\"", NULL };
+/* the air shimmering over the lava pools: slow, wide, rising */
+static const char *const LAVA_HAZE[] = { "amount", "1", "lifetime", "1.6", "explosiveness", "1", "one_shot", "true",
+  "emission_shape", "SPHERE", "emission_radius", "0.4", "spread", "15", "speed_min", "0.5", "speed_max", "0.9", "direction", "vec3(0, 1, 0)",
+  "blend", "DISTORT", "distort_strength", "0.05", "size", "2.4", "size_curve", "\"0 0.6, 1 1.6\"",
+  "color_ramp", "\"0 1 1 1 0, 0.3 1 1 1 1, 1 1 1 1 0\"", "texture", "\"fx/haze.png\"", NULL };
 static const char *const FLASHP[] = { "amount", "1", "lifetime", "0.09", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "POINT", "spread", "0", "speed_min", "0", "speed_max", "0", "size", "1.1", "size_curve", "\"0 1, 1 0.4\"",
   "color_ramp", "\"0 1 1 1 1, 1 1 1 1 0\"", "energy", "12", "blend", "ADD", NULL };
@@ -304,6 +310,7 @@ void fx_init(cw_node root) {
   FX.trail = bnode("ShellTrail", TRAIL, 300, 160);
   FX.smoke = bnode("MuzzleSmoke", SMOKE, 310, 24);
   FX.haze = bnode("BeamHaze", HAZE, 320, 32);
+  FX.lava_haze = bnode("LavaHaze", LAVA_HAZE, 330, 24);
   FX.flashp = bnode("Flash", FLASHP, 330, 48);
   FX.motes = pnode(FX.root, "Motes", MOTES, 470);
   cw_node_set(FX.motes, "emitting", cw_val_bool(true));
@@ -504,6 +511,14 @@ void fx_tick(const sim *s, float time) {
     const creep *e = &s->e[t->tgt];
     if ((FX.tick + (uint32_t)k) % (lvl >= 2 ? 3u : 5u) == 0) burst(FX.hit, e->x, 0.7f, e->y, t->x - e->x, 0.6f, t->y - e->y);
     if (lvl >= 1 && (FX.tick + (uint32_t)k) % 7 == 0) burst(FX.haze, e->x, 0.8f, e->y, 0, 1, 0);
+  }
+  /* heat shimmering over the lava: now and then over a point of a pool off its shallows */
+  if (s->m.theme == MP_THEME_VOLCANO && lvl >= 1 && FX.tick % (lvl >= 2 ? 4u : 8u) == 0 && s->m.nfeat > 0) {
+    uint32_t h = (FX.tick * 2654435761u) ^ 0x9e3779b9u;
+    const mp_feat *f = &s->m.feat[(h >> 8) % (uint32_t)s->m.nfeat];
+    float a = (float)(h & 255) * 0.0245f, r = (float)((h >> 16) & 255) / 255.0f * 0.45f * f->r * MP_TILE;
+    float x = mp_wx(&s->m, f->x - 0.5f) + cw_cos(a) * r, z = mp_wz(&s->m, f->y - 0.5f) + cw_sin(a) * r;
+    if (f->kind == FEAT_WATER && mapbuild_pool_deep(&s->m, x, z) > 0.15f) burst(FX.lava_haze, x, MB_POOL_LEVEL + 0.4f, z, 0, 1, 0);
   }
   /* the shells' fuses */
   for (int k = 0; k < MAXSH; k++) {
