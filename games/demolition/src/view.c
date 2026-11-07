@@ -25,7 +25,8 @@
 bool g_view_no_path;
 
 static struct {
-  cw_node root, field, sky, sun;
+  cw_node root, field, sky, sun, post;
+  t3_instanced_mesh *poles, *flags, *beams;
   t3_instanced_mesh *blk[M_COUNT];
   t3_instanced_mesh *path, *trees_trunk, *trees_top;
   cw_node crystal_light[MAXTGT];
@@ -125,12 +126,11 @@ static t3_texture *block_texture(int mat) {
   return t;
 }
 
-static t3_texture *ground_texture(int theme, bool dirt) {
+/* ground: tiling noise round a base colour (sRGB), blades or grit, green grounds a little yellow in places */
+static t3_texture *ground_texture(const float *c, int seed) {
   enum { N = 512 };
   static uint8_t px[N * N * 4];
-  static const float GR[3][3] = { { 0.33f, 0.55f, 0.16f }, { 0.44f, 0.56f, 0.14f }, { 0.22f, 0.5f, 0.32f } };
-  static const float DI[3][3] = { { 0.55f, 0.42f, 0.28f }, { 0.6f, 0.44f, 0.27f }, { 0.5f, 0.38f, 0.3f } };
-  const float *c = dirt ? DI[theme % 3] : GR[theme % 3];
+  bool dirt = seed != 0, green = c[1] > c[0] && c[1] > c[2];
   for (int y = 0; y < N; y++)
     for (int x = 0; x < N; x++) {
       float u = (float)x / N, v = (float)y / N;
@@ -142,14 +142,14 @@ static t3_texture *ground_texture(int theme, bool dirt) {
         int xi = (int)floorf(fx), yi = (int)floorf(fy);
         float tx = fx - xi, ty = fy - yi;
         tx = tx * tx * (3 - 2 * tx), ty = ty * ty * (3 - 2 * ty);
-        float aa = h2(xi % p, yi % p, o + (dirt ? 50 : 0)), bb = h2((xi + 1) % p, yi % p, o + (dirt ? 50 : 0));
-        float cc = h2(xi % p, (yi + 1) % p, o + (dirt ? 50 : 0)), dd = h2((xi + 1) % p, (yi + 1) % p, o + (dirt ? 50 : 0));
+        float aa = h2(xi % p, yi % p, o + seed * 10), bb = h2((xi + 1) % p, yi % p, o + seed * 10);
+        float cc = h2(xi % p, (yi + 1) % p, o + seed * 10), dd = h2((xi + 1) % p, (yi + 1) % p, o + seed * 10);
         n += a * (aa + (bb - aa) * tx + (cc - aa) * ty + (aa - bb - cc + dd) * tx * ty);
         f *= 2, a *= 0.5f;
       }
       float blade = h2(x, y, 7);
       float k = 0.72f + 0.45f * (n - 0.5f) + (dirt ? 0.1f * (blade - 0.5f) : 0.22f * (blade - 0.5f));
-      float yel = dirt ? 0 : cw_smoothstep(0.55f, 0.75f, n) * 0.25f;
+      float yel = green ? cw_smoothstep(0.55f, 0.75f, n) * 0.25f : 0;
       uint8_t *p = &px[(y * N + x) * 4];
       p[0] = u8(c[0] * k + yel * 0.3f), p[1] = u8(c[1] * k + yel * 0.2f), p[2] = u8(c[2] * k), p[3] = 255;
     }
@@ -229,6 +229,7 @@ void view_init(cw_node root) {
   V.fov = 50;
   V.sky = cw_node_get(root, "Main/Sky");
   V.sun = cw_node_get(root, "Main/Sun");
+  V.post = cw_node_get(root, "Main/Post");
   cw_node world = cw_node_new("Node3D", "Blocks");
   cw_node_add_child(root, world);
   for (int m = 0; m < M_COUNT; m++) {
@@ -237,7 +238,7 @@ void view_init(cw_node root) {
     if (m == M_TARGET) {
       mt = std_mat(1, 0.3f, 0.85f, 0.15f, 0.1f);
       mt->emissive = (t3_color){ 1, 0.25f, 0.8f };
-      mt->emissive_intensity = 2.4f;
+      mt->emissive_intensity = 4.5f; /* they glow past white into the bloom: they read through a structure */
       geo = t3_octahedron_geometry_new(0.5f, 0);
       xform_geo(geo, (t3_vec3){ 0, 0, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.4f, 1.0f, 1.4f });
     } else {
@@ -251,8 +252,8 @@ void view_init(cw_node root) {
         mt->transparent = true;
         mt->opacity = 1;
         mt->depth_write = false;
-        mt->emissive = (t3_color){ 0.12f, 0.35f, 0.45f };
-        mt->emissive_intensity = 1;
+        mt->emissive = (t3_color){ 1.0f, 0.62f, 0.28f }; /* lit windows: a lamp's warm light inside */
+        mt->emissive_intensity = 1.6f;
       }
       geo = t3_box_geometry_new(1, 1, 1, 1, 1, 1);
     }
@@ -261,6 +262,28 @@ void view_init(cw_node root) {
   for (int i = 0; i < MAXTGT; i++) {
     V.crystal_light[i] = omni(world, (t3_color){ 1, 0.3f, 0.85f }, 0, 6);
     cw_node3d_set_position(V.crystal_light[i], (t3_vec3){ 0, -50, 0 });
+  }
+  /* banners: a pole and a flag that waves, each carried by a block */
+  {
+    t3_material *pm = std_mat(0.85f, 0.7f, 0.35f, 0.35f, 0.8f);
+    V.poles = imesh(world, "Poles", xform_geo(t3_cylinder_geometry_new(0.5f, 0.5f, 1, 6, 1, false), (t3_vec3){ 0, 0.5f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 }), pm, MAXBANNER, true);
+    t3_material *fm = std_mat(1, 1, 1, 0.9f, 0);
+    fm->side = T3_DOUBLE_SIDE;
+    fm->emissive = (t3_color){ 1, 1, 1 };
+    fm->emissive_intensity = 0.12f; /* cloth with the sun through it */
+    /* a flag: a plane from the pole out along +x, a swallowtail cut by two triangles */
+    t3_geometry *fg = t3_plane_geometry_new(1, 1, 6, 1);
+    xform_geo(fg, (t3_vec3){ 0.5f, 0, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
+    V.flags = imesh(world, "Flags", fg, fm, MAXBANNER, true);
+  }
+  /* the crystals' beacons: a column of light above each standing crystal, seen over any wall */
+  {
+    t3_material *bm = t3_mesh_basic_material_new(0xffffff);
+    bm->color = (t3_color){ 1, 0.3f, 0.85f };
+    bm->transparent = true, bm->opacity = 0.28f, bm->depth_write = false, bm->blending = T3_ADDITIVE_BLENDING;
+    bm->side = T3_DOUBLE_SIDE;
+    t3_geometry *bg = xform_geo(t3_cylinder_geometry_new(0.25f, 0.6f, 1, 12, 1, true), (t3_vec3){ 0, 0.5f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
+    V.beams = imesh(world, "Beacons", bg, bm, MAXTGT, false);
   }
   /* the aim path's beads */
   {
@@ -304,111 +327,203 @@ static void build_launcher(const game *g) {
   piece(V.barrel, "Breech", xform_geo(bk, (t3_vec3){ 0, 0, 1.0f }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 }), std_mat(0.16f, 0.2f, 0.28f, 0.3f, 0.85f), true);
 }
 
-/* the hills: a ring of rolling ground far out, coloured by height */
-static t3_geometry *hills_geo(int theme, uint32_t seed) {
-  enum { NA = 96, NR = 10 };
-  float *pos = malloc(sizeof(float) * 3 * NA * NR), *nrm = malloc(sizeof(float) * 3 * NA * NR), *uv = malloc(sizeof(float) * 2 * NA * NR);
+/* ── the settings: each kit stands somewhere of its own ─────────────── */
+
+enum { BD_HILLS, BD_MOUNTAINS, BD_MESAS, BD_SEA, BD_GORGE, BD_QUARRY };
+enum { TR_NONE, TR_ROUND, TR_PINES, TR_AUTUMN };
+typedef struct setting {
+  float tod, north, sun_energy, sky_energy, exposure;
+  float ground[3], yard[3];
+  float fog[3], fog_density;
+  int backdrop;
+  float back_low[3], back_high[3];
+  int trees;
+  /* the materials' colours here: wood, stone, glass (lit windows), steel */
+  float pal[4][3];
+} setting;
+
+static const setting SETTINGS[K_COUNT] = {
+  /* tower: a highland valley under grey-blue mountains, green trees */
+  [K_TOWER] = { 15.7f, 55, 4.2f, 0.9f, 1.05f, { 0.30f, 0.52f, 0.14f }, { 0.52f, 0.40f, 0.26f }, { 0.55f, 0.65f, 0.8f }, 0.0030f,
+                BD_MOUNTAINS, { 0.26f, 0.3f, 0.34f }, { 0.95f, 0.97f, 1.0f }, TR_ROUND,
+                { { 0.80f, 0.48f, 0.24f }, { 0.78f, 0.74f, 0.66f }, { 1.0f, 0.82f, 0.5f }, { 0.88f, 0.2f, 0.12f } } },
+  /* wall: a golden meadow, low hills, autumn woods */
+  [K_WALL] = { 16.7f, 35, 4.0f, 0.85f, 1.05f, { 0.40f, 0.55f, 0.14f }, { 0.56f, 0.42f, 0.25f }, { 0.75f, 0.65f, 0.5f }, 0.0028f,
+               BD_HILLS, { 0.25f, 0.42f, 0.14f }, { 0.45f, 0.5f, 0.2f }, TR_AUTUMN,
+               { { 0.82f, 0.5f, 0.25f }, { 0.92f, 0.78f, 0.55f }, { 1.0f, 0.8f, 0.45f }, { 0.2f, 0.4f, 0.9f } } },
+  /* bridge: a river gorge between steep rock walls, pines */
+  [K_BRIDGE] = { 15.2f, 70, 4.2f, 0.9f, 1.05f, { 0.24f, 0.46f, 0.16f }, { 0.48f, 0.42f, 0.34f }, { 0.55f, 0.68f, 0.75f }, 0.0035f,
+                 BD_GORGE, { 0.42f, 0.34f, 0.28f }, { 0.62f, 0.55f, 0.46f }, TR_PINES,
+                 { { 0.75f, 0.45f, 0.22f }, { 0.8f, 0.72f, 0.62f }, { 1.0f, 0.8f, 0.45f }, { 0.25f, 0.28f, 0.33f } } },
+  /* castle: a headland over the sea, the cliffs falling away behind */
+  [K_CASTLE] = { 15.9f, 50, 4.4f, 0.95f, 1.05f, { 0.33f, 0.55f, 0.18f }, { 0.6f, 0.52f, 0.38f }, { 0.65f, 0.78f, 0.92f }, 0.0022f,
+                 BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f }, TR_ROUND,
+                 { { 0.78f, 0.46f, 0.22f }, { 0.9f, 0.86f, 0.78f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } } },
+  /* scaffold: a quarry's floor among terraced orange walls */
+  [K_SCAFFOLD] = { 15.4f, 65, 4.3f, 0.85f, 1.0f, { 0.55f, 0.5f, 0.44f }, { 0.48f, 0.42f, 0.36f }, { 0.75f, 0.68f, 0.6f }, 0.0035f,
+                   BD_QUARRY, { 0.62f, 0.42f, 0.28f }, { 0.85f, 0.66f, 0.45f }, TR_NONE,
+                   { { 0.82f, 0.55f, 0.28f }, { 0.75f, 0.72f, 0.68f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } } },
+  /* pyramid: desert sand under red mesas, a hot haze */
+  [K_PYRAMID] = { 16.6f, 40, 4.6f, 0.8f, 1.0f, { 0.86f, 0.66f, 0.42f }, { 0.78f, 0.58f, 0.36f }, { 0.95f, 0.75f, 0.55f }, 0.0030f,
+                  BD_MESAS, { 0.66f, 0.3f, 0.16f }, { 0.85f, 0.5f, 0.28f }, TR_NONE,
+                  { { 0.75f, 0.45f, 0.2f }, { 0.95f, 0.8f, 0.55f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } } },
+  /* keep: a snowy pass between white peaks, dark pines, a cold light */
+  [K_KEEP] = { 14.2f, 75, 4.0f, 1.0f, 0.95f, { 0.9f, 0.93f, 0.98f }, { 0.55f, 0.5f, 0.48f }, { 0.75f, 0.82f, 0.95f }, 0.0040f,
+               BD_MOUNTAINS, { 0.3f, 0.32f, 0.38f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
+               { { 0.72f, 0.42f, 0.2f }, { 0.55f, 0.56f, 0.6f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } } },
+};
+static const setting *SET;
+
+/* the paints (game.h P_*), linear colours */
+static const float PAINT[P_COUNT][3] = {
+  [P_ROOF_RED] = { 0.62f, 0.12f, 0.06f }, [P_ROOF_SLATE] = { 0.12f, 0.2f, 0.38f }, [P_ROOF_COPPER] = { 0.16f, 0.5f, 0.42f },
+  [P_TRIM_CREAM] = { 0.98f, 0.88f, 0.62f }, [P_TIMBER] = { 0.22f, 0.12f, 0.06f }, [P_PLASTER] = { 0.96f, 0.93f, 0.85f },
+  [P_GOLD] = { 1.0f, 0.68f, 0.12f }, [P_TURQUOISE] = { 0.05f, 0.55f, 0.6f }, [P_BRICK] = { 0.62f, 0.2f, 0.12f },
+  [P_DARK_STONE] = { 0.26f, 0.26f, 0.3f }, [P_SAND_STONE] = { 0.95f, 0.72f, 0.42f }, [P_ROSE_STONE] = { 0.85f, 0.52f, 0.45f },
+  [P_WHITE_STONE] = { 0.95f, 0.94f, 0.9f },
+};
+static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8f }, { 1.0f, 0.72f, 0.05f }, { 0.08f, 0.55f, 0.2f } };
+
+/* the backdrop: a ring of land far out, its shape by kind, coloured from low to high (vertex colours) */
+static float terrace(float h, float step) { float k = floorf(h / step); float f = h / step - k; return (k + cw_smoothstep(0.7f, 0.95f, f)) * step; }
+static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
+  enum { NA = 160, NR = 16 };
+  float r_in = S->backdrop == BD_QUARRY ? 60 : S->backdrop == BD_GORGE ? 70 : 110, r_out = S->backdrop == BD_QUARRY ? 130 : 320;
+  float *pos = malloc(sizeof(float) * 3 * NA * NR), *col = malloc(sizeof(float) * 3 * NA * NR), *uv = malloc(sizeof(float) * 2 * NA * NR);
   unsigned *idx = malloc(sizeof(unsigned) * 6 * NA * (NR - 1));
   for (int r = 0; r < NR; r++)
     for (int a = 0; a < NA; a++) {
-      float ang = a * 6.2831853f / (NA - 1), rad = 110 + r * 14.0f;
-      float t = (float)r / (NR - 1);
-      float h = (fbm(cosf(ang) * 3 + 10, sinf(ang) * 3 + 10, (int)seed) * 30 + 6) * cw_smoothstep(0, 0.5f, t) * (1 - 0.3f * t);
+      float ang = a * 6.2831853f / (NA - 1), t = (float)r / (NR - 1);
+      float rad = r_in + (r_out - r_in) * t * t;
+      float x = cosf(ang) * rad, z = sinf(ang) * rad;
+      float n = fbm(cosf(ang) * 3 + 10, sinf(ang) * 3 + 10 + t * 2, (int)seed);
+      float rise = cw_smoothstep(0, 0.35f, t);
+      float h = 0, top = 1;
+      switch (S->backdrop) {
+      case BD_MOUNTAINS: h = (powf(n, 1.6f) * 140 + 15) * rise * (0.6f + 0.4f * t); top = 75; break;
+      case BD_MESAS: h = terrace(fmaxf(0, n - 0.42f) * 160, 14) * rise; top = 40; break;
+      case BD_QUARRY: h = terrace(rise * (30 + n * 25), 7); top = 45; break;
+      case BD_GORGE: h = (40 + n * 50) * cw_smoothstep(0.0f, 0.3f, t) * cw_smoothstep(30, 80, fabsf(x)); top = 80; break;
+      case BD_SEA: h = z > -40 ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
+      default: h = (n * 30 + 6) * rise * (1 - 0.3f * t); top = 35; break;
+      }
       int i = r * NA + a;
-      pos[i * 3] = cosf(ang) * rad, pos[i * 3 + 1] = h - 1.5f, pos[i * 3 + 2] = sinf(ang) * rad;
-      uv[i * 2] = ang * 12, uv[i * 2 + 1] = rad * 0.08f;
+      pos[i * 3] = x, pos[i * 3 + 1] = h - 1.5f, pos[i * 3 + 2] = z;
+      uv[i * 2] = ang * 24, uv[i * 2 + 1] = rad * 0.06f;
+      float k = cw_clampf(h / top, 0, 1);
+      if (S->backdrop == BD_MOUNTAINS) k = cw_smoothstep(0.55f, 0.8f, k); /* snow above the tree line */
+      for (int c = 0; c < 3; c++) col[i * 3 + c] = S->back_low[c] + (S->back_high[c] - S->back_low[c]) * k;
     }
-  for (int i = 0; i < NA * NR; i++) nrm[i * 3] = 0, nrm[i * 3 + 1] = 1, nrm[i * 3 + 2] = 0;
   int n = 0;
   for (int r = 0; r < NR - 1; r++)
     for (int a = 0; a < NA - 1; a++) {
       unsigned i0 = r * NA + a, i1 = i0 + 1, i2 = i0 + NA, i3 = i2 + 1;
       idx[n++] = i0, idx[n++] = i1, idx[n++] = i2, idx[n++] = i1, idx[n++] = i3, idx[n++] = i2; /* facing up */
     }
-  (void)theme;
   t3_geometry *g = t3_geometry_new();
   t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, NA * NR, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, col, NA * NR, 3));
   t3_geometry_set_attribute(g, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, NA * NR, 2));
   t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, idx, n, 1));
   t3_geometry_compute_vertex_normals(g);
   t3_geometry_compute_bounding_sphere(g);
   t3_geometry_compute_bounding_box(g);
-  free(pos), free(nrm), free(uv), free(idx);
+  free(pos), free(col), free(uv), free(idx);
   return g;
 }
 
-/* the palette: what each material looks like in this level's land */
-static void palette(int theme) {
-  static const float P[3][M_COUNT][3] = {
-    { { 0.86f, 0.52f, 0.25f }, { 1.0f, 0.8f, 0.52f }, { 0.5f, 0.9f, 1.0f }, { 0.92f, 0.18f, 0.12f }, { 1, 1, 1 } },
-    { { 0.8f, 0.42f, 0.2f }, { 0.95f, 0.62f, 0.55f }, { 0.55f, 1.0f, 0.88f }, { 1.0f, 0.68f, 0.1f }, { 1, 1, 1 } },
-    { { 0.88f, 0.6f, 0.32f }, { 1.0f, 0.92f, 0.74f }, { 0.6f, 0.82f, 1.0f }, { 0.15f, 0.42f, 0.95f }, { 1, 1, 1 } },
-  };
-  memcpy(V.pal, P[theme % 3], sizeof V.pal);
+/* a flat strip of ground texture (the yard, the track, the river, the sea) */
+static void flat(const char *name, float w, float l, t3_vec3 at, t3_material *m) {
+  t3_geometry *pg = t3_plane_geometry_new(w, l, 1, 1);
+  xform_geo(pg, at, qaxis(1, 0, 0, -1.5707963f), (t3_vec3){ 1, 1, 1 });
+  piece(V.field, name, pg, m, false);
+}
+static t3_material *ground_mat(const float *c, float repeat_u, float repeat_v, int seed, float rough) {
+  t3_material *m = std_mat(1, 1, 1, rough, 0);
+  t3_texture *t = ground_texture(c, seed);
+  t->repeat = (t3_vec2){ repeat_u, repeat_v };
+  t3_material_set_map(m, t);
+  t3_release(t);
+  return m;
 }
 
 void view_level(const game *g) {
   if (cw_node_valid(V.field)) cw_node_free(V.field);
   V.field = cw_node_new("Node3D", "Field");
   cw_node_add_child(V.root, V.field);
-  int theme = g->L->theme;
-  palette(theme);
-  /* the sky: morning, golden afternoon, a clear high day */
-  static const float tod[3] = { 15.5f, 16.7f, 14.6f }, north[3] = { 60, 35, 85 }; /* the sun behind the launcher, the structure lit */
+  const setting *S = SET = &SETTINGS[g->L->kind];
+  for (int m = 0; m < 4; m++) memcpy(V.pal[m], S->pal[m], sizeof V.pal[m]);
+  V.pal[M_TARGET][0] = V.pal[M_TARGET][1] = V.pal[M_TARGET][2] = 1;
+  /* the light: a strong low sun behind the launcher, a cooler sky */
   if (cw_node_valid(V.sky)) {
-    float t = tod[theme % 3], n = north[theme % 3];
+    float t = S->tod, n = S->north;
     if (getenv("DEMOLITION_TOD")) t = (float)atof(getenv("DEMOLITION_TOD")); /* development: trying the light */
     if (getenv("DEMOLITION_NORTH")) n = (float)atof(getenv("DEMOLITION_NORTH"));
     cw_node_set(V.sky, "time_of_day", cw_val_float(t));
     cw_node_set(V.sky, "north", cw_val_float(n));
+    cw_node_set(V.sky, "sun_energy", cw_val_float(S->sun_energy));
+    cw_node_set(V.sky, "sky_energy", cw_val_float(S->sky_energy));
   }
-  /* the plain */
-  {
-    t3_material *m = std_mat(1, 1, 1, 0.95f, 0);
-    t3_texture *t = ground_texture(theme, false);
-    t->repeat = (t3_vec2){ 36, 36 };
-    t3_material_set_map(m, t);
-    t3_release(t);
-    t3_geometry *pg = t3_plane_geometry_new(420, 420, 1, 1);
-    xform_geo(pg, (t3_vec3){ 0, 0, 0 }, qaxis(1, 0, 0, -1.5707963f), (t3_vec3){ 1, 1, 1 });
-    piece(V.field, "Grass", pg, m, false);
+  if (cw_node_valid(V.post)) {
+    float e = S->exposure;
+    if (getenv("DEMOLITION_LOOK_CONTROL")) e *= 3.0f; /* the look gate's control: a washed-out picture */
+    cw_node_set(V.post, "exposure", cw_val_float(e));
   }
-  /* the yard: worn ground round the structure and a track to the launcher */
+  /* distance: height fog the colour of the setting's air (the structure stays clear: it starts 45 m out) */
   {
-    t3_material *m = std_mat(1, 1, 1, 0.98f, 0);
-    t3_texture *t = ground_texture(theme, true);
-    t->repeat = (t3_vec2){ 6, 6 };
-    t3_material_set_map(m, t);
-    t3_release(t);
+    cw_node f = cw_node_new("HeightFog", "Haze");
+    cw_node_add_child(V.field, f);
+    cw_node_set(f, "density", cw_val_float(S->fog_density));
+    cw_node_set(f, "height_falloff", cw_val_float(0.035f));
+    cw_node_set(f, "use_sky_color", cw_val_bool(false));
+    cw_node_set(f, "color", cw_val_color(S->fog[0], S->fog[1], S->fog[2], 1));
+    cw_node_set(f, "start_distance", cw_val_float(45));
+    cw_node_set(f, "sky_distance", cw_val_float(0));
+    cw_node_set(f, "max_opacity", cw_val_float(0.75f));
+  }
+  /* the ground */
+  bool sea = S->backdrop == BD_SEA;
+  flat("Ground", 640, sea ? 360 : 640, (t3_vec3){ 0, 0, sea ? 140 : 0 }, ground_mat(S->ground, 50, sea ? 28 : 50, 0, 0.95f));
+  if (sea) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon */
+    t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
+    t3_geometry *cg = t3_plane_geometry_new(640, 40, 1, 1);
+    xform_geo(cg, (t3_vec3){ 0, -20, -40 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
+    piece(V.field, "Cliff", cg, cm, false);
+    t3_material *sm = std_mat(0.03f, 0.18f, 0.32f, 0.08f, 0);
+    flat("Sea", 1400, 700, (t3_vec3){ 0, -38, -390 }, sm);
+  }
+  if (S->backdrop == BD_GORGE) { /* a river under the bridge's first span, running down the gorge */
+    t3_material *wm = std_mat(0.04f, 0.2f, 0.3f, 0.06f, 0);
+    flat("River", 4.0f, 600, (t3_vec3){ 4.8f, 0.05f, 0 }, wm);
+    flat("Bank", 7.0f, 600, (t3_vec3){ 4.8f, 0.035f, 0 }, ground_mat(S->yard, 2, 120, 3, 0.9f));
+  }
+  /* the yard round the structure and the track to the launcher */
+  {
     float r = g->extent + 5;
     t3_geometry *cg = t3_circle_geometry_new(r, 48);
     xform_geo(cg, (t3_vec3){ 0, 0.03f, 0 }, qaxis(1, 0, 0, -1.5707963f), (t3_vec3){ 1, 1, 1 });
-    piece(V.field, "Yard", cg, m, false);
-    t3_material *m2 = std_mat(1, 1, 1, 0.98f, 0);
-    t3_texture *t2 = ground_texture(theme, true);
-    t2->repeat = (t3_vec2){ 1, 8 };
-    t3_material_set_map(m2, t2);
-    t3_release(t2);
+    piece(V.field, "Yard", cg, ground_mat(S->yard, 6, 6, 5, 0.98f), false);
     float len = g->muzzle.z + 4 - r * 0.5f;
-    t3_geometry *tg = t3_plane_geometry_new(4.5f, len, 1, 1);
-    xform_geo(tg, (t3_vec3){ 0, 0.04f, r * 0.5f + len * 0.5f }, qaxis(1, 0, 0, -1.5707963f), (t3_vec3){ 1, 1, 1 });
-    piece(V.field, "Track", tg, m2, false);
+    flat("Track", 4.5f, len, (t3_vec3){ 0, 0.04f, r * 0.5f + len * 0.5f }, ground_mat(S->yard, 1, 8, 5, 0.98f));
   }
-  /* the hills */
+  /* the backdrop */
   {
-    static const float hc[3][3] = { { 0.3f, 0.5f, 0.2f }, { 0.55f, 0.45f, 0.2f }, { 0.25f, 0.45f, 0.35f } };
-    t3_material *m = std_mat(hc[theme % 3][0], hc[theme % 3][1], hc[theme % 3][2], 0.95f, 0);
-    t3_texture *t = ground_texture(theme, false);
+    t3_material *m = std_mat(1, 1, 1, 0.92f, 0);
+    m->vertex_colors = true;
+    static const float grey[3] = { 0.85f, 0.85f, 0.85f };
+    t3_texture *t = ground_texture(grey, 9);
     t3_material_set_map(m, t);
     t3_release(t);
-    piece(V.field, "Hills", hills_geo(theme, g->L->seed), m, false);
+    piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
   }
-  /* trees: round crowns on trunks, scattered outside the field of fire */
-  {
-    t3_material *tm = std_mat(0.42f, 0.27f, 0.15f, 0.9f, 0);
-    t3_material *cm = std_mat(theme == 1 ? 0.85f : 0.25f, theme == 1 ? 0.45f : 0.55f, theme == 1 ? 0.15f : 0.2f, 0.85f, 0);
+  /* trees: round crowns, autumn crowns or pines, outside the field of fire */
+  if (S->trees != TR_NONE) {
+    bool pines = S->trees == TR_PINES;
+    t3_material *tm = std_mat(0.32f, 0.2f, 0.11f, 0.9f, 0);
+    t3_material *cm = std_mat(1, 1, 1, 0.85f, 0);
     t3_geometry *trunk = xform_geo(t3_cylinder_geometry_new(0.18f, 0.28f, 2.4f, 8, 1, false), (t3_vec3){ 0, 1.2f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
-    t3_geometry *crown = xform_geo(t3_icosahedron_geometry_new(1.6f, 1), (t3_vec3){ 0, 3.4f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1.15f, 1 });
+    t3_geometry *crown = pines ? xform_geo(t3_cone_geometry_new(1.7f, 6.5f, 9, 1, false), (t3_vec3){ 0, 4.6f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 })
+                               : xform_geo(t3_icosahedron_geometry_new(1.6f, 1), (t3_vec3){ 0, 3.4f, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1.15f, 1 });
     V.trees_trunk = imesh(V.field, "Trunks", trunk, tm, NTREES, true);
     V.trees_top = imesh(V.field, "Crowns", crown, cm, NTREES, true);
     int n = 0;
@@ -417,13 +532,18 @@ void view_level(const game *g) {
       float x = cosf(a) * r, z = sinf(a) * r;
       if (fabsf(x) < 18 && z > -10 && z < g->muzzle.z + 12) continue; /* the field of fire and the launcher's place */
       if (x * x + z * z < (g->extent + 12) * (g->extent + 12)) continue;
+      if (sea && z < -36) continue;
+      if (S->backdrop == BD_GORGE && fabsf(x - 4.8f) < 5) continue;
       float s = 0.75f + hashf((uint32_t)i * 101u) * 0.7f;
       t3_mat4 m;
-      t3_mat4_compose(&m, (t3_vec3){ x, 0, z }, qaxis(0, 1, 0, a * 3), (t3_vec3){ s, s, s });
+      t3_mat4_compose(&m, (t3_vec3){ x, 0, z }, qaxis(0, 1, 0, a * 3), (t3_vec3){ s, s * (pines ? 1.1f : 1), s });
       t3_instanced_mesh_set_matrix_at(V.trees_trunk, n, &m);
       t3_instanced_mesh_set_matrix_at(V.trees_top, n, &m);
-      float k = 0.8f + hashf((uint32_t)i * 59u) * 0.4f;
-      t3_instanced_mesh_set_color_at(V.trees_top, n, (t3_color){ k, k * (0.9f + 0.2f * hashf((uint32_t)i)), k });
+      float k = 0.75f + hashf((uint32_t)i * 59u) * 0.5f, hsel = hashf((uint32_t)i * 7u);
+      t3_color c = pines ? (t3_color){ 0.06f * k, 0.22f * k, 0.12f * k } : (t3_color){ 0.16f * k, 0.42f * k, 0.1f * k };
+      if (S->trees == TR_AUTUMN) c = hsel < 0.4f ? (t3_color){ 0.85f * k, 0.32f * k, 0.06f * k } : hsel < 0.7f ? (t3_color){ 0.9f * k, 0.62f * k, 0.1f * k } : c;
+      t3_instanced_mesh_set_color_at(V.trees_top, n, c);
+      t3_instanced_mesh_set_color_at(V.trees_trunk, n, (t3_color){ 1, 1, 1 });
       n++;
     }
     V.trees_trunk->count = V.trees_top->count = n;
@@ -461,7 +581,11 @@ void view_sync(const game *g, float alpha) {
     }
     /* painted wood: one plank in eight takes a bright colour */
     t3_color col = { c[0] * v * dmg * (1 + hue * 0.12f), c[1] * v * dmg, c[2] * v * dmg * (1 - hue * 0.12f) };
-    if (m == M_WOOD && (k->tint & 7) == 0) {
+    if (k->paint) { /* the builder's paint: roofs, trims, timber, gold */
+      const float *p = PAINT[k->paint];
+      float pv = 0.9f + 0.2f * (float)k->tint / 255.0f;
+      col = (t3_color){ p[0] * pv * dmg, p[1] * pv * dmg, p[2] * pv * dmg };
+    } else if (m == M_WOOD && (k->tint & 7) == 0) { /* painted wood: one plank in eight takes a bright colour */
       static const float paint[4][3] = { { 0.85f, 0.2f, 0.15f }, { 0.15f, 0.45f, 0.85f }, { 0.95f, 0.75f, 0.15f }, { 0.2f, 0.65f, 0.45f } };
       const float *p = paint[(k->tint >> 3) & 3];
       col = (t3_color){ p[0] * dmg, p[1] * dmg, p[2] * dmg };
@@ -489,6 +613,50 @@ void view_sync(const game *g, float alpha) {
     } else cw_node_set(V.crystal_light[t], "energy", cw_val_float(0));
   }
   V.st.lights = lights;
+  /* the beacons */
+  {
+    int nb = 0;
+    for (int t = 0; t < g->ntgt && t < MAXTGT; t++) {
+      if (g->tgt[t].down || g->tgt[t].blk < 0) continue;
+      cw_xform3 x = cw_body3d_interpolated(g->b[g->tgt[t].blk].body, alpha);
+      float pulse = 1 + 0.08f * sinf((float)g->tick * 0.05f + t * 1.7f);
+      t3_mat4 mx;
+      t3_mat4_compose(&mx, (t3_vec3){ x.p.x, x.p.y + 0.3f, x.p.z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ pulse, 18, pulse });
+      t3_instanced_mesh_set_matrix_at(V.beams, nb++, &mx);
+    }
+    V.beams->count = nb;
+    V.beams->instance_matrix->version++;
+  }
+  /* the banners: on their blocks, the flags waving */
+  {
+    int nb = 0;
+    for (int i = 0; i < g->nban; i++) {
+      const banner *bn = &g->ban[i];
+      const block *k = &g->b[bn->blk];
+      if (!k->alive) continue;
+      cw_xform3 x = cw_body3d_interpolated(k->body, alpha);
+      t3_vec3 foot = t3_vec3_apply_quat(bn->local, x.q);
+      foot = (t3_vec3){ x.p.x + foot.x, x.p.y + foot.y, x.p.z + foot.z };
+      t3_mat4 pm, fm;
+      t3_mat4_compose(&pm, foot, x.q, (t3_vec3){ 0.07f, bn->h, 0.07f });
+      t3_instanced_mesh_set_matrix_at(V.poles, nb, &pm);
+      t3_instanced_mesh_set_color_at(V.poles, nb, (t3_color){ 1, 1, 1 });
+      /* the flag at the pole's top, turned by the wind (it blows from the launcher's left) and waving */
+      float wave = sinf((float)g->tick * 0.09f + i * 1.3f) * 0.18f;
+      t3_quat q = t3_quat_multiply(x.q, t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, 0.6f + wave));
+      float fw = 0.45f + bn->h * 0.35f, fh = fw * 0.6f;
+      t3_vec3 top = t3_vec3_apply_quat((t3_vec3){ 0, bn->h - fh * 0.5f - 0.05f, 0 }, x.q);
+      t3_mat4_compose(&fm, (t3_vec3){ foot.x + top.x, foot.y + top.y, foot.z + top.z }, q, (t3_vec3){ fw, fh, 1 });
+      t3_instanced_mesh_set_matrix_at(V.flags, nb, &fm);
+      const float *c = BANNER[bn->colour & 3];
+      t3_instanced_mesh_set_color_at(V.flags, nb, (t3_color){ c[0], c[1], c[2] });
+      nb++;
+    }
+    V.poles->count = V.flags->count = nb;
+    V.poles->instance_matrix->version++, V.flags->instance_matrix->version++;
+    if (V.poles->instance_color) V.poles->instance_color->version++;
+    if (V.flags->instance_color) V.flags->instance_color->version++;
+  }
   /* the launcher follows the aim */
   if (cw_node_valid(V.yaw)) {
     cw_node3d_set_rotation(V.yaw, (t3_vec3){ 0, g->yaw, 0 });

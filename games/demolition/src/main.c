@@ -19,6 +19,7 @@
 #include "cartwheel/input.h"
 #include "cartwheel/math.h"
 #include "cartwheel/pipeline.h"
+#include "cartwheel/profile.h"
 #include "cartwheel/project.h"
 #include "cartwheel/prompt.h"
 #include "cartwheel/quality.h"
@@ -68,6 +69,31 @@ static struct {
 } G;
 
 static cw_font font;
+
+/* frame timing round a blast (the hitch gate reads these): the real monotonic clock, in carts too. Render only. */
+static struct {
+  double frame_start, last_end;
+  bool in_frame;
+  int window; /* ticks left in the window that opens at the first charge */
+  bool opened;
+  float frame_max, work_max, tick_max;
+} P;
+static double perf_now(void) { return (double)cw_profile_now_ns() * 1e-6; }
+static void perf_tick(void) {
+  if (!P.in_frame) P.frame_start = perf_now(), P.in_frame = true;
+  if (!P.opened && G.g.booms > 0) P.opened = true, P.window = 180;
+  if (P.window > 0 && G.g.tick_ms > P.tick_max) P.tick_max = G.g.tick_ms;
+}
+static void perf_frame_end(void) {
+  double now = perf_now();
+  if (P.window > 0) {
+    P.window--;
+    if (P.last_end > 0 && now - P.last_end > P.frame_max) P.frame_max = (float)(now - P.last_end);
+    if (P.in_frame && now - P.frame_start > P.work_max) P.work_max = (float)(now - P.frame_start);
+  }
+  P.last_end = now;
+  P.in_frame = false;
+}
 static uint32_t ticks_run;
 
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
@@ -85,6 +111,9 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 
 static void load_level_as(int level, bool settle) {
   game_new(&G.g, level, G.players, G.mode);
+#ifdef DEMOLITION_NO_BUDGET
+  G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
+#endif
   if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
@@ -174,6 +203,9 @@ static void init(void *u) {
   cw_debug_f32("phys.step_max", &G.step_max);   /* the slowest step since the app started (host-dependent) */
   cw_debug_f32("phys.step_busy", &G.step_busy); /* the mean step while more than 500 bodies were awake */
   cw_debug_i32("view.instances", &G.instances);
+  cw_debug_f32("perf.blast_frame_max", &P.frame_max); /* the slowest frame (render end to render end) in the 3 s from the first charge */
+  cw_debug_f32("perf.blast_work_max", &P.work_max);   /* the most CPU a frame took there (its ticks and its render) */
+  cw_debug_f32("perf.blast_tick_max", &P.tick_max);   /* the slowest game tick there */
 #ifdef DEMOLITION_AUTOPILOT
   cw_shell_start(1);
 #endif
@@ -243,6 +275,7 @@ static void level_done(void) {
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
   ticks_run++;
+  perf_tick();
   sound_tick(ticks_run);
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
@@ -503,6 +536,7 @@ static void render(void *u, double alpha) {
     }
   }
   cw_shell_draw();
+  perf_frame_end();
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

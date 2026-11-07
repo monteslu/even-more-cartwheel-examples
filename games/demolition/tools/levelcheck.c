@@ -69,10 +69,9 @@ static void check(int level, const char *control) {
   game_new(&G, level, 1, MODE_COOP);
   if (c_float) game_add_block(&G, M_WOOD, (t3_vec3){ 1.0f, 4.2f, 3.5f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
   if (c_float) game_add_block(&G, M_STONE, (t3_vec3){ -1.0f, 0.15f, 2.0f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0), game_add_block(&G, M_STONE, (t3_vec3){ -0.8f, 0.2f, 2.0f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0); /* and two blocks in one another */
-  if (c_rest) { /* a plank on the top, mostly hanging over the edge: it must tip */
-    float y = 0; /* the top of the front battlement at x 0.9 */
-    for (int i = 0; i < G.nb; i++) if (G.b[i].alive && fabsf(G.b[i].home.x - 0.9f) < 0.05f && fabsf(G.b[i].home.z + 1.65f) < 0.05f) y = fmaxf(y, G.b[i].home.y + G.b[i].half.y + 0.051f);
-    game_add_block(&G, M_STONE, (t3_vec3){ 3.0f, y + 0.0f, -1.65f }, (t3_vec3){ 2.0f, 0.05f, 0.14f }, 0); /* on the front battlement at x 0.9, its middle 2 m out */
+  if (c_rest) { /* a 3 m post in the yard, a plank on it with its middle 1.8 m out over nothing: it must tip */
+    game_add_block(&G, M_STONE, (t3_vec3){ 7.0f, 1.5f, 6.0f }, (t3_vec3){ 0.25f, 1.5f - 0.004f, 0.25f }, 0);
+    game_add_block(&G, M_STONE, (t3_vec3){ 8.8f, 3.05f, 6.0f }, (t3_vec3){ 2.0f, 0.05f, 0.15f }, 0);
   }
   int first = -1;
   int nfloat = floating(&G, &first);
@@ -133,6 +132,7 @@ static void check(int level, const char *control) {
     input in;
     bot_input(&G, &bot, &in);
     if (getenv("LC_DEBUG") && in.fire) { int t = bot.plan_tgt; t3_vec3 tp = G.tgt[t].home; fprintf(stderr, "shot %d: target %d (home %.2f %.2f %.2f) ammo %s yaw %.4f pitch %.4f speed %.1f targets left %d\n", G.shots + 1, t, tp.x, tp.y, tp.z, AMMO[G.ammo_sel].name, G.yaw, G.pitch, game_speed(&G), G.tgt_left); }
+    { static int was; if (getenv("LC_DEBUG") && was == GS_FLIGHT && G.state != GS_FLIGHT) fprintf(stderr, "   first hit at %.2f %.2f %.2f (tick %d)\n", G.impact.x, G.impact.y, G.impact.z, G.proj_hit_tick); was = G.state; }
     game_step(&G, &in);
     ticks++;
     if (G.max_awake > max_awake) max_awake = G.max_awake;

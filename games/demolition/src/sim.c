@@ -17,6 +17,11 @@
 #include <string.h>
 
 #include "cartwheel/math.h"
+#include "cartwheel/profile.h"
+
+static double profile_clock(void) { return (double)cw_profile_now_ns() * 1e-9; }
+double (*g_sim_clock)(void) = profile_clock; /* the real monotonic clock, in carts too (cw_time is the host's, pinned in a replay) */
+static double sim_clock(void) { return g_sim_clock(); }
 #include "game.h"
 
 const material_info MATS[M_COUNT] = {
@@ -74,7 +79,7 @@ static int block_of(cw_body3d b) {
   return (int)u - 1;
 }
 
-static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_vec3 v, t3_vec3 w, int gen) {
+static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_vec3 v, t3_vec3 w, int gen, int paint) {
   int i = alloc_block(g);
   if (i < 0) return -1;
   block *k = &g->b[i];
@@ -94,6 +99,7 @@ static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_v
   sd.hit_events = true;
   sd.contact_events = false;
   cw_shape3d_box(k->body, &sd, half, cw_xform3_identity());
+  if (gen) b3Body_SetSleepThreshold(cw_body3d_raw(k->body), 0.12f); /* rubble sleeps sooner (Box3D: 0.05 m/s): a pile still awake keeps its whole island stepping */
   k->half = half;
   k->vol = 8 * half.x * half.y * half.z;
   k->hp = m->toughness * k->vol * (gen ? 0.75f : 1.0f);
@@ -101,6 +107,7 @@ static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_v
   k->tint = (uint8_t)(hash32((uint32_t)i * 2654435761u + g->L->seed) & 0xff);
   k->born = g->tick;
   k->home = c;
+  k->paint = (uint8_t)paint;
   g->nalive++;
   return i;
 }
@@ -108,14 +115,19 @@ static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_v
 int game_add_block(game *g, int mat, t3_vec3 c, t3_vec3 half, float yaw) {
   float s, co;
   cw_sincos(yaw * 0.5f, &s, &co);
-  int i = make_block(g, mat, c, half, (t3_quat){ 0, s, 0, co }, v3(0, 0, 0), v3(0, 0, 0), 0);
+  int i = make_block(g, mat, c, half, (t3_quat){ 0, s, 0, co }, v3(0, 0, 0), v3(0, 0, 0), 0, g->paint_now);
   if (i >= 0) g->b[i].tag = 1;
   return i;
 }
 
+void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour) {
+  if (blk < 0 || g->nban >= MAXBANNER) return;
+  g->ban[g->nban++] = (banner){ blk, local, h, (uint8_t)colour, (uint8_t)(g->nban & 1) };
+}
+
 int game_add_target(game *g, t3_vec3 c) {
   if (g->ntgt >= MAXTGT) return -1;
-  int i = make_block(g, M_TARGET, c, v3(0.22f, 0.32f, 0.22f), (t3_quat){ 0, 0, 0, 1 }, v3(0, 0, 0), v3(0, 0, 0), 0);
+  int i = make_block(g, M_TARGET, c, v3(0.22f, 0.32f, 0.22f), (t3_quat){ 0, 0, 0, 1 }, v3(0, 0, 0), v3(0, 0, 0), 0, 0);
   if (i < 0) return -1;
   g->b[i].tag = 1;
   g->b[i].target = (int8_t)g->ntgt;
@@ -155,13 +167,13 @@ static void break_block(game *g, int i, t3_vec3 dir) {
   cw_xform3 x = cw_body3d_transform(k->body);
   t3_vec3 v = cw_body3d_velocity(k->body), w = cw_body3d_angular_velocity(k->body);
   t3_vec3 h = k->half;
-  int mat = k->mat, gen = k->gen;
+  int mat = k->mat, gen = k->gen, paint = k->paint;
   float big = fmaxf(h.x, fmaxf(h.y, h.z));
   bool glass = MATS[mat].pieces == 0;
   ev_push(g, glass ? EV_SHATTER : EV_BREAK, mat, x.p, dir, big * 2, vlen(v), i);
   g->broken++;
   kill_block(g, i);
-  if (glass || gen >= 2 || big < 0.13f || g->nalive >= BODY_CAP) return;
+  if (glass || gen >= 1 || big < 0.13f || g->nalive >= BODY_CAP) return; /* a piece breaks to dust */
   /* split along the longest axis, and the next longest too for stone (4 pieces) when it is big enough */
   float hh[3] = { h.x, h.y, h.z };
   int a0 = hh[0] >= hh[1] && hh[0] >= hh[2] ? 0 : hh[1] >= hh[2] ? 1 : 2;
@@ -185,18 +197,36 @@ static void break_block(game *g, int i, t3_vec3 dir) {
     t3_vec3 rn = vscale(r, 1.0f / (vlen(r) + 1e-6f));
     t3_vec3 pv = vadd(vadd(v, vcross(w, r)), vadd(vscale(rn, 1.2f), vscale(dir, 0.8f)));
     t3_vec3 pw = vadd(w, v3((hashf((uint32_t)i * 5u + (uint32_t)p) - 0.5f) * 4, (hashf((uint32_t)i * 7u + (uint32_t)p) - 0.5f) * 4, (hashf((uint32_t)i * 11u + (uint32_t)p) - 0.5f) * 4));
-    int j = make_block(g, mat, vadd(x.p, r), half, x.q, pv, pw, gen + 1);
+    int j = make_block(g, mat, vadd(x.p, r), half, x.q, pv, pw, gen + 1, paint);
     if (j >= 0) g->fragments++;
   }
 }
 
-static void harm(game *g, int i, float e, t3_vec3 dir) {
+/* urgent: break now (what the shot itself hits, so it goes on through); the rest wait in the fracture queue */
+static void harm(game *g, int i, float e, t3_vec3 dir, bool urgent) {
   block *k = &g->b[i];
-  if (!k->alive) return;
+  if (!k->alive || k->queued) return;
   float f = MATS[k->mat].min_hit;
   if (e <= f) return;
   k->hp -= e - f;
-  if (k->hp <= 0) break_block(g, i, dir);
+  if (k->hp > 0) return;
+  if (urgent || g->no_budget || g->bq_n >= MAXBLK) { break_block(g, i, dir); return; }
+  k->queued = true;
+  int slot = (g->bq_head + g->bq_n) % MAXBLK;
+  g->bq[slot] = i, g->bq_dir[slot] = dir, g->bq_n++;
+}
+
+/* the queue's turn this tick: the oldest breaks first */
+static void break_queued(game *g) {
+  for (int n = 0; n < BREAK_BUDGET && g->bq_n > 0; ) {
+    int i = g->bq[g->bq_head];
+    t3_vec3 d = g->bq_dir[g->bq_head];
+    g->bq_head = (g->bq_head + 1) % MAXBLK, g->bq_n--;
+    if (!g->b[i].alive || !g->b[i].queued) continue; /* gone already, or its slot is another block's now */
+    g->b[i].queued = false;
+    break_block(g, i, d);
+    n++;
+  }
 }
 
 /* ── the world ───────────────────────────────────────────────────────── */
@@ -313,11 +343,12 @@ static void proj_end(game *g) {
   g->proj_live = false;
 }
 
-static void detonate(game *g, t3_vec3 at) {
-  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), CHARGE_R, 0, 0);
-  g->booms++;
-  proj_end(g);
-  cw_qshape3d q = cw_qshape3d_sphere(at, CHARGE_R);
+/* one shell of a blast: the blocks between the last shell's radius and this one's are pushed and harmed */
+static void blast_shell(game *g, int shell) {
+  t3_vec3 at = g->blast_at;
+  float r0 = CHARGE_R * (float)(shell - 1) / BLAST_SHELLS, r1 = CHARGE_R * (float)shell / BLAST_SHELLS;
+  if (g->no_budget) r0 = 0, r1 = CHARGE_R;
+  cw_qshape3d q = cw_qshape3d_sphere(at, r1);
   static cw_shape3d hit[1024];
   cw_phys_filter f = cw_phys_filter_layers(1u << LAYER_BLOCK);
   int n = cw_world3d_overlap(g->w, &q, &f, hit, 1024);
@@ -334,6 +365,8 @@ static void detonate(game *g, t3_vec3 at) {
     d.y += 0.6f; /* blasts lift */
     float l = vlen(d);
     float dist = vlen(vsub(p, at));
+    if (g->b[i].blasted == (uint16_t)g->booms || (dist <= r0 && shell > 1)) continue; /* an earlier shell had it */
+    g->b[i].blasted = (uint16_t)g->booms;
     float k = 1 - dist / CHARGE_R;
     if (k <= 0) continue;
     k *= k;
@@ -344,7 +377,16 @@ static void detonate(game *g, t3_vec3 at) {
     cw_body3d_apply_impulse(g->b[i].body, vscale(dn, imp), NULL);
     idx[m] = i, kk[m] = k, dirs[m] = dn, m++;
   }
-  for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s]);
+  for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s], false);
+}
+
+static void detonate(game *g, t3_vec3 at) {
+  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), CHARGE_R, 0, 0);
+  g->booms++;
+  proj_end(g);
+  g->blast_at = at;
+  blast_shell(g, 1);
+  g->blast_shell = g->no_budget ? 0 : 2;
 }
 
 /* the hits of the last step */
@@ -379,12 +421,12 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
     t3_vec3 dir = h->normal;
     if (ib >= 0) {
       bool was = g->b[ib].alive;
-      harm(g, ib, en, dir);
+      harm(g, ib, en, dir, pa);
       if (pa && was && !g->b[ib].alive) proj_broke = true, proj_used += MATS[g->b[ib].mat].toughness * g->b[ib].vol;
     }
     if (ia >= 0) {
       bool was = g->b[ia].alive;
-      harm(g, ia, en, vscale(dir, -1));
+      harm(g, ia, en, vscale(dir, -1), pb);
       if (pb && was && !g->b[ia].alive) proj_broke = true, proj_used += MATS[g->b[ia].mat].toughness * g->b[ia].vol;
     }
   }
@@ -446,6 +488,7 @@ int game_stars(const game *g) {
 }
 
 void game_step(game *g, const input *in) {
+  double t_start = sim_clock();
   g->nev = 0;
   g->tick++, g->state_t++;
   if (g->state == GS_AIM) {
@@ -453,13 +496,22 @@ void game_step(game *g, const input *in) {
     if (in->fire && g->ammo[g->ammo_sel] > 0) game_fire(g);
   }
   t3_vec3 pv = g->proj_live ? cw_body3d_velocity(g->proj) : v3(0, 0, 0);
+  double t_pre = sim_clock();
   cw_world3d_step(g->w, TICK);
+  double t_world = sim_clock();
   cw_phys_stats st = cw_world3d_stats(g->w);
   g->step_ms = st.step_ms;
   if (st.step_ms > g->step_ms_max) g->step_ms_max = st.step_ms;
   if (st.awake_bodies > g->max_awake) g->max_awake = st.awake_bodies;
   g->awake_now = st.awake_bodies;
   read_hits(g, pv);
+  if (g->blast_shell > 0) { /* the blast goes on outward */
+    blast_shell(g, g->blast_shell);
+    g->blast_shell = g->blast_shell >= BLAST_SHELLS ? 0 : g->blast_shell + 1;
+  }
+  int broke0 = g->broken;
+  break_queued(g);
+  g->breaks_tick = g->broken - broke0;
   /* the shot */
   if (g->proj_live) {
     g->proj_ticks++;
@@ -513,4 +565,7 @@ void game_step(game *g, const input *in) {
   h = hash32(h ^ (uint32_t)g->shots * 0x85ebca6bu ^ (uint32_t)g->broken * 0xc2b2ae35u);
   h = hash32(h ^ (uint32_t)g->nalive);
   g->hash = h;
+  double t_end = sim_clock();
+  g->tick_ms = (float)((t_end - t_start) * 1000), g->world_ms = (float)((t_world - t_pre) * 1000);
+  g->pre_ms = (float)((t_pre - t_start) * 1000), g->post_ms = (float)((t_end - t_world) * 1000);
 }

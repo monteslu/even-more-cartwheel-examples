@@ -11,6 +11,8 @@
 #define MAXP 4
 #define MAXBLK 4096      /* block slots */
 #define BODY_CAP 3000    /* bodies alive at once: past it a break leaves dust, not pieces (physcheck: 3000 awake bodies step in about 2 ms on the pool) */
+#define BREAK_BUDGET 40  /* breaks a tick from the fracture queue */
+#define BLAST_SHELLS 3   /* ticks a charge's blast takes to reach its radius */
 #define AWAKE_SPLIT 1500 /* awake bodies past which a stone block breaks in two, not four */
 #define MAXTGT 8
 #define MAXEV 512
@@ -45,11 +47,14 @@ typedef struct block {
   float hp;          /* J left before it breaks */
   float vol;
   uint8_t mat, gen, alive, tint;
+  uint8_t paint;     /* 0: the material's colour in the level's palette; else a paint (view.c PAINT): roofs, trims, timber */
   int8_t target;     /* index into game.tgt, or -1 */
   uint16_t tag;      /* the structure's own: 1 a block placed by the level (not a fragment) */
   int born;          /* tick */
   t3_vec3 home;      /* where it sat when the level settled (placed blocks) */
   bool down;         /* counted as brought down (score) */
+  bool queued;       /* out of strength, waiting its turn to break (the fracture queue) */
+  uint16_t blasted;  /* the charge (game.booms) that last pushed it */
 } block;
 
 typedef struct target_state {
@@ -58,6 +63,13 @@ typedef struct target_state {
   bool down;
   int down_tick, by_player;
 } target_state;
+
+/* paints the level builder gives blocks (the look only) */
+enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
+       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_COUNT };
+/* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
+#define MAXBANNER 24
+typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
 
 /* events for the view and the sound (render only; the simulation never reads them back) */
 enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH };
@@ -129,10 +141,21 @@ typedef struct game {
   int shots;         /* the team's (coop) or everyone's (versus) shots on this structure */
   int tick;
   int awake_now;
+  /* the fracture queue: blocks out of strength break a few dozen a tick (a charge breaks hundreds at once: making
+   * them all in one tick is a dropped frame) */
+  int bq[MAXBLK];
+  t3_vec3 bq_dir[MAXBLK];
+  int bq_head, bq_n;
+  bool no_budget;    /* the hitch gate's control: every break and the whole blast in one tick, as it used to be */
+  /* a charge's blast runs outward over a few ticks, a shell a tick */
+  t3_vec3 blast_at;
+  int blast_shell;   /* the next shell, 0 when no blast is running */
+  int breaks_tick, made_tick; /* this tick's breaks and bodies made (stats) */
   int settle_quiet;
   /* stats */
   int broken, fragments, booms, hits, max_awake;
   float step_ms, step_ms_max;
+  float tick_ms, world_ms, pre_ms, post_ms; /* wall time of the last game_step and its parts (profiling only: host-dependent, never fed back) */
   uint32_t hash;
   float extent;      /* the structure's radius (camera) */
   float top;         /* its height */
@@ -141,9 +164,13 @@ typedef struct game {
   int nev;
   /* tuning for tests: a block forced to float (levelcheck control), slope etc. */
   uint32_t rng;
+  uint8_t paint_now; /* the paint game_add_block gives (levels.c) */
+  banner ban[MAXBANNER];
+  int nban;
 } game;
 
 /* sim.c */
+extern double (*g_sim_clock)(void); /* seconds; profiling only */
 void game_new(game *g, int level, int players, int mode);
 void game_free(game *g);
 void game_step(game *g, const input *in);
@@ -157,6 +184,8 @@ int game_stars(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);
 int game_add_target(game *g, t3_vec3 centre);
+/* a banner on block blk, its pole foot at local (block frame), h tall */
+void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour);
 void game_fire(game *g);
 
 /* levels.c */

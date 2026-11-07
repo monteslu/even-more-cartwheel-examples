@@ -4,6 +4,8 @@
  * moves, tapped for the last hair) and fires. It changes plan by attempt: first a shot straight at the crystal, then
  * a charge at it (the blast reaches inside a wall), then a heavy ball low at the structure under it. */
 #include <math.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/math.h"
@@ -134,6 +136,7 @@ static void resolve(game *g, bot_state *b) {
   b->want_yaw = cw_clampf(yaw + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
   b->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
   b->solved = true;
+  if (getenv("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
 }
 
 /* hold toward a value: held while far, tapped (a press every other tick) when close */
@@ -158,12 +161,14 @@ void bot_input(game *g, bot_state *b, input *in) {
   steer(b->want_yaw - g->yaw, tk, &in->right, &in->left, 0.0012f);
   steer(b->want_pitch - g->pitch, tk, &in->down, &in->up, 0.0012f);
   in->turn_k = in->raise_k = 1;
-  if (g->power < b->want_power - 0.004f) in->power_up = true;
-  if (g->power > b->want_power + 0.004f) in->power_down = true;
+  /* the power is set once: the aim is solved for the speed it gives (a touch after that moves the landing) */
+  if (!b->solved && g->power < b->want_power - 0.004f) in->power_up = true;
+  if (!b->solved && g->power > b->want_power + 0.004f) in->power_down = true;
   bool ammo_ok = g->ammo_sel == b->want_ammo;
   if (!ammo_ok && (tk % 6) == 0) in->ammo_next = true;
   bool power_ok = fabsf(g->power - b->want_power) <= 0.006f;
   if (ammo_ok && power_ok && !b->solved) resolve(g, b);
+  if (b->solved) in->power_up = in->power_down = false; /* this very tick too: the aim is for this speed */
   bool aimed = b->solved && fabsf(b->want_yaw - g->yaw) <= 0.0012f && fabsf(b->want_pitch - g->pitch) <= 0.0012f && power_ok;
   if (aimed && ammo_ok && b->wait > 20 && !in->left && !in->right && !in->up && !in->down) {
     in->fire = true;

@@ -40,7 +40,7 @@ const level_def LEVELS[NLEVELS] = {
   { "Long Rampart", K_WALL, 181, 5, 4, 3, { 7, 2, 2 }, 36, 2 },
   { "Tall Keep", K_KEEP, 191, 4, 3, 2, { 6, 2, 2 }, 38, 1 },
   { "High Steps", K_PYRAMID, 199, 7, 3, 3, { 6, 2, 2 }, 36, 0 },
-  { "Viaduct", K_BRIDGE, 211, 4, 4, 3, { 7, 2, 2 }, 38, 2 },
+  { "Viaduct", K_BRIDGE, 211, 4, 4, 4, { 7, 2, 2 }, 38, 2 },
   { "Twin Gates", K_CASTLE, 223, 4, 4, 2, { 7, 2, 2 }, 40, 0 },
   { "Sky Frame", K_SCAFFOLD, 227, 5, 4, 4, { 7, 2, 2 }, 36, 1 },
   { "Stone Giant", K_TOWER, 239, 6, 3, 2, { 7, 2, 2 }, 40, 2 },
@@ -86,6 +86,12 @@ static void course(game *g, int mat, bool along_z, float a, float b, float c, fl
     t3_vec3 p = along_z ? v3(c, y + BH * 0.5f, m) : v3(m, y + BH * 0.5f, c);
     game_add_block(g, mm, p, h, 0);
   }
+}
+
+/* a course with a gap from g0 to g1 (a gate): the two pieces either side */
+static void course_gap(game *g, int mat, bool along_z, float a, float b, float c, float y, float g0, float g1) {
+  if (g0 - a > 0.25f) course(g, mat, along_z, a, g0, c, y, BD, false, 0);
+  if (b - g1 > 0.25f) course(g, mat, along_z, g1, b, c, y, BD, false, 0);
 }
 
 /* a ring of four walls round (cx, cz), outer size w x d, courses from y; returns the top. Each course gives the
@@ -147,18 +153,82 @@ static float crate(game *g, float x, float z, float y, float s) {
 
 static void target_on(game *g, float x, float z, float y) { game_add_target(g, v3(x, y + 0.32f + GAP, z)); }
 
+static void paint(game *g, int p) { g->paint_now = (uint8_t)p; }
+
+/* the index of the block made last (a banner's carrier) */
+static int last_block(const game *g) {
+  int best = -1, born = -1;
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].born >= born) best = i, born = g->b[i].born;
+  return best;
+}
+
+/* a stepped roof: square slabs, each smaller, from width w down to a point, a gilded finial on top; returns the
+ * finial's block. eaves: how far the first slab reaches past the walls */
+static int roof(game *g, float cx, float cz, float w, float y, float step_in, float slab_h, int roof_paint, float eaves) {
+  paint(g, roof_paint);
+  float ww = w + eaves * 2;
+  while (ww > 0.55f) {
+    game_add_block(g, M_WOOD, v3(cx, y + slab_h * 0.5f, cz), v3(ww * 0.5f - GAP, slab_h * 0.5f - GAP * 0.5f, ww * 0.5f - GAP), 0);
+    y += slab_h;
+    ww -= step_in * 2;
+  }
+  paint(g, P_GOLD);
+  game_add_block(g, M_WOOD, v3(cx, y + 0.2f, cz), v3(0.12f, 0.2f - GAP, 0.12f), 0);
+  int fin = last_block(g);
+  paint(g, P_NONE);
+  return fin;
+}
+
+/* a banner on the block made last, its pole standing on the block's top */
+static void banner_on_last(game *g, float h, int colour) {
+  int b = last_block(g);
+  if (b >= 0) game_add_banner(g, b, v3(0, g->b[b].half.y, 0), h, colour);
+}
+
 /* a storeyed square tower; returns the top. targets: put on the top floors first */
+/* the look a structure's towers share (each kit sets it) */
+static struct { int wall, trim, base, roof, banner; bool timber; } style;
+
 static float tower(game *g, float cx, float cz, float w, int storeys, int courses, int *targets_left, int mat, bool crown) {
   float y = 0;
   float tops[16];
   int nt = 0;
+  bool roofed = crown && rnd() < 0.6f && storeys <= 4; /* a heavy roof on a tall tower sways for ever: tall ones stay crenellated */
   for (int s = 0; s < storeys; s++) {
-    bool glassy = s > 0 && rnd() < 0.7f;
-    y = room(g, mat, cx, cz, w, w, y, courses, glassy ? 2 : 99, glassy ? 4 : 0, 3 + rndi(2));
+    bool glassy = s > 0 && rnd() < 0.8f;
+    bool timber = style.timber && s == storeys - 1 && storeys > 2;
+    for (int c = 0; c < courses; c++) {
+      /* the base course dark, the course under each floor a trim; a timber-framed top storey: plaster between
+       * timber bands */
+      int m = mat, pt = style.wall;
+      if (s == 0 && c == 0) pt = style.base;
+      if (c == courses - 1) pt = style.trim;
+      if (timber) pt = (c & 1) ? P_PLASTER : P_TIMBER; /* the look only: a wall of mixed weights rocks */
+      paint(g, pt);
+      bool win = glassy && (c == 2 || c == 3);
+      room_from(g, m, cx, cz, w, w, y + c * BH, 1, win ? 0 : 99, 1, 3 + rndi(2), c);
+    }
+    y += courses * BH;
+    paint(g, P_NONE);
     y = floor_planks(g, M_WOOD, cx, cz, w, w, y);
     if (nt < 16) tops[nt++] = y;
   }
-  if (crown) battlements(g, mat, cx, cz, w, w, y);
+  if (crown && !roofed) {
+    paint(g, style.trim);
+    battlements(g, mat, cx, cz, w, w, y);
+    banner_on_last(g, 1.6f + w * 0.2f, style.banner);
+    paint(g, P_NONE);
+  } else if (roofed) {
+    /* an attic of three courses (the top floor's crystal stands under it), then the roof */
+    for (int c = 0; c < 3; c++) {
+      paint(g, c == 2 ? style.trim : style.wall);
+      room_from(g, mat, cx, cz, w, w, y + c * BH, 1, c == 1 ? 0 : 99, 1, 2, c);
+    }
+    y += 3 * BH;
+    paint(g, P_NONE);
+    int fin = roof(g, cx, cz, w, y, 0.18f + rnd() * 0.12f, 0.22f, style.roof, 0.12f);
+    if (fin >= 0) game_add_banner(g, fin, v3(0, g->b[fin].half.y, 0), 1.2f, style.banner);
+  }
   /* crystals: the highest floors first, then lower ones */
   for (int k = nt - 1; k >= 0 && *targets_left > 0; k -= (nt > 2 ? 2 : 1)) {
     float off = (w * 0.5f - BD - 0.4f) * (rnd() - 0.5f);
@@ -170,6 +240,8 @@ static float tower(game *g, float cx, float cz, float w, int storeys, int course
 
 static void build_tower(game *g, const level_def *L) {
   int t = L->targets;
+  style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = rnd() < 0.5f ? P_ROOF_RED : P_ROOF_SLATE;
+  style.banner = rndi(4), style.timber = true;
   float w = 3.0f + (L->size > 4 ? 1.2f : 0.6f);
   tower(g, 0, 0, w, L->size, 6, &t, M_STONE, true);
   /* any crystals left over stand on crates beside it */
@@ -182,14 +254,17 @@ static void build_tower(game *g, const level_def *L) {
 
 static void build_wall(game *g, const level_def *L) {
   int t = L->targets;
+  style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = P_ROOF_RED, style.banner = rndi(4), style.timber = false;
   float len = 6.0f + L->size * 1.8f;
   int courses = 4 + L->size;
   /* the wall, two bricks thick so it stands on its own */
   for (int c = 0; c < courses; c++) {
     float y = c * BH, sh = (c & 1) ? BL * 0.5f : 0;
+    paint(g, c == 0 ? P_DARK_STONE : c == courses - 1 ? P_TRIM_CREAM : P_NONE);
     course(g, M_STONE, false, -len * 0.5f + sh, len * 0.5f + sh - BL * ((c & 1) ? 1 : 0), -BD * 0.5f, y, BD, c == courses - 2, 4);
     course(g, M_STONE, false, -len * 0.5f + BL * 0.5f - sh, len * 0.5f - sh - BL * 0.5f + ((c & 1) ? BL * 0.5f : 0), BD * 0.5f, y, BD, false, 0);
   }
+  paint(g, P_NONE);
   /* towers at the ends */
   int none = 0;
   float tw = 2.4f;
@@ -208,6 +283,7 @@ static void build_wall(game *g, const level_def *L) {
 
 static void build_bridge(game *g, const level_def *L) {
   int t = L->targets;
+  style.banner = rndi(4);
   int spans = 1 + L->size / 2;
   float span = 4.0f, pier = 1.2f, ph = 1.8f + 0.3f * L->size;
   float total = spans * span + (spans + 1) * pier;
@@ -218,12 +294,14 @@ static void build_bridge(game *g, const level_def *L) {
     float cx = x0 + pier * 0.5f + p * (span + pier);
     for (int c = 0; c < courses; c++) {
       float y = c * BH;
+      paint(g, c == courses - 1 ? P_TRIM_CREAM : (c & 1) ? P_BRICK : P_ROSE_STONE);
       for (int k = 0; k < 2; k++) {
         if (c & 1) game_add_block(g, M_STONE, v3(cx - pier * 0.25f + k * pier * 0.5f, y + BH * 0.5f, 0), v3(pier * 0.25f - GAP, BH * 0.5f - GAP * 0.5f, 1.3f - GAP), 0);
         else game_add_block(g, M_STONE, v3(cx, y + BH * 0.5f, -0.65f + k * 1.3f), v3(pier * 0.5f - GAP, BH * 0.5f - GAP * 0.5f, 0.65f - GAP), 0);
       }
     }
   }
+  paint(g, P_NONE);
   float y = courses * BH;
   /* girders across the whole length (steel), two lines of them, one per span plus the piers' tops */
   for (int s = 0; s < spans; s++) {
@@ -243,8 +321,11 @@ static void build_bridge(game *g, const level_def *L) {
   for (int i = 0; i < np; i += 3) {
     float x = x0 + pw * (i + 0.5f);
     for (int k = 0; k < 2; k++) {
+      paint(g, P_TIMBER);
       game_add_block(g, M_WOOD, v3(x, y + 0.4f, -1.1f + k * 2.2f), v3(0.08f, 0.4f - GAP, 0.08f), 0);
+      if (i == 0 || i + 3 >= np) banner_on_last(g, 1.4f, style.banner);
     }
+    paint(g, P_NONE);
   }
   /* crystals on the deck, spread along it */
   for (int i = 0; i < t; i++) {
@@ -258,6 +339,8 @@ static void build_bridge(game *g, const level_def *L) {
 
 static void build_castle(game *g, const level_def *L) {
   int t = L->targets;
+  style.wall = P_WHITE_STONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = rnd() < 0.5f ? P_ROOF_SLATE : P_ROOF_COPPER;
+  style.banner = rndi(4), style.timber = false;
   float side = 7.0f + L->size * 1.2f, tw = 2.4f;
   int st = 2 + (L->size > 3);
   int none = 0;
@@ -268,14 +351,23 @@ static void build_castle(game *g, const level_def *L) {
   /* curtain walls between the towers: single courses, ends tucked against the towers */
   int courses = 6 + L->size;
   float a = -side * 0.5f + tw * 0.5f + 0.02f, b = side * 0.5f - tw * 0.5f - 0.02f;
+  int gate_h = 5; /* the gate: five courses high, two bricks wide, a steel lintel over it */
   for (int c = 0; c < courses; c++) {
     float y = c * BH;
     bool win = c == courses - 3;
+    paint(g, c == 0 ? P_DARK_STONE : c == courses - 1 ? P_TRIM_CREAM : P_WHITE_STONE);
     course(g, M_STONE, false, a, b, -side * 0.5f, y, BD, win, 3);
-    course(g, M_STONE, false, a, b, side * 0.5f, y, BD, false, 0);
+    if (c < gate_h) course_gap(g, M_STONE, false, a, b, side * 0.5f, y, -0.75f, 0.75f);
+    else if (c == gate_h) {
+      paint(g, P_DARK_STONE);
+      game_add_block(g, M_STEEL, v3(0, y + BH * 0.5f, side * 0.5f), v3(1.35f, BH * 0.5f - GAP * 0.5f, BD * 0.5f - GAP), 0);
+      paint(g, P_WHITE_STONE);
+      course_gap(g, M_STONE, false, a, b, side * 0.5f, y, -1.35f, 1.35f);
+    } else course(g, M_STONE, false, a, b, side * 0.5f, y, BD, false, 0);
     course(g, M_STONE, true, a, b, -side * 0.5f, y, BD, false, 0);
     course(g, M_STONE, true, a, b, side * 0.5f, y, BD, false, 0);
   }
+  paint(g, P_NONE);
   /* the keep: a wooden-floored tower in the middle with the crystals */
   int keep_t = t > 1 ? t - 1 : t;
   tower(g, 0, 0, 3.0f, 2 + L->size / 2, 6, &keep_t, M_STONE, true);
@@ -293,6 +385,7 @@ static void build_scaffold(game *g, const level_def *L) {
    * (a rigid weld loop oscillates apart within a second, a soft one sags): so the frame grows wider, not taller */
   int storeys = 2 + (L->size > 2) + (L->size > 4);
   int bays = 1 + L->size / 2 + (L->size > 4);
+  style.banner = rndi(4);
   if (bays > 7) bays = 7;
   float bay = 2.2f, sh = 1.6f, depth = 2.4f, ph = 0.12f;
   float w = bays * bay;
@@ -330,6 +423,10 @@ static void build_scaffold(game *g, const level_def *L) {
     floor_y = y + 0.1f;
     tops[nt++] = floor_y;
   }
+  /* banners on the top storey's corner posts */
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive && g->b[i].mat == M_STEEL && g->b[i].half.y > 0.5f && g->b[i].home.y > y - 2.5f && fabsf(fabsf(g->b[i].home.x) - w * 0.5f) < 0.05f)
+      game_add_banner(g, i, v3(0, g->b[i].half.y + 0.17f, 0), 1.0f, style.banner);
   for (int k = nt - 1, i = 0; i < t; i++) {
     target_on(g, -w * 0.5f + bay * (0.5f + (i % bays)) + (rnd() - 0.5f) * 0.5f, (rnd() - 0.5f) * 0.6f, tops[k]);
     k -= 1;
@@ -351,16 +448,21 @@ static void build_pyramid(game *g, const level_def *L) {
       for (int j = 0; j < n; j++) {
         bool edge = i == 0 || j == 0 || i == n - 1 || j == n - 1;
         int mat = edge ? M_STONE : (rnd() < 0.2f ? M_GLASS : M_WOOD);
+        paint(g, edge ? ((lv & 1) ? P_TURQUOISE : P_SAND_STONE) : P_NONE);
         game_add_block(g, mat, v3(-w * 0.5f + s * (i + 0.5f), y + s * 0.25f, -w * 0.5f + s * (j + 0.5f)), v3(s * 0.5f - GAP, s * 0.25f - GAP * 0.5f, s * 0.5f - GAP), 0);
       }
     y += s * 0.5f;
     top_w = w;
   }
-  /* the shrine on top: four posts and a roof */
+  /* the shrine on top: four posts, a roof stepping up to a gilded point, banners on two posts */
   float hw = top_w * 0.5f - 0.3f;
+  paint(g, P_TURQUOISE);
   for (int k = 0; k < 4; k++)
     game_add_block(g, M_WOOD, v3((k & 1 ? 1 : -1) * hw, y + 0.6f, (k & 2 ? 1 : -1) * hw), v3(0.12f, 0.6f - GAP, 0.12f), 0);
+  paint(g, P_GOLD);
   game_add_block(g, M_WOOD, v3(0, y + 1.2f + 0.06f, 0), v3(hw + 0.25f, 0.06f - GAP, hw + 0.25f), 0);
+  roof(g, 0, 0, hw * 2 + 0.2f, y + 1.32f, 0.2f, 0.18f, P_GOLD, 0);
+  paint(g, P_NONE);
   /* crystals: the shrine first, then the steps' corners */
   if (t > 0) target_on(g, 0, 0, y), t--;
   for (int i = 0; t > 0; i++, t--) {
@@ -378,7 +480,8 @@ static void build_pyramid(game *g, const level_def *L) {
 
 static void build_keep(game *g, const level_def *L) {
   int t = L->targets;
-  float w = getenv("KW") ? atof(getenv("KW")) : 5.4f + 0.3f * L->size;
+  float w = 5.4f + 0.3f * L->size;
+  style.banner = rndi(4);
   float y = 0;
   float tops[12];
   int nt = 0;
@@ -387,16 +490,21 @@ static void build_keep(game *g, const level_def *L) {
     for (int c = 0; c < 6; c++) {
       int mat = s == L->size - 1 && s > 1 ? M_WOOD : (c == 4 && (s & 1) == 0) ? M_STEEL : M_STONE;
       float yc = y;
+      paint(g, mat == M_WOOD ? ((c & 1) ? P_PLASTER : P_TIMBER) : c == 5 ? P_WHITE_STONE : P_DARK_STONE);
       y = room_from(g, mat, 0, 0, w, w, y, 1, c == 2 || c == 3 ? 0 : 99, 1, 3, c);
       /* a cross wall down the middle: the floors span half the keep (a 5 m plank on two walls rocks forever) */
       course(g, M_STONE, true, -w * 0.5f + BD + 0.01f, w * 0.5f - BD - 0.01f, 0, yc, BD, false, 0);
     }
+    paint(g, P_NONE);
     /* two floors of planks meeting on the cross wall: a plank on three supports teeters on the middle one */
     floor_planks(g, M_WOOD, -w * 0.25f, 0, w * 0.5f, w, y);
     y = floor_planks(g, M_WOOD, w * 0.25f, 0, w * 0.5f, w, y);
     if (nt < 12) tops[nt++] = y;
   }
+  paint(g, P_WHITE_STONE);
   battlements(g, M_STONE, 0, 0, w, w, y);
+  banner_on_last(g, 2.2f, style.banner);
+  paint(g, P_NONE);
   for (int k = nt - 1, i = 0; i < t; i++) {
     target_on(g, (i & 1 ? 1 : -1) * w * 0.2f, (rnd() - 0.5f) * 0.6f, tops[k]);
     if (--k < 0) k = nt - 1;
@@ -405,6 +513,8 @@ static void build_keep(game *g, const level_def *L) {
 
 void level_build(game *g, const level_def *L) {
   rnd_state = L->seed * 2654435761u + 12345u;
+  style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = P_ROOF_RED, style.banner = 0, style.timber = false;
+  g->paint_now = P_NONE;
   switch (L->kind) {
   case K_TOWER: build_tower(g, L); break;
   case K_WALL: build_wall(g, L); break;

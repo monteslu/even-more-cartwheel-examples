@@ -32,7 +32,10 @@ static double now_ms(void) {
 
 static game G;
 
+static double soak_clock(void) { return now_ms() / 1000.0; }
+
 int main(int argc, char **argv) {
+  g_sim_clock = soak_clock;
   cw_jobs_init(-1);
   int minutes = argc > 1 ? atoi(argv[1]) : 10, players = argc > 2 ? atoi(argv[2]) : 1, level = argc > 3 ? atoi(argv[3]) : 0;
   int mode = argc > 4 ? atoi(argv[4]) : 0;
@@ -63,7 +66,9 @@ int main(int argc, char **argv) {
       input in;
       bot_input(&G, &bot, &in);
       double t0 = now_ms();
+      int nb0 = G.nalive, br0 = G.broken;
       game_step(&G, &in);
+      if (getenv("DEMOLITION_SPIKE") && G.tick_ms > 3) printf("  spike level %d tick %d: %.2f ms (pre %.2f, world %.2f [box3d %.2f], post %.2f), awake %d, %d broke, bodies %d -> %d\n", G.level, G.tick, G.tick_ms, G.pre_ms, G.world_ms, G.step_ms, G.post_ms, G.awake_now, G.broken - br0, nb0, G.nalive);
       double dt = now_ms() - t0;
       step_sum += dt, steps++;
       if (dt > step_worst) step_worst = dt;

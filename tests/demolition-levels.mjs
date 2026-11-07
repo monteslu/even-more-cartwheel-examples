@@ -5,8 +5,8 @@
 //             tallest towers squeeze down about 0.4 m), then 60 s alone: no block moves more than 5 mm, nothing
 //             breaks, no crystal moves, and everything is asleep at the end
 //   solve     the bot, through the controls, brings every crystal down within the level's par
-// Controls, each must fail its check: a floating block and two blocks placed in one another (level 1), a plank hung
-// two metres off level 1's battlements (it tips while settling), the bot aiming 150 milliradians off (8.6 degrees) (level 2).
+// Controls, each must fail its check: a floating block and two blocks placed in one another (level 1), a plank on a post
+// 3 m up in level 1's yard with its middle 1.8 m out over nothing (it tips while settling), the bot aiming 150 milliradians off (8.6 degrees) (level 2).
 // Run: node tests/demolition-levels.mjs
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
