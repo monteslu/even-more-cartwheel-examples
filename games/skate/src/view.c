@@ -272,7 +272,13 @@ static void sky_dome(cw_node parent) {
 }
 static void view_hook(int view, void *u) {
   /* the sky dome around each view's own camera */
-  if (cw_node_valid(VW.dome) && view >= 0 && view < MAXP) { v3 c = cw_node3d_global_position(VW.cam[view]); cw_node3d_set_position(VW.dome, V(c.x, 0, c.z)); }
+  if (cw_node_valid(VW.dome) && view >= 0 && view < MAXP) {
+    /* (the scene's matrices are made once, with the first view: a later view's move updates its own) */
+    v3 c = cw_node3d_global_position(VW.cam[view]);
+    cw_node3d_set_position(VW.dome, V(c.x, 0, c.z));
+    t3_object *o = cw_node3d_object(VW.dome);
+    if (o) o->position = V(c.x, 0, c.z), t3_object_update_world_matrix(o, true, true);
+  }
   (void)u;
   for (int t = 0; t < VW.ntoken; t++)
     if (cw_node_valid(VW.token[t])) cw_node_set(VW.token[t], "visible", cw_val_bool(view >= MAXP || !(VW.token_seen[view] & (1u << t))));

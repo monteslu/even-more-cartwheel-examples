@@ -184,6 +184,19 @@ void hud_draw(const sim *S, int players, int phase, float t) {
     cw_rect R = cw_shell_player_rect(i);
     player_hud(S, i, R, u, players, t);
   }
+  /* three players: the fourth quarter is the scoreboard */
+  if (players == 3) {
+    cw_rect R = cw_shell_shared_rect();
+    cw_r2d_rect(R, rgba(0.05f, 0.07f, 0.14f, 1));
+    float y = R.y + R.h * 0.18f;
+    y += text(S->mode == MODE_FREE ? PARK_NAMES[S->park_id] : MODE_NAMES[S->mode], R.x + R.w * 0.5f, y, 40 * u, rgba(1, 0.82f, 0.3f, 1), CW_ALIGN_CENTER).height + 16 * u;
+    for (int i = 0; i < 3; i++) {
+      char b[64], n[32];
+      commas(S->s[i].score, n, sizeof n);
+      snprintf(b, sizeof b, "P%d  %s", i + 1, n);
+      y += text(b, R.x + R.w * 0.5f, y, 40 * u, pcol(i, 1), CW_ALIGN_CENTER).height + 6 * u;
+    }
+  }
   /* split lines between the views */
   if (players > 1) {
     cw_r2d_rect(cw_rect_make(cs.x * 0.5f - 2 * u, 0, 4 * u, cs.y), rgba(0.02f, 0.02f, 0.04f, 1));

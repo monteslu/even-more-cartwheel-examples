@@ -30,3 +30,4 @@ physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+atest+tan+ds+sheen+aniso+l10
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+sheen+l1001+xcluster_skinshade
 depth+skin+xcluster_skinshade
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+senv+morphn+sheen+l1001+xcluster_skinshade
+basic+vcol+ds
