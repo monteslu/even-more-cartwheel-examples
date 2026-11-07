@@ -28,14 +28,21 @@ speed the break did not use and goes on through.
   approach speed squared over two) comes off the block's strength (its material's toughness times its volume), and a
   block out of strength becomes two or four pieces that tile it (moving as that part of it moved), or dust and shards
   when it is glass, small or already a piece. Past 3000 bodies a break leaves dust only; past 1500 awake bodies stone
-  splits in two, not four.
+  splits in two, not four. Breaks wait in a fracture queue (24 a tick) and a charge's blast runs outward over four
+  ticks, a shell a tick: a blast that broke hundreds of blocks in one tick was a dropped frame in the cart.
 - `src/levels.c`: thirty levels from seven kits. Walls are running-bond brick courses that hand the corners to the
-  other pair of walls each course, so they lock; floors are planks that the storey above stands on.
+  other pair of walls each course, so they lock; floors are planks that the storey above stands on. Each kit has a
+  character: stepped roofs in red, slate or copper with gilded finials, battlements, trim courses, timber-framed top
+  storeys, a castle gate under a steel lintel, brick piers with cream caps, a turquoise-banded pyramid with a gilded
+  shrine; banners on poles ride the blocks they stand on; windows are glass bricks lit from inside.
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
   ball into what holds it up, then holds and taps the aim buttons until the launcher points there.
-- `src/view.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at start-up, the field
-  and its hills and trees, the launcher; dust, chips, shards, sparks and the engine's explosion kit; sounds made in code.
+- `src/view.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at start-up and the
+  builder's paints; a setting per kit (highlands under snow-capped mountains, a golden meadow, a river gorge, a
+  headland over the sea, a quarry, desert mesas, a snowy pass) with its own ground, backdrop, trees, light and haze; a
+  column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
+  under the ground at load so no effect compiles its programs mid-game; sounds made in code.
 
 ## What Box3D can do here (tools/physcheck.c, tests/demolition-physics.mjs)
 

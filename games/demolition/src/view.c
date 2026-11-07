@@ -344,32 +344,32 @@ typedef struct setting {
 
 static const setting SETTINGS[K_COUNT] = {
   /* tower: a highland valley under grey-blue mountains, green trees */
-  [K_TOWER] = { 15.7f, 55, 4.6f, 1.6f, 1.38f, { 0.17f, 0.36f, 0.07f }, { 0.42f, 0.30f, 0.18f }, { 0.55f, 0.65f, 0.8f }, 0.0016f,
+  [K_TOWER] = { 15.7f, 55, 4.6f, 1.6f, 1.55f, { 0.17f, 0.36f, 0.07f }, { 0.42f, 0.30f, 0.18f }, { 0.55f, 0.65f, 0.8f }, 0.0016f,
                 BD_MOUNTAINS, { 0.1f, 0.16f, 0.12f }, { 1.0f, 1.0f, 1.0f }, TR_ROUND,
                 { { 0.80f, 0.48f, 0.24f }, { 0.78f, 0.74f, 0.66f }, { 1.0f, 0.82f, 0.5f }, { 0.88f, 0.2f, 0.12f } } },
   /* wall: a golden meadow, low hills, autumn woods */
-  [K_WALL] = { 16.7f, 35, 4.6f, 1.6f, 1.38f, { 0.30f, 0.42f, 0.08f }, { 0.46f, 0.32f, 0.17f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
+  [K_WALL] = { 16.7f, 35, 4.6f, 1.6f, 1.55f, { 0.30f, 0.42f, 0.08f }, { 0.46f, 0.32f, 0.17f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
                BD_HILLS, { 0.25f, 0.42f, 0.14f }, { 0.45f, 0.5f, 0.2f }, TR_AUTUMN,
                { { 0.82f, 0.5f, 0.25f }, { 0.92f, 0.78f, 0.55f }, { 1.0f, 0.8f, 0.45f }, { 0.2f, 0.4f, 0.9f } } },
   /* bridge: a river gorge between steep rock walls, pines */
-  [K_BRIDGE] = { 15.2f, 70, 4.6f, 1.6f, 1.38f, { 0.15f, 0.34f, 0.10f }, { 0.40f, 0.33f, 0.25f }, { 0.55f, 0.68f, 0.75f }, 0.0018f,
+  [K_BRIDGE] = { 15.2f, 70, 4.6f, 1.6f, 1.55f, { 0.15f, 0.34f, 0.10f }, { 0.40f, 0.33f, 0.25f }, { 0.55f, 0.68f, 0.75f }, 0.0018f,
                  BD_GORGE, { 0.42f, 0.34f, 0.28f }, { 0.62f, 0.55f, 0.46f }, TR_PINES,
                  { { 0.75f, 0.45f, 0.22f }, { 0.8f, 0.72f, 0.62f }, { 1.0f, 0.8f, 0.45f }, { 0.25f, 0.28f, 0.33f } } },
   /* castle: a headland over the sea, the cliffs falling away behind */
-  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.38f, { 0.2f, 0.42f, 0.1f }, { 0.5f, 0.42f, 0.3f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
+  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.55f, { 0.2f, 0.42f, 0.1f }, { 0.5f, 0.42f, 0.3f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f }, TR_ROUND,
                  { { 0.78f, 0.46f, 0.22f }, { 0.9f, 0.86f, 0.78f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } } },
   /* scaffold: a quarry's floor among terraced orange walls */
-  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.38f, { 0.38f, 0.34f, 0.3f }, { 0.3f, 0.26f, 0.22f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
-                   BD_QUARRY, { 0.42f, 0.26f, 0.16f }, { 0.85f, 0.6f, 0.38f }, TR_NONE,
+  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.55f, { 0.38f, 0.34f, 0.3f }, { 0.3f, 0.26f, 0.22f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
+                   BD_QUARRY, { 0.26f, 0.15f, 0.09f }, { 0.9f, 0.62f, 0.38f }, TR_NONE,
                    { { 0.82f, 0.55f, 0.28f }, { 0.75f, 0.72f, 0.68f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } } },
   /* pyramid: desert sand under red mesas, a hot haze */
-  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.3f, { 0.82f, 0.56f, 0.32f }, { 0.6f, 0.4f, 0.24f }, { 0.95f, 0.75f, 0.55f }, 0.0016f,
-                  BD_MESAS, { 0.5f, 0.2f, 0.1f }, { 0.85f, 0.45f, 0.24f }, TR_NONE,
+  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.46f, { 0.82f, 0.56f, 0.32f }, { 0.6f, 0.4f, 0.24f }, { 0.95f, 0.75f, 0.55f }, 0.0016f,
+                  BD_MESAS, { 0.32f, 0.11f, 0.06f }, { 0.9f, 0.48f, 0.26f }, TR_NONE,
                   { { 0.75f, 0.45f, 0.2f }, { 0.95f, 0.8f, 0.55f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } } },
   /* keep: a snowy pass between white peaks, dark pines, a cold light */
-  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 1.0f, { 0.82f, 0.86f, 0.92f }, { 0.4f, 0.36f, 0.34f }, { 0.75f, 0.82f, 0.95f }, 0.0022f,
-               BD_MOUNTAINS, { 0.16f, 0.19f, 0.24f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
+  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 0.98f, { 0.7f, 0.74f, 0.82f }, { 0.36f, 0.32f, 0.3f }, { 0.75f, 0.82f, 0.95f }, 0.0022f,
+               BD_MOUNTAINS, { 0.09f, 0.11f, 0.15f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
                { { 0.72f, 0.42f, 0.2f }, { 0.55f, 0.56f, 0.6f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } } },
 };
 static const setting *SET;
@@ -403,7 +403,7 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
       switch (S->backdrop) {
       case BD_MOUNTAINS: h = (powf(n, 1.5f) * 95 + 8) * rise * (0.3f + 0.7f * t); top = 70; break; /* low enough to leave the sky its share of the picture */
       case BD_MESAS: h = terrace(fmaxf(0, n - 0.42f) * 160, 14) * rise; top = 40; break;
-      case BD_QUARRY: h = terrace(rise * (22 + n * 30), 6); top = 45; break;
+      case BD_QUARRY: h = terrace(rise * (14 + n * 24), 6); top = 34; break;
       case BD_GORGE: h = (40 + n * 50) * cw_smoothstep(0.0f, 0.3f, t) * cw_smoothstep(30, 80, fabsf(x)); top = 80; break;
       case BD_SEA: h = z > -40 ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
       default: h = (n * 30 + 6) * rise * (1 - 0.3f * t); top = 35; break;

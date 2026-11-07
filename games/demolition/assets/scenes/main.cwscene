@@ -54,5 +54,5 @@ bloom_threshold = 1.2
 bloom_knee = 0.5
 ssao = false
 vignette = true
-vignette_intensity = 0.5
+vignette_intensity = 0.65
 vignette_smoothness = 0.6

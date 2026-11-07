@@ -41,7 +41,7 @@ const level_def LEVELS[NLEVELS] = {
   { "Tall Keep", K_KEEP, 191, 4, 3, 2, { 6, 2, 2 }, 38, 1 },
   { "High Steps", K_PYRAMID, 199, 7, 3, 3, { 6, 2, 2 }, 36, 0 },
   { "Viaduct", K_BRIDGE, 211, 4, 4, 4, { 7, 2, 2 }, 38, 2 },
-  { "Twin Gates", K_CASTLE, 223, 4, 4, 2, { 7, 2, 2 }, 40, 0 },
+  { "Twin Gates", K_CASTLE, 223, 4, 4, 3, { 7, 2, 2 }, 40, 0 },
   { "Sky Frame", K_SCAFFOLD, 227, 5, 4, 4, { 7, 2, 2 }, 36, 1 },
   { "Stone Giant", K_TOWER, 239, 6, 3, 2, { 7, 2, 2 }, 40, 2 },
   { "Great Keep", K_KEEP, 241, 5, 4, 3, { 7, 2, 3 }, 40, 0 },

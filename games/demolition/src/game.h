@@ -11,8 +11,8 @@
 #define MAXP 4
 #define MAXBLK 4096      /* block slots */
 #define BODY_CAP 3000    /* bodies alive at once: past it a break leaves dust, not pieces (physcheck: 3000 awake bodies step in about 2 ms on the pool) */
-#define BREAK_BUDGET 40  /* breaks a tick from the fracture queue */
-#define BLAST_SHELLS 3   /* ticks a charge's blast takes to reach its radius */
+#define BREAK_BUDGET 24  /* breaks a tick from the fracture queue */
+#define BLAST_SHELLS 4   /* ticks a charge's blast takes to reach its radius */
 #define AWAKE_SPLIT 1500 /* awake bodies past which a stone block breaks in two, not four */
 #define MAXTGT 8
 #define MAXEV 512

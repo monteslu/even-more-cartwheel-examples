@@ -12,7 +12,7 @@ mkdir -p "$OUT" "$ART"
 node "$ROOT/tests/demolition-shot.mjs" \
   demolition_bench 320 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 -- \
   demolition_auto 70 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=15 -- \
-  demolition_auto 70 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=11 -- \
+  demolition_auto 40 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=11 -- \
   demolition_bench 470 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 -- \
   demolition_bench 316 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 DEMOLITION_NO_HUD=1 -- \
   demolition_auto 110 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 DEMOLITION_LEVEL=24 DEMOLITION_NO_HUD=1
@@ -33,10 +33,11 @@ cat > "$ART/art.json" <<'JSON'
   "title": "title.jpg",
   "screenshots": [
     { "path": "shot-1.jpg", "label": "Great Keep: a charge opens the keep and its storeys come down in planks and stone" },
-    { "path": "shot-2.jpg", "label": "Lantern Tower: the aim path climbing toward a six-storey tower" },
-    { "path": "shot-3.jpg", "label": "Sun Steps: a shot on its way to a stepped pyramid with a shrine on top" },
+    { "path": "shot-2.jpg", "label": "Lantern Tower: the aim path climbing toward a six-storey tower in the highlands, its crystals' beacons over the battlements" },
+    { "path": "shot-3.jpg", "label": "Sun Steps: a stepped pyramid with a gilded shrine among the desert mesas" },
     { "path": "shot-4.jpg", "label": "Great Keep settling: the dust drifts and the debris comes to rest" }
   ]
 }
 JSON
+convert "$OUT/play-0.png" -resize 1280x720! -quality 85 "$ROOT/docs/screenshots/demolition.jpg" # the README's picture
 ls -la "$ART"
