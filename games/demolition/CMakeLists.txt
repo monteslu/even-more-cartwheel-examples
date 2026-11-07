@@ -2,7 +2,7 @@
 #   demolition             the game
 #   demolition_auto        the bot plays it through the controls (for hosts that send no input)
 #   demolition_bench       the perf gate's scene: the bot on Great Keep, the collapse in view (carts read no environment)
-#   demolition_bench_nobudget  the same with the fracture queue and the blast shells off (the hitch gate's control)
+#   demolition_bench_nobudget  the game as before the hitch fix: no fracture queue, no blast shells, no effects primed (the hitch gate's control)
 #   demolition_physcheck   what the engine's Box3D can do here: rest, budget, determinism, tunnelling (native only)
 #   demolition_levelcheck  every level stands, nothing floats, the bot clears it within par (native only)
 #   demolition_soak        level after level with the bot, no window and no GPU (native only)

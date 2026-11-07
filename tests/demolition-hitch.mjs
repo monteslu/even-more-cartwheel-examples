@@ -5,8 +5,9 @@
 //   perf.blast_work_max   the most CPU one frame took (its ticks and its render)
 //   perf.blast_tick_max   the slowest game tick
 // The longest frame must be under 16.6 ms (60 Hz) on every host. Control, which must fail:
-// demolition_bench_nobudget, the same game with the fracture queue and the blast's shells off (every break and the whole
-// blast in one tick, as before), on the cart. The controls of the native host are reported, not judged: natively the
+// demolition_bench_nobudget, the game as it was before the fix: no fracture queue, no blast shells (every break and the whole
+// blast in one tick) and no effects primed at load (the explosion kit compiles its programs in the frame of the first
+// charge), on the cart. The controls of the native host are reported, not judged: natively the
 // unspread blast fits in a frame too.
 // Holds the GPU suite lock for its own runs only.
 // Run: node tests/demolition-hitch.mjs

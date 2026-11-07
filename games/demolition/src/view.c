@@ -356,7 +356,7 @@ static const setting SETTINGS[K_COUNT] = {
                  BD_GORGE, { 0.42f, 0.34f, 0.28f }, { 0.62f, 0.55f, 0.46f }, TR_PINES,
                  { { 0.75f, 0.45f, 0.22f }, { 0.8f, 0.72f, 0.62f }, { 1.0f, 0.8f, 0.45f }, { 0.25f, 0.28f, 0.33f } } },
   /* castle: a headland over the sea, the cliffs falling away behind */
-  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.6f, { 0.2f, 0.42f, 0.1f }, { 0.5f, 0.42f, 0.3f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
+  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.52f, { 0.2f, 0.42f, 0.1f }, { 0.5f, 0.42f, 0.3f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f }, TR_ROUND,
                  { { 0.78f, 0.46f, 0.22f }, { 0.9f, 0.86f, 0.78f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } } },
   /* scaffold: a quarry's floor among terraced orange walls */
@@ -364,14 +364,17 @@ static const setting SETTINGS[K_COUNT] = {
                    BD_QUARRY, { 0.26f, 0.15f, 0.09f }, { 0.9f, 0.62f, 0.38f }, TR_NONE,
                    { { 0.82f, 0.55f, 0.28f }, { 0.75f, 0.72f, 0.68f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } } },
   /* pyramid: desert sand under red mesas, a hot haze */
-  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.5f, { 0.76f, 0.48f, 0.26f }, { 0.5f, 0.32f, 0.18f }, { 0.95f, 0.75f, 0.55f }, 0.0016f,
+  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.6f, { 0.76f, 0.48f, 0.26f }, { 0.5f, 0.32f, 0.18f }, { 0.95f, 0.75f, 0.55f }, 0.0016f,
                   BD_MESAS, { 0.32f, 0.11f, 0.06f }, { 0.9f, 0.48f, 0.26f }, TR_NONE,
                   { { 0.75f, 0.45f, 0.2f }, { 0.95f, 0.8f, 0.55f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } } },
   /* keep: a snowy pass between white peaks, dark pines, a cold light */
-  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 1.06f, { 0.7f, 0.74f, 0.82f }, { 0.36f, 0.32f, 0.3f }, { 0.75f, 0.82f, 0.95f }, 0.0022f,
+  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 0.86f, { 0.7f, 0.74f, 0.82f }, { 0.36f, 0.32f, 0.3f }, { 0.75f, 0.82f, 0.95f }, 0.0022f,
                BD_MOUNTAINS, { 0.09f, 0.11f, 0.15f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
                { { 0.72f, 0.42f, 0.2f }, { 0.55f, 0.56f, 0.6f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } } },
 };
+/* how much of the contrast grade (assets/grade/contrast.cube) each setting takes: the flat desert takes all of it */
+static const float GRADE[K_COUNT] = { [K_TOWER] = 0.55f, [K_WALL] = 0.55f, [K_BRIDGE] = 0.55f, [K_CASTLE] = 0.65f,
+                                      [K_SCAFFOLD] = 0.65f, [K_PYRAMID] = 1.0f, [K_KEEP] = 0.9f };
 static const setting *SET;
 
 /* the paints (game.h P_*), linear colours */
@@ -472,6 +475,7 @@ void view_level(const game *g) {
     float e = getenv("DEMOLITION_EXPOSURE") ? (float)atof(getenv("DEMOLITION_EXPOSURE")) : S->exposure;
     if (getenv("DEMOLITION_LOOK_CONTROL")) e *= 3.0f; /* the look gate's control: a washed-out picture */
     cw_node_set(V.post, "exposure", cw_val_float(e));
+    cw_node_set(V.post, "grade_intensity", cw_val_float(GRADE[SET - SETTINGS]));
     if (getenv("DEMOLITION_TONEMAP")) cw_node_set(V.post, "tonemap", cw_val_enum(getenv("DEMOLITION_TONEMAP")));
   }
   /* distance: height fog the colour of the setting's air (the structure stays clear: it starts 45 m out) */

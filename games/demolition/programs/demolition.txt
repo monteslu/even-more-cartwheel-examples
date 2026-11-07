@@ -16,3 +16,5 @@ standard+map+trans+instbig+shadow+senv+icol+l2000+s100+xcluster
 standard+instbig+shadow+senv+ds+icol+l2000+s100+xcluster
 standard+map+vcol+rep+shadow+senv+l2000+s100+xcluster
 basic+trans+instbig+ds+icol
+standard+map+vcol+rep+shadow+senv+l2000+s100+xcluster_plain
+standard+instbig+shadow+senv+ds+icol+l2000+s100+xcluster_plain

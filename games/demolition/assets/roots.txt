@@ -5,3 +5,4 @@ fx/fire_mv.png
 fx/smoke.png
 fx/smoke_mv.png
 fx/scorch.png
+grade/contrast.cube

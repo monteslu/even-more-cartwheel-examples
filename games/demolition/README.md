@@ -40,7 +40,8 @@ speed the break did not use and goes on through.
   ball into what holds it up, then holds and taps the aim buttons until the launcher points there.
 - `src/view.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at start-up and the
   builder's paints; a setting per kit (highlands under snow-capped mountains, a golden meadow, a river gorge, a
-  headland over the sea, a quarry, desert mesas, a snowy pass) with its own ground, backdrop, trees, light and haze; a
+  headland over the sea, a quarry, desert mesas, a snowy pass) with its own ground, backdrop, trees, light, haze and
+  share of a contrast grade (`assets/grade/contrast.cube`, from `tools/gen-grade.mjs`); a
   column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
   under the ground at load so no effect compiles its programs mid-game; sounds made in code.
 
@@ -64,13 +65,19 @@ speed the break did not use and goes on through.
 
 ## Performance
 
-On the Radeon 890M at 1920x1080 on High, during Great Keep's collapse (1444 blocks broken, 2374 bodies awake, 2846
-blocks drawn): GPU 3.2 ms on GL and 2.9 ms on WebGPU (`tests/demolition-perf.mjs`). SSAO is off (0.9 ms, the edges
-of the block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA
-(WebGPU multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during
-the same collapse: 2.9 ms a step on average while more than 500 bodies are awake, against 2.4 ms natively; the
-worst single step is the blast itself (about 17 ms in the cart, 7 natively), when hundreds of pieces are made and a
-thousand bodies wake at once.
+On the Radeon 890M at 1920x1080 on High, during Great Keep's collapse (1241 blocks broken, 2182 bodies awake and
+drawn): GPU 3.2 ms on GL and 3.15 ms on WebGPU (`tests/demolition-perf.mjs`). SSAO is off (0.9 ms, the edges of the
+block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU
+multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during the same
+collapse: about 2.3 ms a step at worst over the collapse windows.
+
+- **The blast frame.** A charge on Great Keep breaks about 800 blocks. Before the fix the frame it went off in took
+  33 ms in the cart and 70 ms natively, and nearly all of that was not physics: the first explosion, dust and shards
+  compiled their GPU programs on that frame. Three things fix it: every effect is fired once under the ground at
+  load, so its programs are built before play; breaks wait in a fracture queue and at most 24 run a tick; and a
+  charge's push runs outward over four ticks, a shell of the blast a tick. The longest frame of the blast is now
+  13.2 ms in the cart on romdev and 10.1 ms natively, against 16.6 ms (`tests/demolition-hitch.mjs`; its control,
+  `demolition_bench_nobudget`, is the game as before the fix and must go over).
 
 - **Memory.** Making, stepping and destroying worlds gives the memory back; natively the job threads' own glibc
   malloc arenas hold fragments (a few MB over hundreds of worlds), which one arena (`MALLOC_ARENA_MAX=1`) removes.
@@ -84,4 +91,6 @@ thousand bodies wake at once.
 | `node tests/demolition-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par |
 | `node tests/demolition-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth |
 | `node tests/demolition-perf.mjs` | the GPU frame at 1920x1080 on High during a castle's collapse, GL and WebGPU, on the 890M |
+| `node tests/demolition-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms, natively and in the cart on romdev |
+| `node tests/demolition-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) |
 | `node tests/gate.mjs --gates-file demolition-gates.json` | a person's first shot: the same collapse on every host and both GPU paths |

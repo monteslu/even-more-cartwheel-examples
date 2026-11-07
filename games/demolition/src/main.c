@@ -109,6 +109,14 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 
 /* ── the match ───────────────────────────────────────────────────────── */
 
+/* the effects fired once under the ground at load (fx_prime: their programs compile now, not at the first charge);
+ * the hitch gate's control leaves this out, as it leaves out the fracture queue and the blast's shells */
+static void prime_effects(void) {
+#ifndef DEMOLITION_NO_BUDGET
+  fx_prime((t3_vec3){ 0, -25, 0 });
+#endif
+}
+
 static void load_level_as(int level, bool settle) {
   game_new(&G.g, level, G.players, G.mode);
 #ifdef DEMOLITION_NO_BUDGET
@@ -117,7 +125,7 @@ static void load_level_as(int level, bool settle) {
   if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
-  if (G.built) view_level(&G.g), fx_prime((t3_vec3){ 0, -25, 0 });
+  if (G.built) view_level(&G.g), prime_effects();
   G.last_cur = 0, G.turn_banner = 0;
   G.result_sound = false;
 }
@@ -164,7 +172,7 @@ static bool warmup(void *u) {
   if (!G.have_game) G.players = 1, preview_level(start_level()); /* a structure behind the title */
   G.built = true;
   view_level(&G.g);
-  fx_prime((t3_vec3){ 0, -25, 0 });
+  prime_effects();
   return true;
 }
 
