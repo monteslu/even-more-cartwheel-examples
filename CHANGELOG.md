@@ -2,13 +2,14 @@
 
 ## 0.6.0
 
-- explorer is now **Lanternfall**: its apps, carts, tests and launcher art take the new name (lanternfall,
-  lanternfall_auto, lanternfall_bench, ...). Its look round: holes through floors fall away into a dusk with mist,
-  hanging roots, icicles, chains or weed instead of showing the background's bands; the undersides of hanging rock,
-  islands and wall bulges are shaped into sloping faces and rounded corners where the tiles made staircases; every
-  region has a rock of its own (sandstone strata in the Lantern Gate in place of brick courses, slate, basalt, ore,
-  earth, crystal, ice, coral, cloud) with no tile grid showing. The bench frame is faster on engine v0.38 with
-  global illumination's field back at an eighth of the canvas.
+- demolition is now **Destructo**: the game, its carts (destructo.wasc), apps, tests and launcher art carry the
+  new name.
+- Destructo gets a new look: towers of warm stone, timber and plaster under slate, terracotta and copper roofs, and
+  the tall towers carry stepped roofs too, so the roofs and finials show from the launcher. Trees of layered foliage
+  (oaks, birches, spruces, snow-laden firs, date palms, two species a setting) sway in the wind; the ground rolls past
+  the field of play and the yard and track are worn into it. The desert is pale dunes under red mesas instead of an
+  orange haze, and the snow is shaded. The look check passes on all seven settings, the biggest collapse stays under
+  4 ms on GL and WebGPU and the biggest blast inside one 60 Hz frame.
 
 ## 0.5.0
 

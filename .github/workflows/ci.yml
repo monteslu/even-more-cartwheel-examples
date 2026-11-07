@@ -14,11 +14,11 @@ concurrency:
 
 env:
   # every game in the repo (the release ships one cart each)
-  GAMES: "demolition lanternfall pinball skate towers"
+  GAMES: "destructo lanternfall pinball skate towers"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: "demolition lanternfall pinball skate towers"
+  AUTO_GAMES: "destructo lanternfall pinball skate towers"
   # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
-  PROMPT_GAMES: "demolition lanternfall pinball skate towers"
+  PROMPT_GAMES: "destructo lanternfall pinball skate towers"
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
