@@ -499,7 +499,8 @@ void kit_fence(kit *b, float x0, float z0, float x1, float z1, float h, int mat,
 
 void park_finish(park *k) {
   k->lo = V(1e9f, 1e9f, 1e9f), k->hi = V(-1e9f, -1e9f, -1e9f);
-  for (int i = 0; i < k->nt; i++) {
+  for (int i = 0; i < k->nt; i++) { /* (what is only drawn, the land round the park, is left out of its bounds) */
+    if (k->t[i].surf == SURF_NONE) continue;
     const v3 *p[3] = { &k->t[i].a, &k->t[i].b, &k->t[i].c };
     for (int j = 0; j < 3; j++) {
       k->lo.x = fminf(k->lo.x, p[j]->x), k->lo.y = fminf(k->lo.y, p[j]->y), k->lo.z = fminf(k->lo.z, p[j]->z);

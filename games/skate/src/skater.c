@@ -180,6 +180,8 @@ void sk_spawn(skater *s, const park *k, int i) {
 
 /* ── bailing ───────────────────────────────────────────────────────────── */
 
+static void bail(skater *s);
+void sk_force_bail(skater *s) { s->bail_why = "forced"; bail(s); }
 static void bail(skater *s) {
   if (s->st == SK_BAIL) return;
   s->bail_v = s->v;
@@ -705,7 +707,8 @@ void sk_step(skater *s, const park *k, const input *in) {
   case SK_ROLL: {
     s->ground_t++;
     /* crouch and pop */
-    if (in->ollie) { s->crouch = fminf(1, s->crouch + TICK_DT / 0.3f); s->crouch_t++; }
+    if (!in->ollie) s->ollie_armed = true; /* a button still held from a menu or a respawn does nothing until let go */
+    if (in->ollie && s->ollie_armed) { s->crouch = fminf(1, s->crouch + TICK_DT / 0.3f); s->crouch_t++; }
     v3 n = s->tri >= 0 ? park_normal_at(k, s->tri, s->p) : V(0, 1, 0);
     bool want_pop = (ollie_rel && s->crouch_t > 0) || (s->buf_flip > 0 && s->ground_t > 2);
     if (!in->ollie) s->crouch_t = 0;

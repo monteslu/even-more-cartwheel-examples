@@ -213,6 +213,7 @@ static void build_sunny(kit *b, int variant) {
   park *k = b->k;
   k->theme = 0;
   snprintf(k->blurb, sizeof k->blurb, "a sunny concrete park: bowl, quarters, funbox");
+  spawn_add(k, V(4, 0, 4), PI_F * 0.5f, "Middle"); /* the first start point: the open middle of the park */
   /* the bowl, sunk in the deck */
   const float bx = -18, bz = -14, bhx = 9, bhz = 6.5f, brc = 4, bd = 2.7f, br = 2.3f, box_ = 11.5f, boz = 9;
   float holes[4] = { bx - box_, bz - boz, bx + box_, bz + boz };
@@ -283,7 +284,6 @@ static void build_sunny(kit *b, int variant) {
   building(b, 52, -50, 72, -10, 18, C_BRICK3);
   building(b, 52, 0, 76, 40, 11, C_BRICK4);
   /* start points and lines */
-  spawn_add(k, V(4, 0, 4), PI_F * 0.5f, "Middle");
   line_add(k, V(30, 0, 18), 0, 8.5f, LINE_QUARTER, V(30, 3.5f, -30 - 3.0f), -1, -1, 0, "North Quarter");
   line_add(k, V(10, 0, -16), PI_F, 8.5f, LINE_QUARTER, V(10, 3.5f, 33), -1, -1, 0, "South Quarter");
   line_add(k, V(-18, 0, 6.5f), 0, 6.5f, LINE_BOWL, V(bx, -bd, bz), -1, -1, 0, "Deep End");

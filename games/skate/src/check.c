@@ -477,8 +477,69 @@ static int cmd_soak(int minutes, int players, int park0) {
   return 0;
 }
 
+/* ── a pad script, played on the simulation alone (tuning tests/skate-feel.json without a GPU) ──
+ * stdin: lines "frame lx ly buttons..." (node turns the JSON into them); the run starts at frame `start` (the frame its
+ * setup screen was confirmed on, plus one), park 0, free skate, one player */
+static int cmd_script(int start) {
+  static sim S;
+  memset(&S, 0, sizeof S);
+  sim_init(&S, PARK_SUNNY, MODE_FREE, 1);
+  int fr[256];
+  input in[256];
+  int n = 0;
+  char line[512];
+  while (n < 256 && fgets(line, sizeof line, stdin)) {
+    float lx = 0, ly = 0;
+    int off = 0;
+    if (sscanf(line, "%d %f %f%n", &fr[n], &lx, &ly, &off) < 3) continue;
+    memset(&in[n], 0, sizeof in[n]);
+    in[n].sx = lx, in[n].sy = -ly;
+    const char *b = line + off;
+    in[n].ollie = strstr(b, "south") != NULL, in[n].flip = strstr(b, "west") != NULL, in[n].grab = strstr(b, "east") != NULL;
+    in[n].grind = strstr(b, "north") != NULL, in[n].manual = strstr(b, " l") != NULL || strstr(b, " r") != NULL, in[n].reset = strstr(b, "back") != NULL;
+    n++;
+  }
+  int k = 0;
+  input cur;
+  memset(&cur, 0, sizeof cur);
+  for (int f = start; f < 720; f++) {
+    while (k < n && fr[k] <= f) cur = in[k++];
+    input ins[MAXP];
+    memset(ins, 0, sizeof ins);
+    ins[0] = cur;
+    sim_step(&S, ins);
+    const skater *s = &S.s[0];
+    if (s->ev) printf("f%d %-5s p(%.1f %.1f %.1f) v%.1f ev%x cb%d %s%s\n", f, sk_state_name(s->st), (double)s->p.x, (double)s->p.y, (double)s->p.z, (double)vlen(s->v), s->ev, s->cb.n,
+                      s->ev & EV_BAIL ? "BAIL " : "", s->ev & EV_BAIL && s->bail_why ? s->bail_why : "");
+  }
+  printf("tricks %d bails %d score %d\n", S.s[0].tricks, S.s[0].bails, S.s[0].score);
+  return 0;
+}
+
+/* ── the auto cart's run, simulation only: the same bots and seeds as main.c's skate_auto (tuning) ── */
+static int cmd_auto(int park_id, int players, int ticks) {
+  static sim S;
+  memset(&S, 0, sizeof S);
+  sim_init(&S, park_id, players > 1 ? MODE_BATTLE : MODE_ATTACK, players);
+  bot B[MAXP];
+  for (int i = 0; i < MAXP; i++) bot_init(&B[i], 1000u + (uint32_t)i * 77u + (uint32_t)park_id * 13u, 2);
+  for (int t = 0; t < ticks; t++) {
+    input in[MAXP];
+    memset(in, 0, sizeof in);
+    for (int i = 0; i < S.players; i++) bot_tick(&B[i], &S, i, &in[i]);
+    sim_step(&S, in);
+    for (int i = 0; i < S.players; i++)
+      if (S.s[i].ev & (EV_BAIL | EV_COMBO) || t % 120 == 0)
+        printf("t%d p%d ph%d line %d %-5s p(%.1f %.1f %.1f) v%.1f score %d%s%s\n", t, i, B[i].phase, B[i].line, sk_state_name(S.s[i].st), (double)S.s[i].p.x, (double)S.s[i].p.y,
+               (double)S.s[i].p.z, (double)vlen(S.s[i].v), S.s[i].score, S.s[i].ev & EV_BAIL ? " BAIL " : "", S.s[i].ev & EV_BAIL && S.s[i].bail_why ? S.s[i].bail_why : "");
+  }
+  return 0;
+}
+
 int main(int argc, char **argv) {
   if (argc >= 2 && !strcmp(argv[1], "phys")) return cmd_phys();
+  if (argc >= 2 && !strcmp(argv[1], "auto")) return cmd_auto(argc > 2 ? atoi(argv[2]) : 0, argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 1500);
+  if (argc >= 2 && !strcmp(argv[1], "script")) return cmd_script(argc > 2 ? atoi(argv[2]) : 71);
   if (argc >= 2 && !strcmp(argv[1], "parks")) return cmd_parks(argc > 2 ? atoi(argv[2]) : -1);
   if (argc >= 4 && !strcmp(argv[1], "line")) { /* skate_check line <park> <line> [variant] [tries]: one line, traced with SKATE_TRACE */
     int ticks = 0;

@@ -557,6 +557,8 @@ static void place_board(seat *s, const skater *k, v3 p, v3 f, v3 u, float t) {
     lp = V(0, 0.18f * cw_sin(e * PI_F) + 0.06f, 0); /* it pops up to the feet and comes back under them */
   }
   if (k->st == SK_AIR) lp.y += rig_board_lift(&s->rig);
+  if (k->st == SK_ROLL && !k->manual) /* a carve tips the deck onto its edge, the way the rider leans */
+    lq = qmul(lq, qaxis(V(1, 0, 0), clampf(s->rig.s.lean, -0.5f, 0.5f) * 0.35f));
   if (k->st == SK_ROLL && k->manual) { /* on two wheels: about the back (or front) axle */
     float a = (k->manual_kind ? -1.0f : 1.0f) * (0.2f + 0.03f * k->mbal);
     lq = qaxis(V(0, 0, 1), a);
@@ -673,6 +675,8 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     cw_node3d_set_position(VW.token[i], V(b.x, b.y + 0.12f * cw_sin(t * 2.0f + (float)i), b.z));
     cw_node3d_set_rotation(VW.token[i], V(0, t * 2.4f + (float)i, 0));
   }
+  /* the sky dome round the first camera (the view hook moves it for the others) */
+  if (cw_node_valid(VW.dome)) { v3 c = cw_node3d_global_position(VW.cam[0]); cw_node3d_set_position(VW.dome, V(c.x, 0, c.z)); }
   /* one view per player */
   cw_node cams[MAXP];
   for (int i = 0; i < MAXP; i++) cams[i] = VW.cam[i];
@@ -687,7 +691,8 @@ void view_title_camera(const park *k, float t) {
   v3 p = V(c.x + s * r, 16 + 4 * cw_sin(t * 0.13f), c.z + co * r);
   cw_node3d_set_position(VW.cam[0], p);
   cw_node3d_look_at(VW.cam[0], V(c.x, 0, c.z), V(0, 1, 0));
-  cw_node cams[MAXP] = { VW.cam[0], VW.cam[1], VW.cam[2], VW.cam[3] };
-  cw_shell_split(NULL, cams);
+  /* one view, whatever the players: the menus sit over the whole picture */
+  cw_pipeline_split(cw_pipeline_of(cw_scene_app_tree()), &VW.cam[0], 1);
+  if (cw_node_valid(VW.dome)) cw_node3d_set_position(VW.dome, V(p.x, 0, p.z));
 }
 

@@ -287,7 +287,7 @@ typedef struct skater {
   int grind_kind, grind_t, grind_dir, grind_item;
   float grind_total_s; /* this grind's seconds (the grind goal) */
   int grind_run;
-  bool ollie_held_grind;
+  bool ollie_held_grind, ollie_armed;
   /* a manual */
   bool manual;
   int manual_kind, manual_t, manual_item;
@@ -337,6 +337,7 @@ extern physparams g_phys;
 void sk_spawn(skater *s, const park *k, int spawn_i);
 void sk_place(skater *s, const park *k, v3 p, float yaw, float speed);
 void sk_step(skater *s, const park *k, const input *in);
+void sk_force_bail(skater *s); /* development: a wipeout now (screenshots of the ragdoll) */
 /* names */
 const char *sk_state_name(int st);
 /* the combo text ("Twistflip + 360 + Twin Truck") into out */
