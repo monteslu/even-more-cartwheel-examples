@@ -39,7 +39,7 @@ const LAYERS = {
     const g = fbm(u, v, 5, 5, 21), drift = fbm(u * 0.5 + 0.3, v * 2, 3, 3, 22), fine = fbm(u, v, 40, 2, 23);
     const rip = Math.pow(Math.sin((u * 0.15 + v + fbm(u, v, 3, 3, 24) * 0.12) * Math.PI * 18) * 0.5 + 0.5, 3); // wind ripples (sastrugi): long low ridges
     let c = mix3([0.42, 0.52, 0.74], [0.92, 0.94, 0.98], clamp(g * 0.9 + drift * 0.6 - 0.25));
-    c = mul3(c, (0.84 + 0.2 * fine) * (0.94 + 0.08 * rip));
+    c = mul3(c, (0.78 + 0.32 * fine) * (0.94 + 0.08 * rip));
     return { c, h: 0.3 + 0.35 * drift + 0.1 * fine + 0.15 * rip, ro: 0.7 };
   },
   // 2 the worn path: packed earth, fine grit and a few small stones half sunk in it, ruts along it
@@ -427,7 +427,7 @@ function writeSpecies(name, sp) {
 function glowcap() { // the wood's giant mushroom: a pale stem, a glowing cap (the crown)
   const glb = new Glb();
   const stem = glb.pbr('stem', TEX, null, { tint: [0.86, 0.82, 0.7], rough: 0.7, metal: 0 });
-  const cap = glb.pbr('cap', TEX, null, { tint: [0.34, 0.07, 0.52], rough: 0.45, metal: 0, emissive: [0.02, 0.06, 0.08] });
+  const cap = glb.pbr('cap', TEX, null, { tint: [0.46, 0.08, 0.7], rough: 0.45, metal: 0, emissive: [0.02, 0.06, 0.08] });
   const t = new Mesher(), c = new Mesher();
   lathe(t, 'stem', [[-0.2, 0.5], [0.3, 0.38], [3.2, 0.3], [3.6, 0.34]], { n: 12, uv: 1 });
   lathe(c, 'cap', [[3.4, 0.4], [3.5, 2.0], [3.75, 2.1], [4.2, 1.7], [4.7, 0.9], [4.95, 0.0]], { n: 18, uv: 1 });
@@ -460,7 +460,7 @@ if (want('clouds')) {
 // ── the grade: a contrast S-curve and a little saturation, as a 33^3 .cube the PostProcess applies after tone mapping
 if (want('luts')) {
   mkdirSync(join(ROOT, 'grade'), { recursive: true });
-  const N = 33, a = 8.6, mid = 0.4;
+  const N = 33, a = 9.5, mid = 0.4;
   const sig = (x) => 1 / (1 + Math.exp(-a * (x - mid)));
   const s0 = sig(0), s1 = sig(1), curve = (x) => (sig(x) - s0) / (s1 - s0);
   const lines = ['TITLE "adventure contrast"', `LUT_3D_SIZE ${N}`];
