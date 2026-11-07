@@ -7,6 +7,8 @@
  *
  * Queries go through a grid of 2 m cells over the ground plan. park_cast is a segment against the triangles' front
  * faces; park_ground is the highest ride surface under a point. Pure C, deterministic. */
+#include <stddef.h>
+
 #include "game.h"
 
 /* ── triangles and edges ───────────────────────────────────────────── */
@@ -653,4 +655,17 @@ int park_check_floats(const park *k, char *out, size_t cap) {
     }
   }
   return bad;
+}
+
+/* the drawn geometry's fingerprint (corners, normals, tints, materials, coordinates): a park's bake is for this shape */
+uint32_t park_geom_hash(const park *k) {
+  uint32_t h = 2166136261u;
+  for (int i = 0; i < k->nt; i++) {
+    const ptri *t = &k->t[i];
+    const unsigned char *p = (const unsigned char *)t;
+    for (size_t j = 0; j < offsetof(ptri, uvs) + sizeof t->uvs; j++) h = (h ^ p[j]) * 16777619u;
+    h = (h ^ (uint32_t)t->mat) * 16777619u;
+    h = (h ^ (uint32_t)t->surf) * 16777619u;
+  }
+  return h;
 }

@@ -31,3 +31,12 @@ physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+senv+sheen+l1001+xcluster_skinsha
 depth+skin+xcluster_skinshade
 physical+map+rep+nmap+ao+rmap+mmap+shadow+skin+morph+senv+morphn+sheen+l1001+xcluster_skinshade
 basic+vcol+ds
+standard+map+vcol+rep+instbig+nmap+ao+rmap+shadow+senv+icol+l1001+xcluster
+standard+nmap+shadow+senv+l1001+xcluster
+basic+vcol
+standard+map+vcol+trans+rep+rmap+shadow+senv+l1001+xcluster
+depth+instbig+xcluster
+basic+map+vcol+rep+atest+ds
+standard+map+vcol+rep+nmap+ao+emap+rmap+shadow+senv+l1001+xcluster
+standard+map+vcol+rep+nmap+ao+rmap+shadow+senv+lmap+c1lmap+l1001+xcluster
+standard+map+vcol+trans+rep+rmap+shadow+senv+ds+l1001+xcluster

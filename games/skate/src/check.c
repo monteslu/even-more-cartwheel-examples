@@ -559,6 +559,16 @@ int main(int argc, char **argv) {
     printf("line %s %s: %s\n", argv[2], argv[3], ok ? "ok" : "FAIL");
     return !ok;
   }
+  if (argc >= 2 && !strcmp(argv[1], "bakehash")) { /* each park's drawn shape: its bake must have been made for it */
+    for (int n = 0; n < PARK_COUNT; n++) {
+      park k;
+      memset(&k, 0, sizeof k);
+      park_build(&k, n, argc > 2 ? atoi(argv[2]) : 0);
+      printf("park %d %08x\n", n, park_geom_hash(&k));
+      park_free(&k);
+    }
+    return 0;
+  }
   if (argc >= 2 && !strcmp(argv[1], "soak")) return cmd_soak(argc > 2 ? atoi(argv[2]) : 5, argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : -1);
   fprintf(stderr, "usage: skate_check phys | parks [n] | soak <minutes> <players> [park]\n");
   return 2;

@@ -386,6 +386,15 @@ static void render(void *u, double alpha) {
     }
     G.t_view += (wall() - t0) * 1000;
   }
+  if (G.built && getenv("SKATE_BAKE")) { /* native development: bake every park's lightmap into $SKATE_BAKE, then quit */
+    static int bp = -1, wait;
+    if (bp < 0) bp = 0, park_go(0, MODE_FREE, 1), wait = 4;
+    else if (--wait == 0) {
+      if (!view_bake(getenv("SKATE_BAKE"), bp)) exit(1);
+      if (++bp >= PARK_COUNT) exit(0);
+      park_go(bp, MODE_FREE, 1), wait = 4;
+    }
+  }
   bool hud = !getenv("SKATE_NO_HUD");
   if (hud && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) {
     CW_PROFILE_SCOPE("skate.hud");

@@ -5,3 +5,9 @@ models/kai.glb
 models/nova.glb
 models/dex.glb
 models/marlo.glb
+# each park's bake (SKATE_BAKE=<dir> on a native build makes them: the sky's light, its occlusion and the sun's bounce)
+lightmaps/park0.cwlm
+lightmaps/park1.cwlm
+lightmaps/park2.cwlm
+lightmaps/park3.cwlm
+lightmaps/park4.cwlm

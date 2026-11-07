@@ -16,7 +16,9 @@ typedef struct tex_set { t3_texture *map, *normal, *rough, *ao; } tex_set;
 bool tex_warm(int kind); /* a band of rows of texture set `kind`; true when it is made */
 const tex_set *tex_get(int kind);
 void tex_apply(t3_material *m, int kind, float normal_scale, float ao_intensity);
-extern const float MAT_TILE_M[MAT_KINDS];
+/* the scenery's own texture sets, after the park's (scenery.c) */
+enum { TEX_SAND = MAT_KINDS, TEX_FACADE, TEX_FACADE_LIT, TEX_CURTAIN, TEX_CORRUGATED, TEX_LUMBER, TEX_GROUND, TEX_WATER, TEX_SKYLINE, TEX_DECALS, TEX_KINDS };
+extern const float MAT_TILE_M[TEX_KINDS];
 extern uint32_t tex_hash;
 t3_color lin(float r, float g, float b);
 typedef struct mesh_build {
@@ -47,6 +49,7 @@ typedef struct skview {
 /* ── view.c ────────────────────────────────────────────────────────────── */
 bool view_init_step(cw_node root, int *done, int *total); /* builds the scene a step at a time (loading screen) */
 void view_park(const park *k);                            /* the park's meshes, its tokens (frees the last park's) */
+bool view_bake(const char *dir, int park_index);              /* native development: SKATE_BAKE */
 void view_rigs(const int skin[MAXP], int players);        /* each seat's rider and board */
 /* the frame: rigs, boards, flips, cameras, the token rings; views: how many split views */
 void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players, float dt);
@@ -57,6 +60,19 @@ extern int g_view_shadow_size;
 typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max; int32_t foot_err_state; } view_metrics;
 extern view_metrics g_view_metrics;
 extern float g_cam_k, g_cam_side;
+
+/* ── scenery.c: each park's setting to the horizon, and its light ──────── */
+typedef struct scenery_mood {
+  float time, north, sun_energy, sky_energy, mie, rayleigh, exposure, hemi; /* the ProceduralSky, the exposure, the hemisphere fill */
+  float zenith[3], horizon[3], cloud[3], fog[3]; /* the sky dome's colours, the clouds', the haze's (sRGB) */
+  float fog_density;
+  float ground_near[3], ground_far[3], rock[3], water[3];
+  float shadow_soft; /* 1: a hazy day's softer, lighter shadows */
+  float glow, windows_lit, lm_gain; /* lm_gain: the bake's light, scaled (a low sun's sky is dim) */
+
+} scenery_mood;
+const scenery_mood *scenery_mood_of(int park);
+void scenery_build(cw_node parent, const park *k, int park_index);
 
 /* ── pose.c: the rider's body from the board's state ───────────────────── */
 typedef struct rider_pose {

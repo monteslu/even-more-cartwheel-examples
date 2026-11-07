@@ -64,31 +64,45 @@ static void rgb(texel *t, float r, float g, float b) { t->r = r, t->g = g, t->b 
 
 /* ── generators: u, v in 0..1 over one tile ──────────────────────────────── */
 
-/* trowelled park concrete (a 4 m tile): soft mottling, fine pits, sawn joints every 2 m, tyre and wheel marks */
+/* trowelled park concrete (a 4 m tile): soft mottling, fine pits, sawn joints every 2 m, hairline cracks, water stains,
+ * wheel marks worn darker and smoother */
 static void g_concrete(float u, float v, texel *t) {
   float n = fbm(u, v, 6, 5, 21), fine = fbm(u, v, 96, 2, 22), pit = h01((int)(u * 512), (int)(v * 512), 23) > 0.997f;
   float ju = fminf(fractf(u * 2), 1 - fractf(u * 2)), jv = fminf(fractf(v * 2), 1 - fractf(v * 2));
   float joint = 1 - clamp01((fminf(ju, jv) - 0.002f) * 500);
-  float marks = clamp01((fbm(u * 3, v * 0.6f, 4, 3, 24) - 0.62f) * 4) * 0.5f;
-  float c = 0.86f + 0.07f * (n - 0.5f) + 0.03f * (fine - 0.5f) - 0.06f * marks;
-  rgb(t, c, c * 0.99f, c * 0.97f);
-  t->r -= 0.1f * joint, t->g -= 0.1f * joint, t->b -= 0.1f * joint;
-  t->h = 0.5f + 0.12f * n + 0.05f * fine - 0.25f * pit - 0.12f * joint;
-  t->rough = 0.72f + 0.12f * fine - 0.1f * marks;
-  t->ao = 1 - 0.12f * joint - 0.2f * pit;
+  float marks = clamp01((fbm(u * 3, v * 0.6f, 4, 3, 24) - 0.58f) * 4) * 0.7f;
+  /* cracks: the edges of big cells, only where a mask lets them run, wobbling */
+  float d1, d2;
+  uint32_t id;
+  float wu = u + 0.02f * (fbm(u, v, 8, 2, 25) - 0.5f), wv = v + 0.02f * (fbm(u, v, 8, 2, 26) - 0.5f);
+  cells(wu, wv, 5, 27, &d1, &d2, &id);
+  float crack = (1 - clamp01((d2 - d1) * 110)) * clamp01((fbm(u, v, 3, 2, 28) - 0.62f) * 6);
+  float stain = clamp01((fbm(u, v, 4, 4, 29) - 0.6f) * 3);
+  float c = 0.6f + 0.08f * (n - 0.5f) + 0.035f * (fine - 0.5f) - 0.1f * marks - 0.07f * stain;
+  rgb(t, c, c * 0.985f, c * 0.96f);
+  float dk = 0.12f * joint + 0.22f * crack;
+  t->r -= dk, t->g -= dk, t->b -= dk;
+  t->h = 0.5f + 0.12f * n + 0.05f * fine - 0.25f * pit - 0.12f * joint - 0.2f * crack;
+  t->rough = 0.74f + 0.12f * fine - 0.22f * marks;
+  t->ao = 1 - 0.12f * joint - 0.2f * pit - 0.3f * crack;
 }
-/* asphalt (a 4 m tile): dark aggregate, patched, a little worn */
+/* asphalt (a 4 m tile): dark aggregate, patched and sealed cracks, a little worn */
 static void g_asphalt(float u, float v, texel *t) {
   float d1, d2;
   uint32_t id;
   cells(u, v, 160, 31, &d1, &d2, &id);
   float stone = clamp01((d2 - d1) * 4), tone = (float)(id & 255) / 255.0f;
   float patch = clamp01((fbm(u, v, 3, 3, 32) - 0.6f) * 6);
-  float c = 0.62f + 0.22f * tone * stone + 0.08f * (fbm(u, v, 8, 3, 33) - 0.5f);
-  c = mixf(c, 0.5f, patch);
+  float e1, e2;
+  uint32_t eid;
+  cells(u + 0.015f * fbm(u, v, 8, 2, 34), v, 4, 35, &e1, &e2, &eid);
+  float seal = (1 - clamp01((e2 - e1) * 40)) * clamp01((fbm(u, v, 3, 2, 36) - 0.45f) * 4);
+  float c = 0.6f + 0.22f * tone * stone + 0.1f * (fbm(u, v, 8, 3, 33) - 0.5f);
+  c = mixf(c, 0.48f, patch);
+  c = mixf(c, 0.22f, seal);
   rgb(t, c, c, c * 1.02f);
-  t->h = 0.3f + 0.4f * stone;
-  t->rough = 0.88f - 0.1f * stone;
+  t->h = 0.3f + 0.4f * stone * (1 - seal);
+  t->rough = 0.88f - 0.1f * stone - 0.3f * seal;
   t->ao = 0.75f + 0.25f * stone;
 }
 /* ramp plywood (a 2.4 m tile, sheets 1.2 x 2.4): grain, seams, screw rows, wheel polish down the middle */
@@ -98,13 +112,15 @@ static void g_wood(float u, float v, texel *t) {
   float seam = 1 - clamp01((fminf(fminf(su, 1 - su) * 1.2f, fminf(sv, 1 - sv) * 2.4f) - 0.004f) * 300);
   float warp = fbm(u, v, 4, 3, 41 + (uint32_t)sheet) * 0.3f;
   float grain = cw_pow(1 - fabsf(fractf(v * 46 + warp) - 0.5f) * 2, 6) * 0.5f;
-  float tone = h01(sheet & 1, 0, 42);
+  float tone = h01(sheet & 1, 0, 42) * 0.6f + 0.4f * fbm(u, v, 2, 2, 45); /* each sheet its own shade, mottled */
   /* screws: a row every 30 cm along each sheet's edges */
   float sx = fminf(su, 1 - su) * 1.2f, sy = fractf(v * 8);
   float screw = (sx > 0.03f && sx < 0.05f && fabsf(sy - 0.5f) < 0.04f) ? 1 : 0;
   float polish = clamp01(1 - fabsf(su - 0.5f) * 3) * 0.6f;
-  float c = 0.86f + 0.06f * tone - 0.08f * grain + 0.03f * (fbm(u, v, 32, 2, 43) - 0.5f);
-  rgb(t, c, c * 0.97f, c * 0.93f);
+  /* scuffs: wheel and shoe marks across the sheets, darker grey */
+  float scuff = clamp01((fbm(u, v * 4, 6, 3, 44) - 0.6f) * 3.5f) * (0.5f + polish);
+  float c = 0.78f + 0.14f * (tone - 0.5f) - 0.1f * grain + 0.03f * (fbm(u, v, 32, 2, 43) - 0.5f) - 0.16f * scuff;
+  rgb(t, c, c * 0.97f - 0.03f * scuff, c * 0.93f - 0.05f * scuff);
   t->r -= 0.4f * seam + 0.35f * screw, t->g -= 0.4f * seam + 0.35f * screw, t->b -= 0.4f * seam + 0.35f * screw;
   t->h = 0.5f - 0.05f * grain - 0.4f * seam - 0.2f * screw;
   t->rough = 0.62f - 0.22f * polish + 0.08f * grain;
@@ -123,10 +139,15 @@ static void g_paint(float u, float v, texel *t) {
 /* brushed steel (a 1 m tile): long brush lines, polished where the trucks run */
 static void g_metal(float u, float v, texel *t) {
   float line = fbm(u * 0.5f, v * 64, 8, 2, 61), n = fbm(u, v, 8, 3, 62);
+  /* chips: the paint knocked off to dark primer in small flakes; scratches along the run */
+  float chip = clamp01((fbm(u, v, 24, 3, 63) - 0.66f) * 8);
+  float scratch = (h01((int)(u * 256), (int)(v * 8), 64) > 0.985f) ? 0.6f : 0;
   float c = 0.86f + 0.08f * (line - 0.5f) + 0.04f * (n - 0.5f);
+  c = mixf(c, 0.3f, chip);
+  c = mixf(c, 1.0f, scratch);
   rgb(t, c, c, c * 1.02f);
-  t->h = 0.5f + 0.05f * line;
-  t->rough = 0.3f + 0.15f * line;
+  t->h = 0.5f + 0.05f * line - 0.15f * chip;
+  t->rough = 0.3f + 0.15f * line + 0.4f * chip;
   t->ao = 1;
 }
 /* summer grass (a 3 m tile) */
@@ -186,10 +207,12 @@ static void g_tile(float u, float v, texel *t) {
   int ix = (int)floorf(u * 8), iy = (int)floorf(v * 8);
   float e = fminf(fminf(tu, 1 - tu), fminf(tv, 1 - tv));
   float grout = 1 - clamp01((e - 0.02f) * 120);
-  float id = h01(ix & 7, iy & 7, 101);
-  float n = fbm(u, v, 16, 4, 102);
-  float c = 0.9f + 0.1f * (id - 0.5f) + 0.06f * (n - 0.5f);
-  rgb(t, mixf(c, 0.55f, grout), mixf(c * 0.98f, 0.54f, grout), mixf(c * 0.95f, 0.52f, grout));
+  float id = h01(ix & 7, iy & 7, 101), id2 = h01(ix & 7, iy & 7, 103);
+  float n = fbm(u, v, 16, 4, 102), stain = clamp01((fbm(u, v, 3, 3, 104) - 0.55f) * 3);
+  /* slabs of a few stones (some warmer, some greyer), worn and stained */
+  float c = 0.47f + 0.08f * (id - 0.5f) + 0.07f * (n - 0.5f) - 0.12f * stain;
+  float warm = id2 > 0.75f ? 0.03f : id2 < 0.2f ? -0.025f : 0;
+  rgb(t, mixf(c + warm, 0.5f, grout), mixf(c * 0.98f, 0.49f, grout), mixf(c * 0.95f - warm, 0.47f, grout));
   t->h = 0.35f + 0.5f * clamp01(e * 25) * (1 - grout);
   t->rough = mixf(0.6f + 0.2f * id, 0.95f, grout);
   t->ao = 1 - 0.45f * grout;
@@ -224,13 +247,218 @@ static void g_glass(float u, float v, texel *t) {
   t->ao = 1;
 }
 
-typedef void (*gen_fn)(float u, float v, texel *t);
-static const gen_fn GEN[MAT_KINDS] = { g_concrete, g_asphalt, g_wood, g_paint, g_metal, g_grass, g_brick, g_roof, g_tile, g_dirt, g_leaf, g_glass };
-static const int SIZE[MAT_KINDS] = { 512, 512, 512, 256, 256, 256, 512, 256, 512, 256, 256, 256 };
-static const float NORMAL_STRENGTH[MAT_KINDS] = { 3, 4, 3, 2, 1.5f, 5, 4, 5, 4, 5, 6, 2 };
-const float MAT_TILE_M[MAT_KINDS] = { 4, 4, 2.4f, 2, 1, 3, 6, 3, 4.8f, 2, 2, 4 };
+/* ── the scenery's surfaces (scenery.c) ─────────────────────────────────── */
 
-static tex_set SETS[MAT_KINDS];
+/* beach sand (a 4 m tile): wind ripples, darker damp grains, a few shells */
+static void g_sand(float u, float v, texel *t) {
+  float w = fbm(u, v, 4, 3, 141);
+  float rip = 0.5f + 0.5f * cw_sin((v * 22 + w * 3.0f + 0.3f * fbm(u, v, 12, 2, 142)) * 2 * PI_F);
+  float grain = h01((int)(u * 512), (int)(v * 512), 143), n = fbm(u, v, 8, 4, 144);
+  float c = 0.86f + 0.06f * (n - 0.5f) + 0.05f * (rip - 0.5f) + 0.06f * (grain - 0.5f);
+  rgb(t, c, c * 0.95f, c * 0.84f);
+  if (grain > 0.996f) rgb(t, 0.98f, 0.95f, 0.9f);
+  t->h = 0.5f + 0.18f * rip + 0.05f * grain;
+  t->rough = 0.95f;
+  t->ao = 0.85f + 0.15f * rip;
+}
+/* a facade (a 32 x 28 m tile: 8 windows across, 8 storeys): plaster, slab bands, recessed windows with frames, sills,
+ * blinds half down in some, rain streaks under the sills. v runs up the wall. */
+static void win_cell(float u, float v, int *ix, int *iy, float *wu, float *wv) {
+  float x = u * 8, y = v * 8;
+  *ix = (int)floorf(x), *iy = (int)floorf(y);
+  *wu = fractf(x), *wv = fractf(y);
+}
+static void g_facade(float u, float v, texel *t) {
+  int ix, iy;
+  float wu, wv;
+  win_cell(u, v, &ix, &iy, &wu, &wv);
+  float id = h01(ix & 7, iy & 7, 151);
+  bool glass = wu > 0.22f && wu < 0.78f && wv > 0.24f && wv < 0.82f;
+  bool frame = wu > 0.19f && wu < 0.81f && wv > 0.21f && wv < 0.85f && !glass;
+  bool sill = wu > 0.17f && wu < 0.83f && wv > 0.17f && wv <= 0.21f;
+  bool slab = wv < 0.06f;
+  float n = fbm(u, v, 16, 4, 152), streak = clamp01((fbm(u * 4, v, 24, 2, 153) - 0.45f) * 2) * clamp01(1 - (0.2f - wv) * 0) * (wu > 0.2f && wu < 0.8f && wv < 0.2f ? 1 : 0.25f);
+  if (glass) {
+    float blind = id > 0.55f ? 0.24f + 0.5f * h01(ix & 7, iy & 7, 154) : 0.0f;
+    bool shade = blind > 0 && wv > 0.82f - blind;
+    float refl = clamp01((wv - 0.24f) * 1.6f) * 0.35f + 0.15f * fbm(u * 2, v * 2, 6, 2, 155);
+    bool bar = fabsf(wu - 0.5f) < 0.012f;
+    if (shade) rgb(t, 0.86f, 0.83f, 0.76f), t->rough = 0.8f, t->h = 0.35f;
+    else rgb(t, 0.18f + refl * 0.5f, 0.24f + refl * 0.55f, 0.32f + refl * 0.6f), t->rough = 0.06f, t->h = 0.3f;
+    if (bar) rgb(t, 0.82f, 0.82f, 0.8f), t->rough = 0.5f;
+    t->ao = 0.8f;
+    return;
+  }
+  if (frame) { rgb(t, 0.92f, 0.92f, 0.9f); t->h = 0.62f, t->rough = 0.5f, t->ao = 0.95f; return; }
+  float c = 0.9f + 0.05f * (n - 0.5f) - 0.12f * streak;
+  if (slab) c *= 0.86f;
+  if (sill) c = 0.97f;
+  rgb(t, c, c * 0.98f, c * 0.95f);
+  t->h = 0.5f + 0.08f * n + (sill ? 0.25f : 0) + (slab ? 0.12f : 0);
+  t->rough = 0.85f;
+  t->ao = 1 - 0.1f * streak - (wv > 0.85f && wv < 0.9f && wu > 0.2f && wu < 0.8f ? 0.3f : 0);
+}
+/* the same windows lit at dusk (an emissive map): some warm, some cool, most dark */
+static void g_facade_lit(float u, float v, texel *t) {
+  int ix, iy;
+  float wu, wv;
+  win_cell(u, v, &ix, &iy, &wu, &wv);
+  float id = h01(ix & 7, iy & 7, 156), tone = h01(ix & 7, iy & 7, 157);
+  bool glass = wu > 0.22f && wu < 0.78f && wv > 0.24f && wv < 0.82f && fabsf(wu - 0.5f) >= 0.012f;
+  rgb(t, 0, 0, 0);
+  if (glass && id > 0.42f) {
+    float k = 0.55f + 0.45f * (1 - clamp01((wv - 0.24f) * 1.2f));
+    if (tone < 0.65f) rgb(t, 1.0f * k, 0.78f * k, 0.48f * k);
+    else if (tone < 0.85f) rgb(t, 0.75f * k, 0.85f * k, 1.0f * k);
+    else rgb(t, 1.0f * k, 0.55f * k, 0.7f * k);
+  }
+  t->h = 0.5f, t->rough = 1, t->ao = 1;
+}
+/* a glass curtain wall (a 12 x 14 m tile: 8 panels across, 4 storeys): mullions, spandrels, the sky in the glass */
+static void g_curtain(float u, float v, texel *t) {
+  float x = u * 8, y = v * 4, pu = fractf(x), pv = fractf(y);
+  bool mull = pu < 0.03f || pu > 0.97f, span = pv < 0.18f;
+  float sky = 0.35f + 0.45f * clamp01(pv * 1.2f) + 0.2f * (fbm(u * 0.5f, v * 2, 4, 3, 161) - 0.5f);
+  float pane = h01((int)floorf(x) & 7, (int)floorf(y) & 3, 162) * 0.08f;
+  if (mull) { rgb(t, 0.35f, 0.37f, 0.4f); t->h = 0.7f, t->rough = 0.4f, t->ao = 1; return; }
+  if (span) { rgb(t, 0.28f, 0.32f, 0.36f); t->h = 0.5f, t->rough = 0.35f, t->ao = 0.9f; return; }
+  rgb(t, 0.32f * sky + pane, 0.5f * sky + pane, 0.62f * sky + pane);
+  t->h = 0.45f, t->rough = 0.05f, t->ao = 1;
+}
+/* corrugated sheet metal (a 2 m tile): ridges up the wall, rust runs from the fixings */
+static void g_corrugated(float u, float v, texel *t) {
+  float rib = 0.5f + 0.5f * cw_sin(u * 2 * PI_F * 24);
+  float rust = clamp01((fbm(u * 2, v, 8, 3, 171) - 0.62f) * 4) * clamp01(1.2f - fractf(v * 2) * 1.5f);
+  float n = fbm(u, v, 16, 3, 172);
+  float c = 0.84f + 0.08f * (rib - 0.5f) + 0.04f * (n - 0.5f);
+  rgb(t, mixf(c, 0.55f, rust), mixf(c, 0.36f, rust), mixf(c, 0.24f, rust));
+  t->h = 0.3f + 0.5f * rib;
+  t->rough = 0.45f + 0.4f * rust + 0.1f * n;
+  t->ao = 0.8f + 0.2f * rib;
+}
+/* a stack of sawn boards seen from the side (a 2.4 m tile): 16 boards high, gaps, grain, spacer sticks */
+static void g_lumber(float u, float v, texel *t) {
+  float y = v * 16, bv = fractf(y);
+  int row = (int)floorf(y);
+  float gap = bv < 0.07f ? 1 : 0;
+  float stick = fabsf(fractf(u * 2) - 0.5f) < 0.02f ? 1 : 0;
+  float tone = h01(row & 15, (int)floorf(u * 2 + h01(row & 15, 0, 181)) & 3, 182);
+  float grain = cw_pow(1 - fabsf(fractf(u * 30 + fbm(u, v, 4, 2, 183) * 2) - 0.5f) * 2, 5) * 0.4f;
+  float c = 0.84f + 0.1f * (tone - 0.5f) - 0.08f * grain;
+  rgb(t, c, c * 0.84f, c * 0.62f);
+  if (gap) rgb(t, 0.12f, 0.09f, 0.06f);
+  if (stick && !gap) rgb(t, 0.5f, 0.4f, 0.3f);
+  t->h = gap ? 0.1f : 0.6f - 0.06f * grain;
+  t->rough = 0.85f;
+  t->ao = gap ? 0.3f : 1;
+}
+/* open ground (an 8 m tile, tinted per vertex): tufts, bare patches, small stones */
+static void g_ground(float u, float v, texel *t) {
+  float n1 = fbm(u, v, 4, 4, 191), n2 = fbm(u, v, 32, 3, 192), blade = h01((int)(u * 512), (int)(v * 512), 193);
+  float bare = clamp01((fbm(u, v, 6, 3, 194) - 0.58f) * 4);
+  float k = 0.8f + 0.18f * (n1 - 0.5f) + 0.14f * (blade - 0.5f) * (1 - bare);
+  rgb(t, mixf(k * 0.92f, k * 1.05f, bare), mixf(k, k * 0.9f, bare), mixf(k * 0.8f, k * 0.75f, bare));
+  t->h = 0.4f + 0.35f * blade * n2 * (1 - bare);
+  t->rough = 0.95f;
+  t->ao = 0.75f + 0.25f * blade;
+}
+/* open water (an 8 m tile): long swells and chop (whole periods, so it tiles) */
+static void g_water(float u, float v, texel *t) {
+  float h = 0.35f * cw_sin((u * 3 + v * 2) * 2 * PI_F) + 0.25f * cw_sin((u * -2 + v * 5) * 2 * PI_F) + 0.4f * fbm(u, v, 16, 3, 201);
+  rgb(t, 0.9f, 0.95f, 1.0f);
+  t->h = 0.5f + 0.25f * h;
+  t->rough = 0.04f;
+  t->ao = 1;
+}
+/* a far skyline (a band, tiled across): towers of many heights with window lights, clear above them (alpha) */
+static void g_skyline(float u, float v, texel *t) {
+  int col = (int)floorf(u * 48);
+  float hgt = 0.18f + 0.55f * cw_pow(h01(col, 0, 211), 1.6f) + (h01(col / 3, 1, 212) > 0.85f ? 0.25f : 0);
+  float fu = fractf(u * 48);
+  bool gap = fu < 0.05f && h01(col, 2, 213) > 0.6f;
+  if (v > hgt || gap) { rgb(t, 0, 0, 0); t->a = 0; t->h = 0.5f, t->rough = 1, t->ao = 1; return; }
+  float win = (fractf(u * 48 * 5) > 0.45f && fractf(v * 90) > 0.4f) ? 1 : 0;
+  float c = 0.7f + 0.12f * (h01(col, 3, 214) - 0.5f) + 0.08f * win;
+  rgb(t, c * 0.95f, c, c * 1.05f);
+  t->a = 1, t->h = 0.5f, t->rough = 0.8f, t->ao = 1;
+}
+/* decals (a 4 x 4 atlas of 128 texel cells): our own tags, stickers and stencils, wax and skid marks; alpha cut out */
+static float sdbox(float x, float y, float hx, float hy, float r) {
+  float dx = fabsf(x) - hx + r, dy = fabsf(y) - hy + r;
+  float ox = dx > 0 ? dx : 0, oy = dy > 0 ? dy : 0;
+  return sqrtf(ox * ox + oy * oy) + fminf(fmaxf(dx, dy), 0) - r;
+}
+static void g_decals(float u, float v, texel *t) {
+  int cx = (int)floorf(u * 4), cy = (int)floorf(v * 4), cell = cy * 4 + cx;
+  float x = fractf(u * 4) * 2 - 1, y = fractf(v * 4) * 2 - 1; /* -1..1 in the cell */
+  uint32_t s = 300u + (uint32_t)cell * 17u;
+  static const float PAL[8][3] = { { 1.0f, 0.3f, 0.45f }, { 0.2f, 0.75f, 1.0f }, { 1.0f, 0.8f, 0.1f }, { 0.4f, 0.95f, 0.4f },
+                                   { 0.7f, 0.35f, 1.0f }, { 1.0f, 0.5f, 0.1f }, { 0.1f, 0.9f, 0.85f }, { 1.0f, 1.0f, 1.0f } };
+  const float *a = PAL[cell % 8], *b = PAL[(cell * 3 + 2) % 8];
+  t->a = 0, t->h = 0.5f, t->rough = 0.6f, t->ao = 1;
+  rgb(t, 0, 0, 0);
+  int kind = cell < 6 ? 0 : cell < 10 ? 1 : cell < 12 ? 2 : cell < 14 ? 3 : 4;
+  if (kind == 0) { /* a tag: fat round letter shapes (a chain of blobs), a dark outline, a highlight */
+    float d = 9;
+    for (int i = 0; i < 5; i++) {
+      float bx = -0.72f + 0.36f * (float)i, by = 0.25f * (h01(i, cell, s) - 0.5f), r = 0.2f + 0.12f * h01(i, cell, s + 1);
+      float dd = sqrtf((x - bx) * (x - bx) / 1.0f + (y - by) * (y - by) / 1.6f) - r;
+      if ((int)(h01(i, cell, s + 2) * 3) == 0) dd = sdbox(x - bx, y - by, r * 0.8f, r * 1.2f, 0.06f);
+      d = fminf(d, dd);
+    }
+    float drip = (fabsf(fractf(x * 3.3f) - 0.5f) < 0.06f && y < 0 && y > -0.2f - 0.5f * h01((int)floorf(x * 3.3f) + 9, cell, s + 3)) ? 1 : 0;
+    if (d < 0.07f || drip) {
+      float fill = d < 0 ? 1 : 0;
+      t->a = 1;
+      float hl = (fill && y > 0.1f && fractf((x + y) * 3) < 0.15f) ? 1 : 0;
+      if (fill) rgb(t, mixf(a[0], b[0], (y + 1) * 0.5f), mixf(a[1], b[1], (y + 1) * 0.5f), mixf(a[2], b[2], (y + 1) * 0.5f));
+      else rgb(t, 0.08f, 0.06f, 0.1f);
+      if (hl) rgb(t, 1, 1, 1);
+      if (drip && !fill && d >= 0.07f) rgb(t, a[0] * 0.8f, a[1] * 0.8f, a[2] * 0.8f);
+      t->rough = 0.55f;
+    }
+  } else if (kind == 1) { /* a sticker: a rounded rectangle with a white border, stripes or a dot */
+    float hx = 0.8f, hy = 0.45f + 0.3f * h01(cell, 1, s);
+    float d = sdbox(x, y, hx, hy, 0.15f);
+    if (d < 0) {
+      t->a = 1, t->rough = 0.35f, t->h = 0.6f;
+      if (d > -0.08f) rgb(t, 0.97f, 0.97f, 0.95f);
+      else if (cell & 1) rgb(t, (fractf(x * 2.5f) < 0.5f) ? a[0] : b[0], (fractf(x * 2.5f) < 0.5f) ? a[1] : b[1], (fractf(x * 2.5f) < 0.5f) ? a[2] : b[2]);
+      else { float r = sqrtf(x * x + y * y); bool dot = r < 0.32f; rgb(t, dot ? b[0] : a[0], dot ? b[1] : a[1], dot ? b[2] : a[2]); }
+    }
+  } else if (kind == 2) { /* a round sticker: a ring and a star */
+    float r = sqrtf(x * x + y * y), ang = cw_atan2(y, x);
+    float star = 0.45f + 0.18f * cw_cos(ang * 5);
+    if (r < 0.92f) {
+      t->a = 1, t->rough = 0.35f, t->h = 0.6f;
+      if (r > 0.8f) rgb(t, 0.08f, 0.08f, 0.1f);
+      else if (r < star) rgb(t, b[0], b[1], b[2]);
+      else rgb(t, a[0], a[1], a[2]);
+    }
+  } else if (kind == 3) { /* wax: a dark glossy smear along the cell (laid along an edge) */
+    float w = 0.35f + 0.2f * (fbm(u * 2, v, 8, 2, s) - 0.5f);
+    if (fabsf(y) < w) {
+      float k = clamp01((w - fabsf(y)) * 6) * (0.5f + 0.5f * fbm(u * 3, v * 3, 16, 2, s + 1));
+      t->a = k * 0.85f;
+      rgb(t, 0.1f, 0.09f, 0.08f);
+      t->rough = 0.15f, t->h = 0.52f;
+    }
+  } else { /* a skid: two dark rubber streaks */
+    float k = 0;
+    for (int i = -1; i <= 1; i += 2) k = fmaxf(k, clamp01(1 - fabsf(y - 0.35f * (float)i + 0.05f * x * x) * 9) * clamp01(1 - fabsf(x) * 0.9f));
+    k *= 0.5f + 0.5f * fbm(u * 4, v, 16, 2, s + 2);
+    if (k > 0.02f) { t->a = k * 0.75f; rgb(t, 0.06f, 0.06f, 0.06f); t->rough = 0.6f; }
+  }
+}
+
+typedef void (*gen_fn)(float u, float v, texel *t);
+static const gen_fn GEN[TEX_KINDS] = { g_concrete, g_asphalt, g_wood, g_paint, g_metal, g_grass, g_brick, g_roof, g_tile, g_dirt, g_leaf, g_glass,
+                                        g_sand, g_facade, g_facade_lit, g_curtain, g_corrugated, g_lumber, g_ground, g_water, g_skyline, g_decals };
+static const int SIZE[TEX_KINDS] = { 512, 512, 512, 256, 256, 256, 512, 256, 512, 256, 256, 256, 256, 512, 512, 256, 256, 256, 256, 256, 512, 512 };
+static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 4, 3, 2, 1.5f, 5, 4, 5, 4, 5, 6, 2, 3, 3, 0, 2, 4, 3, 5, 3, 1, 1 };
+const float MAT_TILE_M[TEX_KINDS] = { 4, 4, 2.4f, 2, 1, 3, 6, 3, 4.8f, 2, 2, 4, 4, 32, 32, 12, 2, 2.4f, 8, 8, 1, 1 };
+
+static tex_set SETS[TEX_KINDS];
 uint32_t tex_hash = 2166136261u;
 
 static t3_texture *finish(const uint8_t *px, int n, bool srgb) {

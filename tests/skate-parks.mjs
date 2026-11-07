@@ -6,8 +6,11 @@
 //                    off a quarter pipe or a kicker landed, the manual held. Up to four goes, each a different trick.
 //   the controls     each must fail: a piece lifted 30 cm (floats), a wall across a rail's approach (that line is not
 //                    skated), a kicker cut to a quarter of its height (its gap is not cleared)
+//   the bakes        each park's lightmap (assets/lightmaps/park<n>.cwlm) was baked for the shape the park has now: its
+//                    .hash matches the drawn geometry's; the control, a park with a piece lifted, must not match
 // Run: node tests/skate-parks.mjs
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,3 +29,17 @@ if (r.status !== 0 || fails.length || parks !== 5 || ctl < 13) {
   process.exit(1);
 }
 console.log(`ok   ${parks} parks, ${ok} lines skated, nothing floats, ${ctl} controls fail as they must`);
+/* the bakes: made for these shapes (SKATE_BAKE=<assets/lightmaps> on a native skate build rebakes them all) */
+const exeB = join(ROOT, 'build/native/games/skate/skate_check');
+const hashes = (v) => Object.fromEntries([...(spawnSync(exeB, ['bakehash', String(v)], { encoding: 'utf8' }).stdout || '').matchAll(/park (\d) ([0-9a-f]{8})/g)].map((m) => [m[1], m[2]]));
+const now = hashes(0), lifted = hashes(1);
+let stale = 0;
+for (let n = 0; n < 5; n++) {
+  let baked = '';
+  try { baked = readFileSync(join(ROOT, `games/skate/assets/lightmaps/park${n}.hash`), 'utf8').trim(); } catch {}
+  if (baked !== now[n]) { console.log(`FAIL park ${n}'s bake is stale (baked for ${baked || 'nothing'}, the park is ${now[n]}): rebake with SKATE_BAKE`); stale++; }
+}
+const ctlStale = [0, 1, 2, 3, 4].filter((n) => lifted[n] && lifted[n] !== now[n]).length;
+if (ctlStale !== 5) { console.log(`CONTROL PASSED (a failure): a lifted piece left ${5 - ctlStale} parks' shapes unchanged`); stale++; }
+if (stale) process.exit(1);
+console.log('ok   5 bakes current; the control (a piece lifted) changes every park\'s shape');

@@ -26,4 +26,6 @@ node tests/skate-soak.mjs      # 30 game minutes at 1 to 4 players
 node tests/skate-feel.mjs      # a person's twelve seconds on a pad: tricks land, the camera and the feet hold
 node tests/gate.mjs --gates-file skate-gates.json
 node tests/skate-perf.mjs      # the 890M at 1080p High, four-way split
+node tests/skate-look.mjs      # each park's frames: contrast, not washed out
+node games/skate/tools/bake.mjs # rebake every park's lightmap (after a park changes shape)
 ```

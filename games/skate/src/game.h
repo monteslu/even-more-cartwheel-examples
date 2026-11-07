@@ -222,6 +222,7 @@ enum { PARKV_GAME = 0, PARKV_FLOAT = 1, PARKV_BLOCK = 2, PARKV_SHORT = 3 };
 bool park_build(park *k, int n, int variant);
 /* the float and line checks (tools/parkcheck.c and the soak): problems written to out, count returned */
 int park_check_floats(const park *k, char *out, size_t cap);
+uint32_t park_geom_hash(const park *k); /* the drawn shape: the bake (lightmaps/park<n>.hash) is current while it matches */
 
 /* ── input: the same for a pad, the keyboard and a bot ────────────── */
 typedef struct input {

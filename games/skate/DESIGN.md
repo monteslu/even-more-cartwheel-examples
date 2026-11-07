@@ -76,32 +76,56 @@ slope; the game's solver sends none. At mega ramp speeds a tick is a third of a 
 
 ## The look
 
-Sunny, colourful, clear: a ProceduralSky in the early afternoon drives the sun; one shadow map over the whole park
-(the park holds still, so it is drawn once a frame, not once a view); a light haze; AgX tone mapping. The park's
-surfaces are procedural PBR sets (src/gfx.c: trowelled concrete with its joints, plywood with seams and screws, brushed
-steel, pavers, brick with windows), tinted by their vertex colours: teal, orange, yellow, magenta and blue ramps, warm
-concrete, green grass.
+Each park has a setting out to the horizon and a light of its own (src/scenery.c):
+
+| park | setting | light |
+|---|---|---|
+| Sunnyside | a beach town: a boardwalk with palms along the east fence, sand with huts, umbrellas and lifeguard towers, a pier into the sea; pastel two-storey streets to the west, wooded hills behind | golden hour: the sun low, long shadows, warm haze |
+| Civic Plaza | a city block: a ring road with lanes, crossings and parked cars, sidewalks with lamps and street trees, mid-rise facades with shopfronts and awnings, towers further out, a skyline | a bright hazy morning |
+| Big Sky | an event in the open: golden grassland, a gravel car park of cars and vans, tents and bleachers by the mega ramp, banners; mesas and mountains far off | clear noon under a deep blue sky |
+| Rooftops | downtown at sunset: the street runs on past both fences, taller buildings close in with lit windows and neon blade signs, a skyline all round | sunset, the windows and the signs coming on |
+| Timber Yard | a lumber yard: board stacks on bearers, log piles, a sawmill shed of corrugated sheet; pine forest on the hills round it, mountains behind | an early morning: gold light through cool air |
+
+How it is drawn: the near scenery is merged into one mesh per surface (facades, brick, glass, roofs, trim, paint, steel,
+wood, sheet metal, lumber, car paint, the lamps' glow), each a procedural texture with world-scaled coordinates, so a
+window is a window's size on every building: a whole town is a dozen draws. Forests are instanced (thousands of pines
+for the price of one draw). The ground is one radial mesh round the park, flat near it and rising into hills and
+mountains far off; the far skyline is an impostor, a band of towers painted on a ring at 650 m (alpha cut). Height fog
+in each park's haze colour, with the sun's scatter, gives the distance its air; the sky dome is the mood's own gradient
+and clouds.
+
+The park itself is lightmapped: its surfaces are baked (`SKATE_BAKE=<dir>` on a native build writes
+`assets/lightmaps/park<n>.cwlm`): the sky's light with its occlusion (the dark under a coping's lip, the corner where a
+ramp meets the ground, the inside of a bowl) and the sun's bounce. The sun's direct light stays real time, so the
+skaters cast their shadows on the park and the ramps on each other. The surfaces are procedural PBR sets (src/gfx.c):
+trowelled concrete with joints, hairline cracks, water stains and worn wheel paths; asphalt with sealed cracks and
+patches; plywood with seams, screw rows and scuffs; painted steel with chipped flakes and scratches; pavers; brick
+with windows. Decals on top: wax along every ledge and coping (dark and glossy), our own tags and stickers on the
+walls, skid marks on the ground, each kept only where all four corners lie on its surface.
 
 The skaters are skinned glbs made by tools/chars/make-skaters.mjs (the brawler example's character generator, copied
 and given four skaters' outfits). src/pose.c poses them every frame from the board's state, no clips: crouch, tuck,
 lean, push phase and balance eased toward what the board does (a tenth of a second), the legs solved with two-bone IK
 so the feet stay planted on the deck through a crouch, a flip catching the board or a manual tipping it, a hand on the
-board for a grab. A flip turns the board under the rider about its own axes. A bail is a ragdoll (src/rag.c, after the
-brawler's) tumbling over the park's triangles, presentation only.
+board for a grab. A flip turns the board under the rider about its own axes; the wheels turn with the speed. A bail is
+a ragdoll (src/rag.c, after the brawler's) tumbling over the park's triangles, presentation only; the camera follows
+the body from further back. A landing kicks up a puff of dust; a grind throws sparks.
 
-The cameras follow behind each skater along its run, hold still through vert air (the rider comes back down into the
-picture) and pull in when a wall is in the way. No camera ever shakes.
+The cameras ride low behind each skater along its run, pull back and widen the lens with speed (62 to 76 degrees),
+and in vert air stay down at the coping's height and look up at the rider, so the height shows. They pull in when a
+wall is in the way. No camera ever shakes.
 
 ## Tests
 
 | test | checks |
 |---|---|
 | tests/skate-physics.mjs | the board against ramp physics; the naive solver as the control |
-| tests/skate-parks.mjs | nothing floats, every line skateable; three controls |
+| tests/skate-parks.mjs | nothing floats, every line skateable; three controls and each park's bake made for its shape (a lifted piece as the control) |
 | tests/skate-soak.mjs | 30 game minutes at 1 to 4 players, every park; a NaN control |
 | tests/skate-feel.mjs | a person's twelve seconds on a pad: every trick lands, the camera never jerks, the feet stay on the deck; a mistimed flip as the control |
 | tests/skate-gates.json | the auto cart on every host, frames and simulation state exact |
 | tests/skate-perf.mjs | the 890M at 1080p High, four-way split |
+| tests/skate-look.mjs | every park's chase-camera frames have contrast and are not washed out: mean luma 95 to 128, its spread 55 or more; two stops over as the control |
 
 ## Performance
 

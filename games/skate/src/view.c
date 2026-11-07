@@ -15,6 +15,8 @@
 #include <string.h>
 
 #include "cartwheel/environment.h"
+#include "cartwheel/lightmap.h"
+#include "cartwheel/vfs.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/resource.h"
 #include "cartwheel/scene_file.h"
@@ -40,10 +42,20 @@ typedef struct seat {
   bool cam_init;
   v3 cam_fwd, last_p;
   bool cam_fwd_ok;
+  float fov, air_y0, low_y; /* the lens (wider with speed); where vert air took off; the camera's height held through it */
+  int last_st;
+  bool blocked;
+  float look_k;
+  t3_object *wheel[4];
 } seat;
 
 static struct {
   cw_node root, world, park, sun, sky, env, fog, post, light, dome;
+  cw_node baked;          /* the park's own meshes: lightmapped (its bake, lightmaps/park<n>.cwlm) */
+  cw_lightmap_data *lm;
+  cw_node dust[MAXP];     /* a landing's puff */
+  int landed[MAXP];
+  float wheel_a[MAXP];    /* how far each board's wheels have turned */
   cw_node cam[MAXP];
   t3_material *mat[MAT_KINDS];
   cw_res skin_res[NSKINS];
@@ -107,13 +119,16 @@ static void wheel(mesh_build *b, v3 c, float r, float w, const float col[3]) {
     v3 n0 = V(c0, s0, 0), n1 = V(c1, s1, 0);
     int v[4] = { mb_vert(b, vadd(c, V(c0 * r, s0 * r, -w)), n0, 0, 0), mb_vert(b, vadd(c, V(c1 * r, s1 * r, -w)), n1, 1, 0),
                  mb_vert(b, vadd(c, V(c1 * r, s1 * r, w)), n1, 1, 1), mb_vert(b, vadd(c, V(c0 * r, s0 * r, w)), n0, 0, 1) };
-    for (int k = 0; k < 4; k++) mb_color(b, v[k], l.r, l.g, l.b);
+    /* a printed band on two of the segments: the spin shows */
+    float kk = (i % 6 == 0) ? 0.45f : 1.0f;
+    for (int k = 0; k < 4; k++) mb_color(b, v[k], l.r * kk, l.g * kk, l.b * kk);
     mb_quad(b, v[0], v[3], v[2], v[1]);
     for (int sd = -1; sd <= 1; sd += 2) {
       int m = mb_vert(b, vadd(c, V(0, 0, w * (float)sd)), V(0, 0, (float)sd), 0.5f, 0.5f);
       int p = mb_vert(b, vadd(c, V(c0 * r, s0 * r, w * (float)sd)), V(0, 0, (float)sd), 0, 0);
       int q = mb_vert(b, vadd(c, V(c1 * r, s1 * r, w * (float)sd)), V(0, 0, (float)sd), 1, 0);
-      mb_color(b, m, l.r * 0.8f, l.g * 0.8f, l.b * 0.8f), mb_color(b, p, l.r, l.g, l.b), mb_color(b, q, l.r, l.g, l.b);
+      float hub = (i % 4 == 0) ? 0.3f : 0.85f; /* the hub's spokes of shade */
+      mb_color(b, m, l.r * 0.5f, l.g * 0.5f, l.b * 0.5f), mb_color(b, p, l.r * hub, l.g * hub, l.b * hub), mb_color(b, q, l.r * hub, l.g * hub, l.b * hub);
       if (sd > 0) mb_tri(b, m, p, q);
       else mb_tri(b, m, q, p);
     }
@@ -121,8 +136,8 @@ static void wheel(mesh_build *b, v3 c, float r, float w, const float col[3]) {
 }
 /* the deck: a curved plank (kicktails at both ends), nose along +x, its top at y = DECK_Y */
 
-static t3_object *board_model(const float col[3]) {
-  mesh_build deck = { 0 }, grip = { 0 }, hw = { 0 };
+static t3_object *board_model(const float col[3], t3_object *wheels[4]) {
+  mesh_build deck = { 0 }, grip = { 0 }, hw = { 0 }, wb = { 0 };
   const int NS = 16;
   const float L = 0.40f, W = 0.105f, T = 0.012f;
   /* along the length: the deck's height (kicktails rise over the last 13 cm) */
@@ -159,8 +174,8 @@ static t3_object *board_model(const float col[3]) {
     float x = 0.21f * (float)t;
     bx(&hw, V(x, 0.075f, 0), V(0.03f, 0.016f, 0.03f), steel);    /* the baseplate and kingpin */
     bx(&hw, V(x, 0.045f, 0), V(0.014f, 0.014f, 0.09f), steel);   /* the hanger and axle */
-    for (int sd = -1; sd <= 1; sd += 2) wheel(&hw, V(x, 0.028f, 0.085f * (float)sd), 0.028f, 0.018f, urethane);
   }
+  wheel(&wb, V(0, 0, 0), 0.028f, 0.018f, urethane); /* one wheel, four times: each turns on its axle */
   t3_object *g = t3_group_new();
   t3_material *md = t3_mesh_standard_material_new(0xffffff);
   md->vertex_colors = true, md->roughness = 0.45f;
@@ -178,6 +193,16 @@ static t3_object *board_model(const float col[3]) {
     t3_object_add(g, ms[i]);
     t3_release(ms[i]);
   }
+  t3_geometry *wg = mb_finish(&wb);
+  for (int t = 0; t < 4; t++) {
+    t3_mesh *w = t3_mesh_new(wg, mh);
+    w->base.cast_shadow = true, w->base.receive_shadow = true;
+    w->base.position = V(0.21f * ((t & 1) ? 1.0f : -1.0f), 0.028f, 0.085f * ((t & 2) ? 1.0f : -1.0f));
+    t3_object_add(g, w);
+    wheels[t] = &w->base;
+    t3_release(w);
+  }
+  t3_release(wg);
   t3_release(md), t3_release(mg), t3_release(mh);
   return g;
 }
@@ -192,24 +217,29 @@ static void set_shadows(t3_object *o) {
 /* the sky behind everything: a dome of colour from a deep blue overhead to a pale blue at the horizon, and a few
  * flat-bottomed clouds (the ProceduralSky still lights the park and fills the reflections; its own background is off:
  * a physical sky at this exposure reads grey, and this game's sky is a postcard's) */
-static void sky_dome(cw_node parent) {
+static void sky_dome(cw_node parent, const scenery_mood *md) {
+  if (cw_node_valid(VW.dome)) cw_node_free(VW.dome);
   mesh_build b = { 0 };
-  const int AZ = 32, EL = 14;
+  /* the dome is unlit: it holds its brightness whatever the park's exposure, a bright sky over a darker ground */
+  float sk = 2.5f * cw_pow(2.0f, -md->exposure), ck = sk * 1.1f;
+  const int AZ = 48, EL = 40;
   const float R = 380;
   for (int j = 0; j <= EL; j++) {
     float e = -0.12f + (PI_F * 0.5f + 0.12f) * (float)j / EL, se, ce;
     cw_sincos(e, &se, &ce);
     float k = clampf(se, 0, 1);
     /* horizon pale, zenith deep; a warm whisper at the very bottom */
-    float r = 0.72f + (0.13f - 0.72f) * cw_pow(k, 0.55f), g = 0.86f + (0.42f - 0.86f) * cw_pow(k, 0.6f), bl = 1.0f + (0.92f - 1.0f) * k;
-    if (se < 0) r = 0.78f, g = 0.86f, bl = 0.9f;
+    /* the mood's horizon up to its zenith, quickly: most of the sky is near the zenith's colour */
+    float kk = cw_pow(k, 0.5f);
+    float r = md->horizon[0] + (md->zenith[0] - md->horizon[0]) * kk, g = md->horizon[1] + (md->zenith[1] - md->horizon[1]) * kk, bl = md->horizon[2] + (md->zenith[2] - md->horizon[2]) * kk;
+    if (se < 0) r = md->fog[0], g = md->fog[1], bl = md->fog[2];
     t3_color c = lin(r, g, bl);
     for (int i = 0; i <= AZ; i++) {
       float a = 2 * PI_F * (float)i / AZ, sa, ca;
       cw_sincos(a, &sa, &ca);
       v3 p = V(ca * ce * R, se * R, sa * ce * R);
       int v = mb_vert(&b, p, vmul(vnorm(p), -1), (float)i / AZ, (float)j / EL);
-      mb_color(&b, v, c.r * 1.7f, c.g * 1.7f, c.b * 1.7f);
+      mb_color(&b, v, c.r * sk, c.g * sk, c.b * sk);
     }
   }
   for (int j = 0; j < EL; j++)
@@ -233,9 +263,9 @@ static void sky_dome(cw_node parent) {
       float ox = ((float)(h >> 8) / 16777216.0f - 0.5f) * 70, oy = ((float)((h >> 4) & 255) / 255.0f) * 10;
       float rx = 14 + 10 * (float)((h >> 12) & 255) / 255.0f, ry = rx * 0.55f;
       v3 m = vadd(cen, vadd(vmul(right, ox), vmul(up, oy)));
-      t3_color top = lin(1, 1, 1), bot = lin(0.78f, 0.84f, 0.95f);
+      t3_color top = lin(md->cloud[0], md->cloud[1], md->cloud[2]), bot = lin(md->cloud[0] * 0.75f, md->cloud[1] * 0.8f, md->cloud[2] * 0.92f);
       int ci = mb_vert(&b, m, fw, 0.5f, 0.5f);
-      mb_color(&b, ci, top.r * 2.1f, top.g * 2.1f, top.b * 2.1f);
+      mb_color(&b, ci, top.r * ck, top.g * ck, top.b * ck);
       const int S = 16;
       int first = -1, prev = -1;
       for (int s = 0; s <= S; s++) {
@@ -245,7 +275,7 @@ static void sky_dome(cw_node parent) {
         v3 q = vadd(m, vadd(vmul(right, cs * rx), vmul(up, yy)));
         int v = mb_vert(&b, q, fw, 0, 0);
         float t = clampf(yy / ry, 0, 1);
-        mb_color(&b, v, (bot.r + (top.r - bot.r) * t) * 2.0f, (bot.g + (top.g - bot.g) * t) * 2.0f, (bot.b + (top.b - bot.b) * t) * 2.0f);
+        mb_color(&b, v, (bot.r + (top.r - bot.r) * t) * ck, (bot.g + (top.g - bot.g) * t) * ck, (bot.b + (top.b - bot.b) * t) * ck);
         if (prev >= 0) mb_tri(&b, ci, v, prev);
         if (first < 0) first = v;
         prev = v;
@@ -318,7 +348,6 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.sky, "rayleigh", cw_val_float(1.25f));
     cw_node_set(VW.sky, "sun_energy", cw_val_float(4.2f));
     cw_node_set(VW.sky, "background", cw_val_bool(false));
-    sky_dome(root);
     VW.fog = cw_node_new("HeightFog", "Haze");
     cw_node_add_child(root, VW.fog);
     cw_node_set(VW.fog, "density", cw_val_float(0.0009f));
@@ -334,7 +363,10 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.post, "bloom_intensity", cw_val_float(0.05f));
     cw_node_set(VW.post, "bloom_threshold", cw_val_float(2.5f));
     cw_node_set(VW.post, "exposure_ev", cw_val_float(0.0f));
-    cw_node_set(VW.post, "tonemap", cw_val_enum("NEUTRAL"));
+    cw_node_set(VW.post, "tonemap", cw_val_enum("ACES_FILMIC")); /* contrast and colour: the sky stays blue, the shadows dark */
+    cw_node_set(VW.post, "vignette", cw_val_bool(true)); /* a light frame on each view: the eye goes to the middle */
+    cw_node_set(VW.post, "vignette_intensity", cw_val_float(0.42f));
+    cw_node_set(VW.post, "vignette_smoothness", cw_val_float(0.55f));
     cw_node_set(VW.sky, "sky_energy", cw_val_float(1.9f));
     if (getenv("SKATE_SKY")) { /* development: SKATE_SKY=sky_energy,mie,rayleigh,exposure_ev,time */
       float se = 1.9f, mi = 0.3f, ra = 1.25f, ev = 0, tod = 14.5f;
@@ -360,9 +392,9 @@ bool view_init_step(cw_node root, int *done, int *total) {
     tex_k = 0;
   } else if (step >= S_TEX && step < S_MATS) {
     /* the textures, a band of rows at a time */
-    while (tex_k < MAT_KINDS && tex_warm(tex_k)) tex_k++;
-    if (tex_k < MAT_KINDS) tex_warm(tex_k);
-    if (step == S_MATS - 1) while (tex_k < MAT_KINDS) { while (!tex_warm(tex_k)) {} tex_k++; }
+    while (tex_k < TEX_KINDS && tex_warm(tex_k)) tex_k++;
+    if (tex_k < TEX_KINDS) tex_warm(tex_k);
+    if (step == S_MATS - 1) while (tex_k < TEX_KINDS) { while (!tex_warm(tex_k)) {} tex_k++; }
   } else if (step == S_MATS) {
     for (int k = 0; k < MAT_KINDS; k++) VW.mat[k] = park_material(k);
   } else if (step >= S_SKINS && step < S_DONE) {
@@ -384,11 +416,153 @@ static t3_geometry *token_geo(void) {
   return g;
 }
 
+/* the park's light and air: its sky, sun, haze and exposure (scenery.c's moods) */
+static void apply_mood(const scenery_mood *md) {
+  cw_node_set(VW.sky, "time_of_day", cw_val_float(md->time));
+  cw_node_set(VW.sky, "north", cw_val_float(md->north));
+  cw_node_set(VW.sky, "sun_energy", cw_val_float(md->sun_energy));
+  cw_node_set(VW.sky, "sky_energy", cw_val_float(md->sky_energy));
+  cw_node_set(VW.sky, "mie", cw_val_float(md->mie));
+  cw_node_set(VW.sky, "rayleigh", cw_val_float(md->rayleigh));
+  /* (SKATE_EXPOSURE: stops more, the look gate's control) */
+  cw_node_set(VW.post, "exposure_ev", cw_val_float(md->exposure + (getenv("SKATE_EXPOSURE") ? (float)atof(getenv("SKATE_EXPOSURE")) : 0)));
+  cw_node_set(VW.env, "hemi_energy", cw_val_float(md->hemi * (getenv("SKATE_HEMIK") ? (float)atof(getenv("SKATE_HEMIK")) : 1)));
+  if (getenv("SKATE_TONE")) cw_node_set(VW.post, "tonemap", cw_val_enum(getenv("SKATE_TONE"))); /* development: the look gate's matrix */
+  cw_node_set(VW.env, "sky_color", cw_val_color(md->zenith[0] * 0.6f + 0.3f, md->zenith[1] * 0.6f + 0.3f, md->zenith[2] * 0.6f + 0.35f, 1));
+  cw_node_set(VW.fog, "color", cw_val_color(md->fog[0], md->fog[1], md->fog[2], 1));
+  cw_node_set(VW.fog, "density", cw_val_float(md->fog_density));
+  sky_dome(VW.root, md);
+}
+
+/* decals on the park: wax along the ledges and the coping, our own tags and stickers on its walls, skid marks on its
+ * ground. Each is a quad a hair off its surface, kept only where all four corners lie on that surface. */
+static bool on_surface(const park *k, v3 p, v3 n, unsigned mask) {
+  phit h;
+  if (!park_cast(k, vmad(p, n, 0.06f), vmul(n, -0.12f), mask, &h)) return false;
+  return vdot(h.fn, n) > 0.97f && fabsf(h.t - 0.5f) < 0.1f;
+}
+static void decal_quad(mesh_build *b, v3 c, v3 r, v3 u, v3 n, int cell, float alpha_k) {
+  float u0 = (float)(cell & 3) / 4 + 0.004f, u1 = (float)((cell & 3) + 1) / 4 - 0.004f, v0 = (float)(cell >> 2) / 4 + 0.004f, v1 = (float)((cell >> 2) + 1) / 4 - 0.004f;
+  int q[4] = { mb_vert(b, vsub(vsub(c, r), u), n, u0, v0), mb_vert(b, vsub(vadd(c, r), u), n, u1, v0), mb_vert(b, vadd(vadd(c, r), u), n, u1, v1), mb_vert(b, vadd(vsub(c, r), u), n, u0, v1) };
+  for (int i = 0; i < 4; i++) mb_color(b, q[i], alpha_k, alpha_k, alpha_k);
+  mb_quad(b, q[0], q[1], q[2], q[3]);
+}
+static void park_decals(const park *k) {
+  mesh_build b = { 0 };
+  uint32_t rng = 9001u + (uint32_t)k->theme * 31u;
+#define DRND() (rng = rng * 1664525u + 1013904223u, (float)(rng >> 8) / 16777216.0f)
+  /* wax: along each ledge and coping edge, on the top beside the lip */
+  for (int i = 0; i < k->ne; i++) {
+    const pedge *e = &k->e[i];
+    if (e->kind == EDGE_RAIL || e->len < 0.8f) continue;
+    v3 side = vnorm(vcross(e->t, e->up));
+    float in = 0;
+    for (int s = -1; s <= 1; s += 2) {
+      v3 p = vadd(vmul(vadd(e->a, e->b), 0.5f), vmul(side, 0.12f * (float)s));
+      if (on_surface(k, vsub(p, vmul(e->up, 0.01f)), e->up, 1u << SURF_RIDE)) in = (float)s;
+    }
+    if (in == 0) continue;
+    for (float t = 0.2f; t < e->len - 0.4f; t += 1.0f) {
+      float len = fminf(1.0f, e->len - 0.2f - t) * 0.5f;
+      v3 c = vadd(vadd(e->a, vmul(e->t, t + len)), vmul(side, in * 0.09f));
+      c = vadd(c, vmul(e->up, -0.01f + 0.006f));
+      decal_quad(&b, c, vmul(e->t, len), vmul(side, 0.09f), e->up, 12 + (int)(DRND() * 2), 1);
+    }
+  }
+  /* tags and stickers on the walls: a random wall triangle by area, a spot in it */
+  float area_sum = 0;
+  for (int i = 0; i < k->nt; i++) {
+    const ptri *t = &k->t[i];
+    if (t->surf != SURF_WALL || fabsf(t->n.y) > 0.2f || (t->mat != MAT_PAINT && t->mat != MAT_CONCRETE && t->mat != MAT_WOOD)) continue;
+    area_sum += vlen(vcross(vsub(t->b, t->a), vsub(t->c, t->a))) * 0.5f;
+  }
+  int placed = 0;
+  for (int tries = 0; tries < 900 && placed < 46 && area_sum > 0; tries++) {
+    float pick = DRND() * area_sum;
+    const ptri *t = NULL;
+    for (int i = 0; i < k->nt; i++) {
+      const ptri *q = &k->t[i];
+      if (q->surf != SURF_WALL || fabsf(q->n.y) > 0.2f || (q->mat != MAT_PAINT && q->mat != MAT_CONCRETE && q->mat != MAT_WOOD)) continue;
+      pick -= vlen(vcross(vsub(q->b, q->a), vsub(q->c, q->a))) * 0.5f;
+      if (pick <= 0) { t = q; break; }
+    }
+    if (!t) continue;
+    float s = DRND(), r = DRND();
+    if (s + r > 1) s = 1 - s, r = 1 - r;
+    v3 p = vadd(t->a, vadd(vmul(vsub(t->b, t->a), s), vmul(vsub(t->c, t->a), r)));
+    v3 n = t->n, rt = vnorm(vcross(V(0, 1, 0), n)), up = vcross(n, rt);
+    bool sticker = DRND() < 0.45f;
+    int cell = sticker ? 6 + (int)(DRND() * 6) : (int)(DRND() * 6);
+    float w = sticker ? 0.12f + 0.1f * DRND() : 0.5f + 0.6f * DRND(), h = sticker ? w * 0.8f : w * 0.7f;
+    if (!sticker && p.y < 0.15f + h) p.y = 0.15f + h + 0.05f;
+    v3 c = vmad(p, n, 0.008f);
+    v3 R = vmul(rt, w), U = vmul(up, h);
+    if (!on_surface(k, vadd(vadd(p, R), U), n, 1u << SURF_WALL) || !on_surface(k, vsub(vadd(p, R), U), n, 1u << SURF_WALL) || !on_surface(k, vadd(vsub(p, R), U), n, 1u << SURF_WALL) ||
+        !on_surface(k, vsub(vsub(p, R), U), n, 1u << SURF_WALL))
+      continue;
+    decal_quad(&b, c, R, U, n, cell, 1);
+    placed++;
+  }
+  /* skids and wax smears on the ground near the obstacles */
+  for (int tries = 0; tries < 600 && placed < 110; tries++) {
+    v3 p = V(k->lo.x + (k->hi.x - k->lo.x) * DRND(), k->hi.y + 1, k->lo.z + (k->hi.z - k->lo.z) * DRND());
+    phit h;
+    if (!park_ground(k, p, 0, k->hi.y - k->lo.y + 2, &h) || h.fn.y < 0.98f) continue;
+    const ptri *t = &k->t[h.tri];
+    if (t->mat != MAT_CONCRETE && t->mat != MAT_ASPHALT && t->mat != MAT_TILE && t->mat != MAT_WOOD) continue;
+    float a = DRND() * 6.28f, sa, ca;
+    cw_sincos(a, &sa, &ca);
+    v3 R = V(ca * 0.9f, 0, sa * 0.9f), U = V(-sa * 0.35f, 0, ca * 0.35f), n = V(0, 1, 0);
+    p = h.p;
+    if (!on_surface(k, vadd(vadd(p, R), U), n, 1u << SURF_RIDE) || !on_surface(k, vsub(vadd(p, R), U), n, 1u << SURF_RIDE) || !on_surface(k, vadd(vsub(p, R), U), n, 1u << SURF_RIDE) ||
+        !on_surface(k, vsub(vsub(p, R), U), n, 1u << SURF_RIDE))
+      continue;
+    decal_quad(&b, vadd(p, V(0, 0.006f, 0)), R, U, n, DRND() < 0.7f ? 14 + (int)(DRND() * 2) : 12, 1);
+    placed++;
+  }
+#undef DRND
+  if (!b.nv) { mb_free(&b); return; }
+  t3_material *m = t3_mesh_standard_material_new(0xffffff);
+  m->vertex_colors = true;
+  m->transparent = true;
+  m->depth_write = false;
+  m->roughness = 0.6f;
+  m->side = T3_DOUBLE_SIDE; /* (the wax and the skids lie either way up) */
+  const tex_set *ts = tex_get(TEX_DECALS);
+  t3_material_set_texture(m, T3_MAP, ts->map);
+  t3_material_set_texture(m, T3_ROUGHNESS_MAP, ts->rough);
+  t3_geometry *g = mb_finish(&b);
+  t3_mesh *me = t3_mesh_new(g, m);
+  me->base.cast_shadow = false, me->base.receive_shadow = true;
+  me->base.render_order = 5;
+  cw_node n = cw_node_new("Node3D", "Decals");
+  cw_node_add_child(VW.park, n);
+  cw_node3d_set_object(n, &me->base);
+  t3_release(me), t3_release(g), t3_release(m);
+}
+
+static int bake_settings(cw_lightmap_settings *s) {
+  *s = cw_lightmap_settings_default();
+  s->texel_density = 3.0f;
+  s->max_size = 1024;
+  s->samples = 48;
+  s->bounces = 1;
+  s->probe_spacing = 0;
+  s->denoise = 2;
+  s->direct_samples = 1;
+  return 0;
+}
+
 void view_park(const park *k) {
   if (cw_node_valid(VW.park)) cw_node_free(VW.park);
+  if (VW.lm) cw_lightmap_free(VW.lm), VW.lm = NULL;
   VW.park = cw_node_new("Node3D", "Park");
   cw_node_add_child(VW.world, VW.park);
+  VW.baked = cw_node_new("Node3D", "Baked");
+  cw_node_add_child(VW.park, VW.baked);
   VW.k = k;
+  const scenery_mood *md = scenery_mood_of(k->theme);
+  apply_mood(md);
   for (int m = 0; m < MAT_KINDS; m++) {
     mesh_build b = { 0 };
     float inv = 1.0f / MAT_TILE_M[m];
@@ -412,10 +586,26 @@ void view_park(const park *k) {
     t3_mesh *me = t3_mesh_new(g, VW.mat[m]);
     me->base.cast_shadow = m != MAT_GLASS;
     me->base.receive_shadow = true;
-    cw_node n = cw_node_new("Node3D", "Surface");
-    cw_node_add_child(VW.park, n);
-    cw_node3d_set_object(n, &me->base);
+    /* the park's own surfaces are baked (sky light, its occlusion, the sun's bounce): one lightmap each */
+    char nm[16];
+    snprintf(nm, sizeof nm, "S%d", m);
+    cw_node n = cw_node_new("MeshInstance3D", nm);
+    cw_node_add_child(VW.baked, n);
+    bool baked = m != MAT_LEAF && m != MAT_GLASS;
+    cw_node_set(n, "gi_mode", cw_val_enum(baked ? "STATIC" : "DYNAMIC"));
+    cw_node_set(n, "cast_shadow", cw_val_bool(m != MAT_GLASS));
+    cw_node_set(n, "receive_shadow", cw_val_bool(true));
+    cw_mesh3d_set_procedural(n, me);
     t3_release(me), t3_release(g);
+  }
+  park_decals(k);
+  scenery_build(VW.park, k, k->theme);
+  if (!getenv("SKATE_BAKE")) {
+    char path[48];
+    snprintf(path, sizeof path, "lightmaps/park%d.cwlm", k->theme);
+    VW.lm = cw_vfs_exists(path) ? cw_lightmap_load(path) : NULL;
+    if (VW.lm) cw_lightmap_apply_shaded(cw_scene_app_tree(), VW.baked, VW.lm, md->lm_gain * (getenv("SKATE_LMK") ? (float)atof(getenv("SKATE_LMK")) : 1), CW_LIGHTMAP_LIT);
+    else cw_error("skate: park %d has no bake (%s): it draws unbaked", k->theme, path);
   }
   /* the tokens */
   t3_material *tm = t3_mesh_standard_material_new(0xffc020);
@@ -445,6 +635,43 @@ void view_park(const park *k) {
   for (int i = 0; i < MAXP; i++) VW.seat[i].cam_init = false;
 }
 
+/* the park's bake (native development, SKATE_BAKE=<dir>): the sky's light on the park's own surfaces, its occlusion and
+ * the sun's bounce, into <dir>/park<n>.cwlm (the cart packs lightmaps/). The sun's direct light stays real time. */
+bool view_bake(const char *dir, int park_index) {
+  cw_tree *t = cw_scene_app_tree();
+  /* the sun, in the bake for its bounce only (the lightmaps hold the indirect light) */
+  cw_node sun = cw_node_new("DirectionalLight3D", "BakeSun");
+  cw_node_add_child(VW.baked, sun);
+  cw_node3d_set_quaternion(sun, cw_node3d_quaternion(VW.sun));
+  cw_value e;
+  float energy = cw_node_get_prop(VW.sun, "energy", &e) ? e.f : 3.0f;
+  cw_node_set(sun, "energy", cw_val_float(energy));
+  cw_value c;
+  if (cw_node_get_prop(VW.sun, "color", &c)) cw_node_set(sun, "color", c);
+  cw_node_set(sun, "bake", cw_val_bool(true));
+  cw_node_set(sun, "realtime", cw_val_bool(false));
+  cw_tree_pre_render(t, 0);
+  cw_lightmap_settings s;
+  bake_settings(&s);
+  double t0 = cw_time();
+  cw_lightmap_data *lm = cw_lightmap_bake(t, VW.baked, &s);
+  cw_node_free(sun);
+  if (!lm) return false;
+  char path[512];
+  snprintf(path, sizeof path, "%s/park%d.cwlm", dir, park_index);
+  bool ok = cw_lightmap_save(lm, path);
+  snprintf(path, sizeof path, "%s/park%d.hash", dir, park_index);
+  FILE *hf = fopen(path, "wb");
+  if (hf) fprintf(hf, "%08x\n", park_geom_hash(VW.k)), fclose(hf);
+  else ok = false;
+  snprintf(path, sizeof path, "%s/park%d.cwlm", dir, park_index);
+  cw_lightmap_info info;
+  cw_lightmap_get_info(lm, &info);
+  fprintf(stderr, "skate: baked park %d: %d meshes, %d texels, %.1f s -> %s\n", park_index, info.meshes, info.texels, cw_time() - t0, path);
+  cw_lightmap_free(lm);
+  return ok;
+}
+
 /* ── rigs ─────────────────────────────────────────────────────────────── */
 
 void view_rigs(const int skin[MAXP], int players) {
@@ -466,7 +693,7 @@ void view_rigs(const int skin[MAXP], int players) {
     cw_node_add_child(VW.world, s->root);
     s->board = cw_node_new("Node3D", "Board");
     cw_node_add_child(s->root, s->board);
-    t3_object *bo = board_model(PLAYER_COL[i]);
+    t3_object *bo = board_model(PLAYER_COL[i], s->wheel);
     cw_node3d_set_object(s->board, bo);
     t3_release(bo);
     s->sparks = cw_node_new("GPUParticles3D", "Sparks");
@@ -484,6 +711,29 @@ void view_rigs(const int skin[MAXP], int players) {
     cw_node_set(s->sparks, "color", cw_val_color(1.0f, 0.75f, 0.35f, 1));
     cw_node_set(s->sparks, "energy", cw_val_float(6));
     cw_node_set(s->sparks, "blend", cw_val_enum("ADD"));
+    if (!cw_node_valid(VW.dust[i])) {
+      VW.dust[i] = cw_node_new("GPUParticles3D", "Dust");
+      cw_node_add_child(VW.world, VW.dust[i]);
+      cw_node *d = &VW.dust[i];
+      cw_node_set(*d, "emitting", cw_val_bool(false));
+      cw_node_set(*d, "one_shot", cw_val_bool(true));
+      cw_node_set(*d, "explosiveness", cw_val_float(0.95f));
+      cw_node_set(*d, "amount", cw_val_int(24));
+      cw_node_set(*d, "lifetime", cw_val_float(0.7f));
+      cw_node_set(*d, "lifetime_random", cw_val_float(0.4f));
+      cw_node_set(*d, "emission_shape", cw_val_enum("SPHERE"));
+      cw_node_set(*d, "emission_radius", cw_val_float(0.25f));
+      cw_node_set(*d, "direction", cw_val_vec3(0, 0.4f, 0));
+      cw_node_set(*d, "spread", cw_val_float(85));
+      cw_node_set(*d, "speed_min", cw_val_float(0.6f));
+      cw_node_set(*d, "speed_max", cw_val_float(1.8f));
+      cw_node_set(*d, "gravity", cw_val_vec3(0, -0.6f, 0));
+      cw_node_set(*d, "damping", cw_val_float(2.5f));
+      cw_node_set(*d, "size", cw_val_float(0.16f));
+      cw_node_set(*d, "size_random", cw_val_float(0.5f));
+      cw_node_set(*d, "color", cw_val_color(0.72f, 0.68f, 0.6f, 0.3f));
+      cw_node_set(*d, "blend", cw_val_enum("ALPHA"));
+    }
     s->rider = cw_node_new("Node3D", "Rider");
     cw_node_add_child(VW.world, s->rider);
     t3_object *inst = cw_gltf_instantiate(VW.skin_res[s->skin % NSKINS]);
@@ -596,29 +846,77 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   if (!s->cam_init) s->cam_h = want_h;
   bool hold = (k->st == SK_AIR && k->vert) || (k->st == SK_ROLL && k->u.y < 0.5f) || k->st == SK_BAIL;
   if (!hold && vlen(want_h) > 0.5f) {
-    float rate = 1 - cw_exp(-dt * (k->st == SK_GRIND ? 5.0f : 3.2f));
+    float rate = 1 - cw_exp(-dt * (s->blocked ? 7.0f : k->st == SK_GRIND ? 5.0f : 3.2f));
     s->cam_h = vnorm(vlerp(s->cam_h, want_h, rate));
   }
-  v3 at = vadd(p, V(0, 1.25f, 0));
-  float back = (4.4f + clampf(sp * 0.08f, 0, 1.4f)) * g_cam_k, up = 1.7f * g_cam_k;
+  /* low and close at a roll, further back and wider with speed (the ground rushes past under it) */
+  float fast = clampf((sp - 3.0f) / 9.0f, 0, 1);
+  v3 at = vadd(p, V(0, 1.05f, 0));
+  float back = (3.9f + 1.9f * fast) * g_cam_k, up = (1.15f + 0.25f * fast) * g_cam_k;
+  float want_fov = 62 + 14 * fast;
+  /* vert air: the camera stays down at the coping's height and looks up at the rider, so the height shows */
+  if (k->st == SK_AIR && s->last_st != SK_AIR) s->air_y0 = p.y;
+  s->last_st = k->st;
+  bool vert_air = k->st == SK_AIR && k->vert;
   /* a bail: watch the body tumble from further back (it can fly back past where the board stopped) */
   v3 hips;
   if (k->st == SK_BAIL && rag_hips(i, &hips)) at = vadd(hips, V(0, 0.5f, 0)), back = fmaxf(back, 6.0f * g_cam_k), up = 2.4f * g_cam_k;
   v3 want = vadd(vadd(vsub(at, vmul(s->cam_h, back)), V(0, up, 0)), vmul(vcross(s->cam_h, V(0, 1, 0)), g_cam_side));
+  if (vert_air) {
+    float rise = p.y - s->air_y0;
+    want.y = fminf(want.y, s->air_y0 + 1.05f + up + 0.4f * fmaxf(rise, 0));
+    want_fov += 6;
+  }
+  if (!s->cam_init) s->fov = want_fov;
+  s->fov += (want_fov - s->fov) * (1 - cw_exp(-dt * 2.5f));
+  cw_node_set(VW.cam[i], "fov", cw_val_float(s->fov));
   /* keep a wall from coming between: pull in along the line to the rider */
   phit h;
   v3 d = vsub(want, at);
+  s->blocked = false;
+  if (VW.k && park_cast(VW.k, at, d, (1u << SURF_RIDE) | (1u << SURF_WALL), &h) && h.t < 0.6f) {
+    /* a ramp behind the rider (it rolled down out of vert air, or back from a wall): over it, not into the rider's back */
+    /* (or a wall right behind a start point): above it, else round to one side or the other */
+    static const float TRY[5][2] = { { 0.8f, 0.6f }, { -0.8f, 0.6f }, { 1.5f, 0.8f }, { -1.5f, 0.8f }, { 0, 2.2f } };
+    for (int c = 0; c < 5; c++) {
+      float sa, ca;
+      cw_sincos(TRY[c][0], &sa, &ca);
+      v3 hh = V(s->cam_h.x * ca - s->cam_h.z * sa, 0, s->cam_h.x * sa + s->cam_h.z * ca);
+      v3 cand = vadd(vsub(at, vmul(hh, back * 0.8f)), V(0, up + TRY[c][1], 0));
+      phit h2;
+      if (!park_cast(VW.k, at, vsub(cand, at), (1u << SURF_RIDE) | (1u << SURF_WALL), &h2)) { want = cand, d = vsub(want, at); break; }
+    }
+    s->blocked = true;
+  }
   if (VW.k && park_cast(VW.k, at, d, (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, h.t - 0.08f)), d = vsub(want, at);
   /* and a wall seen from behind (the outside of a building the rider skates the roof of): cast back from the camera */
   if (VW.k && park_cast(VW.k, want, vmul(d, -1), (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, 1 - h.t - 0.08f));
   if (!s->cam_init) s->cam_p = want, s->cam_at = at, s->cam_init = true;
-  float kp = 1 - cw_exp(-dt * 7.0f), ka = 1 - cw_exp(-dt * 9.0f);
+  /* it catches up faster when it has fallen far behind */
+  float lag = vlen(vsub(s->cam_p, want));
+  float kp = 1 - cw_exp(-dt * (lag > 3.0f ? 14.0f : 7.0f)), ka = 1 - cw_exp(-dt * 9.0f);
   s->cam_p = vlerp(s->cam_p, want, kp);
+  /* and never closer than 2.4 m across the ground (a rider rolling back toward it): it backs off along the run */
+  {
+    v3 off = vsub(s->cam_p, at);
+    float hd = sqrtf(off.x * off.x + off.z * off.z);
+    if (hd < 2.4f * g_cam_k && k->st != SK_BAIL) {
+      v3 dirh = hd > 0.05f ? V(off.x / hd, 0, off.z / hd) : vmul(s->cam_h, -1);
+      v3 np = V(at.x + dirh.x * 2.4f * g_cam_k, s->cam_p.y, at.z + dirh.z * 2.4f * g_cam_k);
+      phit hb;
+      if (!VW.k || !park_cast(VW.k, at, vsub(np, at), (1u << SURF_RIDE) | (1u << SURF_WALL), &hb)) s->cam_p = np;
+    }
+  }
   s->cam_at = vlerp(s->cam_at, at, ka);
   /* the camera's own floor: never under the ground it looks across */
   if (VW.k && park_ground(VW.k, s->cam_p, 0.3f, 40, &h) && s->cam_p.y < h.p.y + 0.4f) s->cam_p.y = h.p.y + 0.4f;
+  if (getenv("SKATE_CAMLOG") && atoi(getenv("SKATE_CAMLOG")) == i) /* development: where the camera went */
+    fprintf(stderr, "bench cam %d st %d vert %d p %.1f %.1f %.1f cam %.1f %.1f %.1f want %.1f %.1f %.1f h %.2f %.2f blocked %d\n", i, k->st, k->vert, p.x, p.y, p.z, s->cam_p.x, s->cam_p.y, s->cam_p.z, want.x, want.y, want.z,
+            s->cam_h.x, s->cam_h.z, s->blocked);
   cw_node3d_set_position(VW.cam[i], s->cam_p);
-  v3 look = vadd(s->cam_at, vmul(s->cam_h, 1.2f));
+  /* along the run, the horizon in view; down at the rider when the camera has had to go over or round something */
+  s->look_k += ((s->blocked ? 1.0f : 0.0f) - s->look_k) * (1 - cw_exp(-dt * 4.0f));
+  v3 look = vlerp(vadd(vadd(s->cam_at, vmul(s->cam_h, 4.0f)), V(0, 0.25f, 0)), vadd(s->cam_at, vmul(s->cam_h, 1.0f)), s->look_k);
   cw_node3d_look_at(VW.cam[i], look, V(0, 1, 0));
   /* measurements: how fast the view turns (a jerk is a cut the eye cannot follow), how far it sits from the rider */
   v3 fwd = vnorm(vsub(look, s->cam_p));
@@ -661,6 +959,17 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     }
     if (k->st == SK_BAIL) place_board(s, k, bp, bf, bu, t);
     else place_board(s, k, p, f, u, t);
+    /* the wheels turn with the speed (8 cm across); a landing kicks up a puff of dust */
+    if (k->st != SK_BAIL) VW.wheel_a[i] += vlen(k->v) * dt / 0.028f;
+    VW.wheel_a[i] = fmodf(VW.wheel_a[i], 2 * PI_F);
+    for (int w = 0; w < 4; w++)
+      if (s->wheel[w]) s->wheel[w]->quaternion = qaxis(V(0, 0, 1), -VW.wheel_a[i]), s->wheel[w]->matrix_world_needs_update = true;
+    if (cw_node_valid(VW.dust[i]) && VW.landed[i] == SK_AIR && (k->st == SK_ROLL || k->st == SK_GRIND)) {
+      cw_node3d_set_position(VW.dust[i], vadd(p, V(0, 0.05f, 0)));
+      cw_node_set(VW.dust[i], "emitting", cw_val_bool(false));
+      cw_node_set(VW.dust[i], "emitting", cw_val_bool(true));
+    }
+    VW.landed[i] = k->st;
     /* the rider stands on the deck, turned with the board (not its flips) */
     v3 side = vcross(f, u);
     t3_quat q = quat_basis(f, u, side);
@@ -709,9 +1018,11 @@ void view_title_camera(const park *k, float t) {
   v3 c = vmul(vadd(k->lo, k->hi), 0.5f);
   float r = fmaxf(k->hi.x - k->lo.x, k->hi.z - k->lo.z) * 0.42f, s, co;
   cw_sincos(t * 0.06f, &s, &co);
-  v3 p = V(c.x + s * r, 16 + 4 * cw_sin(t * 0.13f), c.z + co * r);
+  v3 p = V(c.x + s * r, 11 + 3 * cw_sin(t * 0.13f), c.z + co * r);
   cw_node3d_set_position(VW.cam[0], p);
-  cw_node3d_look_at(VW.cam[0], V(c.x, 0, c.z), V(0, 1, 0));
+  /* across the park to its setting beyond: the horizon in the top third */
+  cw_node3d_look_at(VW.cam[0], V(c.x - s * r * 0.4f, 1.5f, c.z - co * r * 0.4f), V(0, 1, 0));
+  cw_node_set(VW.cam[0], "fov", cw_val_float(64));
   /* one view, whatever the players: the menus sit over the whole picture */
   cw_pipeline_split(cw_pipeline_of(cw_scene_app_tree()), &VW.cam[0], 1);
   if (cw_node_valid(VW.dome)) cw_node3d_set_position(VW.dome, V(p.x, 0, p.z));
