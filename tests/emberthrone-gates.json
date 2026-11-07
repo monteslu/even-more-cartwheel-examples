@@ -1,0 +1,110 @@
+[
+  {
+    "name": "emberthrone-journey",
+    "note": "emberthrone_auto: the bot rests at the first shrine, walks the meadow road north and fights the raiders on it (lock on, combos, rolls, a heavy). Everything named is simulation (the bot reads only the rules' state), so every host agrees on it. The control is one frame short.",
+    "app": "emberthrone_auto",
+    "frames": 1800,
+    "maxGt16": 0.4,
+    "fields": [
+      "game.state",
+      "game.region",
+      "game.kills",
+      "game.route",
+      "game.dodges",
+      "game.hits_landed",
+      "game.rests",
+      "player.hp",
+      "player.stamina",
+      "player.x",
+      "player.z",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "game.state": 0,
+      "game.region": 1,
+      "game.kills": 2,
+      "game.route": 4,
+      "game.dodges": 0,
+      "game.hits_landed": 4,
+      "game.rests": 1,
+      "player.hp": [
+        100,
+        0
+      ],
+      "player.stamina": [
+        100,
+        0
+      ],
+      "player.x": [
+        15058,
+        0
+      ],
+      "player.z": [
+        16572,
+        0
+      ],
+      "game.hash": 3314161746
+    }
+  },
+  {
+    "name": "emberthrone-controls",
+    "note": "emberthrone, one player on a pad: Start, Start, then up the road, lock on (right shoulder), three cuts (west), a roll to the right (south with the stick right), a heavy (north), a drink (left shoulder). The stamina spent, where the player stands and the rules' hash are pinned. The control does the same with no cut or heavy pressed: it must differ.",
+    "app": "emberthrone",
+    "frames": 540,
+    "input": "emberthrone-controls.json",
+    "controlInput": "emberthrone-controls-control.json",
+    "maxGt16": 0.4,
+    "fields": [
+      "game.state",
+      "player.x",
+      "player.z",
+      "player.stamina",
+      "player.hp",
+      "game.dodges",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "game.state": 0,
+      "player.x": [
+        16418,
+        0
+      ],
+      "player.z": [
+        26905,
+        0
+      ],
+      "player.stamina": [
+        100,
+        0
+      ],
+      "player.hp": [
+        100,
+        0
+      ],
+      "game.dodges": 1,
+      "game.hash": 2091724717
+    }
+  }
+]
