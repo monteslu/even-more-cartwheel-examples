@@ -221,6 +221,8 @@ static void init(void *u) {
   cw_debug_i32("game.flags0", &G.flags0);
   cw_debug_i32("game.flags3", &G.flags3);
   cw_debug_i32("game.target", &G.target);
+  cw_debug_i32("game.interact", &S.interact);
+  { extern int bot_step_ticks(void); static int32_t rt; (void)rt; }
   cw_debug_i32("game.foes_live", &G.foes_live);
   cw_debug_field("player.hp", G.hp, CW_DBG_I32, MAXP);
   cw_debug_field("player.stamina", G.stam, CW_DBG_I32, MAXP);
@@ -465,6 +467,24 @@ static void render(void *u, double alpha) {
       fprintf(stderr, "\n");
       fflush(stderr);
       G.t_sim = G.t_view = G.t_frame = 0, G.t_n = 0;
+    }
+  }
+  { /* a state the program table lacks: each one on its own short log line, once (a long list is cut short in some hosts' logs) */
+    static char seen[8192];
+    const char *m = cw_pipeline_missing_states(cw_scene_app_tree());
+    if (m && *m) {
+      char line[256];
+      for (const char *p = m; *p;) {
+        const char *e = strchr(p, '\n');
+        size_t n = e ? (size_t)(e - p) : strlen(p);
+        if (n && n < sizeof line - 2) {
+          memcpy(line, p, n), line[n] = 0;
+          char key[260];
+          snprintf(key, sizeof key, "|%s|", line);
+          if (!strstr(seen, key) && strlen(seen) + strlen(key) < sizeof seen) strcat(seen, key), cw_warn("adventure: missing program state %s", line);
+        }
+        p += n + (e ? 1 : 0);
+      }
     }
   }
   cw_shell_draw();

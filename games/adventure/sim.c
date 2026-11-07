@@ -485,7 +485,7 @@ static int interact_obj(const actor *p) {
     const wobj *o = &g_obj[k];
     if (o->kind == OB_PICKUP || o->kind == OB_CRACKED) continue;
     if (o->flag >= 0 && sim_has_flag(o->flag) && o->kind != OB_SHRINE) continue;
-    float r = o->kind == OB_GATE ? 3.6f : o->kind == OB_SHRINE ? 2.6f : 2.0f;
+    float r = o->kind == OB_GATE ? 3.6f : o->kind == OB_SHRINE ? 3.2f : 2.2f;
     float d2 = dist2(pos(p).x, pos(p).z, o->x, o->z);
     if (d2 > r * r || fabsf(pos(p).y - o->y) > 2.5f) continue;
     if (o->kind == OB_DOOR) {
@@ -522,6 +522,7 @@ static void use_obj(actor *p, int k) {
   }
 }
 static void give(actor *p, int item) {
+  if (item == IT_MAUL && getenv("ADV_NO_MAUL")) item = IT_NONE; /* the soak's control: an empty chest, a wall that never breaks */
   switch (item) {
   case IT_HEART: S.sv.hearts++; for (int i = 0; i < MAXP; i++) if (S.a[i].used) S.a[i].hp_max += 25, S.a[i].hp = S.a[i].hp_max; break;
   case IT_CHARM: S.sv.charms++; for (int i = 0; i < MAXP; i++) if (S.a[i].used) S.a[i].stamina_max += 25; break;

@@ -15,6 +15,7 @@ int g_bot_stuck;
 static int R_i, R_t, R_wait, R_stuck_t, R_side, R_rest_t, R_press, R_stuck_n, R_step_seen = -1;
 static float R_lx, R_lz;
 int bot_route_index(void) { return R_i; }
+int bot_step_ticks(void) { return R_t; }
 void bot_jump(int i) { R_i = i; }
 void bot_reset(void) { R_i = R_t = R_wait = R_stuck_t = R_rest_t = R_press = 0, R_side = 1, g_bot_stuck = 0; }
 
@@ -145,7 +146,6 @@ void bot_input(int seat, input *in) {
   bool fighting_boss = r->act == RA_FIGHT;
   int ti = threat(p, fighting_boss ? 30 : 11);
   if (ti >= 0 && (r->act != RA_HIT || S.a[ti].aggro)) { fight(p, ti, in, 0); return; }
-  R_t++; /* (counts only the time spent on the step itself, not the fights on the way) */
   if (p->target >= 0 && (S.tick % 30) == 0) in->lock = true; /* nothing to fight: let go */
   float dx = r->x - p->mv.position.x, dz = r->z - p->mv.position.z, d = sqrtf(dx * dx + dz * dz);
   /* stuck: no progress for two seconds, sidestep round it for a while */
@@ -170,6 +170,7 @@ void bot_input(int seat, input *in) {
   }
   float arrive = r->act == RA_GO ? 1.6f : 1.0f;
   if (d > arrive) { to_stick(dx, dz, 1, in); return; }
+  R_t++; /* (counts only the time spent at the step itself: not the walk there, not the fights on the way) */
   switch (r->act) {
   case RA_GO: if (r->need_flag < 0) R_i++, R_t = 0; break;
   case RA_REST: case RA_USE: {

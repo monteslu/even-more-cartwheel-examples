@@ -978,11 +978,20 @@ int world_ground_check(float *worst_out) {
     if (gap > worst) worst = gap;
   }
   for (int i = 0; i < nbox; i++) {
+    /* a box stands when something holds it up under its middle or a corner: the ground, a top it sits on, or a box
+     * it is set into (a lintel let into its towers) */
     const sbox *b = &BOX[i];
     float s = cw_sin(b->yaw), c = cw_cos(b->yaw), bottom = b->cy - b->hy, hi = -1e30f;
-    for (int k = 0; k < 4; k++) { /* the highest ground under its corners must reach its foot */
-      float lx = (k & 1 ? 1 : -1) * b->hx * 0.95f, lz = (k & 2 ? 1 : -1) * b->hz * 0.95f;
-      float g = world_ground(b->cx + lx * c + lz * s, b->cz - lx * s + lz * c, bottom + 0.02f);
+    for (int k = 0; k < 5; k++) {
+      float lx = k == 4 ? 0 : (k & 1 ? 1 : -1) * b->hx * 0.95f, lz = k == 4 ? 0 : (k & 2 ? 1 : -1) * b->hz * 0.95f;
+      float x = b->cx + lx * c + lz * s, z = b->cz - lx * s + lz * c;
+      float g = world_ground(x, z, bottom + 0.02f);
+      for (int j = 0; j < nbox; j++) { /* set into another box */
+        const sbox *o = &BOX[j];
+        if (j == i || o->cy - o->hy > bottom || o->cy + o->hy < bottom) continue;
+        float dx = x - o->cx, dz = z - o->cz, so = cw_sin(o->yaw), co = cw_cos(o->yaw);
+        if (fabsf(dx * co - dz * so) <= o->hx && fabsf(dx * so + dz * co) <= o->hz) g = bottom;
+      }
       if (g > hi) hi = g;
     }
     float gap = bottom - hi;

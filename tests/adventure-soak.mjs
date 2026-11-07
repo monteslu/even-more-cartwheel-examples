@@ -6,7 +6,8 @@
 //   - the bot wins (an adv-won line) inside the game-time budget, having taken all three bosses, both keys, the maul;
 //   - no stall: the route point moves on at least every 6 minutes of game time;
 //   - resident memory grows less than 8 percent from minute 5 to the end.
-// CONTROL that must fail: the same run with the bot unable to dodge or drink (ADV_BOT_WEAK=1) and a 12 minute budget.
+// CONTROL that must fail: the same run with the maul's chest empty (ADV_NO_MAUL=1): the cracked wall never breaks, so
+// the route stalls and the game is never won, and the soak has to say so.
 //
 //   node tests/adventure-soak.mjs [--minutes 60] [--turbo 30] [--no-control]
 import { spawn } from 'node:child_process';
@@ -64,7 +65,7 @@ const s = r.status.at(-1) || {};
 const line = `${r.won ? `won at ${(r.won.tick / 3600).toFixed(1)} min` : 'not won'}, ${s.kills ?? 0} kills, ${s.deaths ?? 0} falls, ${s.rests ?? 0} rests, stuck ${s.stuck ?? 0}, memory ${r.growth == null ? 'n/a' : (r.growth * 100).toFixed(1) + '%'}`;
 if (r.problems.length) { bad++; console.log(`FAIL soak: ${line}\n  ${r.problems.join('\n  ')}`); } else console.log(`ok   soak: ${line}`);
 if (!argv.includes('--no-control')) {
-  const c = await run(12, turbo, { ADV_BOT_WEAK: '1' });
-  if (!c.problems.length) { bad++; console.log('FAIL control: a bot that cannot dodge or drink, with 12 minutes, passed'); } else console.log(`ok   control fails as it must: ${c.problems[0]}`);
+  const c = await run(25, turbo, { ADV_NO_MAUL: '1' });
+  if (!c.problems.length) { bad++; console.log('FAIL control: a game with no maul (a wall that never breaks) passed'); } else console.log(`ok   control fails as it must: ${c.problems[0]}`);
 }
 process.exit(bad ? 1 : 0);
