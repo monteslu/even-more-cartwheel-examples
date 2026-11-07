@@ -22,8 +22,8 @@
 #include "cartwheel/particles.h"
 #include "game.h"
 
-#define BIGS 4
-#define SMALLB 10
+#define BIGS 3
+#define SMALLB 6
 #define WAVES 12
 #define LIGHTS 12
 #define MAXBOLT 160

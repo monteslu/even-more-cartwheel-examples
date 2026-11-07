@@ -31,7 +31,7 @@ whole map on one screen, a fixed camera per map.
   path), volcano (dark basalt, a pale teal-grey ash path, lava pools), crystal vale (deep violet ground, a pale gold
   path, glowing teal pools).
 - The value hierarchy: the path a clear step lighter or darker than the ground on every theme, its edge drawn by a
-  dark curb on the bank (the heightfield at a quarter metre, the notches of curves cut on the diagonal, so the edges
+  dark curb on the bank (the heightfield at a third of a metre, the notches of curves cut on the diagonal, so the edges
   are crisp); the decor thinned and darkened, cooled against a warm theme, so it frames the play instead of competing;
   the towers lifted off it with a warm rim light, glossier surfaces, a lit disc of the owner's colour under each and
   a brighter team trim; the creeps tinted by kind with an ink outline, so they read on a pale path and on a dark

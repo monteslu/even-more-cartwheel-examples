@@ -229,7 +229,7 @@ static t3_geometry *hull(t3_geometry *g, float d) {
 static void kind_load(int k) {
   kindv *kv = &V.k[k];
   if (!mb_chr_load(&kv->c, MON_FILE[k])) return;
-  mb_chr_simplify(&kv->c, 0, 0.115f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
+  mb_chr_simplify(&kv->c, 0, 0.14f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
   kv->r = kv->c.rad;

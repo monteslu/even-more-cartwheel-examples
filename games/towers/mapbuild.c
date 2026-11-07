@@ -165,7 +165,7 @@ static float vnoise(float x, float z, uint32_t seed) {
   return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
 }
 
-#define RES 8 /* heightfield samples a tile (a quarter metre: smooth curves on the paths, outcrops and pools, a crisp curb) */
+#define RES 6 /* heightfield samples a tile (a third of a metre: smooth curves on the paths, outcrops and pools, a crisp curb) */
 /* a tile's kind, with the margin round the map copying the nearest edge tile (a gate's path runs on out of it) */
 static int tile_at(const tdmap *m, int x, int y) {
   int cx = CW_CLAMP(x, 0, m->w - 1), cy = CW_CLAMP(y, 0, m->h - 1);
