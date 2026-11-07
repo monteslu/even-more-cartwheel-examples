@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Engine v0.38.0 (its 2D rendering releases v0.37.0 and v0.38.0: tiled 2D lights, soft shadows, a high-range
+  2D post chain, 2D bounced light, water, GPU particles, sprite instances, colour grading). towers and pinball
+  draw the same as before.
+
 ## 0.1.0
 
 The first release: two games on engine v0.34.3, each as one dual GL + WebGPU cart.
