@@ -86,10 +86,14 @@ Each park has a setting out to the horizon and a light of its own (src/scenery.c
 | Rooftops | downtown at sunset: the street runs on past both fences, taller buildings close in with lit windows and neon blade signs, a skyline all round | sunset, the windows and the signs coming on |
 | Timber Yard | a lumber yard: board stacks on bearers, log piles, a sawmill shed of corrugated sheet; pine forest on the hills round it, mountains behind | an early morning: gold light through cool air |
 
-How it is drawn: the near scenery is merged into one mesh per surface (facades, brick, glass, roofs, trim, paint, steel,
+How it is drawn: the near scenery is merged into one mesh per surface (its colour map only: it is seen from tens of
+metres off, and nothing out there casts into or takes from the sun's map) (facades, brick, glass, roofs, trim, paint, steel,
 wood, sheet metal, lumber, car paint, the lamps' glow), each a procedural texture with world-scaled coordinates, so a
-window is a window's size on every building: a whole town is a dozen draws. Forests are instanced (thousands of pines
-for the price of one draw). The ground is one radial mesh round the park, flat near it and rising into hills and
+window is a window's size on every building: a whole town is a dozen draws. Trees are layered cards of a foliage texture (alpha cut, their
+normals out from the crown so it shades as a volume), instanced; past 220 m a tree is two or three crossed cards.
+Cars are extruded side profiles (bonnet, raked windscreens, glasshouse, wheels with hubs). Clouds are cumulus cards
+with sunlit tops. The near facades carry sill courses and piers that stand out of the wall. A colour grade (a .cube
+LUT from tools/make-lut.mjs: a gentle S-curve and a little saturation) follows the tone curve. The ground is one radial mesh round the park, flat near it and rising into hills and
 mountains far off; the far skyline is an impostor, a band of towers painted on a ring at 650 m (alpha cut). Height fog
 in each park's haze colour, with the sun's scatter, gives the distance its air; the sky dome is the mood's own gradient
 and clouds.

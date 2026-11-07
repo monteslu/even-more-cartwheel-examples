@@ -58,10 +58,10 @@ static float rr(float a, float b) { return a + (b - a) * rnd(); }
 
 /* ── the merged meshes ─────────────────────────────────────────────────── */
 enum { SB_FACADE, SB_BRICK, SB_CURTAIN, SB_ROOF, SB_CONC, SB_TILE, SB_ASPH, SB_PAINT, SB_METAL, SB_WOOD, SB_CORR, SB_LUMBER, SB_CAR, SB_GLOW, SB_LEAF,
-       SB_SHOP, SB_COUNT };
+       SB_SHOP, SB_FOLIAGE, SB_COUNT };
 static mesh_build SB[SB_COUNT];
-static float TU[SB_COUNT] = { 32, 6, 12, 3, 4, 4.8f, 4, 2, 1, 2.4f, 2, 2.4f, 1, 1, 2, 12 }; /* metres a texture tile spans across */
-static float TV[SB_COUNT] = { 28, 6, 14, 3, 4, 4.8f, 4, 2, 1, 2.4f, 2, 2.4f, 1, 1, 2, 14 }; /* and up */
+static float TU[SB_COUNT] = { 32, 6, 12, 3, 4, 4.8f, 4, 2, 1, 2.4f, 2, 2.4f, 1, 1, 2, 12, 1 }; /* metres a texture tile spans across */
+static float TV[SB_COUNT] = { 28, 6, 14, 3, 4, 4.8f, 4, 2, 1, 2.4f, 2, 2.4f, 1, 1, 2, 14, 1 }; /* and up */
 
 static const scenery_mood *MOOD;
 
@@ -201,6 +201,19 @@ static void building(float x, float z, float yaw, float w, float d, float h, int
   }
   float hh = (h - base) * 0.5f;
   wbox(wall, V(x, base + hh, z), yaw, V(w * 0.5f, hh, d * 0.5f), col, uo, false, false);
+  if (style == 0 && shops) {
+    /* depth on the near facades: a sill course at every floor and piers between the bays, standing out of the wall */
+    for (float y = 7.0f; y < h - 1.0f; y += 3.5f)
+      for (int e = 0; e < 2; e++) {
+        v3 n = e ? F : vmul(F, -1);
+        wbox(SB_CONC, vadd(V(x, y + 0.12f, z), vmul(n, d * 0.5f + 0.06f)), yaw, V(w * 0.5f, 0.1f, 0.08f), OFFWHITE, 0, true, true);
+      }
+    for (float a = -w * 0.5f + 4.0f; a < w * 0.5f - 1.0f; a += 8.0f)
+      for (int e = 0; e < 2; e++) {
+        v3 n = e ? F : vmul(F, -1);
+        wbox(SB_FACADE, vadd(V(x, base + hh, z), vadd(vmul(n, d * 0.5f + 0.1f), vmul(R, a))), yaw, V(0.35f, hh, 0.1f), col, uo + a, false, false);
+      }
+  }
   /* the cornice and the roof, its parapet and its plant */
   wbox(SB_CONC, V(x, h + 0.25f, z), yaw, V(w * 0.5f + 0.3f, 0.25f, d * 0.5f + 0.3f), OFFWHITE, 0, false, true);
   wbox(SB_ROOF, V(x, h + 0.45f, z), yaw, V(w * 0.5f, 0.02f, d * 0.5f), OFFWHITE, 0, true, false);
@@ -227,26 +240,72 @@ static void building(float x, float z, float yaw, float w, float d, float h, int
     cone(SB_METAL, vadd(p, V(0, 6.0f, 0)), 1.8f, 1.0f, 12, POLE, POLE);
   }
 }
-/* a car: a body, a cabin with dark glass, four wheels; along the yaw */
+/* a convex side profile (points along the run f and up y, counter clockwise seen from +R) extruded across +-w about
+ * (x, z), each edge its own colour (a windscreen dark, the bonnet painted) */
+static void extrude(int sb, float x, float z, float yaw, const float (*P)[2], int n, float w, const float *const *ecol, const float cap[3]) {
+  mesh_build *b = &SB[sb];
+  float s, c;
+  cw_sincos(yaw, &s, &c);
+  v3 F = V(s, 0, c), R = V(c, 0, -s), O = V(x, 0, z);
+#define PT(i, sd) vadd(vadd(O, vmul(F, P[i][0])), vadd(V(0, P[i][1], 0), vmul(R, (sd) * w)))
+  for (int i = 0; i < n; i++) {
+    int j = (i + 1) % n;
+    float df = P[j][0] - P[i][0], dy = P[j][1] - P[i][1], l = sqrtf(df * df + dy * dy);
+    if (l < 1e-4f) continue;
+    /* outward: the edge turned clockwise in the (f, y) plane */
+    v3 nn = vnorm(vadd(vmul(F, dy / l), V(0, -df / l, 0)));
+    t3_color cl = lin(ecol[i][0], ecol[i][1], ecol[i][2]);
+    int v[4] = { mb_vert(b, PT(i, -1), nn, 0, 0), mb_vert(b, PT(j, -1), nn, 1, 0), mb_vert(b, PT(j, 1), nn, 1, 1), mb_vert(b, PT(i, 1), nn, 0, 1) };
+    for (int k = 0; k < 4; k++) mb_color(b, v[k], cl.r, cl.g, cl.b);
+    mb_quad(b, v[0], v[3], v[2], v[1]);
+  }
+  t3_color cc = lin(cap[0], cap[1], cap[2]);
+  for (int sd = -1; sd <= 1; sd += 2) {
+    v3 nn = vmul(R, (float)sd);
+    int first = mb_vert(b, PT(0, sd), nn, 0, 0);
+    mb_color(b, first, cc.r, cc.g, cc.b);
+    int prev = -1;
+    for (int i = 1; i < n; i++) {
+      int v = mb_vert(b, PT(i, sd), nn, 0, 0);
+      mb_color(b, v, cc.r, cc.g, cc.b);
+      if (prev >= 0) {
+        if (sd > 0) mb_tri(b, first, v, prev);
+        else mb_tri(b, first, prev, v);
+      }
+      prev = v;
+    }
+  }
+#undef PT
+}
+/* a car: a body with a sloped bonnet and boot, a glasshouse with raked windscreens and side windows, wheels in dark
+ * arches, lamps; a van is taller and square at the back. Along the yaw. */
 static void car(float x, float z, float yaw, const float col[3], bool van) {
   float s, c;
   cw_sincos(yaw, &s, &c);
   v3 F = V(s, 0, c), R = V(c, 0, -s);
-  float L = van ? 2.5f : 2.2f, Wd = 0.9f;
-  wbox(SB_CAR, V(x, 0.62f, z), yaw, V(Wd, 0.3f, L), col, 0, true, true);
-  static const float glass[3] = { 0.08f, 0.1f, 0.13f }, tyre[3] = { 0.06f, 0.06f, 0.06f }, light[3] = { 1.0f, 0.95f, 0.8f }, tail[3] = { 0.7f, 0.05f, 0.05f };
+  static const float glass[3] = { 0.07f, 0.09f, 0.12f }, tyre[3] = { 0.05f, 0.05f, 0.05f }, hub[3] = { 0.7f, 0.72f, 0.75f }, light[3] = { 1.0f, 0.95f, 0.8f },
+                     tail[3] = { 0.7f, 0.05f, 0.05f }, trim[3] = { 0.12f, 0.12f, 0.13f };
+  const float L = van ? 2.45f : 2.25f, W = 0.88f;
+  /* the body: a lower profile, front at +L */
+  const float body[6][2] = { { -L, 0.32f }, { L - 0.05f, 0.32f }, { L, 0.62f }, { L - 0.75f, 0.86f }, { -L + 0.45f, 0.9f }, { -L, 0.7f } };
+  const float *bc[6] = { trim, trim, col, col, col, col };
+  extrude(SB_CAR, x, z, yaw, body, 6, W, bc, col);
   if (van) {
-    wbox(SB_CAR, vadd(V(x, 1.42f, z), vmul(F, -0.35f)), yaw, V(Wd - 0.02f, 0.5f, L - 0.45f), col, 0, true, false);
-    wbox(SB_CAR, vadd(V(x, 1.45f, z), vmul(F, L - 0.62f)), yaw, V(Wd - 0.05f, 0.38f, 0.18f), glass, 0, true, false);
+    const float top[4][2] = { { -L + 0.05f, 0.88f }, { L - 0.8f, 0.88f }, { L - 1.3f, 1.95f }, { -L + 0.05f, 1.95f } };
+    const float *tc[4] = { col, glass, col, col };
+    extrude(SB_CAR, x, z, yaw, top, 4, W - 0.02f, tc, col);
+    wbox(SB_CAR, vadd(V(x, 1.5f, z), vmul(F, 0.2f)), yaw, V(W - 0.01f, 0.28f, 1.0f), glass, 0, false, false); /* side windows */
   } else {
-    wbox(SB_CAR, vadd(V(x, 1.16f, z), vmul(F, -0.2f)), yaw, V(Wd - 0.08f, 0.26f, 1.15f), glass, 0, false, false);
-    wbox(SB_CAR, vadd(V(x, 1.43f, z), vmul(F, -0.25f)), yaw, V(Wd - 0.1f, 0.02f, 0.95f), col, 0, true, false);
+    const float cab[4][2] = { { -L + 0.55f, 0.86f }, { L - 0.95f, 0.86f }, { L - 1.6f, 1.38f }, { -L + 1.05f, 1.38f } };
+    const float *cc[4] = { col, glass, col, glass };
+    extrude(SB_CAR, x, z, yaw, cab, 4, W - 0.1f, cc, glass);
   }
   for (int i = -1; i <= 1; i += 2)
     for (int j = -1; j <= 1; j += 2) {
-      v3 p = vadd(V(x, 0.33f, z), vadd(vmul(R, (float)i * (Wd - 0.05f)), vmul(F, (float)j * (L - 0.6f))));
-      cyl(SB_CAR, vadd(p, vmul(R, -0.13f)), vadd(p, vmul(R, 0.13f)), 0.33f, 10, tyre, true);
-      wbox(SB_GLOW, vadd(V(x, 0.72f, z), vadd(vmul(R, (float)i * 0.62f), vmul(F, (float)j * (L + 0.01f)))), yaw, V(0.16f, 0.07f, 0.02f), j > 0 ? light : tail, 0, false, false);
+      v3 p = vadd(V(x, 0.31f, z), vadd(vmul(R, (float)i * (W - 0.1f)), vmul(F, (float)j * (L - 0.62f))));
+      cyl(SB_CAR, vadd(p, vmul(R, -0.11f)), vadd(p, vmul(R, 0.11f)), 0.31f, 8, tyre, false);
+      cyl(SB_CAR, vadd(p, vmul(R, (float)i * 0.1f)), vadd(p, vmul(R, (float)i * 0.115f)), 0.17f, 8, hub, true);
+      wbox(SB_GLOW, vadd(V(x, 0.62f, z), vadd(vmul(R, (float)i * 0.6f), vmul(F, (float)j * (L + 0.005f)))), yaw, V(0.17f, 0.06f, 0.02f), j > 0 ? light : tail, 0, false, false);
     }
 }
 /* a street lamp: a pole, an arm, a head with a glowing lens */
@@ -403,7 +462,7 @@ static void build_ground(cw_node parent, t3_material *mats[3]) {
     if (!mb[z].nv) { mb_free(&mb[z]); continue; }
     t3_geometry *g = mb_finish(&mb[z]);
     t3_mesh *me = t3_mesh_new(g, mats[z]);
-    me->base.cast_shadow = false, me->base.receive_shadow = true;
+    me->base.cast_shadow = false, me->base.receive_shadow = false; /* outside the sun's map: no shadow look-ups for it */
     cw_node n = cw_node_new("Node3D", "Ground");
     cw_node_add_child(parent, n);
     cw_node3d_set_object(n, &me->base);
@@ -416,14 +475,17 @@ static t3_material *tex_mat(int kind, float rough, float metal, float ns, bool v
   t3_material *m = t3_mesh_standard_material_new(0xffffff);
   m->vertex_colors = vcol;
   m->roughness = rough, m->metalness = metal;
-  tex_apply(m, kind, ns, 0.9f);
+  /* the scenery is seen from tens of metres off: its colour map only (no normal, roughness or occlusion maps: three
+     texture reads a pixel saved over a whole town, four times over in a four-way split) */
+  (void)ns;
+  t3_material_set_texture(m, T3_MAP, tex_get(kind)->map);
   return m;
 }
 static t3_material *sb_material(int sb) {
   t3_material *m;
   switch (sb) {
   case SB_FACADE:
-    m = tex_mat(TEX_FACADE, 1, 0, 0.8f, true);
+    m = tex_mat(TEX_FACADE, 0.8f, 0, 0.8f, true);
     if (MOOD->windows_lit > 0) {
       t3_material_set_texture(m, T3_EMISSIVE_MAP, tex_get(TEX_FACADE_LIT)->map);
       m->emissive = (t3_color){ 1, 1, 1 };
@@ -433,9 +495,9 @@ static t3_material *sb_material(int sb) {
   case SB_BRICK:
     m = tex_mat(MAT_BRICK, 1, 0, 1.0f, true);
     return m;
-  case SB_CURTAIN: return tex_mat(TEX_CURTAIN, 1, 0.3f, 0.4f, true);
+  case SB_CURTAIN: return tex_mat(TEX_CURTAIN, 0.25f, 0.3f, 0.4f, true);
   case SB_SHOP:
-    m = tex_mat(TEX_CURTAIN, 1, 0.2f, 0.4f, true);
+    m = tex_mat(TEX_CURTAIN, 0.3f, 0.2f, 0.4f, true);
     m->emissive = lin(1.0f, 0.85f, 0.6f);
     m->emissive_intensity = MOOD->windows_lit > 0 ? 0.25f : 0.05f;
     return m;
@@ -444,13 +506,18 @@ static t3_material *sb_material(int sb) {
   case SB_TILE: return tex_mat(MAT_TILE, 1, 0, 0.8f, true);
   case SB_ASPH: return tex_mat(MAT_ASPHALT, 1, 0, 1.0f, true);
   case SB_PAINT: return tex_mat(MAT_PAINT, 1, 0, 0.5f, true);
-  case SB_METAL: return tex_mat(MAT_METAL, 1, 0.7f, 0.4f, true);
+  case SB_METAL: return tex_mat(MAT_METAL, 0.45f, 0.7f, 0.4f, true);
   case SB_WOOD: return tex_mat(MAT_WOOD, 1, 0, 0.8f, true);
   case SB_CORR: return tex_mat(TEX_CORRUGATED, 1, 0.5f, 1.0f, true);
   case SB_LUMBER: return tex_mat(TEX_LUMBER, 1, 0, 1.0f, true);
   case SB_LEAF:
     m = tex_mat(MAT_LEAF, 1, 0, 0.8f, true);
     m->side = T3_DOUBLE_SIDE;
+    return m;
+  case SB_FOLIAGE:
+    m = t3_mesh_standard_material_new(0xffffff);
+    m->vertex_colors = true, m->roughness = 0.85f, m->side = T3_DOUBLE_SIDE, m->alpha_test = 0.5f;
+    t3_material_set_texture(m, T3_MAP, tex_get(TEX_FOLIAGE)->map);
     return m;
   case SB_CAR:
     m = t3_mesh_standard_material_new(0xffffff);
@@ -465,101 +532,166 @@ static t3_material *sb_material(int sb) {
 }
 
 /* ── the forests (instanced) ─────────────────────────────────────────── */
-static t3_geometry *pine_geo(void) {
-  mesh_build b = { 0 };
-  static const float trunk[3] = { 0.42f, 0.3f, 0.2f };
-  for (int k = 0; k < 5; k++) {
-    float a0 = 2 * PI_F * (float)k / 5, a1 = 2 * PI_F * (float)(k + 1) / 5, s0, c0, s1, c1;
+/* a tree in two parts, each instanced: its wood (a plain material) and its foliage (alpha-cut cards of the foliage
+ * texture, their normals pointed out from the crown's middle, so the crown shades like a volume, not like flat cards) */
+typedef struct tree_geo { t3_geometry *wood, *leaves; int leaf_tex; } tree_geo;
+static void tex_cyl(mesh_build *b, v3 a, v3 c, float r0, float r1, int sides, t3_color l) {
+  for (int i = 0; i < sides; i++) {
+    float a0 = 2 * PI_F * (float)i / (float)sides, a1 = 2 * PI_F * (float)(i + 1) / (float)sides, s0, c0, s1, c1;
     cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
-    v3 n0 = V(c0, 0, s0), n1 = V(c1, 0, s1);
-    int v[4] = { mb_vert(&b, vmul(n0, 0.25f), n0, 0, 0), mb_vert(&b, vmul(n1, 0.25f), n1, 1, 0), mb_vert(&b, vadd(vmul(n1, 0.12f), V(0, 3, 0)), n1, 1, 1),
-                 mb_vert(&b, vadd(vmul(n0, 0.12f), V(0, 3, 0)), n0, 0, 1) };
-    t3_color l = lin(trunk[0], trunk[1], trunk[2]);
-    for (int q = 0; q < 4; q++) mb_color(&b, v[q], l.r, l.g, l.b);
-    mb_quad(&b, v[0], v[3], v[2], v[1]);
+    v3 ax = vnorm(vsub(c, a)), p = fabsf(ax.y) < 0.9f ? V(0, 1, 0) : V(1, 0, 0), e1 = vnorm(vcross(ax, p)), e2 = vcross(ax, e1);
+    v3 n0 = vadd(vmul(e1, c0), vmul(e2, s0)), n1 = vadd(vmul(e1, c1), vmul(e2, s1));
+    int v[4] = { mb_vert(b, vmad(a, n0, r0), n0, 0, 0), mb_vert(b, vmad(a, n1, r0), n1, 1, 0), mb_vert(b, vmad(c, n1, r1), n1, 1, 1), mb_vert(b, vmad(c, n0, r1), n0, 0, 1) };
+    for (int k = 0; k < 4; k++) mb_color(b, v[k], l.r, l.g, l.b);
+    mb_quad(b, v[0], v[1], v[2], v[3]);
   }
-  for (int layer = 0; layer < 4; layer++) {
-    float y0 = 2.0f + 2.6f * (float)layer, r = 2.6f - 0.55f * (float)layer, hgt = 4.2f - 0.5f * (float)layer;
-    const int S = 9;
-    for (int k = 0; k < S; k++) {
-      float a0 = 2 * PI_F * (float)k / S + (float)layer, a1 = 2 * PI_F * (float)(k + 1) / S + (float)layer, s0, c0, s1, c1;
-      cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
-      v3 p0 = V(c0 * r, y0, s0 * r), p1 = V(c1 * r, y0, s1 * r), ap = V(0, y0 + hgt, 0);
-      v3 n0 = vnorm(V(c0, 0.55f, s0)), n1 = vnorm(V(c1, 0.55f, s1));
-      float shade = 0.7f + 0.1f * (float)layer;
-      t3_color l = lin(0.2f * shade, 0.42f * shade, 0.2f * shade), tip = lin(0.3f, 0.55f, 0.26f);
-      int v0 = mb_vert(&b, p0, n0, c0, 0), v1 = mb_vert(&b, p1, n1, c1, 0), v2 = mb_vert(&b, ap, V(0, 1, 0), 0.5f, 1);
-      mb_color(&b, v0, l.r, l.g, l.b), mb_color(&b, v1, l.r, l.g, l.b), mb_color(&b, v2, tip.r, tip.g, tip.b);
-      mb_tri(&b, v0, v2, v1);
-      int w0 = mb_vert(&b, p0, V(0, -1, 0), 0, 0), w1 = mb_vert(&b, p1, V(0, -1, 0), 1, 0), w2 = mb_vert(&b, V(0, y0 + 0.6f, 0), V(0, -1, 0), 0.5f, 0.5f);
-      t3_color dk = lin(0.08f, 0.16f, 0.08f);
-      mb_color(&b, w0, dk.r, dk.g, dk.b), mb_color(&b, w1, dk.r, dk.g, dk.b), mb_color(&b, w2, dk.r, dk.g, dk.b);
-      mb_tri(&b, w0, w1, w2);
+}
+/* a card: centre c, its two half axes, its normal; the texture's whole square */
+static void card(mesh_build *b, v3 c, v3 ax, v3 ay, v3 n, t3_color l, float shade_lo) {
+  v3 P[4] = { vsub(vsub(c, ax), ay), vsub(vadd(c, ax), ay), vadd(vadd(c, ax), ay), vadd(vsub(c, ax), ay) };
+  static const float UV[4][2] = { { 0.01f, 0.01f }, { 0.99f, 0.01f }, { 0.99f, 0.99f }, { 0.01f, 0.99f } };
+  int v[4];
+  for (int i = 0; i < 4; i++) {
+    float k = i < 2 ? shade_lo : 1.0f;
+    v[i] = mb_vert(b, P[i], n, UV[i][0], UV[i][1]);
+    mb_color(b, v[i], l.r * k, l.g * k, l.b * k);
+  }
+  mb_quad(b, v[0], v[1], v[2], v[3]);
+}
+static tree_geo broadleaf_geo(void) {
+  mesh_build w = { 0 }, f = { 0 };
+  t3_color bark = lin(0.42f, 0.32f, 0.24f), leaf = lin(0.62f, 0.85f, 0.45f);
+  tex_cyl(&w, V(0, 0, 0), V(0, 3.4f, 0), 0.24f, 0.15f, 6, bark);
+  for (int i = 0; i < 3; i++) {
+    float a = (float)i * 2.1f, sa, ca;
+    cw_sincos(a, &sa, &ca);
+    tex_cyl(&w, V(0, 2.6f, 0), V(ca * 1.3f, 4.2f, sa * 1.3f), 0.1f, 0.05f, 5, bark);
+  }
+  /* the crown: cards on an ellipsoid round (0, 4.7, 0), each crossed by a second at right angles */
+  v3 cc = V(0, 4.7f, 0);
+  uint32_t h = 71;
+  for (int i = 0; i < 16; i++) {
+    h = h * 1664525u + 1013904223u;
+    float az = (float)(h >> 8) / 16777216.0f * 2 * PI_F;
+    h = h * 1664525u + 1013904223u;
+    float el = -0.5f + 1.4f * (float)(h >> 8) / 16777216.0f;
+    float sa, ca, se, ce;
+    cw_sincos(az, &sa, &ca), cw_sincos(el, &se, &ce);
+    v3 dir = V(ca * ce, se, sa * ce);
+    v3 c = vadd(cc, V(dir.x * 1.7f, dir.y * 1.2f, dir.z * 1.7f));
+    v3 n = vnorm(vadd(dir, V(0, 0.3f, 0)));
+    v3 t1 = vnorm(vcross(n, V(0, 1, 0)));
+    if (vlen(vcross(n, V(0, 1, 0))) < 0.2f) t1 = V(1, 0, 0);
+    v3 t2 = vnorm(vcross(t1, n));
+    float s = 1.3f + 0.5f * (float)((h >> 4) & 255) / 255.0f;
+    float shade = 0.55f + 0.35f * (dir.y * 0.5f + 0.5f);
+    card(&f, c, vmul(t1, s), vmul(V(0, 1, 0), s * 0.85f), n, (t3_color){ leaf.r * shade, leaf.g * shade, leaf.b * shade }, 0.7f);
+    card(&f, c, vmul(t2, s), vmul(V(0, 1, 0), s * 0.85f), n, (t3_color){ leaf.r * shade, leaf.g * shade, leaf.b * shade }, 0.7f);
+  }
+  return (tree_geo){ mb_finish(&w), mb_finish(&f), TEX_FOLIAGE };
+}
+static tree_geo pine_geo(void) {
+  mesh_build w = { 0 }, f = { 0 };
+  t3_color bark = lin(0.4f, 0.3f, 0.22f), nd = lin(0.55f, 0.8f, 0.55f);
+  tex_cyl(&w, V(0, 0, 0), V(0, 12.5f, 0), 0.28f, 0.06f, 6, bark);
+  /* tiers of branch cards out from the trunk, shorter up the tree, each tier turned from the last */
+  for (int tier = 0; tier < 7; tier++) {
+    float y = 2.0f + 1.5f * (float)tier, len = 3.0f - 0.36f * (float)tier;
+    int nb = 7 - tier / 3;
+    for (int k = 0; k < nb; k++) {
+      float a = 2 * PI_F * (float)k / (float)nb + (float)tier * 0.7f, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      v3 out = V(ca, -0.25f, sa), side = V(-sa, 0, ca);
+      v3 c = vadd(V(0, y, 0), vmul(out, len * 0.5f));
+      v3 n = vnorm(V(ca * 0.6f, 0.8f, sa * 0.6f));
+      /* the card lies along the branch (u from the trunk), tilted up a little across it */
+      v3 ax = vmul(vnorm(out), len * 0.5f), ay = vmul(vnorm(vadd(vmul(side, 0.45f), V(0, 1, 0))), len * 0.42f); /* steep: a card lying flat vanishes edge on from the ground */
+      float shade = 0.6f + 0.06f * (float)tier;
+      card(&f, c, ax, ay, n, (t3_color){ nd.r * shade, nd.g * shade, nd.b * shade }, 0.8f);
     }
   }
-  return mb_finish(&b);
+  /* the top: two crossed cards upright */
+  card(&f, V(0, 12.6f, 0), V(0.7f, 0, 0), V(0, 1.3f, 0), V(0, 1, 0), nd, 0.8f);
+  card(&f, V(0, 12.6f, 0), V(0, 0, 0.7f), V(0, 1.3f, 0), V(0, 1, 0), nd, 0.8f);
+  return (tree_geo){ mb_finish(&w), mb_finish(&f), TEX_PINECARD };
 }
-static t3_geometry *broadleaf_geo(void) {
-  mesh_build b = { 0 };
-  static const float trunk[3] = { 0.45f, 0.34f, 0.24f };
-  t3_color tl = lin(trunk[0], trunk[1], trunk[2]);
-  for (int k = 0; k < 6; k++) {
-    float a0 = 2 * PI_F * (float)k / 6, a1 = 2 * PI_F * (float)(k + 1) / 6, s0, c0, s1, c1;
-    cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
-    v3 n0 = V(c0, 0, s0), n1 = V(c1, 0, s1);
-    int v[4] = { mb_vert(&b, vmul(n0, 0.22f), n0, 0, 0), mb_vert(&b, vmul(n1, 0.22f), n1, 1, 0), mb_vert(&b, vadd(vmul(n1, 0.14f), V(0, 3.2f, 0)), n1, 1, 1),
-                 mb_vert(&b, vadd(vmul(n0, 0.14f), V(0, 3.2f, 0)), n0, 0, 1) };
-    for (int q = 0; q < 4; q++) mb_color(&b, v[q], tl.r, tl.g, tl.b);
-    mb_quad(&b, v[0], v[3], v[2], v[1]);
-  }
-  /* the crown: three lumpy balls */
-  static const float CB[3][4] = { { 0, 4.6f, 0, 2.3f }, { 1.1f, 4.0f, 0.6f, 1.6f }, { -0.9f, 4.2f, -0.7f, 1.7f } };
-  for (int c = 0; c < 3; c++) {
-    const int ST = 6, SL = 10;
-    v3 o = V(CB[c][0], CB[c][1], CB[c][2]);
-    float r = CB[c][3];
-    int base = b.nv;
-    for (int i = 0; i <= ST; i++)
-      for (int j = 0; j <= SL; j++) {
-        float th = PI_F * (float)i / ST, ph = 2 * PI_F * (float)j / SL, st, ct, sp, cp;
-        cw_sincos(th, &st, &ct), cw_sincos(ph, &sp, &cp);
-        v3 n = V(st * cp, ct, st * sp);
-        float lump = 1 + 0.12f * (sh01(i, j + c * 20, 3) - 0.5f);
-        int v = mb_vert(&b, vadd(o, vmul(n, r * lump)), n, (float)j / SL * 2, (float)i / ST * 2);
-        float k = 0.62f + 0.38f * (ct * 0.5f + 0.5f);
-        t3_color l = lin(0.3f * k, 0.55f * k, 0.22f * k);
-        mb_color(&b, v, l.r, l.g, l.b);
-      }
-    for (int i = 0; i < ST; i++)
-      for (int j = 0; j < SL; j++) {
-        int a = base + i * (SL + 1) + j;
-        mb_quad(&b, a, a + 1, a + SL + 2, a + SL + 1);
-      }
-  }
-  return mb_finish(&b);
-}
-static void forest(cw_node parent, t3_geometry *g, const float *xz, int n, uint32_t seed, float scale, bool shadow) {
-  if (n <= 0) { t3_release(g); return; }
-  t3_material *m = t3_mesh_standard_material_new(0xffffff);
-  m->vertex_colors = true, m->roughness = 0.9f;
-  tex_apply(m, MAT_LEAF, 0.6f, 0.9f);
+static const float *FOREST_Y; /* the trees' own heights (a planter's top), else the ground's */
+static void forest_part(cw_node parent, t3_geometry *g, t3_material *m, const float *xz, int n, uint32_t seed, float scale, bool shadow) {
   t3_instanced_mesh *im = t3_instanced_mesh_new(g, m, n);
   im->mesh.base.cast_shadow = shadow, im->mesh.base.receive_shadow = true;
   for (int i = 0; i < n; i++) {
     float x = xz[i * 2], z = xz[i * 2 + 1], s = scale * (0.75f + 0.5f * sh01(i, 1, seed)), yaw = 6.28f * sh01(i, 2, seed);
     t3_mat4 mm;
     t3_quat q = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) };
-    t3_mat4_compose(&mm, V(x, ground_h(x, z) - 0.2f, z), q, V(s, s * (0.9f + 0.25f * sh01(i, 3, seed)), s));
+    t3_mat4_compose(&mm, V(x, FOREST_Y ? FOREST_Y[i] : ground_h(x, z) - 0.2f, z), q, V(s, s * (0.9f + 0.25f * sh01(i, 3, seed)), s));
     t3_instanced_mesh_set_matrix_at(im, i, &mm);
     float k = 0.85f + 0.3f * sh01(i, 4, seed);
-    t3_instanced_mesh_set_color_at(im, i, (t3_color){ k, k * (0.95f + 0.1f * sh01(i, 5, seed)), k });
+    t3_instanced_mesh_set_color_at(im, i, (t3_color){ k * (0.95f + 0.1f * sh01(i, 5, seed)), k, k * (0.9f + 0.15f * sh01(i, 6, seed)) });
   }
   t3_sphere sph = { { (G_LO.x + G_HI.x) * 0.5f, 0, (G_LO.z + G_HI.z) * 0.5f }, 2000 };
   t3_instanced_mesh_set_bounding_sphere(im, &sph);
   cw_node nd = cw_node_new("Node3D", "Forest");
   cw_node_add_child(parent, nd);
   cw_node3d_set_object(nd, &im->mesh.base);
-  t3_release(im), t3_release(g), t3_release(m);
+  t3_release(im);
+}
+/* the far trees' stand-in: crossed cards of the whole crown (a pine: its branch card stood upright, wide at the foot,
+ * a point at the top), 4 to 6 quads where the near tree has 30 */
+static t3_geometry *far_geo(int leaf_tex) {
+  mesh_build f = { 0 };
+  t3_color l = leaf_tex == TEX_PINECARD ? lin(0.5f, 0.75f, 0.5f) : lin(0.55f, 0.78f, 0.42f);
+  for (int i = 0; i < 3; i++) {
+    float a = (float)i * PI_F / 3, sa, ca;
+    cw_sincos(a, &sa, &ca);
+    if (leaf_tex == TEX_PINECARD) {
+      if (i == 2) break;
+      /* u up the tree, v across: the card's quad turned so its u axis is vertical */
+      mesh_build *b = &f;
+      v3 n = V(-sa, 0, ca), ax = V(ca, 0, sa);
+      v3 P[4] = { vadd(V(0, 0.8f, 0), vmul(ax, -3.2f)), vadd(V(0, 0.8f, 0), vmul(ax, 3.2f)), vadd(V(0, 13.6f, 0), vmul(ax, 3.2f)), vadd(V(0, 13.6f, 0), vmul(ax, -3.2f)) };
+      static const float UV[4][2] = { { 0.01f, 0.01f }, { 0.01f, 0.99f }, { 0.99f, 0.99f }, { 0.99f, 0.01f } };
+      int v[4];
+      for (int k = 0; k < 4; k++) v[k] = mb_vert(b, P[k], n, UV[k][0], UV[k][1]), mb_color(b, v[k], l.r * (k < 2 ? 0.7f : 1), l.g * (k < 2 ? 0.7f : 1), l.b * (k < 2 ? 0.7f : 1));
+      mb_quad(b, v[0], v[1], v[2], v[3]);
+    } else {
+      card(&f, V(0, 4.6f, 0), V(ca * 2.6f, 0, sa * 2.6f), V(0, 2.3f, 0), V(0, 1, 0), l, 0.7f);
+    }
+  }
+  return mb_finish(&f);
+}
+static void forest(cw_node parent, tree_geo tg, const float *xz, int n, uint32_t seed, float scale, bool shadow) {
+  if (n > 0 && !getenv("SKATE_NO_FOREST")) {
+    /* near trees whole (wood and foliage), far ones (past 220 m) as crossed cards */
+    v3 c = vmul(vadd(G_LO, G_HI), 0.5f);
+    float *nxz = malloc(sizeof(float) * 2 * (size_t)n), *fxz = malloc(sizeof(float) * 2 * (size_t)n);
+    int nn = 0, nf = 0;
+    for (int i = 0; i < n; i++) {
+      float dx = xz[i * 2] - c.x, dz = xz[i * 2 + 1] - c.z;
+      bool far = !FOREST_Y && dx * dx + dz * dz > 220.0f * 220.0f;
+      float *o = far ? fxz + nf++ * 2 : nxz + nn++ * 2;
+      o[0] = xz[i * 2], o[1] = xz[i * 2 + 1];
+    }
+    t3_material *ml = t3_mesh_standard_material_new(0xffffff);
+    ml->vertex_colors = true, ml->roughness = 0.85f;
+    ml->side = T3_DOUBLE_SIDE;
+    ml->alpha_test = 0.5f;
+    t3_material_set_texture(ml, T3_MAP, tex_get(tg.leaf_tex)->map);
+    if (nn > 0) {
+      t3_material *mw = t3_mesh_standard_material_new(0xffffff);
+      mw->vertex_colors = true, mw->roughness = 0.9f;
+      forest_part(parent, tg.wood, mw, nxz, nn, seed, scale, shadow);
+      forest_part(parent, tg.leaves, ml, nxz, nn, seed, scale, shadow);
+      t3_release(mw);
+    }
+    if (nf > 0) {
+      t3_geometry *fg = far_geo(tg.leaf_tex);
+      forest_part(parent, fg, ml, fxz, nf, seed + 1, scale, false);
+      t3_release(fg);
+    }
+    t3_release(ml);
+    free(nxz), free(fxz);
+  }
+  t3_release(tg.wood), t3_release(tg.leaves);
 }
 /* scatter n trees over ground within [r0, r1] of the park, not on steep or excluded ground */
 static int scatter(float *xz, int cap, int n, float r0, float r1, float hmax, bool (*skip)(float x, float z)) {
@@ -630,7 +762,7 @@ static void sea(cw_node parent, float x0, float shore) {
   m->normal_scale = (t3_vec2){ 0.5f, 0.5f };
   t3_geometry *g = mb_finish(&b);
   t3_mesh *me = t3_mesh_new(g, m);
-  me->base.cast_shadow = false, me->base.receive_shadow = true;
+  me->base.cast_shadow = false, me->base.receive_shadow = false;
   cw_node nd = cw_node_new("Node3D", "Sea");
   cw_node_add_child(parent, nd);
   cw_node3d_set_object(nd, &me->base);
@@ -793,21 +925,71 @@ static void set_sunny(cw_node parent) {
   /* hills behind the town: scrub and trees */
   static float xz[2 * 900];
   RNG = 4401;
-  int n = scatter(xz, 900, 700, 200, 900, 400, beach_skip);
+  int n = scatter(xz, 900, 420, 200, 900, 400, beach_skip);
   forest(parent, broadleaf_geo(), xz, n, 11, 1.6f, false);
+}
+
+/* a shrub in a planter: crossed foliage cards over a box of soil */
+static void shrub(float x, float y, float z, float r) {
+  t3_color l = lin(0.55f, 0.8f, 0.42f);
+  for (int i = 0; i < 3; i++) {
+    float a = (float)i * 1.05f + r, sa, ca;
+    cw_sincos(a, &sa, &ca);
+    card(&SB[SB_FOLIAGE], V(x, y + r * 0.8f, z), V(ca * r, 0, sa * r), V(0, r * 0.8f, 0), V(0, 1, 0), l, 0.6f);
+  }
+  card(&SB[SB_FOLIAGE], V(x, y + r * 1.1f, z), V(r, 0, 0), V(0, 0, r), V(0, 1, 0), l, 1.0f);
+}
+/* the plaza dressed: granite bands across its paving, and on the sidewalk round it planters, benches, bins and
+ * bollards (outside the fence: nothing a line runs through) */
+static void plaza_dress(void) {
+  static const float granite[3] = { 0.56f, 0.55f, 0.56f }, soil[3] = { 0.3f, 0.22f, 0.16f }, slat[3] = { 0.62f, 0.44f, 0.28f }, iron[3] = { 0.16f, 0.17f, 0.2f };
+  for (float x = -36; x <= 36; x += 12) flat(SB_TILE, x - 0.2f, -19.5f, x + 0.2f, 41.5f, 0.008f, granite);
+  for (float z = -12; z <= 40; z += 12) flat(SB_TILE, -41.5f, z - 0.2f, 41.5f, z + 0.2f, 0.009f, granite);
+  for (int side = 0; side < 4; side++)
+    for (float t = -36; t <= 36; t += 9) {
+      float x = side < 2 ? t : (side == 2 ? G_LO.x - 1.6f : G_HI.x + 1.6f), z = side < 2 ? (side == 0 ? G_LO.z - 1.6f : G_HI.z + 1.6f) : t;
+      float yaw = side == 0 ? PI_F : side == 1 ? 0 : side == 2 ? -PI_F * 0.5f : PI_F * 0.5f;
+      int k = ((int)(t + 40) / 9 + side) % 4;
+      if (k == 0) { /* a planter */
+        wbox(SB_CONC, V(x, 0.3f, z), yaw, V(1.1f, 0.3f, 0.55f), OFFWHITE, 0, true, false);
+        wbox(SB_PAINT, V(x, 0.58f, z), yaw, V(1.0f, 0.02f, 0.45f), soil, 0, true, false);
+        shrub(x - 0.45f * (side < 2), 0.6f, z - 0.45f * (side >= 2), 0.55f), shrub(x + 0.45f * (side < 2), 0.6f, z + 0.45f * (side >= 2), 0.5f);
+      } else if (k == 1 || k == 3) { /* a bench: slats on iron legs */
+        float s, c;
+        cw_sincos(yaw, &s, &c);
+        v3 R = V(c, 0, -s);
+        for (int e = -1; e <= 1; e += 2) wbox(SB_METAL, vadd(V(x, 0.22f, z), vmul(R, 0.75f * (float)e)), yaw, V(0.04f, 0.22f, 0.22f), iron, 0, true, false);
+        for (int sl = 0; sl < 3; sl++) wbox(SB_WOOD, vadd(V(x, 0.46f, z), vmul(V(s, 0, c), -0.15f + 0.15f * (float)sl)), yaw, V(0.9f, 0.025f, 0.06f), slat, 0, true, true);
+        wbox(SB_WOOD, vadd(V(x, 0.75f, z), vmul(V(s, 0, c), -0.26f)), yaw, V(0.9f, 0.12f, 0.025f), slat, 0, true, true);
+      } else { /* a bin and two bollards */
+        cyl(SB_METAL, V(x, 0, z), V(x, 0.85f, z), 0.28f, 10, iron, true);
+        cyl(SB_METAL, V(x + 1.4f * (side < 2), 0, z + 1.4f * (side >= 2)), V(x + 1.4f * (side < 2), 0.9f, z + 1.4f * (side >= 2)), 0.1f, 8, STEEL, true);
+        cyl(SB_METAL, V(x - 1.4f * (side < 2), 0, z - 1.4f * (side >= 2)), V(x - 1.4f * (side < 2), 0.9f, z - 1.4f * (side >= 2)), 0.1f, 8, STEEL, true);
+      }
+    }
 }
 
 static void set_plaza(cw_node parent) {
   city(18, 46, 14, 380, 14, 70, false, false);
+  plaza_dress();
   /* street trees along the park's sidewalk */
   static float xz[2 * 120];
   int n = 0;
   for (float x = G_LO.x + 10; x < G_HI.x; x += 15) xz[n * 2] = x, xz[n * 2 + 1] = G_LO.z - 3.2f, n++, xz[n * 2] = x + 7, xz[n * 2 + 1] = G_HI.z + 3.2f, n++;
   for (float z = G_LO.z + 10; z < G_HI.z; z += 15) xz[n * 2] = G_LO.x - 3.2f, xz[n * 2 + 1] = z, n++, xz[n * 2] = G_HI.x + 3.2f, xz[n * 2 + 1] = z + 7, n++;
   forest(parent, broadleaf_geo(), xz, n, 21, 1.2f, true);
+  /* the plaza's own trees, on its planters (parks.c: their trunks and planters are the park's, solid) */
+  {
+    static const float PT[7][3] = { { -27, 2.2f, -33 }, { 27, 2.2f, -33 }, { 38.5f, 0.6f, -8 }, { 38.5f, 0.6f, 6 }, { 38.5f, 0.6f, 20 }, { -38.5f, 0.6f, 18 }, { -38.5f, 0.6f, 30 } };
+    static float pxz[14], py[7];
+    for (int i = 0; i < 7; i++) pxz[i * 2] = PT[i][0], pxz[i * 2 + 1] = PT[i][2], py[i] = PT[i][1];
+    FOREST_Y = py;
+    forest(parent, broadleaf_geo(), pxz, 7, 23, 0.95f, true);
+    FOREST_Y = NULL;
+  }
   static float far[2 * 600];
   RNG = 991;
-  int m = scatter(far, 600, 500, 420, 1100, 500, city_skip);
+  int m = scatter(far, 600, 300, 420, 1100, 500, city_skip);
   forest(parent, broadleaf_geo(), far, m, 22, 1.8f, false);
   static const float tint[3] = { 0.62f, 0.68f, 0.78f };
   skyline(parent, 160, tint);
@@ -816,7 +998,7 @@ static void set_plaza(cw_node parent) {
 static void set_mega(cw_node parent) {
   /* the gravel car park east of the fence: rows of cars and vans */
   float px = G_HI.x + 12;
-  for (int row = 0; row < 4; row++)
+  for (int row = 0; row < 3; row++)
     for (float z = -60; z < 60; z += 3.0f)
       if (rnd() < 0.7f) car(px + (float)row * 9 + (row & 1) * 2, z, (row & 1) ? PI_F * 0.5f : -PI_F * 0.5f, CARS[(int)(rnd() * 10) % 10], rnd() < 0.3f);
   /* tents along the west fence: pyramid tops in bright colours on white walls */
@@ -841,7 +1023,7 @@ static void set_mega(cw_node parent) {
   }
   static float xz[2 * 1600];
   RNG = 5150;
-  int n = scatter(xz, 1600, 900, 160, 1300, 300, NULL);
+  int n = scatter(xz, 1600, 480, 160, 1300, 300, NULL);
   forest(parent, broadleaf_geo(), xz, n, 31, 1.4f, false);
 }
 
@@ -905,7 +1087,7 @@ static void set_barn(cw_node parent) {
   /* the forest on the hills */
   static float xz[2 * 3200];
   RNG = 777;
-  int n = scatter(xz, 3200, 3000, 110, 1300, 260, NULL);
+  int n = scatter(xz, 3200, 1800, 110, 1300, 260, NULL);
   forest(parent, pine_geo(), xz, n, 41, 1.25f, false);
   static float near[2 * 200];
   int m = 0;
@@ -922,27 +1104,27 @@ static void set_barn(cw_node parent) {
 static const scenery_mood MOODS[PARK_COUNT] = {
   /* Sunnyside: golden hour, the sea a deep teal */
   { .time = 17.6f, .north = 210, .sun_energy = 5.2f, .sky_energy = 1.6f, .mie = 0.55f, .rayleigh = 1.1f, .exposure = -0.4f, .hemi = 0.08f, .lm_gain = 0.6f,
-    .zenith = { 0.22f, 0.48f, 0.95f }, .horizon = { 1.0f, 0.86f, 0.66f }, .cloud = { 1.0f, 0.86f, 0.72f }, .fog = { 0.95f, 0.8f, 0.66f }, .fog_density = 0.0022f,
-    .ground_near = { 0.46f, 0.66f, 0.3f }, .ground_far = { 0.58f, 0.6f, 0.38f }, .rock = { 0.66f, 0.56f, 0.46f }, .water = { 0.04f, 0.42f, 0.55f },
+    .zenith = { 0.16f, 0.42f, 0.95f }, .horizon = { 0.78f, 0.86f, 0.98f }, .cloud = { 1.0f, 0.86f, 0.72f }, .fog = { 0.56f, 0.68f, 0.9f }, .fog_density = 0.0010f,
+    .ground_near = { 0.42f, 0.66f, 0.28f }, .ground_far = { 0.36f, 0.56f, 0.26f }, .rock = { 0.66f, 0.56f, 0.46f }, .water = { 0.04f, 0.42f, 0.55f },
     .shadow_soft = 0.0f, .glow = 1.4f },
   /* Civic Plaza: a bright hazy morning */
-  { .time = 10.2f, .north = 140, .sun_energy = 4.6f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = 0.0f, .hemi = 0.1f, .lm_gain = 0.6f,
-    .zenith = { 0.1f, 0.32f, 0.86f }, .horizon = { 0.82f, 0.9f, 1.0f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.78f, 0.84f, 0.92f }, .fog_density = 0.0026f,
+  { .time = 9.0f, .north = 140, .sun_energy = 5.0f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = 0.2f, .hemi = 0.08f, .lm_gain = 0.6f,
+    .zenith = { 0.1f, 0.32f, 0.86f }, .horizon = { 0.82f, 0.9f, 1.0f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.58f, 0.7f, 0.9f }, .fog_density = 0.0012f,
     .ground_near = { 0.45f, 0.62f, 0.32f }, .ground_far = { 0.5f, 0.58f, 0.42f }, .rock = { 0.6f, 0.58f, 0.55f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 1.0f, .glow = 1.2f },
   /* Big Sky: clear noon, a deep blue */
   { .time = 13.0f, .north = 30, .sun_energy = 4.4f, .sky_energy = 1.8f, .mie = 0.25f, .rayleigh = 1.4f, .exposure = -0.9f, .hemi = 0.08f, .lm_gain = 0.6f,
-    .zenith = { 0.08f, 0.3f, 0.82f }, .horizon = { 0.66f, 0.8f, 0.98f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.7f, 0.8f, 0.95f }, .fog_density = 0.0016f,
+    .zenith = { 0.08f, 0.3f, 0.82f }, .horizon = { 0.66f, 0.8f, 0.98f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.55f, 0.7f, 0.95f }, .fog_density = 0.0008f,
     .ground_near = { 0.78f, 0.68f, 0.4f }, .ground_far = { 0.72f, 0.58f, 0.4f }, .rock = { 0.8f, 0.5f, 0.34f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 1.2f },
   /* Rooftops: sunset, the windows and the signs coming on */
   { .time = 18.75f, .north = 100, .sun_energy = 5.5f, .sky_energy = 1.7f, .mie = 0.7f, .rayleigh = 1.3f, .exposure = 2.75f, .hemi = 0.24f, .lm_gain = 2.0f,
-    .zenith = { 0.2f, 0.22f, 0.55f }, .horizon = { 1.0f, 0.6f, 0.42f }, .cloud = { 1.0f, 0.62f, 0.56f }, .fog = { 0.8f, 0.58f, 0.56f }, .fog_density = 0.0024f,
+    .zenith = { 0.2f, 0.22f, 0.55f }, .horizon = { 1.0f, 0.6f, 0.42f }, .cloud = { 1.0f, 0.62f, 0.56f }, .fog = { 0.78f, 0.52f, 0.55f }, .fog_density = 0.0012f,
     .ground_near = { 0.4f, 0.5f, 0.3f }, .ground_far = { 0.45f, 0.45f, 0.4f }, .rock = { 0.5f, 0.45f, 0.42f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 2.6f, .windows_lit = 1.6f },
   /* Timber Yard: early morning, gold light through cool air */
   { .time = 8.1f, .north = 300, .sun_energy = 4.8f, .sky_energy = 1.6f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = -0.68f, .hemi = 0.08f, .lm_gain = 0.6f,
-    .zenith = { 0.2f, 0.42f, 0.82f }, .horizon = { 0.95f, 0.86f, 0.72f }, .cloud = { 1.0f, 0.92f, 0.82f }, .fog = { 0.78f, 0.84f, 0.9f }, .fog_density = 0.0028f,
+    .zenith = { 0.2f, 0.42f, 0.82f }, .horizon = { 0.95f, 0.86f, 0.72f }, .cloud = { 1.0f, 0.92f, 0.82f }, .fog = { 0.52f, 0.66f, 0.84f }, .fog_density = 0.0013f,
     .ground_near = { 0.4f, 0.58f, 0.28f }, .ground_far = { 0.3f, 0.46f, 0.26f }, .rock = { 0.56f, 0.56f, 0.6f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 0.0f, .glow = 1.2f },
 };
@@ -977,7 +1159,8 @@ void scenery_build(cw_node parent, const park *k, int park_index) {
     t3_geometry *g = mb_finish(&SB[s]);
     t3_material *m = sb_material(s);
     t3_mesh *me = t3_mesh_new(g, m);
-    me->base.cast_shadow = s != SB_GLOW, me->base.receive_shadow = s != SB_GLOW;
+    /* no scenery in the sun's map: it lies outside the park the map covers, and a town in the shadow pass costs more than it shows */
+    me->base.cast_shadow = false, me->base.receive_shadow = false;
     cw_node n = cw_node_new("Node3D", "Scenery");
     cw_node_add_child(parent, n);
     cw_node3d_set_object(n, &me->base);

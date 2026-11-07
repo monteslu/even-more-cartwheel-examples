@@ -11,3 +11,5 @@ lightmaps/park1.cwlm
 lightmaps/park2.cwlm
 lightmaps/park3.cwlm
 lightmaps/park4.cwlm
+# the colour grade (tools/make-lut.mjs)
+grade.cube

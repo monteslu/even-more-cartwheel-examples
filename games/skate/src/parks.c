@@ -25,7 +25,7 @@ static const float C_STEEL[3] = { 0.80f, 0.82f, 0.86f }, C_RED[3] = { 0.86f, 0.2
 static const float C_GRASS[3] = { 0.42f, 0.72f, 0.28f }, C_TILE[3] = { 0.84f, 0.76f, 0.66f }, C_GRANITE[3] = { 0.62f, 0.60f, 0.62f };
 static const float C_ASPH[3] = { 0.40f, 0.40f, 0.42f }, C_BRICK1[3] = { 0.78f, 0.42f, 0.30f }, C_BRICK2[3] = { 0.86f, 0.70f, 0.50f };
 static const float C_BRICK3[3] = { 0.52f, 0.62f, 0.78f }, C_BRICK4[3] = { 0.90f, 0.86f, 0.74f }, C_ROOF[3] = { 0.58f, 0.56f, 0.55f };
-static const float C_WATER[3] = { 0.30f, 0.62f, 0.86f }, C_TRUNK[3] = { 0.45f, 0.32f, 0.22f }, C_LEAF[3] = { 0.30f, 0.62f, 0.22f };
+static const float C_WATER[3] = { 0.30f, 0.62f, 0.86f }, C_TRUNK[3] = { 0.45f, 0.32f, 0.22f };
 
 static float utop_of(const profile *p) { return p->u[p->n - 1]; }
 static float ulip(float r, float h) {
@@ -193,21 +193,8 @@ static void lamp(kit *b, float x, float z) {
 }
 static void tree(kit *b, float x, float z, float s) {
   kit_piece(b);
-  /* a trunk (a box, it blocks) and a crown of leaves (drawn only) */
+  /* a trunk (a box, it blocks); its crown is the scenery's (scenery.c: PLAZA_TREES, foliage cards) */
   kit_box(b, x, z, 0.4f, 0.4f * s, 0.4f * s, 0, 2.6f * s, MAT_WOOD, MAT_WOOD, C_TRUNK, C_TRUNK);
-  for (int i = 0; i < 3; i++) {
-    float y = (2.6f + 0.9f * (float)i) * s, r = (1.8f - 0.45f * (float)i) * s;
-    v3 c = V(x, y, z);
-    for (int k = 0; k < 8; k++) {
-      float a0 = (float)k / 8.0f * 2 * PI_F + (float)i * 0.4f, a1 = (float)(k + 1) / 8.0f * 2 * PI_F + (float)i * 0.4f, s0, c0, s1, c1;
-      cw_sincos(a0, &s0, &c0);
-      cw_sincos(a1, &s1, &c1);
-      v3 p0 = V(x + c0 * r, y, z + s0 * r), p1 = V(x + c1 * r, y, z + s1 * r), top = V(x, y + 1.4f * s, z), bot = V(x, y - 0.5f * s, z);
-      v3 n0 = vnorm(vsub(p0, c)), n1 = vnorm(vsub(p1, c));
-      kit_tri(b, p0, p1, top, n0, n1, V(0, 1, 0), SURF_NONE, MAT_LEAF, C_LEAF);
-      kit_tri(b, p0, bot, p1, n0, V(0, -1, 0), n1, SURF_NONE, MAT_LEAF, C_LEAF);
-    }
-  }
 }
 /* a building (scenery past the fence, or a roof to ride): walls block, the top rides */
 static void building(kit *b, float x0, float z0, float x1, float z1, float h, const float wall[3]) {
@@ -379,6 +366,17 @@ static void build_plaza(kit *b, int variant) {
     tree(b, x, -33, 0.9f);
     b->lift = 0;
   }
+  /* planters round the plaza's edges, each with a tree: clear of every line */
+  {
+    static const float P[5][2] = { { 38.5f, -8 }, { 38.5f, 6 }, { 38.5f, 20 }, { -38.5f, 18 }, { -38.5f, 30 } };
+    for (int i = 0; i < 5; i++) {
+      kit_piece(b);
+      kit_box(b, P[i][0], P[i][1], 0, 2.4f, 2.4f, 0, 0.6f, MAT_DIRT, MAT_CONCRETE, C_GRASS, C_GRANITE);
+      b->lift = 0.6f;
+      tree(b, P[i][0], P[i][1], 0.9f);
+      b->lift = 0;
+    }
+  }
   if (variant == PARKV_BLOCK) {
     kit_piece(b);
     kit_box(b, -14.55f, -24, 0, 3, 0.4f, th, th + 1.4f, MAT_CONCRETE, MAT_CONCRETE, C_RED, C_RED);
@@ -459,7 +457,7 @@ static void build_mega(kit *b, int variant) {
   quarter(b, 26, -10, 0, 10, 2.0f, 2.0f, 1.5f, MAT_WOOD, C_WOOD, C_TEAL);
   quarter(b, 26, 4, PI_F, 10, 2.0f, 2.0f, 1.5f, MAT_WOOD, C_WOOD, C_TEAL);
   kit_piece(b);
-  kit_rail_on(b, V(16, 0.5f, 30), V(32, 0.5f, 30), 0, 0, C_STEEL);
+  kit_rail_on(b, V(16, 0.5f, 36), V(32, 0.5f, 36), 0, 0, C_STEEL); /* clear of the giant quarter's back */
   int bar = k->e[k->ne - 1].run;
   bank(b, -22, 20, -PI_F * 0.5f, 10, 4, 1.8f, MAT_CONCRETE, C_CONC, C_TEAL, 3, true);
   if (variant == PARKV_FLOAT) {
@@ -468,7 +466,7 @@ static void build_mega(kit *b, int variant) {
   }
   if (variant == PARKV_BLOCK) {
     kit_piece(b);
-    kit_box(b, 13, 30, 0, 0.4f, 3, 0, 1.4f, MAT_CONCRETE, MAT_CONCRETE, C_RED, C_RED);
+    kit_box(b, 13, 36, 0, 0.4f, 3, 0, 1.4f, MAT_CONCRETE, MAT_CONCRETE, C_RED, C_RED);
   }
   paint_rect(b, -0.15f, foot + 1, 0.15f, kz - 0.5f, 0, C_YELLOW), paint_rect(b, -0.15f, kn + 22, 0.15f, qz - 1, 0, C_YELLOW);
   int mg = gap_add(k, V(-4, kh - 1.0f, lip - 2.5f), V(4, kh + 1.0f, lip + 0.3f), V(-4, -0.3f, kn + 2.5f), V(4, lh + 0.3f, kn + 22), "Mega Gap", 1500);
@@ -476,7 +474,7 @@ static void build_mega(kit *b, int variant) {
   line_add(k, V(0, RH, foot - ut - 3.5f), PI_F, 20.0f, LINE_MEGA, V(0, lh, kn + 8), -1, mg, 0, "Mega Line");
   spawn_add(k, V(10, 0, 10), PI_F, "Bottom");
   line_add(k, V(26, 0, -3), 0, 5.0f, LINE_QUARTER, V(26, 2, -12), -1, -1, 0, "Mini Ramp");
-  line_add(k, V(4, 0, 30.1f), -PI_F * 0.5f, 6.0f, LINE_RAIL, V(24, 0.5f, 30), bar, -1, 1.9f, "Practice Rail");
+  line_add(k, V(4, 0, 36.1f), -PI_F * 0.5f, 6.0f, LINE_RAIL, V(24, 0.5f, 36), bar, -1, 1.9f, "Practice Rail");
   k->goal_run = bar;
   k->goal_grind_s = 1.5f;
   snprintf(k->goal_run_name, sizeof k->goal_run_name, "the practice rail");
@@ -485,7 +483,7 @@ static void build_mega(kit *b, int variant) {
   token(k, V(0, 7.5f, lip + 5));
   token(k, V(0, 9.2f, qz + 6.1f));
   token(k, V(26, 3.6f, -12.6f));
-  token(k, V(30, 1.6f, 30));
+  token(k, V(30, 1.6f, 36));
   k->ctl_block_line = find_line(k, "Practice Rail");
   k->ctl_short_line = find_line(k, "Mega Line");
 }
