@@ -1,7 +1,7 @@
 # demolition (working title): knock down structures of wood, stone, glass and steel with launched shot and charges.
 #   demolition             the game
 #   demolition_auto        the bot plays it through the controls (for hosts that send no input)
-#   demolition_bench       the perf gate's scene: the bot on a big castle, the collapse in view (carts read no environment)
+#   demolition_bench       the perf gate's scene: the bot on Great Keep, the collapse in view (carts read no environment)
 #   demolition_physcheck   what the engine's Box3D can do here: rest, budget, determinism, tunnelling (native only)
 #   demolition_levelcheck  every level stands, nothing floats, the bot clears it within par (native only)
 #   demolition_soak        level after level with the bot, no window and no GPU (native only)

@@ -1,5 +1,5 @@
-// demolition perf gate: demolition_bench (the bot on Twin Gates, a castle of about 2000 blocks: its first charge
-// brings a keep down, the camera on the collapse) at 1920x1080 on the High preset, natively on the test GPU (the
+// demolition perf gate: demolition_bench (the bot on Great Keep, a keep of about 1900 blocks: its charges bring
+// most of it down, 1400 blocks broken and 2400 bodies awake at once, the camera on the collapse) at 1920x1080 on the High preset, natively on the test GPU (the
 // 890M), GL and WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time at 4 ms: the median of the
 // 120-frame windows while the collapse is on screen (from the first window with a hundred blocks broken; one window
 // the shared machine stalls does not decide it). Every run must draw everything (no "not in any program table" line)

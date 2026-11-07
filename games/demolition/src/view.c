@@ -128,7 +128,7 @@ static t3_texture *block_texture(int mat) {
 static t3_texture *ground_texture(int theme, bool dirt) {
   enum { N = 512 };
   static uint8_t px[N * N * 4];
-  static const float GR[3][3] = { { 0.33f, 0.55f, 0.16f }, { 0.52f, 0.5f, 0.17f }, { 0.22f, 0.5f, 0.32f } };
+  static const float GR[3][3] = { { 0.33f, 0.55f, 0.16f }, { 0.44f, 0.56f, 0.14f }, { 0.22f, 0.5f, 0.32f } };
   static const float DI[3][3] = { { 0.55f, 0.42f, 0.28f }, { 0.6f, 0.44f, 0.27f }, { 0.5f, 0.38f, 0.3f } };
   const float *c = dirt ? DI[theme % 3] : GR[theme % 3];
   for (int y = 0; y < N; y++)
@@ -323,7 +323,7 @@ static t3_geometry *hills_geo(int theme, uint32_t seed) {
   for (int r = 0; r < NR - 1; r++)
     for (int a = 0; a < NA - 1; a++) {
       unsigned i0 = r * NA + a, i1 = i0 + 1, i2 = i0 + NA, i3 = i2 + 1;
-      idx[n++] = i0, idx[n++] = i2, idx[n++] = i1, idx[n++] = i1, idx[n++] = i2, idx[n++] = i3;
+      idx[n++] = i0, idx[n++] = i1, idx[n++] = i2, idx[n++] = i1, idx[n++] = i3, idx[n++] = i2; /* facing up */
     }
   (void)theme;
   t3_geometry *g = t3_geometry_new();
@@ -567,9 +567,15 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     t3_vec3 v = g->proj_vel;
     float vl = sqrtf(v.x * v.x + v.z * v.z) + 1e-3f;
     t3_vec3 vd = { v.x / vl, 0, v.z / vl };
-    eye = (t3_vec3){ x.p.x - vd.x * 7 + vd.z * 3.0f, x.p.y + 2.2f, x.p.z - vd.z * 7 - vd.x * 3.0f };
-    at = (t3_vec3){ x.p.x + vd.x * 10, x.p.y * 0.6f + mid.y * 0.4f, x.p.z + vd.z * 10 };
-    k = 5;
+    /* the shot and the structure both in the picture: the camera starts behind the launcher and closes in behind
+     * the shot as it nears, looking between the two */
+    float d0 = sqrtf(g->muzzle.x * g->muzzle.x + g->muzzle.z * g->muzzle.z) + 1e-3f, d1 = sqrtf(x.p.x * x.p.x + x.p.z * x.p.z);
+    float near = cw_clampf(1 - d1 / d0, 0, 1) * 0.75f;
+    t3_vec3 e0 = { g->muzzle.x - fwd.x * 9 + right.x * 3, g->muzzle.y + 5, g->muzzle.z - fwd.z * 9 + right.z * 3 };
+    t3_vec3 e1 = { x.p.x - vd.x * 9 + vd.z * 4.0f, fmaxf(x.p.y, top * 0.6f) + 3.0f, x.p.z - vd.z * 9 - vd.x * 4.0f };
+    eye = lerp3(e0, e1, near);
+    at = lerp3(x.p, mid, 0.55f);
+    k = 4;
   } else if (g->state == GS_WON || g->state == GS_LOST) {
     V.orbit += dt * 0.12f;
     float r = ext * 2.2f + 12;
