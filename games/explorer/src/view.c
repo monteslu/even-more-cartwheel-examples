@@ -837,7 +837,7 @@ void view_draw(const sim *s, float t) {
    * toward the region's accent, a soft vignette; the lit layers get bounce light (GI) from what glows */
   cw_color accent = hexc(g->accent, 1);
   static cw_r2d_post post;
-  post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .tone_knee = 0.78f,
+  post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .bloom_levels = 5, .tone_knee = 0.78f,
                         .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
   static cw_r2d_gi gi = { .intensity = 0.8f };
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.78f), .time = t, .post = perf_off("post") ? NULL : &post,

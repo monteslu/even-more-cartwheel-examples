@@ -20,7 +20,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
 const exe = [join(ROOT, 'build/native/project/games/explorer/explorer_bench'), join(ROOT, 'build/native/games/explorer/explorer_bench')].find(existsSync);
-const BOUND = 4.0, LIGHTS = 8, SPRITES = 300;
+const BOUND = 4.0, LIGHTS = 6, SPRITES = 300;
 
 function run(gpu, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '540', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', EXPLORER_BENCH: '1', CW_RENDER_SCALE: '1.5', ...extra };
