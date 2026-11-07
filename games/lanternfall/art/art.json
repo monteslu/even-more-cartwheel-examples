@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "The Lantern Gate: the hooded lamplighter walks a mossy hall between lantern posts under a great hanging rock"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "The Ember Forge: past the furnace and the turning gears, a bridge spans a drop into the dark where chains hang"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Mirelight Fen: green light falls down a shaft in the roof onto ledges, a moth and a lantern by a young tree"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Two lamplighters face the Glass Mantis, a warden of glass, in its arena"
+    }
+  ]
+}
