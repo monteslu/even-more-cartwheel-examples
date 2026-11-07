@@ -444,13 +444,23 @@ static cw_vec2 pill(const char *markup, int player, float x, float y, float ax, 
   return (cw_vec2){ w, h };
 }
 
-/* the build diamond (an empty slot) or the tower's actions round a player's cursor */
+/* the build diamond (an empty slot) or the tower's actions round a player's cursor; where two cursors stand close, the
+ * later one's labels move up or down out of the earlier ones' way (their P1..P4 says whose they are) */
+static float g_lab[MAXP][2];
+static int g_nlab;
 static void hud_cursor(int i, float u, cw_vec2 cs) {
   const player *p = &G.S.p[i];
   if (!p->active || p->slot < 0) return;
   float x = mp_wx(&G.S.m, G.S.m.slot[p->slot].x), z = mp_wz(&G.S.m, G.S.m.slot[p->slot].y), su, sv;
   if (!view_screen((t3_vec3){ x, MP_GROUND_H, z }, &su, &sv)) return;
   float cx = su * cs.x, cy = sv * cs.y, bs = 26 * u, gap = view_px_per_m(cs.y) * 1.25f;
+  for (int pass = 0, dir = cy > cs.y * 0.5f ? -1 : 1; pass < MAXP; pass++) {
+    bool hit = false;
+    for (int j = 0; j < g_nlab; j++) hit |= fabsf(cx - g_lab[j][0]) < 15 * gap && fabsf(cy - g_lab[j][1]) < 4.6f * gap;
+    if (!hit) break;
+    cy += (float)dir * 4.8f * gap;
+  }
+  if (g_nlab < MAXP) g_lab[g_nlab][0] = cx, g_lab[g_nlab++][1] = cy;
   const float *pc = PCOL[i];
   cw_color bg = rgba(0.02f, 0.03f, 0.06f, 0.72f);
   const tower *t = &G.S.tw[p->slot];
@@ -544,6 +554,7 @@ static void hud(void) {
 #else
   bool cursors = true;
 #endif
+  g_nlab = 0;
   if (cursors && G.S.state == ST_PLAY)
     for (int i = 0; i < G.S.players; i++) hud_cursor(i, u, cs);
   /* the top line: the wave, the core, the next wave */

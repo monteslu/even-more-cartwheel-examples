@@ -10,8 +10,8 @@ whole map on one screen, a fixed camera per map.
 - The camera is fixed for the map: the whole of it (36 x 20 tiles of 2 m) on one screen, tilted 15 degrees from
   straight down toward the south through a long lens (a 14 degree field of view, close to orthographic), with a little
   room over the top for the HUD's line. About 25 pixels to a metre at 1080p.
-- The path is low; the ground round it is raised half a metre with banks down to the path; smooth rock outcrops rise
-  out of the ground and pools sit in bowls with banks. Build pads stand on the ground beside the paths; the core
+- The path is low; the ground round it is raised half a metre with banks down to the path; rock outcrops rise out of the
+  ground as faceted blocks and pools sit in bowls with wet banks. Build pads stand on the ground beside the paths; the core
   stands on a 2 x 2 block of path; the gates sit where the paths leave the map's edge.
 - Creeps lean 15 degrees back toward the camera from their feet (crawler's rule: they are seen down their own up axis,
   as from straight above); towers, pads and the scenery do not lean.
@@ -30,15 +30,14 @@ whole map on one screen, a fixed camera per map.
   meadow (deep green ground, a path of pale packed earth in a red brick curb, blue pools), autumn woods (gold and
   red ground, blue-grey slate cobbles), desert (bright sand, red-brown sandstone flags, teal pools, red rock), snowfields (white ground, dark frozen
   earth and gravel), volcano (dark basalt glowing orange in patches, copper-green mineral crust between them and on the outcrops, a pale
-  blue-grey ash crust path, lava pools rimmed
-  with cooling crust), crystal vale (deep violet ground, pale
+  blue-grey ash crust path, lava pools of black crust split by molten cracks), crystal vale (deep violet ground, pale
   flagstones, glowing teal pools). Every path is a ground material with texture at the play camera, and its wide
   stretches (a field the creeps spread over) are paved as a plaza of square-cut slabs.
 - The value hierarchy: the path a clear step lighter or darker than the ground on every theme, its edge drawn by a
   dark curb; every edge between two materials (the floor and its curb, the plaza, the outcrops' feet, the pools'
   water line) is a smooth curve: the terrain is built from the routes' own curves (map.h, the ground's shape) and
-  each triangle cut along them, so no tile staircase shows anywhere; the outcrops modelled by the sun with ledges and
-  weathering, the pools with a pale rim of ripples; the decor thinned and darkened, cooled against a warm theme, so it frames the play instead of competing;
+  each triangle cut along them, so no tile staircase shows anywhere; the outcrops faceted rock (below), the pools water
+  with a shoreline (below); the decor thinned and darkened, cooled against a warm theme, so it frames the play instead of competing;
   the towers lifted off it with a rim light in their kind's hue, glossier surfaces, a lit disc of the owner's colour under each and
   a brighter team trim; the creeps tinted by kind with an ink outline, so they read on a pale path and on a dark
   ground alike.
@@ -49,11 +48,22 @@ whole map on one screen, a fixed camera per map.
   saturated pixels 90 degrees or more round the wheel from the commonest hue), saturation 0.25 to 0.62, and no staircase edges (STAIRS_MAX: the share of
   strong edges lying along the screen's axes, at a scale past the textures' grain); frames flattened halfway to
   their mean must fail, and so must a frame with a tile staircase drawn across it.
+- The outcrops read as rock: each is a block with a polygon's outline (fracture planes, never a circle), cliffs at its
+  edge, a roof of tilted planes broken into strata (ledges and risers), and a few loose boulders at its foot. The rock
+  is faceted: every small triangle of it is flat and lit by the sun as it faces, so its planes and creases stay sharp
+  at the play camera; caps of the theme lie on its flat tops (moss, lichen, sand, snow, ash, glowing lichen), and its
+  value steps away from the ground (pale on the dark meadow, dark on the snow, red on the sand).
+- The pools read as water: an organic shoreline (lobes and a little noise round a stretched bowl), the surface dark in
+  the deep and greener over the shallows with no pale rim, the sky's tint in soft streaks over it, a web of light in
+  its texture, the bank down to it wet and dark. Glints of the sky come and go on it, drifting with the wind (view.c).
+  On the volcano the pools are lava: black crust in plates, molten light in the cracks, swelling bubbles of light and
+  the air shimmering over them; in the crystal vale they glow teal in facets, never a white disc.
 - The ground and path are baked (the sun, the sky, the lamps and glowing decor, with the trees' and rocks' shadows)
   and drawn unlit; everything that moves takes the bake's light where it stands; the towers' flashes, the beams' hits,
   the core and the gates are clustered lights, and every moving light shows on the baked ground as a pool.
 - Atmosphere: motes drifting over the map in the theme's colour (pollen, sparks of leaf, sand, snow, embers,
-  glow-spores), glows under the towers and the core, light columns over the gates.
+  glow-spores), glows under the towers and the core, light columns over the gates, glints on the water, heat shimmer
+  over the lava.
 
 ## Players and controls
 
@@ -141,9 +151,10 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
   not two tiles on the edge, or whose floor is shut by the pads' level ground. Pads go where they reach the most
   path, none touching, none pushing far into the floor. Each route is written to the map (`route` records), so the
   game draws the ground from the very curve the tiles were rasterised from.
-- Terrain features (`feature` records): smooth rock outcrops (domes run together into ridges) and pools with banks
-  (a bowl under a still sheet of water; lava on the volcano, glowing pools in the crystal vale), on open ground away
-  from the paths and pads. The theme's decor fills the rest (big props only where nothing walks or builds round
+- Terrain features (`feature` records): rock outcrops (faceted blocks run together into ridges, boulders at their
+  feet) and pools with banks (a bowl whose surface is drawn with the terrain at the water's level; lava on the volcano,
+  glowing pools in the crystal vale), on open ground away from the paths and pads. Each takes its shape from where it
+  stands (map.c, the same in tools/fields.mjs), always inside its record's radius. The theme's decor fills the rest (big props only where nothing walks or builds round
   them), lamps line the paths.
 - Waves climb from 10 (map 1) to 25 (map 30) and the creeps' kinds widen from three to all eight. The first ten maps
   keep a gentle difficulty curve; from map 11, `tools/tune-maps.mjs` bisects each map's difficulty on the soak build

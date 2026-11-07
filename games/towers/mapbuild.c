@@ -146,6 +146,7 @@ uint64_t mapbuild_bake_hash(const char *text, int theme) {
     h = (h ^ (uint64_t)len) * 0x100000001b3ull;
     free(b);
   }
+  for (const char *c = MB_TERRAIN; *c; c++) h = (h ^ (uint8_t)*c) * 0x100000001b3ull; /* how the terrain is built */
   return h;
 }
 
@@ -167,16 +168,29 @@ static float vnoise(float x, float z, uint32_t seed) {
 
 float mapbuild_height(const tdmap *m, float x, float z) { return map_ground_h(m, x / MP_TILE + (float)m->w * 0.5f, z / MP_TILE + (float)m->h * 0.5f); }
 
+
 /* the themes' palettes (screen colours): the ground, its accent in patches, the path's floor (a ground material:
  * packed earth, cobbles, flagstones, ash crust), the curb, the rock, the water; the textures' tile sizes (m) */
 typedef struct palette { float ground[3], accent[3], path[3], bank[3], rock[3], water[3], tile_g, tile_p; } palette;
+/* the pools (screen colours): the water at the shore and in the deep, the sky's tint on the surface, how much it
+ * glows (a light of its own: x the bake, at the shore and in the deep; lava and the crystal light) and the wet bank's
+ * colour; the outcrops' caps (moss, lichen, dust, snow, ash, glowing lichen) on their flat tops and how much of them */
+typedef struct poolpal { float shallow[3], deep[3], sky[3], glow0, glow1, wet[3], cap[3], cap_k; } poolpal;
+static const poolpal POOL[MP_THEMES] = {
+  { { 0.12f, 0.27f, 0.20f }, { 0.02f, 0.14f, 0.31f }, { 0.62f, 0.78f, 0.92f }, 1, 1, { 0.12f, 0.20f, 0.07f }, { 0.30f, 0.46f, 0.12f }, 0.7f },
+  { { 0.24f, 0.27f, 0.19f }, { 0.05f, 0.19f, 0.33f }, { 0.70f, 0.76f, 0.86f }, 1, 1, { 0.26f, 0.15f, 0.06f }, { 0.52f, 0.50f, 0.20f }, 0.55f },
+  { { 0.30f, 0.50f, 0.42f }, { 0.02f, 0.27f, 0.42f }, { 0.70f, 0.86f, 0.95f }, 1, 1, { 0.56f, 0.38f, 0.20f }, { 0.94f, 0.80f, 0.52f }, 0.4f },
+  { { 0.36f, 0.48f, 0.58f }, { 0.06f, 0.20f, 0.44f }, { 0.82f, 0.88f, 0.98f }, 1, 1, { 0.56f, 0.64f, 0.76f }, { 0.95f, 0.97f, 1.00f }, 0.95f },
+  { { 0.80f, 0.22f, 0.04f }, { 1.00f, 0.60f, 0.16f }, { 0.50f, 0.25f, 0.20f }, 1.6f, 3.2f, { 0.07f, 0.05f, 0.05f }, { 0.60f, 0.58f, 0.58f }, 0.6f },
+  { { 0.05f, 0.26f, 0.42f }, { 0.06f, 0.56f, 0.66f }, { 0.45f, 0.40f, 0.85f }, 0.8f, 1.35f, { 0.10f, 0.08f, 0.22f }, { 0.40f, 0.84f, 0.88f }, 0.45f },
+};
 /* each theme a value hierarchy (DESIGN.md, the look): the path a clear step lighter or darker than the ground in a
  * colour its material could have, a dark curb between them (red brick in the meadow, slate where the ground is warm), the water cool where the ground is warm */
 static const palette PAL[MP_THEMES] = {
-  { { 0.25f, 0.48f, 0.14f }, { 0.46f, 0.58f, 0.14f }, { 0.88f, 0.75f, 0.53f }, { 0.40f, 0.15f, 0.11f }, { 0.68f, 0.68f, 0.70f }, { 0.12f, 0.55f, 0.78f }, 4, 3 }, /* packed earth */
+  { { 0.25f, 0.48f, 0.14f }, { 0.46f, 0.58f, 0.14f }, { 0.88f, 0.75f, 0.53f }, { 0.40f, 0.15f, 0.11f }, { 0.60f, 0.60f, 0.62f }, { 0.12f, 0.55f, 0.78f }, 4, 3 }, /* packed earth */
   { { 0.64f, 0.39f, 0.12f }, { 0.64f, 0.22f, 0.08f }, { 0.46f, 0.53f, 0.62f }, { 0.13f, 0.15f, 0.24f }, { 0.62f, 0.60f, 0.58f }, { 0.12f, 0.50f, 0.62f }, 4, 2.5f }, /* slate cobbles */
   { { 0.93f, 0.76f, 0.48f }, { 0.88f, 0.54f, 0.30f }, { 0.54f, 0.33f, 0.23f }, { 0.16f, 0.24f, 0.38f }, { 0.72f, 0.36f, 0.24f }, { 0.08f, 0.66f, 0.72f }, 5, 3 }, /* sandstone flags */
-  { { 0.90f, 0.94f, 0.99f }, { 0.72f, 0.84f, 0.97f }, { 0.46f, 0.36f, 0.30f }, { 0.22f, 0.19f, 0.22f }, { 0.62f, 0.66f, 0.74f }, { 0.20f, 0.52f, 0.86f }, 5, 3 }, /* frozen earth and gravel */
+  { { 0.90f, 0.94f, 0.99f }, { 0.72f, 0.84f, 0.97f }, { 0.46f, 0.36f, 0.30f }, { 0.22f, 0.19f, 0.22f }, { 0.40f, 0.43f, 0.50f }, { 0.20f, 0.52f, 0.86f }, 5, 3 }, /* frozen earth and gravel */
   { { 0.35f, 0.29f, 0.40f }, { 0.85f, 0.30f, 0.06f }, { 0.47f, 0.61f, 0.79f }, { 0.08f, 0.07f, 0.08f }, { 0.26f, 0.52f, 0.46f }, { 1.00f, 0.42f, 0.10f }, 4, 3 }, /* ash crust; the outcrops crusted green with copper minerals */
   { { 0.32f, 0.24f, 0.56f }, { 0.20f, 0.58f, 0.64f }, { 0.86f, 0.80f, 0.68f }, { 0.14f, 0.10f, 0.24f }, { 0.64f, 0.62f, 0.84f }, { 0.30f, 0.85f, 0.90f }, 4, 3 }, /* pale flagstones */
 };
@@ -210,11 +224,19 @@ static t3_texture *load_png(const char *path) {
  * materials is a smooth line through the triangles, never the grid's steps. Each piece lands in its region's mesh;
  * its vertices take their height, normal and colour from the shape at that point. */
 #define RES 6
-enum { R_GROUND, R_BED, R_FLOOR, R_CURB_LO, R_CURB_HI, R_PLAZA, R_ROCK, R_N };
-enum { M_GROUND, M_PATH, M_PLAZA, M_ROCK, M_N };
-static const int REG_MESH[R_N] = { M_GROUND, M_GROUND, M_PATH, M_PATH, M_PATH, M_PLAZA, M_ROCK };
-enum { NF = 6 };
-#define WATER_LINE ((MP_GROUND_H + 0.12f) / (MP_GROUND_H + 0.6f)) /* the pools' depth (feature units) at the water's level */
+enum { R_GROUND, R_POOL, R_FLOOR, R_CURB_LO, R_CURB_HI, R_PLAZA, R_ROCK, R_N };
+enum { M_GROUND, M_PATH, M_PLAZA, M_ROCK, M_POOL, M_N };
+static const int REG_MESH[R_N] = { M_GROUND, M_POOL, M_PATH, M_PATH, M_PATH, M_PLAZA, M_ROCK };
+enum { NF = 10 }; /* the fields cut along: the floor's edge, the curb's middle and top, the plaza, the rock's foot, the water
+                     * line, and the outcrops' creases (map_rock_creases) */
+#define POOL_LEVEL MB_POOL_LEVEL
+#define WATER_LINE ((MP_GROUND_H - POOL_LEVEL) / (MP_GROUND_H + 0.6f)) /* the pools' depth (feature units) at the water's level */
+float mapbuild_pool_deep(const tdmap *m, float x, float z) {
+  float rock, water;
+  map_feat_at(m, x / MP_TILE + (float)m->w * 0.5f, z / MP_TILE + (float)m->h * 0.5f, &rock, &water);
+  return water <= 0 ? -1 : (water - WATER_LINE) / (1 - WATER_LINE);
+}
+
 typedef struct tpt { float x, y, f[NF], rock, water; } tpt;
 static void tpt_eval(const tdmap *m, float x, float y, tpt *p) {
   float w, d = map_floor_d(m, x, y, &w);
@@ -223,6 +245,8 @@ static void tpt_eval(const tdmap *m, float x, float y, tpt *p) {
   p->f[0] = d, p->f[1] = d - MP_CURB * 0.5f, p->f[2] = d - MP_CURB;
   p->f[3] = CW_MAX(d + MP_CURB + 0.1f, (4.4f - w) * 0.5f);
   p->f[4] = p->rock - 0.05f, p->f[5] = WATER_LINE - p->water;
+  if (p->rock > 0) map_rock_creases(m, x, y, p->f + 6);
+  else p->f[6] = p->f[7] = p->f[8] = p->f[9] = 1;
 }
 static float tpt_field(const tdmap *m, int k, float x, float y) {
   tpt p;
@@ -233,7 +257,7 @@ static int region_of(const tpt *poly, int n) {
   float f[NF] = { 0 };
   for (int i = 0; i < n; i++)
     for (int k = 0; k < NF; k++) f[k] += poly[i].f[k];
-  if (f[5] < 0) return R_BED;
+  if (f[5] < 0) return R_POOL;
   if (f[0] <= 0) return f[3] < 0 ? R_PLAZA : R_FLOOR;
   if (f[1] <= 0) return R_CURB_LO;
   if (f[2] <= 0) return R_CURB_HI;
@@ -256,9 +280,13 @@ static void tb_colour(const tbuild *tb, int reg, const tpt *p, float h, const fl
   float ny = n[1], sun = 0.22f + 1.05f * CW_MAX(0.0f, (-0.45f * n[0] + 0.75f * n[1] - 0.5f * n[2]) / 1.0062f);
   const palette *pal = tb->pal;
   const tdmap *m = tb->m;
+  const poolpal *pp = &POOL[CW_CLAMP(m->theme, 0, MP_THEMES - 1)];
   float x = p->x * MP_TILE, z = p->y * MP_TILE; /* metres */
   float k = 0.85f + 0.42f * (vnoise(x / 6, z / 6, 11 + (uint32_t)m->num) - 0.5f) + 0.26f * (vnoise(x / 1.7f, z / 1.7f, 12) - 0.5f);
-  float c[3];
+  /* a pool: how deep at this point (0 at the shore, 1 in the deep, quickly off the shore); the bank: how wet (1 at the water) */
+  float deep = CW_CLAMP((p->water - WATER_LINE) / (1 - WATER_LINE), 0.0f, 1.0f), wet = CW_CLAMP(p->water / WATER_LINE, 0.0f, 1.0f);
+  deep = deep * (2 - deep) * 0.5f + deep * 0.5f, wet = CW_CLAMP((wet - 0.35f) / 0.65f, 0.0f, 1.0f), wet = wet * wet * (3 - 2 * wet);
+  float glow = 1, c[3];
   for (int q = 0; q < 3; q++) {
     switch (reg) {
     case R_FLOOR:
@@ -269,16 +297,23 @@ static void tb_colour(const tbuild *tb, int reg, const tpt *p, float h, const fl
     }
     case R_CURB_LO: c[q] = pal->bank[q] * 0.75f; break;
     case R_CURB_HI: c[q] = pal->bank[q] * 1.25f; break; /* the curb's top a shade lighter: its stones catch the light */
-    case R_BED: c[q] = pal->water[q] * 0.45f + pal->bank[q] * 0.55f; break;
-    case R_ROCK: { /* modelled by the sun (north-west, high: the bake alone leaves a dome flat from above): dark at the foot, light on top, in ledges by height, the ground's dust on the flats */
-      float lift = 0.6f + 0.5f * CW_MIN(p->rock / 1.4f, 1.0f);
-      float ledge = 0.86f + 0.28f * vnoise(h * 2.6f + vnoise(x * 0.7f, z * 0.7f, 97) * 1.5f, 0.5f, 95);
-      float dust = CW_CLAMP((ny - 0.9f) * 8, 0.0f, 1.0f) * 0.3f;
-      c[q] = pal->rock[q] * lift * ledge * (0.9f + 0.2f * fhash((int)floorf(x * 1.5f), (int)floorf(z * 1.5f), 7));
-      c[q] = (c[q] + (pal->ground[q] - c[q]) * dust) * sun;
+    case R_POOL: { /* the water: pale over the shallows, dark in the deep (the line wanders a little), the sky's tint on it */
+      float d = CW_CLAMP(deep + 0.3f * (vnoise(x / 2.5f, z / 2.5f, 41 + (uint32_t)m->num) - 0.5f), 0.0f, 1.0f);
+      c[q] = pp->shallow[q] + (pp->deep[q] - pp->shallow[q]) * d;
+      float sky = 0.08f + 0.14f * CW_CLAMP((vnoise(x / 3.0f, z / 7.0f, 43) - 0.4f) * 2.5f, 0.0f, 1.0f); /* the sky in soft streaks */
+      c[q] += (pp->sky[q] - c[q]) * sky * (0.4f + 0.6f * d);
+      glow = pp->glow0 + (pp->glow1 - pp->glow0) * d;
       break;
     }
-    default: { /* the ground: the accent in patches, darker where it is wet near a pool */
+    case R_ROCK: { /* rock in facets, each lit by the sun as it faces (north-west, high), its own shade, darker at the foot; caps on the flat tops */
+      float lift = 0.72f + 0.38f * CW_MIN(p->rock / 1.4f, 1.0f);
+      float facet = 0.88f + 0.24f * fhash((int)floorf(n[0] * 8 + 64), (int)floorf(n[2] * 8 + 64), 7);
+      float cap = CW_CLAMP((ny - 0.9f) * 12, 0.0f, 1.0f) * CW_CLAMP((vnoise(x / 1.3f, z / 1.3f, 96) - 0.42f) * 4, 0.0f, 1.0f) * CW_MIN(p->rock / 0.4f, 1.0f) * pp->cap_k;
+      c[q] = pal->rock[q] * lift * facet * (0.93f + 0.14f * vnoise(x * 1.4f, z * 1.4f, 97));
+      c[q] = (c[q] + (pp->cap[q] - c[q]) * cap) * (0.2f + 0.82f * sun);
+      break;
+    }
+    default: { /* the ground: the accent in patches; the bank down to a pool wet and dark */
       float a = 0.55f * CW_CLAMP((vnoise(x / 5.0f, z / 5.0f, 31 + (uint32_t)m->num) - 0.52f) * 3.2f, 0.0f, 1.0f);
       float gq = pal->ground[q] + a * (pal->accent[q] - pal->ground[q]);
       if (tb->m->theme == MP_THEME_VOLCANO) { /* copper-mineral crust in small patches between the hot ones */
@@ -286,20 +321,43 @@ static void tb_colour(const tbuild *tb, int reg, const tpt *p, float h, const fl
         float cu = 0.7f * CW_CLAMP((vnoise(x / 2.6f, z / 2.6f, 53 + (uint32_t)m->num) - 0.67f) * 4.0f, 0.0f, 1.0f) * (1 - a / 0.55f);
         gq += cu * (CU[q] - gq);
       }
-      float wet = CW_CLAMP(p->water / WATER_LINE, 0.0f, 1.0f) * 0.85f; /* the bank down to the water, damp and dark */
-      c[q] = gq + (pal->bank[q] + (pal->ground[q] - pal->bank[q]) * 0.5f - gq) * wet;
+      c[q] = gq + (pp->wet[q] - gq) * wet * 0.6f;
       break;
     }
     }
     if (reg == R_GROUND) c[q] *= k;
-    else if (reg != R_ROCK) c[q] *= 0.97f + 0.25f * (k - 0.85f);
+    else if (reg != R_ROCK && reg != R_POOL) c[q] *= 0.97f + 0.25f * (k - 0.85f);
   }
   if (tb->mask) { /* the look check's mask (TOWERS_LOOK_MASK): the floor blue, the curb red, the rest green */
     bool fl = reg == R_FLOOR || reg == R_PLAZA, cu = reg == R_CURB_LO || reg == R_CURB_HI;
-    c[0] = cu ? 1.0f : 0.0f, c[1] = fl || cu ? 0.0f : 1.0f, c[2] = fl ? 1.0f : 0.0f;
+    c[0] = cu ? 1.0f : 0.0f, c[1] = fl || cu ? 0.0f : 1.0f, c[2] = fl ? 1.0f : 0.0f, glow = 1;
   }
-  t3_color l = mb_lin(CW_MIN(c[0], 1.0f), CW_MIN(c[1], 1.0f), CW_MIN(c[2], 1.0f));
-  out[0] = l.r, out[1] = l.g, out[2] = l.b;
+  t3_color l = mb_lin(CW_CLAMP(c[0], 0.0f, 1.0f), CW_CLAMP(c[1], 0.0f, 1.0f), CW_CLAMP(c[2], 0.0f, 1.0f));
+  out[0] = l.r * glow, out[1] = l.g * glow, out[2] = l.b * glow;
+  if (!tb->mask && reg == R_GROUND && pp->glow1 > 1.2f) { /* the glowing pools' light on the last of their banks */
+    float e = CW_CLAMP(p->water / WATER_LINE, 0.0f, 1.0f) * 0.35f;
+    t3_color g = mb_lin(pp->shallow[0], pp->shallow[1], pp->shallow[2]);
+    out[0] += g.r * e * e, out[1] += g.g * e * e, out[2] += g.b * e * e;
+  }
+}
+
+static uint32_t tb_push(tmesh *ms, float wx, float h, float wz, const float n[3]) {
+  if (ms->nv == ms->capv) {
+    ms->capv = ms->capv ? ms->capv * 2 : 4096;
+    ms->pos = realloc(ms->pos, sizeof(float) * 3 * (size_t)ms->capv), ms->nrm = realloc(ms->nrm, sizeof(float) * 3 * (size_t)ms->capv), ms->col = realloc(ms->col, sizeof(float) * 3 * (size_t)ms->capv);
+  }
+  int v = ms->nv++;
+  ms->pos[v * 3] = wx, ms->pos[v * 3 + 1] = h, ms->pos[v * 3 + 2] = wz;
+  memcpy(ms->nrm + v * 3, n, sizeof(float) * 3);
+  if (v == 0) ms->x0 = ms->x1 = wx, ms->y0 = ms->y1 = wz;
+  ms->x0 = CW_MIN(ms->x0, wx), ms->x1 = CW_MAX(ms->x1, wx), ms->y0 = CW_MIN(ms->y0, wz), ms->y1 = CW_MAX(ms->y1, wz);
+  return (uint32_t)v;
+}
+static void tb_index(tmesh *ms, uint32_t a, uint32_t b, uint32_t c) {
+  if (ms->ni + 3 > ms->capi) ms->capi = ms->capi ? ms->capi * 2 : 8192, ms->idx = realloc(ms->idx, sizeof(uint32_t) * (size_t)ms->capi);
+  ms->idx[ms->ni++] = a, ms->idx[ms->ni++] = b, ms->idx[ms->ni++] = c;
+  const float *pa = ms->pos + a * 3, *pb = ms->pos + b * 3, *pc = ms->pos + c * 3;
+  ms->area += 0.5f * fabsf((pb[0] - pa[0]) * (pc[2] - pa[2]) - (pb[2] - pa[2]) * (pc[0] - pa[0]));
 }
 
 static uint32_t tb_vertex(tbuild *tb, int reg, const tpt *p) {
@@ -312,42 +370,71 @@ static uint32_t tb_vertex(tbuild *tb, int reg, const tpt *p) {
     s = (s + 1) & (tb->hcap - 1);
   }
   tmesh *ms = &tb->mesh[REG_MESH[reg]];
-  if (ms->nv == ms->capv) {
-    ms->capv = ms->capv ? ms->capv * 2 : 4096;
-    ms->pos = realloc(ms->pos, sizeof(float) * 3 * (size_t)ms->capv), ms->nrm = realloc(ms->nrm, sizeof(float) * 3 * (size_t)ms->capv), ms->col = realloc(ms->col, sizeof(float) * 3 * (size_t)ms->capv);
-  }
   const tdmap *m = tb->m;
-  int v = ms->nv++;
   float h = map_ground_h(m, p->x, p->y), n[3] = { 0, 1, 0 };
   if (reg == R_FLOOR || reg == R_PLAZA) h = 0;
+  else if (reg == R_POOL) h = POOL_LEVEL; /* the water's still surface */
   else { /* the slope from the shape itself (a sixth of a tile's span is too coarse for the curb) */
     const float e = 0.03f;
     float hl = map_ground_h(m, p->x - e, p->y), hr = map_ground_h(m, p->x + e, p->y), hd = map_ground_h(m, p->x, p->y - e), hu = map_ground_h(m, p->x, p->y + e);
     float nx = (hl - hr) / (2 * e * MP_TILE), nz = (hd - hu) / (2 * e * MP_TILE), nl = sqrtf(nx * nx + 1 + nz * nz);
     n[0] = nx / nl, n[1] = 1 / nl, n[2] = nz / nl;
   }
-  float wx = (p->x - (float)m->w * 0.5f) * MP_TILE, wz = (p->y - (float)m->h * 0.5f) * MP_TILE;
-  ms->pos[v * 3] = wx, ms->pos[v * 3 + 1] = h, ms->pos[v * 3 + 2] = wz;
-  memcpy(ms->nrm + v * 3, n, sizeof n);
+  uint32_t v = tb_push(ms, (p->x - (float)m->w * 0.5f) * MP_TILE, h, (p->y - (float)m->h * 0.5f) * MP_TILE, n);
   tb_colour(tb, reg, p, h, n, ms->col + v * 3);
-  if (v == 0) ms->x0 = ms->x1 = wx, ms->y0 = ms->y1 = wz;
-  ms->x0 = CW_MIN(ms->x0, wx), ms->x1 = CW_MAX(ms->x1, wx), ms->y0 = CW_MIN(ms->y0, wz), ms->y1 = CW_MAX(ms->y1, wz);
-  tb->hkey[s] = key, tb->hval[s] = v;
-  return (uint32_t)v;
+  tb->hkey[s] = key, tb->hval[s] = (int32_t)v;
+  return v;
 }
 
 static void tb_emit(tbuild *tb, const tpt *poly, int n) {
   if (n < 3) return;
   int reg = region_of(poly, n);
   tmesh *ms = &tb->mesh[REG_MESH[reg]];
+  if (reg == R_ROCK) { /* rock is faceted: the pieces are cut along its creases, so each is one plane of it, drawn flat and
+                        * shaded by its own normal (S > 1 cuts each again, for finer colour) */
+    enum { S = 1 };
+    const tdmap *m = tb->m;
+    for (int i = 1; i + 1 < n; i++) {
+      tpt sp[(S + 1) * (S + 2) / 2];
+      float P[(S + 1) * (S + 2) / 2][3];
+      int k = 0;
+      for (int r = 0; r <= S; r++)
+        for (int c = 0; r + c <= S; c++, k++) { /* barycentric: r toward poly[i], c toward poly[i + 1] */
+          float u = (float)r / S, v = (float)c / S;
+          float x = poly[0].x + (poly[i].x - poly[0].x) * u + (poly[i + 1].x - poly[0].x) * v, y = poly[0].y + (poly[i].y - poly[0].y) * u + (poly[i + 1].y - poly[0].y) * v;
+          tpt_eval(m, x, y, &sp[k]);
+          P[k][0] = (x - (float)m->w * 0.5f) * MP_TILE, P[k][1] = map_ground_h(m, x, y), P[k][2] = (y - (float)m->h * 0.5f) * MP_TILE;
+        }
+#define SI(r, c) ((r) * (2 * S + 3 - (r)) / 2 + (c))
+      for (int r = 0; r < S; r++)
+        for (int c = 0; r + c < S; c++) {
+          int t[2][3] = { { SI(r, c), SI(r + 1, c), SI(r, c + 1) }, { SI(r + 1, c), SI(r + 1, c + 1), SI(r, c + 1) } };
+          for (int q = 0; q < (r + c + 1 < S ? 2 : 1); q++) {
+            const float *A = P[t[q][0]], *B = P[t[q][1]], *C = P[t[q][2]];
+            float ux = B[0] - A[0], uy = B[1] - A[1], uz = B[2] - A[2], vx = C[0] - A[0], vy = C[1] - A[1], vz = C[2] - A[2];
+            float nr[3] = { uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx }, l = sqrtf(nr[0] * nr[0] + nr[1] * nr[1] + nr[2] * nr[2]);
+            if (l < 1e-8f) continue;
+            bool up = nr[1] > 0;
+            if (!up) l = -l;
+            nr[0] /= l, nr[1] /= l, nr[2] /= l;
+            uint32_t id[3];
+            for (int e = 0; e < 3; e++) {
+              id[e] = tb_push(ms, P[t[q][e]][0], P[t[q][e]][1], P[t[q][e]][2], nr);
+              tb_colour(tb, reg, &sp[t[q][e]], P[t[q][e]][1], nr, ms->col + id[e] * 3);
+            }
+            if (up) tb_index(ms, id[0], id[1], id[2]); /* its normal up, as the grid's */
+            else tb_index(ms, id[0], id[2], id[1]);
+          }
+        }
+#undef SI
+    }
+    return;
+  }
   uint32_t id[16];
   for (int i = 0; i < n; i++) id[i] = tb_vertex(tb, reg, &poly[i]);
   for (int i = 1; i + 1 < n; i++) {
     if (id[0] == id[i] || id[i] == id[i + 1] || id[0] == id[i + 1]) continue;
-    if (ms->ni + 3 > ms->capi) ms->capi = ms->capi ? ms->capi * 2 : 8192, ms->idx = realloc(ms->idx, sizeof(uint32_t) * (size_t)ms->capi);
-    ms->idx[ms->ni++] = id[0], ms->idx[ms->ni++] = id[i], ms->idx[ms->ni++] = id[i + 1];
-    const float *a = ms->pos + id[0] * 3, *b = ms->pos + id[i] * 3, *c = ms->pos + id[i + 1] * 3;
-    ms->area += 0.5f * fabsf((b[0] - a[0]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[0] - a[0]));
+    tb_index(ms, id[0], id[i], id[i + 1]);
   }
 }
 
@@ -399,7 +486,7 @@ static void build_terrain(mb_built *b, const tdmap *m) {
       tb_clip(&tb, t2, 3, 0);
     }
   free(grid), free(tb.hkey), free(tb.hval);
-  static const char *const NAME[M_N] = { "Ground", "Path", "Plaza", "Rock" }, *const TEX[M_N] = { "ground", "path", "plaza", "rock" };
+  static const char *const NAME[M_N] = { "Ground", "Path", "Plaza", "Rock", "Pool" }, *const TEX[M_N] = { "ground", "path", "plaza", "rock", "water" };
   for (int k = 0; k < M_N; k++) {
     tmesh *ms = &tb.mesh[k];
     if (ms->ni >= 3) {
@@ -421,7 +508,7 @@ static void build_terrain(mb_built *b, const tdmap *m) {
       snprintf(path, sizeof path, "textures/%s_%s.png", MP_THEME_ID[b->theme], TEX[k]);
       t3_texture *tx = load_png(path);
       if (tx) {
-        float tile = k == M_GROUND ? tb.pal->tile_g : k == M_PATH ? tb.pal->tile_p : k == M_PLAZA ? 4.0f : 3.0f;
+        float tile = k == M_GROUND ? tb.pal->tile_g : k == M_PATH ? tb.pal->tile_p : k == M_PLAZA ? 4.0f : k == M_POOL ? 5.0f : 3.0f;
         tx->repeat = (t3_vec2){ bw / tile, bh / tile };
         t3_material_set_texture(gm, T3_MAP, tx);
         t3_release(tx);
@@ -437,41 +524,25 @@ static void build_terrain(mb_built *b, const tdmap *m) {
   }
 }
 
-/* the water: a still sheet over every water tile and over every pool (a disc the banks rise through) */
+/* the water tiles ('~' in the grid): a still sheet over each. The pools (features) are drawn with the terrain (Pool) */
 static void build_water(mb_built *b, const tdmap *m) {
-  enum { SEG = 40 };
-  int nt = 0, nf = 0;
+  int nt = 0;
   for (int y = 0; y < m->h; y++)
     for (int x = 0; x < m->w; x++) nt += m->t[y][x] == T_WATER;
-  for (int k = 0; k < m->nfeat; k++) nf += m->feat[k].kind == FEAT_WATER;
-  if (!nt && !nf) return;
-  int nv = nt * 4 + nf * (SEG + 1), ni = nt * 6 + nf * SEG * 3;
-  float *pos = malloc(sizeof(float) * 3 * (size_t)nv), *nrm = malloc(sizeof(float) * 3 * (size_t)nv);
-  uint32_t *idx = malloc(sizeof(uint32_t) * (size_t)ni);
+  if (!nt) return;
+  float *pos = malloc(sizeof(float) * 12 * (size_t)nt), *nrm = malloc(sizeof(float) * 12 * (size_t)nt);
+  uint32_t *idx = malloc(sizeof(uint32_t) * 6 * (size_t)nt);
   int v = 0, i = 0;
-  const float LEVEL = -0.12f;
   for (int y = 0; y < m->h; y++)
     for (int x = 0; x < m->w; x++) {
       if (m->t[y][x] != T_WATER) continue;
       float cx = mp_wx(m, (float)x), cz = mp_wz(m, (float)y), hs = MP_TILE * 0.5f;
       static const float QX[4] = { -1, 1, 1, -1 }, QZ[4] = { -1, -1, 1, 1 };
       uint32_t o = (uint32_t)v;
-      for (int c = 0; c < 4; c++, v++) pos[v * 3] = cx + QX[c] * hs, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz + QZ[c] * hs;
+      for (int c = 0; c < 4; c++, v++) pos[v * 3] = cx + QX[c] * hs, pos[v * 3 + 1] = POOL_LEVEL, pos[v * 3 + 2] = cz + QZ[c] * hs;
       uint32_t q[6] = { o, o + 2, o + 1, o, o + 3, o + 2 };
       memcpy(idx + i, q, sizeof q), i += 6;
     }
-  for (int k = 0; k < m->nfeat; k++) {
-    const mp_feat *f = &m->feat[k];
-    if (f->kind != FEAT_WATER) continue;
-    float cx = (f->x - (float)m->w * 0.5f) * MP_TILE, cz = (f->y - (float)m->h * 0.5f) * MP_TILE, r = f->r * MP_TILE;
-    uint32_t o = (uint32_t)v;
-    pos[v * 3] = cx, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz, v++;
-    for (int s = 0; s < SEG; s++, v++) {
-      float a = (float)s * 6.2831853f / SEG;
-      pos[v * 3] = cx + cw_cos(a) * r, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz + cw_sin(a) * r;
-    }
-    for (int s = 0; s < SEG; s++) idx[i++] = o, idx[i++] = o + 1 + (uint32_t)((s + 1) % SEG), idx[i++] = o + 1 + (uint32_t)s;
-  }
   for (int c = 0; c < v; c++) nrm[c * 3] = 0, nrm[c * 3 + 1] = 1, nrm[c * 3 + 2] = 0;
   t3_geometry *g = t3_geometry_new();
   t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, v, 3));
@@ -479,55 +550,14 @@ static void build_water(mb_built *b, const tdmap *m) {
   t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, idx, i, 1));
   free(pos), free(nrm), free(idx);
   t3_material *mat = t3_mesh_standard_material_new(0xffffff);
-  const float *wc = PAL[b->theme].water;
+  const float *wc = POOL[b->theme].deep;
   mat->color = mb_lin(wc[0], wc[1], wc[2]);
-  mat->roughness = b->theme == MP_THEME_SNOW ? 0.35f : 0.12f;
-  mat->metalness = 0.0f;
+  mat->roughness = 0.12f;
   mat->transparent = true;
-  mat->opacity = b->theme == MP_THEME_SNOW ? 0.88f : 0.75f;
-  if (b->theme == MP_THEME_VOLCANO) mat->emissive = (t3_color){ 0.6f, 0.13f, 0.02f }, mat->color = mb_lin(0.5f, 0.1f, 0.03f), mat->opacity = 0.95f; /* lava */
-  if (b->theme == MP_THEME_CRYSTAL) mat->emissive = (t3_color){ 0.03f, 0.2f, 0.24f }; /* a glow, not a white plate under the grade */
+  mat->opacity = 0.8f;
   t3_mesh *mesh = t3_mesh_new(g, mat);
   mesh_node(b->node, "Water", mesh, false);
   t3_release(mesh), t3_release(g), t3_release(mat);
-  if (nf) { /* a pale rim of ripples along every pool's shore (on the lava a dark crust cooling at its edge) (the water line is where the bowl
-                                            * meets the water: map.h, WATER_LINE) */
-    float ts = acosf(2 * WATER_LINE - 1) / 3.14159265f; /* the shore as a fraction of the pool's radius */
-    int fv = nf * SEG * 2, fi = nf * SEG * 6, u = 0, w = 0;
-    float *fp = malloc(sizeof(float) * 3 * (size_t)fv), *fn = malloc(sizeof(float) * 3 * (size_t)fv);
-    uint32_t *fx = malloc(sizeof(uint32_t) * (size_t)fi);
-    for (int k = 0; k < m->nfeat; k++) {
-      const mp_feat *f = &m->feat[k];
-      if (f->kind != FEAT_WATER) continue;
-      float cx = (f->x - (float)m->w * 0.5f) * MP_TILE, cz = (f->y - (float)m->h * 0.5f) * MP_TILE, r = f->r * MP_TILE;
-      uint32_t o = (uint32_t)u;
-      for (int s = 0; s < SEG; s++) {
-        float a = (float)s * 6.2831853f / SEG, ca = cw_cos(a), sa = cw_sin(a);
-        float r0 = r * (ts - (b->theme == MP_THEME_VOLCANO ? 0.12f : 0.09f)), r1 = r * (ts + 0.005f);
-        fp[u * 3] = cx + ca * r0, fp[u * 3 + 1] = LEVEL + 0.01f, fp[u * 3 + 2] = cz + sa * r0, u++;
-        fp[u * 3] = cx + ca * r1, fp[u * 3 + 1] = LEVEL + 0.01f, fp[u * 3 + 2] = cz + sa * r1, u++;
-      }
-      for (int s = 0; s < SEG; s++) {
-        uint32_t a0 = o + (uint32_t)s * 2, a1 = o + (uint32_t)((s + 1) % SEG) * 2;
-        uint32_t q[6] = { a0, a1 + 1, a0 + 1, a0, a1, a1 + 1 };
-        memcpy(fx + w, q, sizeof q), w += 6;
-      }
-    }
-    for (int c = 0; c < u; c++) fn[c * 3] = 0, fn[c * 3 + 1] = 1, fn[c * 3 + 2] = 0;
-    t3_geometry *fg = t3_geometry_new();
-    t3_geometry_set_attribute(fg, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, fp, u, 3));
-    t3_geometry_set_attribute(fg, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, fn, u, 3));
-    t3_geometry_set_index(fg, t3_attribute_new(T3_UINT32, fx, w, 1));
-    free(fp), free(fn), free(fx);
-    t3_material *fm = t3_mesh_basic_material_new(0xffffff);
-    fm->color = b->theme == MP_THEME_CRYSTAL ? (t3_color){ 0.3f, 0.5f, 0.5f } : (t3_color){ 0.38f, 0.44f, 0.48f };
-    fm->transparent = true;
-    fm->opacity = 0.3f;
-    if (b->theme == MP_THEME_VOLCANO) fm->color = (t3_color){ 0.03f, 0.012f, 0.008f }, fm->opacity = 0.9f;
-    t3_mesh *fmesh = t3_mesh_new(fg, fm);
-    mesh_node(b->node, "Foam", fmesh, false);
-    t3_release(fmesh), t3_release(fg), t3_release(fm);
-  }
 }
 
 static t3_instanced_mesh *static_im(cw_node parent, const char *name, t3_geometry *g, t3_material *mat, int n, bool baked) {
@@ -632,9 +662,15 @@ static cw_node build_lights(mb_built *b, const tdmap *m) {
         base = MP_GROUND_H;
         break;
       }
-    cw_node3d_set_position(n, (t3_vec3){ x, base + l->h, z });
+    float lh = l->h, le = l->energy;
+    for (int k = 0; k < m->nfeat; k++) /* a pool's own glow: lifted, so it lights the pool and its banks evenly, not in one hot spot */
+      if (m->feat[k].kind == FEAT_WATER && CW_CLAMP((int)floorf(m->feat[k].x), 0, m->w - 1) == l->x && CW_CLAMP((int)floorf(m->feat[k].y), 0, m->h - 1) == l->y) {
+        lh = 2.4f, base = POOL_LEVEL, le *= b->theme == MP_THEME_CRYSTAL ? 0.5f : 0.8f;
+        break;
+      }
+    cw_node3d_set_position(n, (t3_vec3){ x, base + lh, z });
     cw_node_set(n, "color", cw_val_color(l->r, l->g, l->b, 1));
-    cw_node_set(n, "energy", cw_val_float(l->energy));
+    cw_node_set(n, "energy", cw_val_float(le));
     cw_node_set(n, "range", cw_val_float(l->range));
     cw_node_set(n, "decay", cw_val_float(2));
     cw_node_set(n, "bake_direct", cw_val_bool(true));

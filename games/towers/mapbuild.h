@@ -4,10 +4,12 @@
  *
  * Under a Node3D "Level" added to the given parent:
  *   - "Light": the theme's light scene (scenes/th_<theme>.cwscene: Sun, Fill, Env, Post);
- *   - "Ground", "Path", "Plaza", "Rock": the terrain over the map and a margin round it (STATIC, each its uv0 over
- *     its own bounds as its lightmap layout), cut along the ground's own curves (map.h: the path's floor and curb,
- *     the plazas, the outcrops' feet, the pools' water line) so no edge between two materials follows the grid;
- *     each the theme's texture for it under vertex colours;
+ *   - "Ground", "Path", "Plaza", "Rock", "Pool": the terrain over the map and a margin round it (STATIC, each its uv0
+ *     over its own bounds as its lightmap layout), cut along the ground's own curves (map.h: the path's floor and
+ *     curb, the plazas, the outcrops' feet, the pools' water line) so no edge between two materials follows the
+ *     grid; each the theme's texture for it under vertex colours. The rock is faceted (each small triangle flat, lit
+ *     as it faces); the pools are their water's surface at MB_POOL_LEVEL, shallow to deep (lava and the crystal
+ *     light glowing: vertex colours over 1);
  *   - "Water": a still sheet over the water tiles (not baked);
  *   - "Decor<f>_<g>", "Lamp_<g>": the props (surface and glow groups), STATIC instanced;
  *   - "BakeLights": the map's light records as bake-only lights, only while baking.
@@ -32,6 +34,7 @@ void mb_chr_simplify(mb_chr *c, int g, float cell); /* fewer triangles for a mod
 t3_color mb_lin(float r, float g, float b);
 
 #define MB_MARGIN 3 /* tiles of scenery drawn round the map (the camera sees past its edges) */
+#define MB_POOL_LEVEL -0.12f /* the pools' water level (m) */
 
 typedef struct mb_built {
   cw_node node;      /* "Level" */
@@ -42,6 +45,8 @@ typedef struct mb_built {
 
 /* the ground's height at a world point (map_ground_h) */
 float mapbuild_height(const tdmap *m, float x, float z);
+/* how deep a pool is at a world point: 0 at its shore to 1 in its deepest, below 0 off the water */
+float mapbuild_pool_deep(const tdmap *m, float x, float z);
 /* Build the map under parent. The lightmap is not touched: call mapbuild_lightmap after the tree has run a frame
  * (the light scene places its sun). */
 bool mapbuild_build(cw_node parent, const tdmap *m, mb_built *out);
@@ -53,7 +58,9 @@ bool mapbuild_lightmap(cw_tree *t, mb_built *b, const char *bake_path, const cha
 t3_color mapbuild_light_at(const mb_built *b, float x, float z);
 void mapbuild_free(mb_built *b);
 /* The bake's fingerprint: map_bake_hash of the map's text folded with the bytes of the theme's decor kit and the
- * lamp (a changed kit makes every bake of its theme stale). tools/check-maps.mjs computes the same. */
+ * lamp (a changed kit makes every bake of its theme stale), then with MB_TERRAIN (a change to how the terrain is built
+ * makes every bake stale: change the string with it). tools/check-maps.mjs computes the same. */
+#define MB_TERRAIN "terrain 2: faceted outcrops, pools with shorelines"
 uint64_t mapbuild_bake_hash(const char *text, int theme);
 void mapbuild_kit(int theme, char *out, int len); /* the theme's decor kit file */
 
