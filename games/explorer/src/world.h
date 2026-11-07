@@ -50,7 +50,7 @@ enum {
 #define NABILITIES 7
 
 /* regions */
-enum { R_HOLLOW, R_ROOTWAY, R_GLASS, R_FEN, R_CLOCK, R_TIDAL, R_STAR, R_SKY, R_ARCHIVE, R_FORGE, R_FROST, R_BLOOM, R_HEART };
+enum { R_GATE, R_ROOTWAY, R_GLASS, R_FEN, R_CLOCK, R_TIDAL, R_STAR, R_SKY, R_ARCHIVE, R_FORGE, R_FROST, R_BLOOM, R_HEART };
 
 /* entity kinds */
 enum {

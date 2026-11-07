@@ -44,12 +44,12 @@ static inline int gate_ability(int g) {
 typedef struct link { int from, to, gate; } link;
 /* from: the region you reach first (the gate's old side) */
 static const link LINKS[] = {
-  { R_HOLLOW, R_ROOTWAY, G_NONE },  { R_ROOTWAY, R_GLASS, G_DJUMP }, { R_GLASS, R_FEN, G_DASH },
+  { R_GATE, R_ROOTWAY, G_NONE },  { R_ROOTWAY, R_GLASS, G_DJUMP }, { R_GLASS, R_FEN, G_DASH },
   { R_FEN, R_CLOCK, G_CLIMB },      { R_CLOCK, R_TIDAL, G_POUND },   { R_TIDAL, R_STAR, G_SWIM },
-  { R_STAR, R_SKY, G_GRAPPLE },     { R_HOLLOW, R_ARCHIVE, G_DASH }, { R_ARCHIVE, R_FORGE, G_POUND },
+  { R_STAR, R_SKY, G_GRAPPLE },     { R_GATE, R_ARCHIVE, G_DASH }, { R_ARCHIVE, R_FORGE, G_POUND },
   { R_CLOCK, R_FORGE, G_CLIMB },    { R_CLOCK, R_BLOOM, G_SWIM },    { R_BLOOM, R_FROST, G_DJUMP },
   { R_FORGE, R_FROST, G_GRAPPLE },  { R_GLASS, R_STAR, G_GRAPPLE },  { R_ROOTWAY, R_SKY, G_GRAPPLE },
-  { R_FEN, R_TIDAL, G_SWIM },       { R_HOLLOW, R_HEART, G_SEAL },   { R_FORGE, R_HEART, G_SEAL },
+  { R_FEN, R_TIDAL, G_SWIM },       { R_GATE, R_HEART, G_SEAL },   { R_FORGE, R_HEART, G_SEAL },
 };
 #define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
 
@@ -64,7 +64,7 @@ typedef struct region_plan {
   int secrets;   /* hidden walls with a relic behind */
 } region_plan;
 static const region_plan PLAN[NREGIONS] = {
-  [R_HOLLOW] = { 0, AB_BOLT, 2, 18, { G_POUND, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
+  [R_GATE] = { 0, AB_BOLT, 2, 18, { G_POUND, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
   [R_ROOTWAY] = { 1, AB_DJUMP, 2, 30, { G_DASH, G_CLIMB, 0 }, { PK_ENERGY, PK_HEALTH, 0 }, 1 },
   [R_GLASS] = { 2, AB_DASH, 2, 30, { G_CLIMB, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
   [R_FEN] = { 0, AB_CLIMB, 1, 22, { G_POUND, 0, 0 }, { PK_ENERGY, 0, 0 }, 1 },
@@ -555,7 +555,7 @@ static void populate(int ri) {
     int x = rint_(X0 + 8, X0 + Wd - 9), y = surface_at(ri, x);
     if (y < 0) continue;
     int kind = (int)(rnd() % EN_KINDS);
-    if (region == R_HOLLOW || region == R_ROOTWAY) kind = (int)(rnd() % 3);
+    if (region == R_GATE || region == R_ROOTWAY) kind = (int)(rnd() % 3);
     if (kind == EN_FLYER) add_ent(EK_ENEMY, EN_FLYER, 0, 0, ri, (float)x + 0.5f, (float)(y - 5));
     else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, (uint8_t)kind, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
   }
@@ -594,7 +594,7 @@ void world_generate(world *w, uint32_t seed) {
   for (int r = 0; r < NREGIONS; r++) {
     const region_plan *p = &PLAN[r];
     int rooms[4], ex, ey;
-    if (r == R_HOLLOW) {
+    if (r == R_GATE) {
       piece_room s[1] = { { 0, 0, 2, 1, RK_START } };
       start_room = place_piece(r, s, 1, rooms, &ex, &ey);
     }

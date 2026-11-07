@@ -10,7 +10,7 @@ const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "
 const char *const BOSS_NAME[NBOSSES] = { "THE MOSS WARDEN", "THE GLASS MANTIS", "THE BRASS SENTINEL", "THE TIDE SERPENT", "THE SKY WARDEN", "THE HEART OF THORNS" };
 
 /* how hard each region is (the stage it is reached at) */
-static const uint8_t TIER[NREGIONS] = { [R_HOLLOW] = 0, [R_ROOTWAY] = 0, [R_GLASS] = 1, [R_FEN] = 2, [R_CLOCK] = 3, [R_TIDAL] = 4, [R_STAR] = 5,
+static const uint8_t TIER[NREGIONS] = { [R_GATE] = 0, [R_ROOTWAY] = 0, [R_GLASS] = 1, [R_FEN] = 2, [R_CLOCK] = 3, [R_TIDAL] = 4, [R_STAR] = 5,
                                         [R_SKY] = 6, [R_ARCHIVE] = 2, [R_FORGE] = 3, [R_FROST] = 5, [R_BLOOM] = 5, [R_HEART] = 6 };
 
 /* ── small helpers ── */

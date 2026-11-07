@@ -5,7 +5,7 @@
 
 /* name, cell rect, then sky, far, mid, near, ground body, walkable top, accent */
 const region_info REGIONS[NREGIONS] = {
-  [R_HOLLOW] = { "The Hollow Gate", 26, 2, 8, 7, 0x6fa7b8, 0x4f8296, 0x3d6a7a, 0x2f5563, 0x4b5f5a, 0x9fd36a, 0xffd27a },
+  [R_GATE] = { "The Lantern Gate", 26, 2, 8, 7, 0x6fa7b8, 0x4f8296, 0x3d6a7a, 0x2f5563, 0x4b5f5a, 0x9fd36a, 0xffd27a },
   [R_ROOTWAY] = { "The Rootway", 14, 3, 12, 9, 0xd08a55, 0xa66a45, 0x80503a, 0x5e3c2f, 0x6b4a35, 0xf2b25c, 0xffe08a },
   [R_GLASS] = { "Glasswater Caves", 14, 12, 12, 10, 0x4f86c9, 0x3e6aa8, 0x335690, 0x283f6e, 0x3c4f7a, 0x8fe0ff, 0x9af0ff },
   [R_FEN] = { "Mirelight Fen", 26, 12, 8, 10, 0x6fa36a, 0x557f55, 0x416545, 0x334f37, 0x4d5a3b, 0xc9e06a, 0xd6ff8a },

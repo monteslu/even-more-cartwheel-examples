@@ -59,7 +59,7 @@ static const mood MOODS[MOOD_COUNT] = {
 };
 int region_mood(int r) {
   switch (r) {
-  case R_HOLLOW: return MOOD_GATE;
+  case R_GATE: return MOOD_GATE;
   case R_ROOTWAY: case R_FEN: return MOOD_ROOTS;
   case R_GLASS: case R_ARCHIVE: return MOOD_CAVES;
   case R_CLOCK: case R_TIDAL: case R_FORGE: return MOOD_DEEP;
