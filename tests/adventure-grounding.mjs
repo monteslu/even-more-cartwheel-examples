@@ -11,6 +11,12 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// software GL, but under the GPU suite lock all the same (a render run loads the machine; the timing suites need it quiet)
+if (!process.env.CW_GPU_SUITE_INNER) {
+  const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'adventure-grounding', 'node', fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+  process.exit(r.status ?? 1);
+}
 const exe = join(ROOT, 'build/native/games/adventure/adventure_auto');
 function run(extra = {}) {
   const env = { ...process.env, LIBGL_ALWAYS_SOFTWARE: '1', SDL_VIDEODRIVER: 'offscreen', SDL_AUDIODRIVER: 'dummy', CW_GPU: 'gl', CW_FRAMES: '3', CW_WARMUP_SPREAD: '0',

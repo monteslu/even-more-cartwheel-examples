@@ -372,7 +372,7 @@ static void house(int rg, float cx, float cz, float w, float d, float h, int doo
       mbuf *m = &MB[rg][MT_SLATE];
       int v0 = m->nv;
       mb_box(m, b.cx, b.cy, b.cz, b.hx, b.hy, b.hz, 0, 2.0f);
-      float s = cw_sin((float)sd * pitch), c = cw_cos((float)sd * pitch);
+      float s = cw_sin(-(float)sd * pitch), c = cw_cos(pitch); /* the outer edge down: an A, not a V */
       for (int v = v0; v < m->nv; v++) { /* rotate about the slab's centre line */
         float *p = m->p + 3 * v, *n = m->n + 3 * v;
         float y = p[1] - b.cy, z = p[2] - b.cz;
@@ -703,10 +703,10 @@ static void paint_and_shape(void) {
   const int N = WORLD_N + 1;
   float *h = malloc(sizeof(float) * (size_t)N * N);
   uint32_t *ctl = malloc(sizeof(uint32_t) * (size_t)N * N);
-  int *pt = malloc(sizeof(int) * (size_t)N * N), *ov = malloc(sizeof(int) * (size_t)N * N), *bl = malloc(sizeof(int) * (size_t)N * N);
+  int *pt = malloc(sizeof(int) * (size_t)N * N), *rgn = malloc(sizeof(int) * (size_t)N * N), *ov = malloc(sizeof(int) * (size_t)N * N), *bl = malloc(sizeof(int) * (size_t)N * N);
   const cw_terrain_def *d = cw_terrain_get_def(W_terrain);
   for (int z = 0; z < N; z++)
-    for (int x = 0; x < N; x++) h[z * N + x] = land_ex((float)x, (float)z, &pt[z * N + x], NULL, &ov[z * N + x], &bl[z * N + x]) - d->origin.y;
+    for (int x = 0; x < N; x++) h[z * N + x] = land_ex((float)x, (float)z, &pt[z * N + x], &rgn[z * N + x], &ov[z * N + x], &bl[z * N + x]) - d->origin.y;
   cw_terrain_set_heights_m(W_terrain, 0, 0, N, N, h);
   /* paint: the zone's layer on the flat, rock on the steep, grass and flowers blended in the meadow, a path's edge
    * softened into what is beside it */
@@ -719,8 +719,9 @@ static void paint_and_shape(void) {
       int blend = 0;
       float n = fbm((float)x / 9, (float)z / 9, 501, 3);
       if (base == 0) { over = 5, blend = (int)(cw_clampf((n - 0.62f) * 2.0f, 0, 1) * 150); }        /* darker moss in patches */
-      if (base == 1) { over = 4, blend = (int)(cw_clampf((n - 0.45f) * 3.0f, 0, 1) * 230); }        /* rock through the snow, in broad patches */
-      if (base == 5) { over = 0, blend = (int)(cw_clampf((h[i] + d->origin.y - 8.6f) * 1.2f, 0, 1) * 200); } /* grass on the marsh's dry humps */
+      if (base == 1) { over = 4, blend = (int)(cw_clampf((n - 0.4f) * 3.0f, 0, 1) * 230); }        /* rock through the snow, in broad patches */
+      if (base == 5 && rgn[i] == RG_WOOD) { over = 0, blend = (int)(cw_clampf((n - 0.42f) * 2.5f, 0, 1) * 220); } /* the wood: a moss floor, grass in the clearings */
+      else if (base == 5) { over = 0, blend = (int)(cw_clampf((h[i] + d->origin.y - 8.6f) * 1.2f, 0, 1) * 200); } /* grass on the marsh's dry humps */
       if (base == 7) { over = 4, blend = (int)(cw_clampf((n - 0.5f) * 2.0f, 0, 1) * 160); }
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
@@ -731,7 +732,7 @@ static void paint_and_shape(void) {
   cw_terrain_sync_physics(W_terrain);
   cw_terrain_scatter_invalidate(W_terrain);
   for (int i = 0; i < N * N; i += 97) W_hash = (W_hash ^ (uint32_t)(int)(h[i] * 1000)) * 16777619u;
-  free(h), free(ctl), free(pt), free(ov), free(bl);
+  free(h), free(ctl), free(pt), free(rgn), free(ov), free(bl);
 }
 
 static void build_meadow(void) {
@@ -1225,21 +1226,21 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.6f, 0.76f, 0.98f }, 0.003f, { 1, 0.95f, 0.85f }, 0.35f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.3f },
+  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.35f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.62f },
   /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
-  { { 0.7f, 0.66f, 0.86f }, 0.0032f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 0.98f },
+  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.26f },
   /* the marsh: teal and violet, a thicker cool mist */
-  { { 0.3f, 0.56f, 0.6f }, 0.0055f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.2f },
+  { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.36f },
   /* the keep: a crimson sunset, ember haze */
   { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 0.94f },
   /* the heights: cold bright air, blue shadows on the snow */
-  { { 0.66f, 0.78f, 0.95f }, 0.0035f, { 0.85f, 0.92f, 1 }, 0.35f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.7f, { 1, 0.96f, 0.9f }, 3.2f, 0.62f },
+  { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.35f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.7f, { 1, 0.96f, 0.9f }, 3.2f, 0.78f },
   /* the underway: lantern light under the roof */
-  { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 1.8f },
+  { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 2.0f },
   /* the spire's downs: wind, a high clear sky */
-  { { 0.58f, 0.74f, 0.96f }, 0.003f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.2f },
+  { { 0.48f, 0.64f, 0.9f }, 0.0018f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.4f },
   /* the glowcap wood: deep green under the canopy, teal glow */
-  { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.45f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.45f },
+  { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.45f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.95f },
 };
 static look CUR;
 static const float g_amb_k = 0.26f; /* the fill under the sun kept low, so shadows have depth */

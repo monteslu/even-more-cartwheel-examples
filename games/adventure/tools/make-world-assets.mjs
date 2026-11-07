@@ -26,7 +26,7 @@ const LAYERS = {
   // 0 lush grass: two greens in clumps, blade streaks, a yellow-green sheen where it is high
   grass: (u, v) => {
     const g = fbm(u, v, 6, 5, 11), clump = fbm(u, v, 14, 3, 12), blade = fbm(u * 4, v * 40, 32, 3, 13);
-    let c = mix3([0.09, 0.19, 0.08], [0.4, 0.56, 0.2], clamp(g * 1.5 - 0.25));
+    let c = mix3([0.07, 0.16, 0.07], [0.42, 0.58, 0.2], clamp(g * 2.0 - 0.5));
     c = mix3(c, [0.52, 0.62, 0.16], smooth(0.6, 0.8, clump) * 0.5);
     c = mul3(c, 0.55 + 0.9 * blade);
     const [f1, , id] = cells(u, v, 48, 14, 1);
@@ -37,9 +37,9 @@ const LAYERS = {
   // 1 snow: wind-packed, faintly blue in the hollows, sparkle-free (it is lit by the sun, not by the texture)
   snow: (u, v) => {
     const g = fbm(u, v, 5, 5, 21), drift = fbm(u * 0.5 + 0.3, v * 2, 3, 3, 22), fine = fbm(u, v, 40, 2, 23);
-    const rip = Math.sin((u * 0.3 + v + fbm(u, v, 4, 3, 24) * 0.35) * Math.PI * 26) * 0.5 + 0.5; // wind ripples (sastrugi)
+    const rip = Math.pow(Math.sin((u * 0.15 + v + fbm(u, v, 3, 3, 24) * 0.12) * Math.PI * 18) * 0.5 + 0.5, 3); // wind ripples (sastrugi): long low ridges
     let c = mix3([0.42, 0.52, 0.74], [0.92, 0.94, 0.98], clamp(g * 0.9 + drift * 0.6 - 0.25));
-    c = mul3(c, (0.82 + 0.22 * fine) * (0.86 + 0.16 * rip));
+    c = mul3(c, (0.84 + 0.2 * fine) * (0.94 + 0.08 * rip));
     return { c, h: 0.3 + 0.35 * drift + 0.1 * fine + 0.15 * rip, ro: 0.7 };
   },
   // 2 the worn path: packed earth, fine grit and a few small stones half sunk in it, ruts along it
@@ -55,7 +55,7 @@ const LAYERS = {
   // 3 sandstone: the canyon floor and its ramps, layered in bands of amber and rose
   sand: (u, v) => {
     const g = fbm(u, v, 6, 5, 41), band = Math.sin((v + fbm(u, v, 3, 3, 42) * 0.25) * Math.PI * 10) * 0.5 + 0.5;
-    let c = mix3([0.36, 0.22, 0.14], [0.9, 0.7, 0.5], band * 0.6 + g * 0.4);
+    let c = mix3([0.28, 0.16, 0.1], [0.92, 0.72, 0.52], clamp((band * 0.6 + g * 0.4) * 1.3 - 0.15));
     c = mix3(c, [0.7, 0.3, 0.24], smooth(0.62, 0.8, fbm(u, v, 4, 3, 43)) * 0.5);
     const [f1, f2] = cells(u, v, 9, 44, 1), crack = 1 - smooth(0.0, 0.05, f2 - f1), grit = fbm(u, v, 48, 2, 45);
     c = mul3(c, (1 - crack * 0.7) * (0.7 + 0.5 * grit));
@@ -427,7 +427,7 @@ function writeSpecies(name, sp) {
 function glowcap() { // the wood's giant mushroom: a pale stem, a glowing cap (the crown)
   const glb = new Glb();
   const stem = glb.pbr('stem', TEX, null, { tint: [0.86, 0.82, 0.7], rough: 0.7, metal: 0 });
-  const cap = glb.pbr('cap', TEX, null, { tint: [0.16, 0.06, 0.34], rough: 0.45, metal: 0, emissive: [0.015, 0.09, 0.11] });
+  const cap = glb.pbr('cap', TEX, null, { tint: [0.34, 0.07, 0.52], rough: 0.45, metal: 0, emissive: [0.02, 0.06, 0.08] });
   const t = new Mesher(), c = new Mesher();
   lathe(t, 'stem', [[-0.2, 0.5], [0.3, 0.38], [3.2, 0.3], [3.6, 0.34]], { n: 12, uv: 1 });
   lathe(c, 'cap', [[3.4, 0.4], [3.5, 2.0], [3.75, 2.1], [4.2, 1.7], [4.7, 0.9], [4.95, 0.0]], { n: 18, uv: 1 });
@@ -467,7 +467,7 @@ if (want('luts')) {
   for (let b = 0; b < N; b++) for (let g = 0; g < N; g++) for (let r = 0; r < N; r++) {
     let c = [r / (N - 1), g / (N - 1), b / (N - 1)].map((x) => Math.max(0, (x - 0.06) / 0.94)).map((x) => x * 0.1 + curve(x) * 0.9); // a black point under the fog and the sky fill, then the S-curve
     const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    c = c.map((x) => Math.min(1, Math.max(0, l + (x - l) * 0.88)));
+    c = c.map((x) => Math.min(1, Math.max(0, l + (x - l) * 0.85)));
     lines.push(c.map((x) => x.toFixed(5)).join(' '));
   }
   writeFileSync(join(ROOT, 'grade', 'contrast.cube'), lines.join('\n') + '\n');

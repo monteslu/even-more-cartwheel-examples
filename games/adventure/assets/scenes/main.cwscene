@@ -34,7 +34,7 @@ vignette_smoothness = 0.6
 
 [node name="Sky" parent="." type="ProceduralSky"]
 sun = "../Sun"
-time_of_day = 10.2
+time_of_day = 9.0
 latitude = 38
 declination = 12
 north = 205
@@ -67,6 +67,8 @@ min_height = -4
 max_height = 90
 grid_quads = 32
 far_distance = 140
+; the terrain receives the sun's shadows but casts none: the hills' own shade inside 40 m was a quarter of the frame on WebGPU
+cast_shadow = false
 layer0_albedo = "textures/terrain/grass_ah.png"
 layer0_normal = "textures/terrain/grass_nr.png"
 layer0_uv_scale = 0.22

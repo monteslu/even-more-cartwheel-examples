@@ -6,6 +6,8 @@
 # The shipping cart's own states are surveyed on the GPU with tools/programs.mjs --carts (see the README).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# one GPU suite lock for the whole batch (software GL, but it loads the machine: the quality timing runs need it quiet), two shots at a time
+if [ -z "${CW_GPU_SUITE_INNER:-}" ]; then CW_GPU_SUITE_INNER=1 exec node "$ROOT/deps/cartwheel-engine/tools/with-gpu-suite.mjs" adventure-survey bash "${BASH_SOURCE[0]}" "$@"; fi
 L="$ROOT/out/proglogs"
 mkdir -p "$L/all"
 RUN() { # <dir> <frames> ENV=V...
@@ -19,7 +21,7 @@ export -f RUN; export L ROOT
 {
   for q in 0 1 2 3 4; do for f in 0 7 12 22 28 38 44 58 64 100 160 182; do echo "q${q}f$f 200 ADV_QUALITY=$q ADV_FROM=$f"; done; done
   for f in 1 12 22; do for p in NOSHADOW NOTREES NOCLOUDS; do echo "p${p}f$f 150 ADV_QUALITY=3 ADV_FROM=$f ADV_PROBE_$p=1"; done; done
-} | xargs -P 4 -L 1 bash -c 'RUN "$@"' _
+} | xargs -P 2 -L 1 bash -c 'RUN "$@"' _
 cat "$L"/[qp]*/adventure_auto.log 2>/dev/null | sort -u > "$L/all/adventure_auto.log"
 echo "$(wc -l < "$L/all/adventure_auto.log") states reported"
 WEBGPU_NODE="${WEBGPU_NODE:-$(ls -d "$ROOT"/../../../wasmcart/node_modules/webgpu-node 2>/dev/null || true)}" CW_PROJECT_ROOT="$ROOT" \

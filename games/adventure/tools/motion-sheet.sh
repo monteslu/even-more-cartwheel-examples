@@ -5,6 +5,8 @@
 # format) or the bot ("-"), a frame or a few apart. Extra environment passes through (ADV_FROM, ADV_NO_HUD, ...).
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
+# one GPU suite lock for the whole batch (software GL, but it loads the machine: the quality timing runs need it quiet), two shots at a time
+if [ -z "${CW_GPU_SUITE_INNER:-}" ]; then CW_GPU_SUITE_INNER=1 exec node "$ROOT/deps/cartwheel-engine/tools/with-gpu-suite.mjs" adventure-motion-sheet bash "${BASH_SOURCE[0]}" "$@"; fi
 APP="$1"; IN="$2"; OUT="$3"; shift 3
 D="$ROOT/out/motion/$(basename "$OUT" .png)"; rm -rf "$D"; mkdir -p "$D"
 EXTRA=()
@@ -17,6 +19,6 @@ if [ "$IN" != "-" ]; then
     require("fs").writeFileSync(process.argv[2], out.join("\n") + "\n");' "$IN" "$D/input.txt"
   EXTRA=(CW_INPUT="$D/input.txt")
 fi
-for f in "$@"; do echo "$f"; done | xargs -P 4 -I{} sh -c '"'"$ROOT"'/games/adventure/tools/swshot.sh" "'"$APP"'" {} "'"$D"'/f$(printf %05d {}).png" '"${EXTRA[*]:-}"' >/dev/null 2>&1 || true'
+for f in "$@"; do echo "$f"; done | xargs -P 2 -I{} sh -c '"'"$ROOT"'/games/adventure/tools/swshot.sh" "'"$APP"'" {} "'"$D"'/f$(printf %05d {}).png" '"${EXTRA[*]:-}"' >/dev/null 2>&1 || true'
 montage "$D"/f*.png -tile 4x -geometry 640x360+4+4 -background '#111' "$OUT"
 echo "$OUT"

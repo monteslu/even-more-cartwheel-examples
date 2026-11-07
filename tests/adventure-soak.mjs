@@ -10,12 +10,18 @@
 // the route stalls and the game is never won, and the soak has to say so.
 //
 //   node tests/adventure-soak.mjs [--minutes 60] [--turbo 30] [--no-control]
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// software GL, but under the GPU suite lock all the same (a render run loads the machine; the timing suites need it quiet)
+if (!process.env.CW_GPU_SUITE_INNER) {
+  const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'adventure-soak', 'node', fileURLToPath(import.meta.url), ...process.argv.slice(2)],
+    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+  process.exit(r.status ?? 1);
+}
 const argv = process.argv.slice(2);
 const arg = (k, d) => (argv.includes(k) ? argv[argv.indexOf(k) + 1] : d);
 const exe = join(ROOT, 'build/native/games/adventure/adventure_auto'), pak = exe + '.cwpak';
