@@ -48,9 +48,10 @@ put('shares-one-seat.cwtd', 'two players, every slot dealt to the first', renum(
 { // terrain: a pool over the core's block of path (the creeps would walk under its water)
   put('terrain-pool-on-path.cwtd', "a pool cut into the core's block of path", before(renum(L, 909), 'prop ', `feature water ${core[0] + 1} ${core[1] + 1} 2.2 0`));
 }
+put('floor-narrow.cwtd', 'its routes drawn too narrow for the creeps to pass (the tiles as they were)', renum(L, 910).map((l) => (l.startsWith('route ') ? l.split(' ').map((v, i) => (i && i % 3 === 0 ? String(+(+v * 0.3).toFixed(3)) : v)).join(' ') : l)));
 put('bake-missing.cwtd', 'no bake', renum(L, 905));
 put('bake-stale.cwtd', 'its bake hash is of another map', renum(L, 906));
 writeFileSync(join(B, 'lightmaps/906.cwlm'), 'x');
 writeFileSync(join(B, 'lightmaps/906.hash'), '0000000000000000\n');
 put('clear-overwhelmed.cwtd', 'far too strong for anyone to hold', renum(L, 907).map((l) => l.replace(/^diff .*/, 'diff 12').replace(/^waves .*/, 'waves 18')));
-console.log('gen-broken: 8 controls');
+console.log('gen-broken: 9 controls');

@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
+import { fields, floorBlocked, CURB, PAD_R } from './fields.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT = join(HERE, '../assets/maps');
@@ -257,8 +258,11 @@ function makeMap(n) {
     if (steps[0] < mainLen * 0.8) continue;
     if (steps.slice(1).some((s) => s < Math.max(34, steps[0] * 0.6))) continue; // a joining gate's way is long too
     // the core with room round it: no path passing within a tile of its block but its own way in
-    const m = { n, theme, seed, family, g, gates, core: lay.core, slots: [], props: [], lights: [], feats: [] };
+    const m = { n, theme, seed, family, g, gates, routes, core: lay.core, slots: [], props: [], lights: [], feats: [] };
+    m.F = shape(m);
     if (!placeSlots(m, R, t)) continue;
+    m.F = shape(m); // the pads pushed into the floor: the creeps still get through
+    if (floorBlocked({ w: W, h: H, core: m.core, spawn: m.gates }, m.F).length) continue;
     placeFeatures(m, R);
     placeScenery(m, R);
     return m;
@@ -266,9 +270,12 @@ function makeMap(n) {
   throw new Error(`map ${n} (${family}): no layout after 600 attempts`);
 }
 
+// the ground's shape (fields.mjs, map.c) as the map stands
+const shape = (m) => fields({ w: W, h: H, tile: (x, y) => m.g[y]?.[x] ?? 'g', routes: m.routes, core: m.core, slots: m.slots, feats: m.feats });
+
 // ── the terrain's features: smooth rock outcrops and pools with banks, on open ground away from paths and pads ──
 const FEAT = {
-  meadow: { water: 2, rock: 2 }, autumn: { water: 1, rock: 3 }, desert: { water: 1, rock: 4 }, snow: { water: 2, rock: 3 },
+  meadow: { water: 2, rock: 2 }, autumn: { water: 2, rock: 3 }, desert: { water: 2, rock: 3 }, snow: { water: 2, rock: 3 },
   volcano: { water: 2, rock: 3 }, crystal: { water: 2, rock: 2 },
 };
 function placeFeatures(m, R) {
@@ -287,7 +294,7 @@ function placeFeatures(m, R) {
   for (const [kind, count] of [['water', want.water], ['rock', want.rock]]) {
     kindNow = kind;
     for (let k = 0, tries = 0; k < count && tries < 300; tries++) {
-      const r = kind === 'water' ? 1.8 + R() * 1.8 : 1.4 + R() * 1.6;
+      const r = kind === 'water' ? (m.theme === 'desert' || m.theme === 'autumn' ? 2.6 : 1.8) + R() * 1.8 : 1.4 + R() * 1.6; // the warm themes' pools wider: their cool accent
       const x = 1 + R() * (W - 2), y = 1 + R() * (H - 2);
       if (!clear(x, y, r)) continue;
       m.feats.push({ kind, x, y, r, h: kind === 'rock' ? 1.1 + R() * 1.1 : 0 });
@@ -328,6 +335,7 @@ function placeSlots(m, R, t) {
   for (let y = 1; y < H - 1; y++)
     for (let x = 1; x < W - 1; x++) {
       if (g[y][x] !== 'g' || !near(g, x, y, '.', 1)) continue;
+      if (m.F.floorD(x + 0.5, y + 0.5).d < PAD_R + CURB - 0.35) continue; // the pad would push too far into the floor
       if (Math.abs(x - cx - 0.5) < 2.6 && Math.abs(y - cy - 0.5) < 2.6) continue; // room round the core
       if (m.gates.some(([gx, gy]) => Math.abs(gx - x) + Math.abs(gy - y) < 4)) continue; // and round the gates
       cand.push({ x, y, r: reach(g, x, y) + R() * 3 });
@@ -381,6 +389,8 @@ function placeScenery(m, R) {
       // turned so its first side toward the path is the one it leans out over
       const turn = [[0, -1], [1, 0], [0, 1], [-1, 0]].findIndex(([dx, dy]) => g[y + dy]?.[x + dx] === '.');
       if (turn < 0) continue;
+      const [ldx, ldy] = [[0, -1], [1, 0], [0, 1], [-1, 0]][turn];
+      if (m.F.floorD(x + 0.5 + ldx * 0.125, y + 0.5 + ldy * 0.125).d < CURB + 0.3) continue; // on level ground by the curb
       m.props.push({ x, y, kind: 'lamp', frame: 0, turn });
       m.lights.push({ x, y, h: 1.5, c: lamp, e: 45, r: 7 });
       since = 0;
@@ -392,11 +402,11 @@ function placeScenery(m, R) {
       if (Math.abs(x - m.core[0] - 0.5) < 2.6 && Math.abs(y - m.core[1] - 0.5) < 2.6) continue;
       const open = !blocked(x, y) && !near(g, x, y, '~', 1) && !near(g, x, y, '#', 1);
       const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
-      if (open && R() < (edge ? 0.6 : 0.42)) {
+      if (open && R() < (edge ? 0.5 : 0.26)) {
         const frame = R.int(4);
         m.props.push({ x, y, kind: 'decor', frame, turn: R.int(4) });
         if (GLOW[m.theme] && R() < 0.25 && m.lights.length < 90) m.lights.push({ x, y, h: 1.2, c: GLOW[m.theme], e: 30, r: 5 });
-      } else if (!feat(x, y) && !near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.3)
+      } else if (!feat(x, y) && !near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.16)
         m.props.push({ x, y, kind: 'decor', frame: 4 + R.int(4), turn: R.int(4) });
     }
 }
@@ -415,6 +425,7 @@ function write(m) {
   for (const [x, y] of m.gates) L.push(`spawn ${x} ${y}`);
   L.push(`core ${m.core[0]} ${m.core[1]}`);
   for (const s of m.slots) L.push(`slot ${s.x} ${s.y} ${s.o2} ${s.o3} ${s.o4}`);
+  for (const r of m.routes) L.push(`route ${r.map((p) => p.map((v) => +v.toFixed(3)).join(' ')).join(' ')}`);
   for (const q of m.feats) L.push(`feature ${q.kind} ${q.x.toFixed(2)} ${q.y.toFixed(2)} ${q.r.toFixed(2)} ${q.h.toFixed(2)}`);
   for (const p of m.props) L.push(`prop ${p.x} ${p.y} ${p.kind} ${p.frame} ${p.turn}`);
   for (const l of m.lights) L.push(`light ${l.x} ${l.y} ${f(l.h)} ${f(l.c[0])} ${f(l.c[1])} ${f(l.c[2])} ${f(l.e)} ${f(l.r)}`);

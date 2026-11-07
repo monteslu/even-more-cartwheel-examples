@@ -8,3 +8,5 @@ basic+map+vcol+rep+lmap+fog2+c1lmap
 standard+vcol+instbig+fog2+icol+l2001+xplain
 standard+map+vcol+rep+fog2+l2001
 standard+trans+fog2+l2001
+standard+trans+fog2+l2001+xplain
+basic+trans+fog2

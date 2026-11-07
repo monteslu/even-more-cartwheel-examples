@@ -19,17 +19,36 @@ whole map on one screen, a fixed camera per map.
   body (crawler's dark body with one accent) is lifted and tinted in the kind's colour (cyan skitters, bone ghouls,
   orange hounds, gold imps, violet sporelings, lime bloaters, pale shades, crimson ogres), sizes run from the small
   skitters to bloaters half again as wide and ogres two thirds bigger, and an edge in the same hue (crawler's hull)
-  parts each body from its neighbours; blob shadows stay light so a crowd is not a field of dark circles. Towers wear their owner's colour on a trim band and glow in
-  their kind's colour: bolt pale blue, frost ice, beam magenta, mortar orange.
+  parts each body from its neighbours; blob shadows stay light so a crowd is not a field of dark circles. Each tower kind has its own hue on its body
+  (the head deeper than the base), its rim light and its glow, far apart round the wheel: bolt violet, frost ice-cyan,
+  beam rose, mortar amber; the owner's colour is on the base's trim and a lit disc under it.
 - Text is at least 2.4% of the screen's height; prompts are the engine's button prompts.
 
 ## The look: colour, not darkness
 
-- Six themes, five maps each: meadow (lush green, sandy dirt), autumn woods (gold and red), desert (sand and
-  terracotta), snowfields (white and ice blue), volcano (basalt with glowing cracks and lava pools, warm and
-  magenta light), crystal vale (violet grass, teal glow). Every one is bright: mid-key ground, a strong sun from the
-  north-west that models the banks and the creeps, a sky-coloured fill from the other side, a colour grade per theme
-  (gen-luts.mjs: an S-curve, split toning, saturation, a lifted black), contrast without washing out.
+- Six themes, five maps each, each a value hierarchy with a complementary accent (mapbuild.c PAL):
+  meadow (deep green ground, a path of pale packed earth in a red brick curb, blue pools), autumn woods (gold and
+  red ground, blue-grey slate cobbles), desert (bright sand, red-brown sandstone flags, teal pools, red rock), snowfields (white ground, dark frozen
+  earth and gravel), volcano (dark basalt glowing orange in patches, copper-green mineral crust between them and on the outcrops, a pale
+  blue-grey ash crust path, lava pools rimmed
+  with cooling crust), crystal vale (deep violet ground, pale
+  flagstones, glowing teal pools). Every path is a ground material with texture at the play camera, and its wide
+  stretches (a field the creeps spread over) are paved as a plaza of square-cut slabs.
+- The value hierarchy: the path a clear step lighter or darker than the ground on every theme, its edge drawn by a
+  dark curb; every edge between two materials (the floor and its curb, the plaza, the outcrops' feet, the pools'
+  water line) is a smooth curve: the terrain is built from the routes' own curves (map.h, the ground's shape) and
+  each triangle cut along them, so no tile staircase shows anywhere; the outcrops modelled by the sun with ledges and
+  weathering, the pools with a pale rim of ripples; the decor thinned and darkened, cooled against a warm theme, so it frames the play instead of competing;
+  the towers lifted off it with a rim light in their kind's hue, glossier surfaces, a lit disc of the owner's colour under each and
+  a brighter team trim; the creeps tinted by kind with an ink outline, so they read on a pale path and on a dark
+  ground alike.
+- The grade (gen-luts.mjs): a strong S-curve (more on the low-contrast themes), split toning with cool shadows, the
+  blacks kept deep, saturation held level; exposure per theme for a mid-key frame. tests/towers-look.mjs holds one
+  map a theme to it: mean luma 90 to 135 (75 for the darker volcano and crystal), a standard deviation of 42 or
+  more (the paths are their materials' colours now, not near-white fills), local contrast (luma against its 33 x 33 neighbourhood) of 13 or more, a complementary accent (4% of the
+  saturated pixels 90 degrees or more round the wheel from the commonest hue), saturation 0.25 to 0.62, and no staircase edges (STAIRS_MAX: the share of
+  strong edges lying along the screen's axes, at a scale past the textures' grain); frames flattened halfway to
+  their mean must fail, and so must a frame with a tile staircase drawn across it.
 - The ground and path are baked (the sun, the sky, the lamps and glowing decor, with the trees' and rocks' shadows)
   and drawn unlit; everything that moves takes the bake's light where it stands; the towers' flashes, the beams' hits,
   the core and the gates are clustered lights, and every moving light shows on the baked ground as a pool.
@@ -99,7 +118,7 @@ The effects (fx.c, view.c):
 Health climbs with the wave (diff x (1 + 0.08 k + 0.002 k^2), k the wave less one); a wave sends
 30 x 1.19^k x diff^0.5 creeps (skitters three for one, ogres one for six) over 10 to 22 seconds from every gate. The
 map's kinds arrive in its order, a new one every few waves. Creeps are agents of the engine's crowd on the map's
-navmesh (the path tiles), steered by one flow field from the core; the crowd keeps them apart.
+navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), steered by one flow field from the core; the crowd keeps them apart.
 
 ## Waves, gold and the core
 
@@ -119,7 +138,9 @@ navmesh (the path tiles), steered by one flow field from the core; the crowd kee
   other side, an open field the creeps spread over before a choke into the core, and a long wandering way. From map 7
   a second gate's path merges into the first part way along (two gates to map 18, two or three after). The generator
   rejects a layout whose runs touch (a gate's way to the core must be about as long as its route) or whose gates are
-  not two tiles on the edge. Pads go where they reach the most path, none touching.
+  not two tiles on the edge, or whose floor is shut by the pads' level ground. Pads go where they reach the most
+  path, none touching, none pushing far into the floor. Each route is written to the map (`route` records), so the
+  game draws the ground from the very curve the tiles were rasterised from.
 - Terrain features (`feature` records): smooth rock outcrops (domes run together into ridges) and pools with banks
   (a bowl under a still sheet of water; lava on the volcano, glowing pools in the crystal vale), on open ground away
   from the paths and pads. The theme's decor fills the rest (big props only where nothing walks or builds round
@@ -131,7 +152,8 @@ navmesh (the path tiles), steered by one flow field from the core; the crowd kee
   glows and the props' shadows); the bake records the hash of what it baked.
 - `tools/check-maps.mjs` (CI) fails a broken map: every gate reaches the core, every pad beside the path and reaching
   enough of it, pads not touching, fair shares for two, three and four players, every prop on flat ground (its
-  model's footprint over the heightfield), the features off the paths and pads, the bake present and matching, and
+  model's footprint over the ground's shape, tools/fields.mjs mirroring map.c), the features off the floor and the
+  pads, a walkable floor from every gate to the core with room to pass, the bake present and matching, and
   two bots hold the map in the soak build (CI builds `towers_soak` natively for it). The maps in `tools/maps-broken/`
   (written by `tools/gen-broken.mjs`) are each broken on purpose in one way and must each fail their own check.
 

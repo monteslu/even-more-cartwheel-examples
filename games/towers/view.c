@@ -16,6 +16,7 @@
 #include "cartwheel/core.h"
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
+#include "cartwheel/rim_light.h"
 #include "cartwheel/splats.h"
 #include "cartwheel/vfs.h"
 #include "game.h"
@@ -23,7 +24,8 @@
 
 t3_color lin(float r, float g, float b) { return mb_lin(r, g, b); }
 const float PCOL[MAXP][3] = { { 0.25f, 0.65f, 1.0f }, { 1.0f, 0.55f, 0.12f }, { 0.4f, 0.95f, 0.35f }, { 0.95f, 0.3f, 0.8f } };
-const float TCOL[TK_KINDS][3] = { { 0.55f, 0.8f, 1.0f }, { 0.6f, 0.95f, 1.0f }, { 1.0f, 0.3f, 0.75f }, { 1.0f, 0.6f, 0.2f } };
+/* each tower kind its own hue, far apart round the wheel: violet bolt, ice-cyan frost, rose beam, amber mortar */
+const float TCOL[TK_KINDS][3] = { { 0.66f, 0.46f, 1.0f }, { 0.32f, 0.86f, 1.0f }, { 1.0f, 0.28f, 0.52f }, { 1.0f, 0.62f, 0.14f } };
 
 static const t3_mat4 ZERO;
 #define PAD_H 0.12f /* a pad's top: the towers stand on it */
@@ -44,6 +46,7 @@ static struct {
   partv base[TK_KINDS], head[TK_KINDS];
   float muzzle[TK_KINDS][3][3];
   t3_instanced_mesh *pad, *pad_glow, *pad_trim;
+  t3_color tint[TK_KINDS][2]; /* a tower's body in its kind's hue: the base lighter, the head deeper */
   t3_instanced_mesh *core[4], *core_glow[4];
   int core_frames;
   t3_instanced_mesh *portal, *portal_glow, *shell, *shell_glow;
@@ -228,7 +231,7 @@ static t3_geometry *hull(t3_geometry *g, float d) {
 static void kind_load(int k) {
   kindv *kv = &V.k[k];
   if (!mb_chr_load(&kv->c, MON_FILE[k])) return;
-  mb_chr_simplify(&kv->c, 0, 0.115f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
+  mb_chr_simplify(&kv->c, 0, 0.14f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
   kv->r = kv->c.rad;
@@ -237,7 +240,8 @@ static void kind_load(int k) {
   t3_material *em = t3_mesh_basic_material_new(0xffffff);
   em->side = T3_BACK_SIDE;
   t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
-  em->color = (t3_color){ kc.r * 1.6f, kc.g * 1.6f, kc.b * 1.6f };
+  em->color = (t3_color){ kc.r * 0.05f + 0.012f, kc.g * 0.05f + 0.012f, kc.b * 0.05f + 0.016f }; /* an ink outline: the tinted body pops on the dark ground, the outline on the pale path */
+  (void)kc;
   for (int f = 0; f < kv->nwalk && f < MB_MAXF; f++) {
     int cap = MON_CAP[k] / CW_MAX(kv->nwalk, 1) * 3 / 2 + 48;
     kv->im[f] = imesh(MON_NAME[k], t3_retain(kv->c.geo[0][f]), t3_retain(m), cap);
@@ -306,12 +310,25 @@ bool view_init_step(cw_node root, int *done_, int *total) {
     kind_load(s - S_KINDS);
   } else if (s >= S_TOWERS && s < S_PARTS) {
     int k = s - S_TOWERS;
+    for (int part = 0; part < 2; part++) {
+      float a = part ? 0.8f : 0.55f;
+      V.tint[k][part] = lin(1 - a + a * TCOL[k][0], 1 - a + a * TCOL[k][1], 1 - a + a * TCOL[k][2]);
+    }
     static const char *const ID[TK_KINDS] = { "bolt", "frost", "beam", "mortar" };
     char f[64];
     snprintf(f, sizeof f, "models/tower_%s_base.cwchar", ID[k]);
-    V.base[k].n = model_parts(f, "TowerBase", V.base[k].surf, V.base[k].glow, V.base[k].trim, 3, MAXT, fb_tower, 0.55f);
+    V.base[k].n = model_parts(f, "TowerBase", V.base[k].surf, V.base[k].glow, V.base[k].trim, 3, MAXT, fb_tower, 0.4f);
     snprintf(f, sizeof f, "models/tower_%s_head.cwchar", ID[k]);
-    V.head[k].n = model_parts(f, "TowerHead", V.head[k].surf, V.head[k].glow, V.head[k].trim, 3, MAXT, fb_head, 0.4f);
+    V.head[k].n = model_parts(f, "TowerHead", V.head[k].surf, V.head[k].glow, V.head[k].trim, 3, MAXT, fb_head, 0.3f);
+    { /* the towers pop: a rim of the kind's own hue round every part, lit from the camera's side */
+      cw_rim_light_desc rd = cw_rim_light_default();
+      rd.color = lin(TCOL[k][0], TCOL[k][1], TCOL[k][2]);
+      rd.strength = 1.2f, rd.power = 2.4f, rd.near = 0, rd.far = 1, rd.close = 1;
+      for (int l = 0; l < 3; l++) {
+        if (V.base[k].surf[l]) cw_rim_light_apply(V.base[k].surf[l]->mesh.materials[0], &rd);
+        if (V.head[k].surf[l]) cw_rim_light_apply(V.head[k].surf[l]->mesh.materials[0], &rd);
+      }
+    }
   } else if (s == S_PARTS) {
     model_parts("models/pad.cwchar", "Pads", &V.pad, &V.pad_glow, &V.pad_trim, 1, MP_MAXSLOT, fb_pad, 0.7f);
     V.core_frames = model_parts("models/core.cwchar", "Core", V.core, V.core_glow, NULL, 4, 1, fb_core, 0.3f);
@@ -516,7 +533,7 @@ static void sync_creeps(const sim *s, float time) {
     if (e->boss && e->flash <= 0) c.r *= 1.3f;
     t3_instanced_mesh_set_color_at(im, n, c);
     if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.55f);
-    else if ((i & 1) == 0 || s->nenemies < 1200) shadow_at(e->x, e->y, 0.3f * sc, 0.4f);
+    else if (e->kind != CK_SKITTER && ((i & 1) == 0 || s->nenemies < 1200)) shadow_at(e->x, e->y, 0.3f * sc, 0.4f); /* (the swarm casts none) */
     drawn++;
   }
   for (int k = 0; k < CK_KINDS; k++)
@@ -539,7 +556,7 @@ static void sync_towers(const sim *s, float time) {
     if (V.pad && npad < MP_MAXSLOT) {
       put(V.pad, npad, x, MP_GROUND_H, z, (float)(k % 4) * 1.5707963f, 1);
       t3_instanced_mesh_set_color_at(V.pad, npad, gl);
-      if (V.pad_trim) put(V.pad_trim, npad, x, MP_GROUND_H, z, (float)(k % 4) * 1.5707963f, 1), t3_instanced_mesh_set_color_at(V.pad_trim, npad, lin(pc[0], pc[1], pc[2]));
+      if (V.pad_trim) put(V.pad_trim, npad, x, MP_GROUND_H, z, (float)(k % 4) * 1.5707963f, 1), t3_instanced_mesh_set_color_at(V.pad_trim, npad, (t3_color){ lin(pc[0], pc[1], pc[2]).r * 1.8f, lin(pc[0], pc[1], pc[2]).g * 1.8f, lin(pc[0], pc[1], pc[2]).b * 1.8f });
       if (V.pad_glow) {
         float p = t->alive ? 0.4f : 0.9f + 0.3f * cw_sin(time * 2.0f + (float)k);
         put(V.pad_glow, npad, x, MP_GROUND_H, z, (float)(k % 4) * 1.5707963f, 1);
@@ -564,7 +581,7 @@ static void sync_towers(const sim *s, float time) {
     if (fb >= 0 && b->surf[fb] && nb[kd][fb] < MAXT) {
       int n = nb[kd][fb]++;
       put_s(b->surf[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC);
-      t3_instanced_mesh_set_color_at(b->surf[fb], n, gl);
+      t3_instanced_mesh_set_color_at(b->surf[fb], n, (t3_color){ gl.r * V.tint[kd][0].r, gl.g * V.tint[kd][0].g, gl.b * V.tint[kd][0].b });
       if (b->glow[fb]) put_s(b->glow[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC), t3_instanced_mesh_set_color_at(b->glow[fb], n, glc);
       if (b->trim[fb]) put_s(b->trim[fb], n, x, MP_GROUND_H + PAD_H, z, 0, TSC, TSC * grow, TSC), t3_instanced_mesh_set_color_at(b->trim[fb], n, lin(pc[0], pc[1], pc[2]));
     }
@@ -574,7 +591,7 @@ static void sync_towers(const sim *s, float time) {
     if (fh >= 0 && h->surf[fh] && nh[kd][fh] < MAXT) {
       int n = nh[kd][fh]++;
       put(h->surf[fh], n, x, hy, z, yaw, grow * TSC);
-      t3_instanced_mesh_set_color_at(h->surf[fh], n, gl);
+      t3_instanced_mesh_set_color_at(h->surf[fh], n, (t3_color){ gl.r * V.tint[kd][1].r, gl.g * V.tint[kd][1].g, gl.b * V.tint[kd][1].b });
       if (h->glow[fh]) put(h->glow[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->glow[fh], n, glc);
       if (h->trim[fh]) put(h->trim[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->trim[fh], n, lin(pc[0], pc[1], pc[2]));
     }
@@ -582,9 +599,10 @@ static void sync_towers(const sim *s, float time) {
     cw_splats_add(V.shadows, (t3_vec3){ x + 0.5f, 0, z + 0.45f }, 2.4f, 1.8f, 0.6f, 0, (t3_color){ 1, 1, 1 }, 0.75f);
     if (kd == TK_FROST) {
       float r = TOWER[TK_FROST].range[L];
-      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, r * 2, r * 2, time * 0.3f, 0, (t3_color){ 0.25f, 0.65f, 1.0f }, 0.35f + 0.1f * cw_sin(time * 2.5f + (float)k));
+      cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, r * 2, r * 2, time * 0.3f, 0, (t3_color){ 0.25f, 0.65f, 1.0f }, 0.16f + 0.05f * cw_sin(time * 2.5f + (float)k));
     } else
       cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 2.6f, 2.6f, 0, 0, lin(tc[0], tc[1], tc[2]), 0.35f * pulse);
+    cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 3.2f, 3.2f, 0, 0, lin(pc[0], pc[1], pc[2]), 0.9f); /* a lit disc of the owner's colour under every tower */
     /* the beam: from the emitter to the target, white-hot at its core, wider and hotter as it ramps */
     if (kd == TK_BEAM && t->tgt >= 0 && s->e[t->tgt].alive && nbeam < MAXT) {
       const creep *e = &s->e[t->tgt];
