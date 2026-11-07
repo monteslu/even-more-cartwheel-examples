@@ -171,7 +171,7 @@ static void player_hud(const sim *S, int i, cw_rect R, float u, int players, flo
     float hy = R.y + R.h * 0.62f;
     cw_color fg = rgba(1, 1, 1, a), bg = rgba(BG.r, BG.g, BG.b, BG.a * a);
     cw_vec2 s1 = pill("{steer_up} push   {ollie} hold, let go: pop   {grind} near a rail: grind", i, cx, hy, 0.5f, 0, 26 * u, fg, bg);
-    pill("{flip} flip   {grab} grab   {manual} manual   {reset} start point", i, cx, hy + s1.y + 6 * u, 0.5f, 0, 26 * u, fg, bg);
+    pill("{flip} flip   {grab} grab   {manual} manual   {reset} start point, hold: setup", i, cx, hy + s1.y + 6 * u, 0.5f, 0, 26 * u, fg, bg);
   }
   (void)t;
 }

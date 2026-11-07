@@ -48,7 +48,7 @@ static struct {
   sim S;
   skater prev[MAXP];
   bool built, in_match;
-  int phase, players, results_t, best_shown, view_park_id, rag_park_id;
+  int phase, players, results_t, best_shown, view_park_id, rag_park_id, back_hold;
   bool new_best;
   ui_state ui;
   bot bots[MAXP];
@@ -283,6 +283,18 @@ static void setup_update(void) {
 }
 
 static void run_update(void) {
+#if !AUTO
+  /* back held a second and a half: the run ends, back to the setup (a tap is a start point, sim.c) */
+  if (cw_action_pressed(0, G.reset)) {
+    if (++G.back_hold > TPS * 3 / 2) {
+      G.back_hold = 0;
+      audio_menu(2);
+      G.phase = PH_SETUP;
+      park_go(G.ui.park, MODE_FREE, G.players);
+      return;
+    }
+  } else G.back_hold = 0;
+#endif
   input in[MAXP];
   read_input(in);
   memcpy(G.prev, G.S.s, sizeof G.prev);
