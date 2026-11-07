@@ -462,7 +462,12 @@ void kit_ground(kit *b, float x0, float z0, float x1, float z1, const float *hol
         float xn = fminf(xe, x + 8.0f);
         for (float zz = za; zz < zb - 1e-4f; zz += 8.0f) {
           float zn = fminf(zb, zz + 8.0f);
-          quad_n(b, V(x, 0, zz), V(xn, 0, zz), V(xn, 0, zn), V(x, 0, zn), up, SURF_RIDE, mat, col);
+          /* each slab a shade apart (a poured park is a patchwork), from its corner: the same on every host */
+          uint32_t hh = (uint32_t)(int)(x * 7.0f) * 73856093u ^ (uint32_t)(int)(zz * 7.0f) * 19349663u;
+          hh = (hh ^ (hh >> 13)) * 1274126177u;
+          float k = 0.93f + 0.1f * (float)((hh >> 8) & 255) / 255.0f;
+          const float tint[3] = { col[0] * k, col[1] * k, col[2] * (k * 0.98f + 0.02f) };
+          quad_n(b, V(x, 0, zz), V(xn, 0, zz), V(xn, 0, zn), V(x, 0, zn), up, SURF_RIDE, mat, tint);
         }
         x = xn;
       }

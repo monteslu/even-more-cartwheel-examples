@@ -1,0 +1,7 @@
+# skate: what its carts pack. The skaters come from tools/chars/make-skaters.mjs; the parks, the boards, the
+# textures and the sounds are made in code at load.
+project.cwproj
+models/kai.glb
+models/nova.glb
+models/dex.glb
+models/marlo.glb

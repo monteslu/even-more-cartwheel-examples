@@ -5,7 +5,7 @@
 const char *const MODE_NAMES[MODE_COUNT] = { "FREE SKATE", "SCORE ATTACK", "SCORE BATTLE" };
 
 static const int GOAL_SCORES[PARK_COUNT][3] = {
-  { 20000, 60000, 140000 }, { 20000, 55000, 120000 }, { 25000, 70000, 150000 }, { 20000, 60000, 130000 }, { 20000, 55000, 120000 },
+  { 15000, 40000, 90000 }, { 15000, 40000, 90000 }, { 20000, 50000, 110000 }, { 15000, 40000, 90000 }, { 15000, 40000, 90000 },
 };
 
 void sim_init(sim *S, int park_id, int mode, int players) {

@@ -343,7 +343,7 @@ static void build_mega(kit *b, int variant) {
   /* the line runs toward +z: the roll in's top deck at z -70, its foot at z -48 */
   const float RH = 14;
   kit_piece(b);
-  kit_ground(b, -30, -80, 40, 70, NULL, 0, MAT_ASPHALT, C_CONC);
+  kit_ground(b, -30, -80, 40, 70, NULL, 0, MAT_ASPHALT, C_ASPH);
   kit_piece(b);
   kit_fence(b, -30, -80, 40, 70, 1.2f, MAT_CONCRETE, C_CONC2);
   /* the roll in: a bank down from the tower (the rider rides toward +z, so the ramp rises toward -z: yaw 0) */

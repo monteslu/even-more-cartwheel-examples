@@ -1,0 +1,11 @@
+skate (working title)
+
+Code, parks, trick names and the four skaters: original to this repository (MIT, see LICENSE).
+
+- The skaters are made by tools/chars/make-skaters.mjs, the character generator of the brawler example in
+  more-cartwheel-examples (our own code, MIT), copied here with four skaters' proportions and outfits.
+- The ragdolls (src/rag.c) follow the brawler example's.
+- The procedural texture pipeline (src/gfx.c) follows the arena and derby examples' (our own code, MIT).
+- Built on cartwheel-engine and three.c (MIT); Box3D (MIT) moves the ragdolls.
+
+No sampled audio, image or model files from anywhere else: every texture and sound is made in code at load.

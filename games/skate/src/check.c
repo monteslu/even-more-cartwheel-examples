@@ -20,6 +20,7 @@
 #include <unistd.h>
 #endif
 
+#include "cartwheel/physics3d.h"
 #include "game.h"
 
 /* ── test parks ─────────────────────────────────────────────────────────── */
@@ -161,7 +162,113 @@ static bool rail_shot(float off, float ang) {
   return locked;
 }
 
+/* ── the engine's Box3D, for the record: a frictionless sphere (a wheel's size) on the same meshes, stepped as the
+ * engine steps a world (60 Hz, 4 substeps). Reported beside the solvers, not judged: the answer to "would the engine's
+ * physics do for a board?" ── */
+static cw_world3d b3_world(const park *k, cw_mesh3d *mesh) {
+  cw_world3d_def wd = cw_world3d_default_def();
+  wd.gravity = V(0, -GRAV, 0);
+  wd.workers = 1;
+  wd.substeps = 4;
+  cw_world3d w = cw_world3d_create(&wd);
+  int n = 0;
+  for (int i = 0; i < k->nt; i++) n += k->t[i].surf != SURF_NONE;
+  v3 *vs = malloc(sizeof *vs * (size_t)n * 3);
+  int32_t *ix = malloc(sizeof *ix * (size_t)n * 3);
+  int m = 0;
+  for (int i = 0; i < k->nt; i++) {
+    const ptri *t = &k->t[i];
+    if (t->surf == SURF_NONE) continue;
+    vs[m * 3] = t->a, vs[m * 3 + 1] = t->b, vs[m * 3 + 2] = t->c;
+    ix[m * 3] = m * 3, ix[m * 3 + 1] = m * 3 + 1, ix[m * 3 + 2] = m * 3 + 2;
+    m++;
+  }
+  *mesh = cw_mesh3d_create(vs, m * 3, ix, m);
+  free(vs), free(ix);
+  cw_body3d_def bd = cw_body3d_default_def();
+  bd.type = CW_BODY_STATIC;
+  cw_body3d g = cw_body3d_create(w, &bd);
+  cw_shape3d_def sd = cw_shape3d_default_def();
+  sd.material.friction = 0;
+  cw_shape3d_mesh(g, &sd, *mesh, V(1, 1, 1));
+  return w;
+}
+static cw_body3d b3_ball(cw_world3d w, v3 p, v3 v) {
+  cw_body3d_def bd = cw_body3d_default_def();
+  bd.position = p;
+  bd.linear_velocity = v;
+  bd.bullet = true;
+  bd.sleep = false;
+  cw_body3d b = cw_body3d_create(w, &bd);
+  cw_shape3d_def sd = cw_shape3d_default_def();
+  sd.material.friction = 0;
+  sd.material.restitution = 0;
+  cw_shape3d_sphere(b, &sd, V(0, 0, 0), 0.12f);
+  return b;
+}
+static void box3d_report(void) {
+  /* the quarter pipe: apex against v^2 / 2g, and ticks the ball spent off the ramp it should hug */
+  float worst = 0;
+  int hops = 0;
+  const float SP[5] = { 5, 7, 9, 11, 13 };
+  for (int i = 0; i < 5; i++) {
+    park k;
+    memset(&k, 0, sizeof k);
+    test_quarter(&k, 3.0f, 10.0f);
+    cw_mesh3d mesh;
+    cw_world3d w = b3_world(&k, &mesh);
+    cw_body3d b = b3_ball(w, V(0, 0.121f, 0), V(0, 0, -SP[i]));
+    float apex = 0;
+    for (int t = 0; t < TPS * 6; t++) {
+      cw_world3d_step(w, TICK_DT);
+      v3 p = cw_body3d_transform(b).p;
+      if (p.y - 0.12f > apex) apex = p.y - 0.12f;
+      phit h;
+      /* off the surface: more than 3 cm between the ball and the ramp under it, along the ramp's normal */
+      if (park_cast(&k, p, V(0, -1.0f, 0), 1u << SURF_RIDE, &h) && h.n.y > 0.3f && vdot(vsub(p, h.p), h.n) > 0.12f + 0.03f) hops++;
+      if (cw_body3d_velocity(b).z > 0 && p.z > -1) break;
+    }
+    float want = SP[i] * SP[i] / (2 * GRAV), e = fabsf(apex / want - 1);
+    if (e > worst) worst = e;
+    cw_world3d_destroy(w);
+    cw_mesh3d_destroy(mesh);
+    park_free(&k);
+  }
+  /* the landing slope at speed */
+  int through = 0, total = 0;
+  {
+    park k;
+    memset(&k, 0, sizeof k);
+    test_slope(&k);
+    const float ZT[3] = { 9, 12, 15 };
+    for (int a = 0; a < 6; a++)
+      for (int sp = 0; sp < 6; sp++)
+        for (int zt = 0; zt < 3; zt++) {
+          cw_mesh3d mesh;
+          cw_world3d w = b3_world(&k, &mesh);
+          float speed = 12 + 3.0f * (float)sp, ang = 0.17f + 0.15f * (float)a, sa, ca;
+          cw_sincos(ang, &sa, &ca);
+          phit h;
+          park_ground(&k, V(0, 20, ZT[zt]), 1, 30, &h);
+          v3 vd = V(0, -sa, ca);
+          cw_body3d b = b3_ball(w, vadd(vmad(h.p, vd, -1.2f), V(0, 0.75f, 0)), vmul(vd, speed));
+          bool under = false;
+          for (int t = 0; t < 30 && !under; t++) {
+            cw_world3d_step(w, TICK_DT);
+            v3 p = cw_body3d_transform(b).p;
+            if (park_cast(&k, vadd(p, V(0, 20, 0)), V(0, -19.95f, 0), 1u << SURF_RIDE, &h) && h.p.y > p.y + 0.05f) under = true;
+          }
+          through += under, total++;
+          cw_world3d_destroy(w);
+          cw_mesh3d_destroy(mesh);
+        }
+    park_free(&k);
+  }
+  printf("{\"solver\":\"box3d\",\"apex_err\":%.4f,\"off_ramp_ticks\":%d,\"slope\":{\"through\":%d,\"total\":%d}}\n", (double)worst, hops, through, total);
+}
+
 static int cmd_phys(void) {
+  box3d_report();
   for (int solver = 0; solver < 2; solver++) {
     physparams keep = g_phys;
     g_phys.no_friction = true;
