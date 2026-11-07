@@ -127,7 +127,7 @@ const DEFS = {
   leaf_teal: { set: null, tint: [0.1, 0.45, 0.4], rough: 0.85, metal: 0 }, pine: { set: null, tint: [0.08, 0.3, 0.16], rough: 0.9, metal: 0 },
   rock: { set: 'flag', tint: [0.72, 0.68, 0.74], rough: 0.9 },
   heart: { set: null, tint: [1.0, 0.2, 0.32], rough: 0.15, metal: 0, emissive: [2.2, 0.3, 0.5] },
-  glow_cyan: { set: null, tint: [0.4, 0.95, 1.0], rough: 0.2, metal: 0, emissive: [1.2, 3.2, 3.6] },
+  glow_cyan: { set: null, tint: [0.3, 0.85, 1.0], rough: 0.2, metal: 0, emissive: [0.35, 1.1, 1.3] },
   glow_amber: { set: null, tint: [1.0, 0.7, 0.3], rough: 0.3, metal: 0, emissive: [4, 2.2, 0.5] },
   glow_violet: { set: null, tint: [0.7, 0.4, 1.0], rough: 0.2, metal: 0, emissive: [2.2, 0.9, 4.0] },
   ember: { set: null, tint: [1.0, 0.45, 0.1], rough: 0.5, metal: 0, emissive: [6, 2.2, 0.4] },

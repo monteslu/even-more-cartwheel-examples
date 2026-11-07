@@ -147,7 +147,9 @@ static void jump_ahead(int to) {
   sim_init(S.players, &sv);
   for (int k = 0; k < g_nobj; k++) world_obj_state(k, g_obj[k].flag >= 0 && sim_has_flag(g_obj[k].flag));
   const wroute *r = &g_route[CW_MAX(0, to - 1)];
-  sim_teleport_party(r->x, r->z);
+  if (to < g_nroute && g_route[to].act == RA_FIGHT) /* a boss: start at the edge of its ring */
+    sim_teleport_party(lerpf(r->x, g_route[to].x, 0.55f), lerpf(r->z, g_route[to].z, 0.55f));
+  else sim_teleport_party(r->x, r->z);
   bot_jump(to);
 }
 
@@ -356,7 +358,7 @@ static void hud_player(int i, float u, cw_vec2 cs) {
     cw_r2d_rect(cw_rect_make(kx + 6 * iu, fy + 12 * iu, 5 * iu, 16 * iu), kc);
     kx += 30 * iu;
   }
-  if (p->weapon == 1) text("STONEBREAKER", kx + 12 * u, fy, bs * 0.85f, rgba(1, 0.75f, 0.4f, 1), CW_ALIGN_LEFT);
+  if (p->weapon == 1) text("STONEBREAKER", kx + 12 * u, fy, bs, rgba(1, 0.75f, 0.4f, 1), CW_ALIGN_LEFT);
   if (p->state == ST_DEAD && i > 0) text("back soon", bx, fy + 34 * u, bs, rgba(1, 0.6f, 0.5f, 1), CW_ALIGN_LEFT);
 }
 
@@ -365,7 +367,7 @@ static void hud(void) {
   float u = cs.y / 1080.0f, bs = 26 * u;
   cw_r2d_begin(NULL);
   for (int i = 0; i < MAXP; i++) if (S.a[i].used) hud_player(i, u, cs);
-  if (!S.a[1].used) cw_prompt_text(font, "{ui_accept}: a second player joins", -1, cw_v2(cs.x - 28 * u, 28 * u), bs * 0.8f, rgba(1, 1, 1, 0.55f), CW_ALIGN_RIGHT); /* prompt-ok: the join press is the shell's */
+  if (!S.a[1].used) cw_prompt_text(font, "{ui_accept}: a second player joins", -1, cw_v2(cs.x - 28 * u, 28 * u), bs, rgba(1, 1, 1, 0.55f), CW_ALIGN_RIGHT); /* prompt-ok: the join press is the shell's */
   /* the lock reticle: a diamond over the target */
   const actor *p = &S.a[0];
   if (p->target >= 0) {

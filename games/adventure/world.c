@@ -954,7 +954,7 @@ void world_page(float x, float z, int region) {
   /* the marsh water only where it can be seen: from the marsh and the ways into it (its refraction copies the frame) */
   static int water = -1;
   int want = x > 196 || region == RG_MARSH;
-  if (want != water) { cw_node w = cw_node_get(W_root, "World/Water"); if (w.id) cw_node_set(w, "visible", cw_val_bool(want)); water = want; }
+  if (want != water) { cw_node w = cw_node_get(W_root, "World/Water"); if (w.id) cw_node_set(w, "visible", cw_val_bool(want)), cw_node_set(w, "refraction", cw_val_bool(want)); water = want; }
   int live = NEAR[CW_CLAMP(region, 0, RG_COUNT - 1)];
   if (live == g_world_paged) return;
   for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool((live >> r) & 1));

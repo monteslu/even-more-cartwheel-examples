@@ -29,7 +29,7 @@ SHOTS.forEach(([n], i) => im(src(n), '-quality', '88', join(ART, `shot-${i + 1}.
 im(src('vista'), '-quality', '88', join(ART, 'background.jpg'));
 im(src('vista'), ...words(150), '-gravity', 'north', '-annotate', '+0+120', TITLE, '-quality', '88', join(ART, 'title.jpg'));
 // cover: portrait 2:3 from the hero's frame, the name across the top
-im(src('hero'), '-gravity', 'center', '-crop', '720x1080+0+0', '+repage', '-resize', '800x1200!', ...words(118), '-gravity', 'north', '-annotate', '+0+70', TITLE,
+im(src('hero'), '-gravity', 'center', '-crop', '720x1080+0+0', '+repage', '-resize', '800x1200!', ...words(96), '-gravity', 'north', '-annotate', '+0+80', TITLE,
   '-quality', '90', join(ART, 'cover.jpg'));
 // icon: the hero's head and shoulders, square
 im(src('hero'), '-gravity', 'center', '-crop', '640x640+0-120', '+repage', '-resize', '512x512', join(ART, 'icon.png'));
