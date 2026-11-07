@@ -233,7 +233,7 @@ static bool knight_spear(const enemy *e, float *x, float *y, float *w, float *h)
 /* ── the wardens ── */
 typedef struct boss_def { int hp; float hw, hh; bool flies; int moves[5], nmoves; int dmg; } boss_def;
 static const boss_def BDEF[NBOSSES] = {
-  { 22, 1.6f, 1.5f, false, { BM_CHARGE, BM_LEAP, BM_VOLLEY }, 3, 1 },
+  { 22, 1.5f, 1.2f, false, { BM_CHARGE, BM_LEAP, BM_VOLLEY }, 3, 1 },
   { 30, 1.3f, 1.8f, false, { BM_SWEEP_LOW, BM_RAIN, BM_LEAP, BM_SWEEP_HIGH }, 4, 1 },
   { 38, 1.6f, 2.0f, false, { BM_SWEEP_HIGH, BM_VOLLEY, BM_CHARGE, BM_SUMMON }, 4, 1 },
   { 44, 1.5f, 1.2f, true, { BM_DIVE, BM_PILLARS, BM_VOLLEY }, 3, 1 },
@@ -335,8 +335,9 @@ static void boss_update(sim *s) {
       b->move = (uint8_t)pick;
       b->state = ES_TELL, b->t = 0;
       b->nmarks = 0;
-      if (pick == BM_RAIN || pick == BM_PILLARS) { /* where it will strike: shown during the tell */
+      if (pick == BM_RAIN || pick == BM_PILLARS || (pick == BM_VOLLEY && b->idx == 0)) { /* where it will strike: shown during the tell */
         int n = pick == BM_RAIN ? 4 : 3;
+        if (pick == BM_VOLLEY) n = late ? 4 : 3;
         for (int i = 0; i < n; i++) {
           float x = i == 0 ? px : b->ax0 + 2 + (float)(srand_(s, (uint32_t)i + 7) % (uint32_t)(b->ax1 - b->ax0 - 4));
           b->marks[b->nmarks++] = clampf(x, b->ax0 + 1, b->ax1 - 1);
@@ -362,6 +363,13 @@ static void boss_update(sim *s) {
         break;
       }
       case BM_VOLLEY: {
+        if (b->idx == 0) { /* the moss warden lobs spores at the marked spots: they fall where the marks glow */
+          for (int i = 0; i < b->nmarks; i++) {
+            float T = 1.0f, x0 = b->x + dir * d->hw, y0 = b->y - d->hh * 1.6f;
+            spawn_shot(s, SH_SPORE, true, x0, y0, (b->marks[i] - x0) / T, (b->floor_y - 0.4f - y0 - 0.5f * 30 * T * T) / T, 0.45f, 0.45f, 160, 1);
+          }
+          break;
+        }
         float dx = px - b->x, dy = py - 0.9f - (b->y - d->hh), l = sqrtf(dx * dx + dy * dy) + 0.01f;
         int n = late ? 5 : 3;
         for (int i = 0; i < n; i++) {
@@ -394,7 +402,7 @@ static void boss_update(sim *s) {
   bool done = false;
   switch (b->move) {
   case BM_CHARGE:
-    b->x += dir * 15 * DT;
+    b->x += dir * 13 * DT;
     if (b->x < b->ax0 + d->hw || b->x > b->ax1 - d->hw) b->x = clampf(b->x, b->ax0 + d->hw, b->ax1 - d->hw), done = true;
     break;
   case BM_LEAP:
@@ -491,6 +499,7 @@ int sim_pickups_got(const sim *s, int pk) {
 
 static void hurt(sim *s, player *p, int dmg, float from_x) {
   if (p->invuln > 0 || p->state == PS_DEAD || s->god) return;
+  if (s->assist > 1 && (++p->assist_hits % s->assist) != 0) dmg = 0; /* assist: only every n-th hit costs a leaf */
   p->hp = (int16_t)(p->hp - dmg);
   p->invuln = 70;
   if (p->state == PS_GRAPPLE || p->state == PS_CLING || p->state == PS_DASH || p->state == PS_POUND) p->state = PS_NORMAL, p->anchor = -1;
@@ -558,6 +567,12 @@ static void strike(sim *s, player *p, int pi) {
       if (b->hp <= 0) boss_down(s);
     }
   }
+  /* a strike cuts the small things thrown at you out of the air */
+  for (int i = 0; i < MAXSHOTS; i++) {
+    shot *h = &s->sh[i];
+    if (h->alive && h->enemy && (h->kind == SH_ORB || h->kind == SH_SPORE || h->kind == SH_FEATHER || h->kind == SH_SHARD) && overlap(bx, by, bw, bh, h->x, h->y, h->w, h->h))
+      h->alive = 0, ev(s, EV_HIT, 1, pi, h->x, h->y), hit = true;
+  }
   /* hidden walls break under a strike */
   for (int ty = (int)floorf(by - bh); ty <= (int)floorf(by + bh); ty++)
     for (int tx = (int)floorf(bx - bw); tx <= (int)floorf(bx + bw); tx++)
@@ -579,7 +594,6 @@ void sim_step(sim *s, const pinput in[MAXP]) {
     player *p = &s->p[i];
     if (!p->active) continue;
     pinput q = in[i];
-    if (!(s->abilities & AB_BOLT)) q.shoot = false;
     if (p->invuln > 0) p->invuln--;
     if (p->atk_cd > 0) p->atk_cd--;
     if (p->shot_cd > 0) p->shot_cd--;
@@ -590,6 +604,18 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       p->atk_dir = (int16_t)(q.my < 0 ? 1 : (q.my > 0 && !p->on_ground) ? 2 : 0);
       ev(s, EV_STRIKE, i, p->atk_dir, p->x, p->y - 0.9f);
     }
+    /* mending: down + spark, standing still, two energy: a leaf of health after a short channel */
+    if (p->mend_t > 0) {
+      memset(&q, 0, sizeof q);
+      if (p->state == PS_HURT) p->mend_t = 0;
+      else if (--p->mend_t == 0 && p->hp < p->hp_max) p->hp++, ev(s, EV_MEND, i, 1, p->x, p->y - 0.9f);
+    } else if (q.shoot && q.my > 0 && p->on_ground && p->state == PS_NORMAL && p->en >= 2 && p->hp < p->hp_max && fabsf(p->vx) < 0.5f) {
+      p->en = (int16_t)(p->en - 2), p->mend_t = 45;
+      ev(s, EV_MEND, i, 0, p->x, p->y - 0.9f);
+      q.shoot = false;
+    }
+    if (q.shoot && q.my > 0 && p->on_ground) q.shoot = false;
+    if (!(s->abilities & AB_BOLT)) q.shoot = false; /* (the spark comes from the first shrine of light) */
     if (q.shoot && p->shot_cd == 0 && p->en > 0 && can_act) {
       p->en--, p->shot_cd = 16;
       bool up = q.my < 0;
@@ -621,7 +647,7 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       }
     }
     if (p->ev & (PE_HAZARD | PE_COLD)) {
-      p->hp--;
+      if (!(s->assist > 1 && (++p->assist_hits % s->assist) != 0)) p->hp--;
       p->invuln = 50;
       ev(s, EV_HURT, i, 1, p->x, p->y);
     }
@@ -679,6 +705,7 @@ void sim_step(sim *s, const pinput in[MAXP]) {
     shot *h = &s->sh[i];
     if (!h->alive) continue;
     h->t++;
+    if (h->kind == SH_SPORE && h->enemy && s->b.active && s->b.idx == 0) h->vy += 30 * DT; /* lobbed */
     h->x += h->vx * DT, h->y += h->vy * DT;
     if (--h->life <= 0) { h->alive = 0; continue; }
     bool walls = h->kind != SH_BEAM && h->kind != SH_PILLAR;
@@ -722,7 +749,8 @@ void sim_step(sim *s, const pinput in[MAXP]) {
     for (int i = 0; i < s->nen; i++) {
       enemy *e = &s->en[i];
       if (!e->alive) continue;
-      if (overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw * 0.85f, EDEF[e->kind].hh * 0.85f)) hurt(s, p, 1, e->x);
+      bool harmless = e->kind == EN_FLYER && e->state == ES_REST; /* a moth flying home after its swoop */
+      if (!harmless && overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw * 0.85f, EDEF[e->kind].hh * 0.85f)) hurt(s, p, 1, e->x);
       float sx, sy, sw, shh;
       if (knight_spear(e, &sx, &sy, &sw, &shh) && overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, sx, sy, sw, shh)) hurt(s, p, 1, e->x);
     }

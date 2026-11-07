@@ -15,7 +15,8 @@ typedef struct bot {
   int mode, mv, t, phase;
   route_step plan[96];
   int np, pi;
-  int stuck, idle, recoveries, fails, waited;
+  int stuck, idle, recoveries, fails, waited, still, ignore;
+  float lx, ly;
   int last_tile;
   int wiggle;
   uint32_t seed;

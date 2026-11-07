@@ -69,6 +69,8 @@ typedef struct player {
   float rope;
   float safe_x, safe_y;    /* the last firm ground (thorns and the cold send you back here) */
   int16_t atk_t, atk_dir, atk_cd, shot_cd; /* strike: ticks left, 0 side 1 up 2 down */
+  int16_t assist_hits;
+  int16_t mend_t;          /* mending: ticks left of the channel (down + spark on the ground: 2 energy for a leaf) */
   int16_t hp, hp_max, en, en_max, en_frac;
   uint32_t ev;             /* PE_* this tick */
   float land_v;
@@ -130,7 +132,7 @@ typedef struct boss {
 enum { /* game events, for sound and effects */
   EV_STRIKE, EV_HIT, EV_KILL, EV_BOLT, EV_HURT, EV_DIE, EV_PICKUP, EV_SAVE, EV_ROOM, EV_BREAK, EV_SECRET, EV_BOSS_START,
   EV_BOSS_TELL, EV_BOSS_ACT, EV_BOSS_HIT, EV_BOSS_DOWN, EV_SHOT, EV_SHOT_HIT, EV_DOOR, EV_SEAL, EV_ENEMY_TELL, EV_BOUNCE,
-  EV_KINDS
+  EV_MEND, EV_KINDS
 };
 typedef struct event { uint8_t kind, a, b, c; float x, y; } event;
 
@@ -156,6 +158,7 @@ typedef struct sim {
   uint32_t tick, hash;
   int boss_ticks;             /* ticks since the warden fight began (0: none) */
   bool won, god;              /* won: the heart has fallen; god: tests and the bench take no damage */
+  int assist;                 /* hits taken per leaf lost (1 normally; the bot plays with 3: an assist, not a god mode) */
   int door_lock[8][3];        /* boss fight: door openings closed (x, y, len | vertical << 8) */
   int ndoor_lock;
   pworld pw;

@@ -40,7 +40,7 @@ static const char *only; /* --only gates|grounded: that check alone (the control
 
 static bool standable(int x, int y) {
   int t = T[y][x];
-  if (!(t_solid(t) || t == T_ONEWAY)) return false;
+  if (!(t_solid(t) || t == T_ONEWAY) || t == T_SECRET) return false; /* (a hidden floor breaks under you: nobody stands on it) */
   for (int k = 1; k <= 2; k++) {
     int a = w_tile(&W, x, y - k);
     if (t_solid(a) || a == T_SPIKE) return false;
@@ -101,6 +101,8 @@ static void expand(int tile, edges *out) {
     if (la < 0 || la == tile) continue;
     int tb = move_play(&MOVES[m], &W, (const uint8_t(*)[TW])T, AB, (float)x + 0.7f, (float)y, &b, &bb);
     if (tb < 0 || landing_node(&b) != la) continue;
+    int tc = move_play(&MOVES[m], &W, (const uint8_t(*)[TW])T, AB, (float)x + 0.5f, (float)y, &b, &bb); /* and the middle, where the bot stands */
+    if (tc < 0 || landing_node(&b) != la) continue;
     bool dup = false;
     for (int k = 0; k < out->n; k++)
       if (out->to[k] == la) {

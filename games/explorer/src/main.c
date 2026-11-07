@@ -56,6 +56,9 @@ static double wall(void) {
 
 static void new_game(int players) {
   sim_init(&S, &W, players);
+#ifdef EXPLORER_AUTOPILOT
+  S.assist = 3; /* the bot plays with the assist: every third hit costs a leaf */
+#endif
   memset(&H, 0, sizeof H);
   H.banner_region = -1;
   G.last_region = -1;

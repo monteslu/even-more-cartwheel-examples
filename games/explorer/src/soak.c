@@ -52,6 +52,7 @@ int main(int argc, char **argv) {
   moves_init();
   int minutes = atoi(argv[2]), players = argc > 3 ? atoi(argv[3]) : 1;
   sim_init(&S, &W, players);
+  S.assist = getenv("EXPLORER_ASSIST") ? atoi(getenv("EXPLORER_ASSIST")) : 3;
   bool inject = getenv("EXPLORER_SOAK_INJECT") != NULL;
   long first_rss = 0;
   int last_i = 0, flat_minutes = 0;
@@ -64,7 +65,7 @@ int main(int argc, char **argv) {
     for (int k = 0; getenv("EXPLORER_SOAK_HURT") && k < S.nev; k++)
       if (S.ev[k].kind == EV_HURT || S.ev[k].kind == EV_DIE) {
         printf("t%ld %s hp %d at %.1f,%.1f room %d state %d:", tick, S.ev[k].kind == EV_DIE ? "DIE" : "hurt", S.p[0].hp, S.p[0].x, S.p[0].y, S.room, S.p[0].state);
-        for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 4) printf(" en%d(k%d st%d %.1f,%.1f)", j, S.en[j].kind, S.en[j].state, S.en[j].x, S.en[j].y);
+        for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 12) printf(" en%d(k%d st%d %.1f,%.1f)", j, S.en[j].kind, S.en[j].state, S.en[j].x, S.en[j].y);
         for (int j = 0; j < MAXSHOTS; j++) if (S.sh[j].alive && S.sh[j].enemy && fabsf(S.sh[j].x - S.p[0].x) < 3) printf(" shot k%d", S.sh[j].kind);
         if (S.b.active) printf(" BOSS hp %d st %d mv %d at %.1f,%.1f t%d", S.b.hp, S.b.state, S.b.move, S.b.x, S.b.y, S.b.t);
         printf(" bot mode %d step %d atkcd %d facing %d\n", B.mode, B.i, S.p[0].atk_cd, S.p[0].facing_left);
@@ -72,7 +73,7 @@ int main(int argc, char **argv) {
     if (getenv("EXPLORER_SOAK_TRACE") && tick < atoi(getenv("EXPLORER_SOAK_TRACE")) && tick > (getenv("EXPLORER_SOAK_FROM") ? atoi(getenv("EXPLORER_SOAK_FROM")) : 0)) {
       for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 6) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
       const route_step *st = &B.steps[B.i < B.n ? B.i : B.n - 1];
-      printf("t%ld mode %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d\n", tick, B.mode, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump);
+      printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump);
     }
     if (inject && tick == 3600) S.p[0].vx = NAN;
     for (int i = 0; i < S.players; i++) {
@@ -102,6 +103,10 @@ int main(int argc, char **argv) {
       last_i = B.i;
       if (flat_minutes >= 4) {
         printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f)\n", B.i, S.room, S.p[0].x, S.p[0].y);
+        for (int y = (int)S.p[0].y - 8; y <= (int)S.p[0].y + 5; y++) {
+          for (int x = (int)S.p[0].x - 20; x <= (int)S.p[0].x + 20; x++) putchar(x == (int)S.p[0].x && y == (int)S.p[0].y - 1 ? '@' : " #=^~%?BS"[w_tile(&W, x, y) == S.t[y][x] ? S.t[y][x] : S.t[y][x]]);
+          printf(" %d\n", y);
+        }
         return 1;
       }
     }
