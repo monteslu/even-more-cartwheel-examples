@@ -1,0 +1,21 @@
+; destructo project settings
+name = Destructo
+app = destructo
+main_scene = scenes/main.cwscene
+version = 0.1.0
+app_id = org.cartwheel.destructo
+; aiming: the d-pad or the left stick turns and raises the launcher
+input.aim_left = key:left, key:a, pad:left, axis:lx-@0.25
+input.aim_right = key:right, key:d, pad:right, axis:lx+@0.25
+input.aim_up = key:up, key:w, pad:up, axis:ly-@0.25
+input.aim_down = key:down, key:s, pad:down, axis:ly+@0.25
+; power on the shoulders (and the triggers where a pad has them)
+input.power_up = key:e, key:pageup, pad:rshoulder, axis:rt+@0.3
+input.power_down = key:q, key:pagedown, pad:lshoulder, axis:lt+@0.3
+input.fire = key:space, key:enter, pad:south
+input.ammo = key:tab, key:f, pad:north
+input.view = key:v, key:lshift, pad:west
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true
