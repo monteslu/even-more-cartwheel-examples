@@ -1435,9 +1435,9 @@ void view_draw(const sim *s, float t) {
   static cw_r2d_post post;
   post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .bloom_levels = 4, .tone_knee = 0.78f,
                         .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
-  /* (a quarter of the canvas, the engine's High: on v0.37 it costs less than an eighth, whose source pass reads 16
-   * taps a texel, and the bounce is finer) */
-  static cw_r2d_gi gi = { .intensity = 0.8f, .resolution = 0.25f };
+  /* (an eighth of the canvas: from engine v0.38 its source pass is the cheap one again; the bench frame costs 0.2 ms
+   * less on GL and 0.6 less on WebGPU than at the engine's High quarter, and 2% of its pixels differ by more than 6%) */
+  static cw_r2d_gi gi = { .intensity = 0.8f, .resolution = 0.125f };
   static int gi_env = -1; /* EXPLORER_GI_RES: another share (measuring) */
   if (gi_env < 0) gi_env = getenv("EXPLORER_GI_RES") != NULL, gi.resolution = gi_env ? (float)atof(getenv("EXPLORER_GI_RES")) : gi.resolution;
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.92f), .time = t, .post = perf_off("post") ? NULL : &post,
