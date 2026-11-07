@@ -187,20 +187,20 @@ static void gem_env_fns(sb *b, bool w) {
            "fn pinsDisp(e0: vec3f, e1: vec3f) -> vec3f {\n"
            "  var c = vec3f(0.0);\n"
            "  if (max(e0.z, e1.z) < 0.55) { return c; }\n"
-           "  let seg = e1 - e0; let L2 = max(dot(seg, seg), 1e-14); let L = sqrt(L2);\n"
+           "  let seg = e1 - e0; let sl2 = max(dot(seg, seg), 1e-14); let L = sqrt(sl2);\n"
            "  var t: f32; var q: vec3f; var d: f32; var fr: f32;\n");
   else
     put(b, "float lamOf(float t) { return 1.0 / sqrt(1.0 / (400.0 * 400.0) + t * (1.0 / (700.0 * 700.0) - 1.0 / (400.0 * 400.0))); }\n"
            "vec3 pinsDisp(vec3 e0, vec3 e1) {\n"
            "  vec3 c = vec3(0.0);\n"
            "  if (max(e0.z, e1.z) < 0.55) return c;\n"
-           "  vec3 seg = e1 - e0; float L2 = max(dot(seg, seg), 1e-14), L = sqrt(L2);\n"
+           "  vec3 seg = e1 - e0; float sl2 = max(dot(seg, seg), 1e-14), L = sqrt(sl2);\n"
            "  float t, d, fr; vec3 q;\n");
   for (int i = 0; i < NPIN; i++) {
     float a[3];
     norm3(pins[i].a, a);
     float R = pins[i].r + 0.006f;
-    put(b, "  t = clamp(dot(%s(%.6f, %.6f, %.6f) - e0, seg) / L2, 0.0, 1.0); q = e0 + seg * t - %s(%.6f, %.6f, %.6f); d = length(q);\n", v3, a[0], a[1],
+    put(b, "  t = clamp(dot(%s(%.6f, %.6f, %.6f) - e0, seg) / sl2, 0.0, 1.0); q = e0 + seg * t - %s(%.6f, %.6f, %.6f); d = length(q);\n", v3, a[0], a[1],
         a[2], v3, a[0], a[1], a[2]);
     if (w)
       put(b, "  if (d < %.6f) { fr = min(1.0, %.6f / L); c += %s(%.3f, %.3f, %.3f) * (1.0 - smoothstep(%.6f, %.6f, d)) * fr * mix(spec(lamOf(t)), vec3f(1.0), fr); }\n",
