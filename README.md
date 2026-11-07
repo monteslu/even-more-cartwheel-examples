@@ -68,13 +68,13 @@ engine's 2D renderer: lit sprites, soft shadows, bounced light, light shafts,
 bloom and a colour grade per region. A checker proves the world can be finished
 in ability order with no dead ends, and a bot plays it through to the end.
 
-### demolition
+### Destructo
 
-![demolition: a charge brings the Great Keep down in planks and stone](docs/screenshots/demolition.jpg)
+![Destructo: a charge brings the Great Keep down in planks and stone](docs/screenshots/destructo.jpg)
 
-A physics destruction game for one to four players taking turns (working
-title). Towers, walls, bridges, castles, scaffolds, stepped pyramids and keeps
-of wood, stone, glass and steel, up to a few thousand blocks each, stand in
+A physics destruction game for one to four players taking turns. Towers,
+walls, bridges, castles, scaffolds, stepped pyramids and keeps of wood,
+stone, glass and steel, up to a few thousand blocks each, stand in
 settings of their own (highlands, a meadow, a river gorge, sea cliffs, a
 quarry, desert mesas, a snowy pass). A launcher fires shot, heavy balls and
 charges at the crystals hidden inside; blocks break into pieces, dust and

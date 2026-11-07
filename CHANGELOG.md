@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.0
+
+- demolition is now **Destructo**: the game, its carts (destructo.wasc), apps, tests and launcher art carry the
+  new name.
+
 ## 0.5.0
 
 - **demolition** (working title): a physics destruction game for one to four players taking turns, in co-op or
