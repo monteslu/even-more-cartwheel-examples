@@ -1,0 +1,3 @@
+project.cwproj
+scenes/main.cwscene
+fonts/Cinzel.ttf
