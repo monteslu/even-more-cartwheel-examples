@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.1
+
+- skate looks better: thinner, bluer haze so every horizon keeps its colour; cars with real shapes and glass
+  cabins, trees of layered foliage, sunlit cumulus clouds, building fronts with sills and piers; the street plaza
+  gets planters with trees, granite bands, benches and longer morning shadows; a colour grade per park. Its
+  four-way split runs faster on WebGPU (3.6 ms, was 4.1 ms), and the Big Sky practice rail moved clear of the
+  giant quarter pipe.
+
 ## 0.3.0
 
 - **explorer** (working title): a 2D exploration platformer for one player with a drop-in second. One
