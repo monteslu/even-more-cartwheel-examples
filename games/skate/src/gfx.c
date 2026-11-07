@@ -195,7 +195,9 @@ static void g_roof(float u, float v, texel *t) {
   uint32_t id;
   cells(u, v, 96, 91, &d1, &d2, &id);
   float stone = clamp01((d2 - d1) * 5), tone = (float)(id & 255) / 255.0f;
-  float c = 0.78f + 0.18f * tone * stone;
+  /* tar and gravel: dark membrane between pale stones, darker still where water stood */
+  float pool = clamp01((fbm(u, v, 3, 3, 92) - 0.55f) * 4);
+  float c = 0.36f + 0.5f * tone * stone - 0.1f * pool;
   rgb(t, c, c * 0.98f, c * 0.95f);
   t->h = stone * 0.7f;
   t->rough = 0.9f;
@@ -209,10 +211,11 @@ static void g_tile(float u, float v, texel *t) {
   float grout = 1 - clamp01((e - 0.02f) * 120);
   float id = h01(ix & 7, iy & 7, 101), id2 = h01(ix & 7, iy & 7, 103);
   float n = fbm(u, v, 16, 4, 102), stain = clamp01((fbm(u, v, 3, 3, 104) - 0.55f) * 3);
-  /* slabs of a few stones (some warmer, some greyer), worn and stained */
-  float c = 0.4f + 0.08f * (id - 0.5f) + 0.07f * (n - 0.5f) - 0.12f * stain;
+  /* slabs of a few stones (some warmer, some greyer, one in eight a dark basalt), worn and stained, in dark joints */
+  float c = 0.42f + 0.16f * (id - 0.5f) + 0.07f * (n - 0.5f) - 0.16f * stain;
+  if (id < 0.125f) c = 0.2f + 0.05f * (n - 0.5f) - 0.06f * stain;
   float warm = id2 > 0.75f ? 0.03f : id2 < 0.2f ? -0.025f : 0;
-  rgb(t, mixf(c + warm, 0.5f, grout), mixf(c * 0.98f, 0.49f, grout), mixf(c * 0.95f - warm, 0.47f, grout));
+  rgb(t, mixf(c + warm, 0.22f, grout), mixf(c * 0.98f, 0.21f, grout), mixf(c * 0.95f - warm, 0.2f, grout));
   t->h = 0.35f + 0.5f * clamp01(e * 25) * (1 - grout);
   t->rough = mixf(0.6f + 0.2f * id, 0.95f, grout);
   t->ao = 1 - 0.45f * grout;
@@ -519,6 +522,32 @@ static t3_texture *finish(const uint8_t *px, int n, bool srgb) {
   return t;
 }
 static uint8_t b8(float x) { return (uint8_t)(clamp01(x) * 255.0f + 0.5f); }
+
+/* the sky's dither: 256 x 256 texels of triangular noise from 1 - 2 DITHER_K up to 1 (mean 1 - DITHER_K), linear,
+   with no mipmaps (a mip would average it away), its texels finer than the screen's pixels (each pixel a bilinear
+   blend of a few: still noise, about half as deep): a smooth gradient's last bits become noise instead of bands. The
+   sky divides its colours by the mean. */
+t3_texture *tex_dither(void) {
+  static t3_texture *t;
+  if (t) return t;
+  enum { N = 256 };
+  static uint8_t px[N * N * 4];
+  uint32_t h = 0x9e3779b9u;
+  for (int i = 0; i < N * N; i++) {
+    float a, b;
+    h ^= h << 13, h ^= h >> 17, h ^= h << 5, a = (float)(h >> 8) / 16777216.0f;
+    h ^= h << 13, h ^= h >> 17, h ^= h << 5, b = (float)(h >> 8) / 16777216.0f;
+    uint8_t v = b8(1.0f - DITHER_K * (a + b)); /* (two uniforms summed: triangular, from 1 - 2 DITHER_K to 1) */
+    px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = v, px[i * 4 + 3] = 255;
+  }
+  t = t3_texture_new(N, N, px);
+  t->wrap_s = t->wrap_t = T3_REPEAT;
+  t->flip_y = false;
+  t->generate_mipmaps = false;
+  t->min_filter = t->mag_filter = T3_LINEAR;
+  t->color_space = T3_NO_COLOR_SPACE;
+  return t;
+}
 static uint32_t fnv(const uint8_t *p, size_t n, uint32_t h) {
   for (size_t i = 0; i < n; i++) h = (h ^ p[i]) * 16777619u;
   return h;

@@ -23,7 +23,7 @@ static const float C_TEAL[3] = { 0.10f, 0.62f, 0.68f }, C_ORANGE[3] = { 1.0f, 0.
 static const float C_MAGENTA[3] = { 0.90f, 0.24f, 0.52f }, C_BLUE[3] = { 0.22f, 0.45f, 0.92f }, C_GREEN[3] = { 0.36f, 0.74f, 0.30f };
 static const float C_STEEL[3] = { 0.80f, 0.82f, 0.86f }, C_RED[3] = { 0.86f, 0.22f, 0.18f }, C_WOOD[3] = { 0.92f, 0.74f, 0.50f };
 static const float C_GRASS[3] = { 0.42f, 0.72f, 0.28f }, C_TILE[3] = { 0.84f, 0.76f, 0.66f }, C_GRANITE[3] = { 0.62f, 0.60f, 0.62f };
-static const float C_ASPH[3] = { 0.40f, 0.40f, 0.42f }, C_BRICK1[3] = { 0.78f, 0.42f, 0.30f }, C_BRICK2[3] = { 0.86f, 0.70f, 0.50f };
+static const float C_ASPH_SUN[3] = { 0.62f, 0.62f, 0.64f }, C_ASPH[3] = { 0.40f, 0.40f, 0.42f }, C_BRICK1[3] = { 0.78f, 0.42f, 0.30f }, C_BRICK2[3] = { 0.86f, 0.70f, 0.50f };
 static const float C_BRICK3[3] = { 0.52f, 0.62f, 0.78f }, C_BRICK4[3] = { 0.90f, 0.86f, 0.74f }, C_ROOF[3] = { 0.58f, 0.56f, 0.55f };
 static const float C_WATER[3] = { 0.30f, 0.62f, 0.86f }, C_TRUNK[3] = { 0.45f, 0.32f, 0.22f };
 
@@ -418,7 +418,7 @@ static void build_mega(kit *b, int variant) {
   /* the line runs toward +z: the roll in's top deck at z -70, its foot at z -48 */
   const float RH = 14;
   kit_piece(b);
-  kit_ground(b, -30, -80, 40, 70, NULL, 0, MAT_ASPHALT, C_ASPH);
+  kit_ground(b, -30, -80, 40, 70, NULL, 0, MAT_ASPHALT, C_ASPH_SUN); /* (an event lot's asphalt, sun-bleached grey) */
   kit_piece(b);
   kit_fence(b, -30, -80, 40, 70, 1.2f, MAT_CONCRETE, C_CONC2);
   /* the roll in: a bank down from the tower (the rider rides toward +z, so the ramp rises toward -z: yaw 0) */
