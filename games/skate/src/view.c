@@ -38,7 +38,6 @@ typedef struct seat {
   /* the camera */
   v3 cam_p, cam_h, cam_at;
   bool cam_init;
-  float flip_ang[3];
   v3 cam_fwd, last_p;
   bool cam_fwd_ok;
 } seat;

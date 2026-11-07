@@ -52,7 +52,6 @@ void view_rigs(const int skin[MAXP], int players);        /* each seat's rider a
 void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players, float dt);
 void view_title_camera(const park *k, float t);           /* behind the menus: a slow orbit of the park */
 cw_node view_camera(int i);
-typedef struct view_stats { int draws, tris; } view_stats;
 extern int g_view_shadow_size;
 /* what the frames show, measured (debug fields: the feel gate) */
 typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max; int32_t foot_err_state; } view_metrics;
@@ -61,10 +60,8 @@ extern float g_cam_k, g_cam_side;
 
 /* ── pose.c: the rider's body from the board's state ───────────────────── */
 typedef struct rider_pose {
-  float crouch, tuck, lean, twist, push_phase, push_w, manual, grind_w, bal, grab_w, flip_w, look;
-  v3 hand_l, hand_r; /* grab targets (model space of the rider) */
+  float crouch, tuck, lean, push_phase, push_w, manual, grind_w, bal, grab_w, flip_w, look; /* eased toward what the board does */
   int grab;
-  bool fakie, bail;
 } rider_pose;
 typedef struct rig {
   bool bound;
@@ -85,7 +82,6 @@ void rag_free(void);
 /* each tick: a bail starts a ragdoll from the rider's pose, a respawn ends it */
 void rag_tick(int i, const skater *s, rig *r, cw_node model_node, const t3_mat4 *model_to_world);
 bool rag_active(int i);
-v3 rag_hips(int i);
 int rag_live(void);
 
 /* the deck's top over the ground (the rider stands on it) */

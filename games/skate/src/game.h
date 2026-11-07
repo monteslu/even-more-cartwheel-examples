@@ -386,8 +386,5 @@ typedef struct bot {
 } bot;
 void bot_init(bot *b, uint32_t seed, int skill);
 void bot_tick(bot *b, const sim *S, int i, input *in);
-/* drive a skater from a line's start to its feature (the park check): ticks taken, or -1 when it bailed or did not get
- * there */
-int bot_line_status(const bot *b);
 
 #endif

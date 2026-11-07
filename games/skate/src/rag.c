@@ -81,7 +81,6 @@ void rag_park(const park *k) {
 
 bool rag_active(int i) { return RD[i] != NULL; }
 int rag_live(void) { return live; }
-v3 rag_hips(int i) { return RD[i] ? cw_ragdoll_part_transform(RD[i], 0).p : V(0, 0, 0); }
 
 void rag_tick(int i, const skater *s, rig *r, cw_node model_node, const t3_mat4 *m) {
   (void)model_node;

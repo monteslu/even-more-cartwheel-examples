@@ -61,7 +61,6 @@ static float run_ahead(const park *k, int run, v3 p, v3 d, v3 *end) {
   return best;
 }
 
-int bot_line_status(const bot *b) { return b->lines_done > 0 ? 1 : b->lines_failed > 0 ? -1 : 0; }
 
 static void finish(bot *b, bool ok) {
   if (ok) b->lines_done++;
