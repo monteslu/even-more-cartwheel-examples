@@ -84,109 +84,77 @@ prop 32 17 lamp 0 0
 prop 0 0 decor 1 0
 prop 1 0 decor 3 3
 prop 3 0 decor 2 2
-prop 4 0 decor 0 2
+prop 4 0 decor 6 2
 prop 5 0 decor 1 0
 prop 7 0 decor 7 0
-prop 8 0 decor 4 0
-prop 9 0 decor 2 2
-prop 11 0 decor 2 0
-prop 12 0 decor 6 2
-prop 14 0 decor 3 3
-prop 15 0 decor 1 2
-prop 16 0 decor 0 1
-prop 17 0 decor 1 0
-prop 19 0 decor 3 0
-prop 32 0 decor 7 1
-prop 33 0 decor 1 1
-prop 34 0 decor 5 3
-prop 35 0 decor 7 2
-prop 34 1 decor 1 3
-prop 35 1 decor 2 3
-prop 35 2 decor 3 0
-prop 35 3 decor 0 1
-prop 12 4 decor 7 0
-prop 13 4 decor 0 1
-prop 14 4 decor 1 2
-prop 15 4 decor 3 3
-prop 18 4 decor 3 1
-prop 19 4 decor 3 0
-prop 20 4 decor 1 3
-prop 22 4 decor 2 3
-prop 0 5 decor 2 2
-prop 10 5 decor 4 3
-prop 11 5 decor 3 0
-prop 14 5 decor 5 0
-prop 15 5 decor 6 0
-prop 16 5 decor 0 0
-prop 17 5 decor 1 1
-prop 18 5 decor 2 2
-prop 19 5 decor 6 3
-prop 20 5 decor 6 3
-prop 21 5 decor 1 0
+prop 9 0 decor 0 0
+prop 12 0 decor 2 0
+prop 13 0 decor 6 2
+prop 15 0 decor 3 3
+prop 16 0 decor 1 2
+prop 17 0 decor 0 1
+prop 19 0 decor 2 2
+prop 20 0 decor 3 0
+prop 33 0 decor 7 1
+prop 34 0 decor 1 1
+prop 35 0 decor 5 3
+prop 35 2 decor 1 3
+prop 35 3 decor 2 3
+prop 13 4 decor 1 1
+prop 15 4 decor 7 0
+prop 18 4 decor 1 2
+prop 19 4 decor 3 3
+prop 22 4 decor 3 1
+prop 35 4 decor 5 1
+prop 17 5 decor 4 3
+prop 18 5 decor 3 0
+prop 21 5 decor 5 0
+prop 22 5 decor 6 0
 prop 24 5 decor 4 2
-prop 35 5 decor 6 1
-prop 35 6 decor 4 3
-prop 0 7 decor 3 3
-prop 5 7 decor 2 1
-prop 0 8 decor 5 3
-prop 5 9 decor 7 2
-prop 5 10 decor 3 2
-prop 10 10 decor 7 0
-prop 16 10 decor 0 2
-prop 17 10 decor 1 2
-prop 18 10 decor 4 3
-prop 20 10 decor 5 1
-prop 21 10 decor 2 3
-prop 14 11 decor 7 2
-prop 15 11 decor 0 0
-prop 16 11 decor 4 1
-prop 17 11 decor 6 1
-prop 19 11 decor 5 0
-prop 20 11 decor 3 2
-prop 21 11 decor 3 2
-prop 35 11 decor 4 0
-prop 9 12 decor 5 3
-prop 16 12 decor 5 3
-prop 35 12 decor 4 1
-prop 4 13 decor 0 3
-prop 9 13 decor 4 3
-prop 14 13 decor 6 1
-prop 4 14 decor 2 1
-prop 35 14 decor 2 2
-prop 35 15 decor 2 0
-prop 35 16 decor 2 0
-prop 35 17 decor 0 2
-prop 7 18 decor 3 0
-prop 12 18 decor 6 2
-prop 15 18 decor 6 0
-prop 19 18 decor 5 3
-prop 25 18 decor 0 0
-prop 27 18 decor 0 2
-prop 30 18 decor 2 2
-prop 32 18 decor 0 3
-prop 33 18 decor 7 3
-prop 35 18 decor 7 0
-prop 7 19 decor 1 3
-prop 8 19 decor 3 2
-prop 9 19 decor 1 3
-prop 10 19 decor 1 2
-prop 11 19 decor 5 0
-prop 12 19 decor 2 0
-prop 13 19 decor 1 3
-prop 14 19 decor 1 1
-prop 15 19 decor 7 3
-prop 16 19 decor 2 1
-prop 18 19 decor 4 3
-prop 20 19 decor 2 3
-prop 21 19 decor 2 2
-prop 22 19 decor 0 1
-prop 25 19 decor 1 1
-prop 26 19 decor 0 2
-prop 28 19 decor 2 2
-prop 29 19 decor 1 3
-prop 31 19 decor 3 0
-prop 33 19 decor 0 2
-prop 34 19 decor 2 0
+prop 0 6 decor 2 1
+prop 0 7 decor 2 3
+prop 4 9 decor 2 2
+prop 5 9 decor 0 2
+prop 4 10 decor 2 1
+prop 14 10 decor 0 3
+prop 19 10 decor 1 3
+prop 14 11 decor 3 2
+prop 18 11 decor 7 2
+prop 20 11 decor 0 2
+prop 21 11 decor 1 2
+prop 15 12 decor 3 3
+prop 17 12 decor 5 1
+prop 21 12 decor 1 0
+prop 35 12 decor 4 0
+prop 4 13 decor 2 1
+prop 35 14 decor 2 1
+prop 35 15 decor 0 3
+prop 35 16 decor 0 3
+prop 35 17 decor 0 0
+prop 22 18 decor 0 1
+prop 23 18 decor 3 1
+prop 24 18 decor 3 0
+prop 26 18 decor 6 1
+prop 27 18 decor 6 2
+prop 31 18 decor 4 1
+prop 33 18 decor 2 3
+prop 35 18 decor 6 2
+prop 9 19 decor 7 3
+prop 11 19 decor 3 1
+prop 15 19 decor 0 0
+prop 16 19 decor 2 0
+prop 20 19 decor 2 2
+prop 22 19 decor 0 3
+prop 23 19 decor 7 3
+prop 25 19 decor 7 0
+prop 26 19 decor 1 3
+prop 27 19 decor 3 2
+prop 28 19 decor 1 3
+prop 29 19 decor 1 2
+prop 31 19 decor 0 2
+prop 32 19 decor 0 0
+prop 34 19 decor 1 1
+prop 35 19 decor 7 3
 light 1 12 0.8 1 0.45 0.12 35 9.11
 light 3 18 0.8 1 0.45 0.12 35 10.085
 light 22 0 1.5 1 0.5 0.2 45 7
@@ -207,17 +175,14 @@ light 14 17 1.5 1 0.5 0.2 45 7
 light 27 17 1.5 1 0.5 0.2 45 7
 light 32 17 1.5 1 0.5 0.2 45 7
 light 0 0 1.2 1 0.45 0.12 30 5
-light 15 0 1.2 1 0.45 0.12 30 5
-light 33 0 1.2 1 0.45 0.12 30 5
-light 35 1 1.2 1 0.45 0.12 30 5
+light 16 0 1.2 1 0.45 0.12 30 5
+light 34 0 1.2 1 0.45 0.12 30 5
 light 35 3 1.2 1 0.45 0.12 30 5
-light 19 4 1.2 1 0.45 0.12 30 5
-light 21 5 1.2 1 0.45 0.12 30 5
-light 21 10 1.2 1 0.45 0.12 30 5
-light 15 11 1.2 1 0.45 0.12 30 5
-light 35 16 1.2 1 0.45 0.12 30 5
-light 30 18 1.2 1 0.45 0.12 30 5
-light 12 19 1.2 1 0.45 0.12 30 5
-light 14 19 1.2 1 0.45 0.12 30 5
+light 13 4 1.2 1 0.45 0.12 30 5
+light 14 10 1.2 1 0.45 0.12 30 5
+light 4 13 1.2 1 0.45 0.12 30 5
+light 23 18 1.2 1 0.45 0.12 30 5
+light 33 18 1.2 1 0.45 0.12 30 5
+light 16 19 1.2 1 0.45 0.12 30 5
 light 20 19 1.2 1 0.45 0.12 30 5
 light 34 19 1.2 1 0.45 0.12 30 5

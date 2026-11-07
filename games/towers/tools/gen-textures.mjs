@@ -10,6 +10,7 @@ import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 
 const N = 512;
+const DETAIL = 1.9; // how far each sheet's relief is pushed from its middle value (the look's local contrast)
 const out = resolve(process.argv[2] || join(dirname(fileURLToPath(import.meta.url)), '../assets/textures'));
 
 // ── periodic noise (crawler's) ──────────────────────────────────────
@@ -160,7 +161,7 @@ for (const [theme, fns] of Object.entries(THEMES))
     const px = Buffer.alloc(N * N * 3);
     for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
       const c = fns[part]((x + 0.5) / N, (y + 0.5) / N);
-      for (let k = 0; k < 3; k++) px[(y * N + x) * 3 + k] = Math.round(clamp(c[k]) * 255);
+      for (let k = 0; k < 3; k++) px[(y * N + x) * 3 + k] = Math.round(clamp(0.84 + (c[k] - 0.84) * DETAIL) * 255); // the detail pushed: crisp ground up close
     }
     writeFileSync(join(out, `${theme}_${part}.png`), png(N, N, px));
     n++;

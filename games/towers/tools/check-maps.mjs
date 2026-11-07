@@ -35,7 +35,7 @@ const JOBS = Number(opt('--jobs') || Math.max(1, cpus().length - 2));
 const CONTROLS = !argv.includes('--no-controls');
 const THEMES = ['meadow', 'autumn', 'desert', 'snow', 'volcano', 'crystal'];
 const KINDS = ['skitter', 'ghoul', 'hound', 'imp', 'sporeling', 'bloater', 'shade', 'ogre'];
-const TILE = 2, GROUND_H = 0.5, RES = 4, MARGIN = 3;
+const TILE = 2, GROUND_H = 0.5, RES = 8, MARGIN = 3;
 
 // ── the format (map.c) ──────────────────────────────────────────────
 function parse(text) {

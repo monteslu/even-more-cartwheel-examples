@@ -25,11 +25,23 @@ whole map on one screen, a fixed camera per map.
 
 ## The look: colour, not darkness
 
-- Six themes, five maps each: meadow (lush green, sandy dirt), autumn woods (gold and red), desert (sand and
-  terracotta), snowfields (white and ice blue), volcano (basalt with glowing cracks and lava pools, warm and
-  magenta light), crystal vale (violet grass, teal glow). Every one is bright: mid-key ground, a strong sun from the
-  north-west that models the banks and the creeps, a sky-coloured fill from the other side, a colour grade per theme
-  (gen-luts.mjs: an S-curve, split toning, saturation, a lifted black), contrast without washing out.
+- Six themes, five maps each, each a value hierarchy with a complementary accent (mapbuild.c PAL):
+  meadow (deep green ground, a pale sand path, blue pools), autumn woods (gold and red ground, a pale slate-blue
+  path), desert (bright sand, a dark slate path, teal pools, red rock), snowfields (white ground, a dark trodden-earth
+  path), volcano (dark basalt, a pale teal-grey ash path, lava pools), crystal vale (deep violet ground, a pale gold
+  path, glowing teal pools).
+- The value hierarchy: the path a clear step lighter or darker than the ground on every theme, its edge drawn by a
+  dark curb on the bank (the heightfield at a quarter metre, the notches of curves cut on the diagonal, so the edges
+  are crisp); the decor thinned and darkened, cooled against a warm theme, so it frames the play instead of competing;
+  the towers lifted off it with a warm rim light, glossier surfaces, a lit disc of the owner's colour under each and
+  a brighter team trim; the creeps tinted by kind with an ink outline, so they read on a pale path and on a dark
+  ground alike.
+- The grade (gen-luts.mjs): a strong S-curve (more on the low-contrast themes), split toning with cool shadows, the
+  blacks kept deep, saturation held level; exposure per theme for a mid-key frame. tests/towers-look.mjs holds one
+  map a theme to it: mean luma 90 to 135 (75 for the darker volcano and crystal), a standard deviation of 55 or
+  more, local contrast (luma against its 33 x 33 neighbourhood) of 13 or more, a complementary accent (4% of the
+  saturated pixels 90 degrees or more round the wheel from the commonest hue), saturation 0.25 to 0.62; frames
+  flattened halfway to their mean must fail.
 - The ground and path are baked (the sun, the sky, the lamps and glowing decor, with the trees' and rocks' shadows)
   and drawn unlit; everything that moves takes the bake's light where it stands; the towers' flashes, the beams' hits,
   the core and the gates are clustered lights, and every moving light shows on the baked ground as a pool.

@@ -392,11 +392,11 @@ function placeScenery(m, R) {
       if (Math.abs(x - m.core[0] - 0.5) < 2.6 && Math.abs(y - m.core[1] - 0.5) < 2.6) continue;
       const open = !blocked(x, y) && !near(g, x, y, '~', 1) && !near(g, x, y, '#', 1);
       const edge = x === 0 || y === 0 || x === W - 1 || y === H - 1;
-      if (open && R() < (edge ? 0.6 : 0.42)) {
+      if (open && R() < (edge ? 0.5 : 0.26)) {
         const frame = R.int(4);
         m.props.push({ x, y, kind: 'decor', frame, turn: R.int(4) });
         if (GLOW[m.theme] && R() < 0.25 && m.lights.length < 90) m.lights.push({ x, y, h: 1.2, c: GLOW[m.theme], e: 30, r: 5 });
-      } else if (!feat(x, y) && !near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.3)
+      } else if (!feat(x, y) && !near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.16)
         m.props.push({ x, y, kind: 'decor', frame: 4 + R.int(4), turn: R.int(4) });
     }
 }

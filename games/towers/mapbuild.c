@@ -165,7 +165,7 @@ static float vnoise(float x, float z, uint32_t seed) {
   return (a * (1 - fx) + b * fx) * (1 - fz) + (c * (1 - fx) + d * fx) * fz;
 }
 
-#define RES 4 /* heightfield samples a tile */
+#define RES 8 /* heightfield samples a tile (a quarter metre: smooth curves on the paths, outcrops and pools, a crisp curb) */
 /* a tile's kind, with the margin round the map copying the nearest edge tile (a gate's path runs on out of it) */
 static int tile_at(const tdmap *m, int x, int y) {
   int cx = CW_CLAMP(x, 0, m->w - 1), cy = CW_CLAMP(y, 0, m->h - 1);
@@ -232,13 +232,16 @@ float mapbuild_height(const tdmap *m, float x, float z) {
 /* the themes' palettes (screen colours): the ground, its accent in patches, the path, the banks and the rock; the
  * textures' tile size (m) */
 typedef struct palette { float ground[3], accent[3], path[3], bank[3], rock[3], water[3], tile_g, tile_p; } palette;
+/* each theme a value hierarchy with a complementary accent (DESIGN.md, the look): the path a clear step lighter or
+ * darker than the ground and in the opposite temperature, a dark curb on the banks between them, the water cool where
+ * the ground is warm */
 static const palette PAL[MP_THEMES] = {
-  { { 0.40f, 0.66f, 0.24f }, { 0.62f, 0.76f, 0.26f }, { 0.78f, 0.62f, 0.42f }, { 0.48f, 0.36f, 0.22f }, { 0.58f, 0.58f, 0.55f }, { 0.20f, 0.55f, 0.75f }, 4, 3 },
-  { { 0.70f, 0.52f, 0.20f }, { 0.82f, 0.34f, 0.12f }, { 0.66f, 0.52f, 0.40f }, { 0.44f, 0.29f, 0.17f }, { 0.55f, 0.50f, 0.45f }, { 0.22f, 0.48f, 0.62f }, 4, 3 },
-  { { 0.90f, 0.72f, 0.46f }, { 0.92f, 0.56f, 0.32f }, { 0.74f, 0.54f, 0.38f }, { 0.70f, 0.45f, 0.28f }, { 0.78f, 0.47f, 0.31f }, { 0.18f, 0.62f, 0.70f }, 5, 3 },
-  { { 0.90f, 0.94f, 0.99f }, { 0.72f, 0.84f, 0.97f }, { 0.56f, 0.66f, 0.78f }, { 0.62f, 0.72f, 0.86f }, { 0.48f, 0.53f, 0.64f }, { 0.35f, 0.62f, 0.85f }, 5, 3 },
-  { { 0.46f, 0.36f, 0.34f }, { 0.95f, 0.40f, 0.10f }, { 0.58f, 0.40f, 0.32f }, { 0.30f, 0.22f, 0.20f }, { 0.30f, 0.26f, 0.26f }, { 1.00f, 0.42f, 0.10f }, 4, 3 },
-  { { 0.47f, 0.40f, 0.72f }, { 0.42f, 0.72f, 0.78f }, { 0.74f, 0.66f, 0.84f }, { 0.30f, 0.24f, 0.46f }, { 0.38f, 0.44f, 0.60f }, { 0.30f, 0.80f, 0.90f }, 4, 3 },
+  { { 0.25f, 0.48f, 0.14f }, { 0.46f, 0.58f, 0.14f }, { 0.98f, 0.91f, 0.74f }, { 0.20f, 0.16f, 0.11f }, { 0.55f, 0.57f, 0.62f }, { 0.12f, 0.55f, 0.78f }, 4, 3 },
+  { { 0.64f, 0.39f, 0.12f }, { 0.64f, 0.22f, 0.08f }, { 0.72f, 0.84f, 0.99f }, { 0.18f, 0.12f, 0.10f }, { 0.44f, 0.47f, 0.56f }, { 0.12f, 0.50f, 0.62f }, 4, 3 },
+  { { 0.93f, 0.76f, 0.48f }, { 0.88f, 0.54f, 0.30f }, { 0.17f, 0.21f, 0.33f }, { 0.22f, 0.14f, 0.10f }, { 0.72f, 0.36f, 0.24f }, { 0.08f, 0.66f, 0.72f }, 5, 3 },
+  { { 0.90f, 0.94f, 0.99f }, { 0.72f, 0.84f, 0.97f }, { 0.46f, 0.33f, 0.25f }, { 0.20f, 0.18f, 0.22f }, { 0.36f, 0.40f, 0.52f }, { 0.20f, 0.52f, 0.86f }, 5, 3 },
+  { { 0.35f, 0.29f, 0.40f }, { 0.85f, 0.30f, 0.06f }, { 0.46f, 0.82f, 0.90f }, { 0.07f, 0.06f, 0.07f }, { 0.17f, 0.15f, 0.18f }, { 1.00f, 0.42f, 0.10f }, 4, 3 },
+  { { 0.32f, 0.24f, 0.56f }, { 0.20f, 0.58f, 0.64f }, { 1.00f, 0.92f, 0.62f }, { 0.14f, 0.10f, 0.24f }, { 0.50f, 0.55f, 0.74f }, { 0.30f, 0.85f, 0.90f }, 4, 3 },
 };
 
 static cw_node mesh_node(cw_node parent, const char *name, t3_mesh *mesh, bool baked) {
@@ -296,7 +299,7 @@ static void build_terrain(mb_built *b, const tdmap *m) {
         uv[v * 2] = (float)i / (float)(NI - 1), uv[v * 2 + 1] = (float)j / (float)(NJ - 1);
         /* colour: by what the vertex is (path, bank, ground, rock, water bed), mottled, the theme's accent in patches */
         float slope = sqrtf(nx * nx + nz * nz);
-        float k = 0.88f + 0.24f * (vnoise(x / 6, z / 6, 11 + (uint32_t)m->num) - 0.5f) + 0.12f * (vnoise(x / 1.7f, z / 1.7f, 12) - 0.5f);
+        float k = 0.85f + 0.42f * (vnoise(x / 6, z / 6, 11 + (uint32_t)m->num) - 0.5f) + 0.26f * (vnoise(x / 1.7f, z / 1.7f, 12) - 0.5f);
         float a = 0.55f * CW_CLAMP((vnoise(x / 5.0f, z / 5.0f, 31 + (uint32_t)m->num) - 0.52f) * 3.2f, 0.0f, 1.0f);
         float c[3];
         for (int q = 0; q < 3; q++) {
@@ -304,8 +307,8 @@ static void build_terrain(mb_built *b, const tdmap *m) {
           if (wet[v] > 0.01f) c[q] = h < MP_GROUND_H - 0.1f ? pal->water[q] * 0.5f + pal->bank[q] * 0.5f : pal->bank[q] + (pal->ground[q] - pal->bank[q]) * 0.5f;
           else if (h < -0.05f) c[q] = pal->water[q] * 0.55f + pal->bank[q] * 0.45f;
           else if (h < 0.02f) c[q] = pal->path[q] * (0.92f + 0.16f * (vnoise(x / 2.5f, z / 2.5f, 17) - 0.5f) * 2);
-          else if (h > MP_GROUND_H + 0.05f) c[q] = pal->rock[q] * (0.8f + 0.4f * fhash(i / 2, j / 2, 7)) * (0.85f + 0.15f * CW_MIN(h - MP_GROUND_H, 1.0f));
-          else if (slope > 0.3f) c[q] = pal->bank[q] + (gq - pal->bank[q]) * CW_CLAMP(h / MP_GROUND_H, 0.0f, 1.0f) * 0.35f;
+          else if (h > MP_GROUND_H + 0.05f) c[q] = pal->rock[q] * (0.8f + 0.4f * fhash(i / 2, j / 2, 7)) * (0.45f + 0.75f * CW_MIN((h - MP_GROUND_H) / 1.4f, 1.0f)); /* modelled: dark at the foot, light on top */
+          else if (slope > 0.3f) c[q] = pal->bank[q]; /* the curb: a dark band that draws the path's edge */
           else c[q] = gq;
           c[q] *= k;
         }
@@ -440,6 +443,9 @@ static void prop_place(const tdmap *m, const mp_prop *p, float *x, float *z, flo
   }
 }
 
+/* the decor recedes: darker than the play and cooled against a warm theme (warmed against a cold one), so the trees
+ * and rocks frame the paths and pads instead of competing with them */
+static const float RECEDE[MP_THEMES][3] = { { 0.34f, 0.4f, 0.54f }, { 0.36f, 0.36f, 0.5f }, { 0.42f, 0.42f, 0.54f }, { 0.52f, 0.46f, 0.42f }, { 0.5f, 0.45f, 0.55f }, { 0.5f, 0.48f, 0.5f } };
 static void build_props(mb_built *b, const tdmap *m) {
   for (int kind = 0; kind < 2; kind++) {
     int n = 0;
@@ -481,9 +487,11 @@ static void build_props(mb_built *b, const tdmap *m) {
           t3_mat4 mm;
           t3_quat q = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) };
           t3_mat4_compose(&mm, (t3_vec3){ x, MP_GROUND_H, z }, q, (t3_vec3){ sc, sc, sc });
+          if (!kind && g == 0) t3_instanced_mesh_set_color_at(im, k, (t3_color){ RECEDE[b->theme][0], RECEDE[b->theme][1], RECEDE[b->theme][2] });
           t3_instanced_mesh_set_matrix_at(im, k++, &mm);
         }
         im->instance_matrix->version++;
+        im->instance_color->version++;
       }
     }
     mb_chr_free(&c);
