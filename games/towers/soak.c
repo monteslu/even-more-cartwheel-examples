@@ -9,7 +9,7 @@
  *       The long soak: map after map (a fallen core starts its map again), checking every tick: no NaN or stray
  *       position, no creep off the path, counts that agree with the tables, gold never below nothing, every tower on
  *       a slot. A line a game minute (map, wave, creeps, kills, leaks, resident memory). Exit 0 = nothing broke.
- * TOWERS_SOAK_INJECT=1 puts a NaN into a creep's health at tick 4000 (the control: the checks must catch it). */
+ * TOWERS_SOAK_INJECT=1 puts a NaN into a creep's health from tick 4000 (the first alive) (the control: the checks must catch it). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -163,9 +163,10 @@ int main(int argc, char **argv) {
   sim_map_start(&S, &M);
   long total = (long)minutes * 3600, rss0 = 0;
   int maps = 0, falls = 0, most = 0;
+  bool injected = !getenv("TOWERS_SOAK_INJECT");
   for (long t = 1; t <= total; t++) {
-    if (t == 4000 && getenv("TOWERS_SOAK_INJECT"))
-      for (int i = 0; i < MAXE; i++) if (S.e[i].alive) { S.e[i].hp = NAN; break; }
+    if (!injected && t >= 4000) /* the first creep alive from tick 4000 on */
+      for (int i = 0; i < MAXE && !injected; i++) if (S.e[i].alive) S.e[i].hp = NAN, injected = true;
     step(players);
     if (check(&S)) return 1;
     if (S.nenemies > most) most = S.nenemies;

@@ -160,7 +160,7 @@ static bool map_go(int n) {
           if (G.S.m.t[y][x] != T_PATH) continue;
           for (int q = 0; q < per && G.S.nenemies < G.bench_crowd; q++, k++) {
             int kind = MIX[k % 8];
-            sim_spawn(&G.S, kind, kind == CK_OGRE ? 2500 : 300, mp_wx(&G.S.m, (float)x) + (float)(q & 1) * 0.9f - 0.45f, mp_wz(&G.S.m, (float)y) + (float)((q >> 1) & 1) * 0.9f - 0.45f);
+            sim_spawn(&G.S, kind, kind == CK_OGRE ? 900 : 300, mp_wx(&G.S.m, (float)x) + (float)(q & 1) * 0.9f - 0.45f, mp_wz(&G.S.m, (float)y) + (float)((q >> 1) & 1) * 0.9f - 0.45f);
           }
         }
     }
@@ -354,7 +354,7 @@ static void fixed_update(void *u, double dt) {
       mp_gate_pos(&G.S.m, k % G.S.m.nspawn, &gx, &gz);
       static const int MIX[8] = { CK_SKITTER, CK_GHOUL, CK_SKITTER, CK_HOUND, CK_IMP, CK_SKITTER, CK_OGRE, CK_SHADE };
       int kind = MIX[(G.S.tick + k) % 8];
-      sim_spawn(&G.S, kind, kind == CK_OGRE ? 2500 : 300, gx + (float)((k * 37) % 13) * 0.1f - 0.6f, gz + (float)((k * 53) % 11) * 0.1f - 0.5f);
+      sim_spawn(&G.S, kind, kind == CK_OGRE ? 900 : 300, gx + (float)((k * 37) % 13) * 0.1f - 0.6f, gz + (float)((k * 53) % 11) * 0.1f - 0.5f);
     }
   }
   G.t_sim += (wall() - t0) * 1000;

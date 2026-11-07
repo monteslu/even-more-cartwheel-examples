@@ -158,7 +158,7 @@ static const char *const HAZE[] = { "amount", "1", "lifetime", "0.45", "explosiv
 static const char *const FLASHP[] = { "amount", "1", "lifetime", "0.09", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "POINT", "spread", "0", "speed_min", "0", "speed_max", "0", "size", "1.1", "size_curve", "\"0 1, 1 0.4\"",
   "color_ramp", "\"0 1 1 1 1, 1 1 1 1 0\"", "energy", "12", "blend", "ADD", NULL };
-static const char *const MOTES[] = { "amount", "260", "lifetime", "8", "lifetime_random", "0.4", "one_shot", "false",
+static const char *const MOTES[] = { "amount", "200", "lifetime", "8", "lifetime_random", "0.4", "one_shot", "false",
   "emission_shape", "BOX", "emission_extents", "vec3(38, 1.2, 22)", "direction", "vec3(0, 1, 0)", "spread", "90", "speed_min", "0.1", "speed_max", "0.5",
   "gravity", "vec3(0.25, 0.05, 0.1)", "turbulence", "0.6", "turbulence_scale", "0.25", "size", "0.13", "size_random", "0.6",
   "color_ramp", "\"0 1 1 1 0, 0.2 1 1 1 1, 0.8 1 1 1 1, 1 1 1 1 0\"", "energy", "3", "blend", "ADD", NULL };
@@ -429,7 +429,7 @@ void fx_events(sim *s) {
       if (e->b) for (int p = 0; p < MAXP; p++) if (s->p[p].active) rumble(p, 0.25f, 0.1f, 90);
       break;
     case EV_KILL:
-      if (FX.frame_kills++ > (lvl >= 2 ? 24 : lvl >= 1 ? 14 : 8)) break;
+      if (FX.frame_kills++ > (lvl >= 2 ? 16 : lvl >= 1 ? 10 : 6)) break;
       if (e->a == CK_SHADE) burst(FX.wisp, x, 0.8f, z, 0, 1, 0);
       else burst(FX.gore, x, 0.5f, z, 0, 1, 0);
       if (e->w > 0.5f) { blast(x, z, 3.0f, true); flash(x, 2, z, 150, 1, 0.5f, 0.3f); rumble_all(s, 0.8f, 0.4f, 300); }
@@ -480,7 +480,7 @@ void fx_tick(const sim *s, float time) {
     int th = CW_CLAMP(s->m.theme, 0, MP_THEMES - 1);
     if (th != FX.motes_theme) FX.motes_theme = th, cw_node_set(FX.motes, "color", cw_val_color(MC[th][0], MC[th][1], MC[th][2], 1));
     static int last_amount = -1;
-    int amount = lvl >= 2 ? 260 : lvl >= 1 ? 160 : 90;
+    int amount = lvl >= 2 ? 200 : lvl >= 1 ? 140 : 80;
     if (amount != last_amount) last_amount = amount, cw_node_set(FX.motes, "amount", cw_val_int(amount));
   }
   /* the bolts: re-jagged every other frame, thinning as they die */

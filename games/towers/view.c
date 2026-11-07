@@ -203,13 +203,13 @@ static const char *const MON_FILE[CK_KINDS] = { "models/skitter.cwchar", "models
 static const char *const MON_NAME[CK_KINDS] = { "Skitters", "Ghouls", "Hounds", "Imps", "Sporelings", "Bloaters", "Shades", "Ogres" };
 static const int MON_CAP[CK_KINDS] = { 3400, 2400, 2000, 1600, 1200, 900, 1600, 600 };
 /* each kind's identity colour: its edge (DESIGN.md, the look) */
-static const float KIND_RIM[CK_KINDS][3] = { { 0.2f, 1.0f, 1.0f }, { 1.0f, 0.95f, 0.65f }, { 1.0f, 0.55f, 0.1f }, { 1.0f, 0.2f, 0.15f },
-                                             { 1.0f, 0.35f, 1.0f }, { 0.7f, 1.0f, 0.1f }, { 0.75f, 0.9f, 1.0f }, { 0.75f, 0.25f, 1.0f } };
+static const float KIND_RIM[CK_KINDS][3] = { { 0.2f, 1.0f, 1.0f }, { 1.0f, 0.95f, 0.65f }, { 1.0f, 0.55f, 0.1f }, { 1.0f, 0.85f, 0.15f },
+                                             { 1.0f, 0.35f, 1.0f }, { 0.7f, 1.0f, 0.1f }, { 0.75f, 0.9f, 1.0f }, { 1.0f, 0.15f, 0.25f } };
 /* each kind's body: the modelled colours (a dark body, one accent) lifted and tinted in the kind's colour, so at 20 to 40
- * pixels a kind reads by its colour and its size, not its edge alone: cyan skitters, bone ghouls, orange hounds, red imps,
- * violet sporelings, lime bloaters, pale shades, purple ogres */
-static const float KIND_BODY[CK_KINDS][3] = { { 0.8f, 2.3f, 2.5f }, { 2.5f, 2.3f, 1.7f }, { 2.8f, 1.4f, 0.45f }, { 2.8f, 0.7f, 0.55f },
-                                             { 2.7f, 1.3f, 3.1f }, { 1.7f, 2.7f, 0.5f }, { 1.9f, 2.3f, 2.9f }, { 1.9f, 0.85f, 2.4f } };
+ * pixels a kind reads by its colour and its size, not its edge alone: cyan skitters, bone ghouls, orange hounds, gold imps,
+ * violet sporelings, lime bloaters, pale shades, crimson ogres */
+static const float KIND_BODY[CK_KINDS][3] = { { 0.8f, 2.3f, 2.5f }, { 2.5f, 2.3f, 1.7f }, { 2.8f, 1.4f, 0.45f }, { 2.9f, 2.1f, 0.4f },
+                                             { 2.7f, 1.3f, 3.1f }, { 1.7f, 2.7f, 0.5f }, { 1.9f, 2.3f, 2.9f }, { 2.7f, 0.55f, 0.7f } };
 
 static t3_geometry *hull(t3_geometry *g, float d) {
   t3_attribute *pa = g->attributes[T3_ATTR_POSITION], *na = g->attributes[T3_ATTR_NORMAL];
@@ -228,7 +228,7 @@ static t3_geometry *hull(t3_geometry *g, float d) {
 static void kind_load(int k) {
   kindv *kv = &V.k[k];
   if (!mb_chr_load(&kv->c, MON_FILE[k])) return;
-  mb_chr_simplify(&kv->c, 0, 0.1f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
+  mb_chr_simplify(&kv->c, 0, 0.115f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
   kv->r = kv->c.rad;
@@ -241,6 +241,7 @@ static void kind_load(int k) {
   for (int f = 0; f < kv->nwalk && f < MB_MAXF; f++) {
     int cap = MON_CAP[k] / CW_MAX(kv->nwalk, 1) * 3 / 2 + 48;
     kv->im[f] = imesh(MON_NAME[k], t3_retain(kv->c.geo[0][f]), t3_retain(m), cap);
+    if (k == CK_SKITTER) continue; /* the swarm is cyan specks: an edge on each costs a third of the crowd's edges and reads as nothing */
     t3_geometry *hg = hull(kv->c.geo[0][f], 0.045f);
     if (!hg) continue;
     t3_instanced_mesh *e = imesh(MON_NAME[k], hg, t3_retain(em), 1);

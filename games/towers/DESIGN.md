@@ -17,7 +17,7 @@ whole map on one screen, a fixed camera per map.
   as from straight above); towers, pads and the scenery do not lean.
 - A creep is 20 to 40 pixels across, so each kind reads by its colour and its size, not its edge alone: the modelled
   body (crawler's dark body with one accent) is lifted and tinted in the kind's colour (cyan skitters, bone ghouls,
-  orange hounds, red imps, violet sporelings, lime bloaters, pale shades, purple ogres), sizes run from the small
+  orange hounds, gold imps, violet sporelings, lime bloaters, pale shades, crimson ogres), sizes run from the small
   skitters to bloaters half again as wide and ogres two thirds bigger, and an edge in the same hue (crawler's hull)
   parts each body from its neighbours; blob shadows stay light so a crowd is not a field of dark circles. Towers wear their owner's colour on a trim band and glow in
   their kind's colour: bolt pale blue, frost ice, beam magenta, mortar orange.
@@ -142,7 +142,7 @@ navmesh (the path tiles), steered by one flow field from the core; the crowd kee
   edges are unlit hulls sharing the bodies' instance buffers. Towers, pads, shells, beams and lightning instanced too.
 - The ground and path baked and drawn unlit; moving lights clustered and pooled on the ground as splats.
 - Perf gate (`tests/towers-perf.mjs`): towers at level 3 on every pad of a late map, 2400 creeps kept on its paths,
-  1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame (3.85 to 4.24 ms measured across six maps).
+  1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame (3.89 to 4.26 ms measured across six maps).
 
 ## Feel
 

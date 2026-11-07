@@ -22,8 +22,12 @@ reaches the core costs it health; hold the core through the last wave to take th
 ## How the maps are made
 
 - Each map is a `.cwtd` text file in `assets/maps/` (the format is in `map.h`), written by `tools/gen-maps.mjs` from a
-  seed: winding paths two tiles wide from the gates on the edge to the core, pads beside them dealt into fair shares
-  for two, three and four players, the theme's decor and lamps (the format also takes rock and water tiles).
+  seed: smooth winding paths in six families of layout (switchbacks, columns, a spiral, a loop past the core, an open
+  field with a choke, a wandering way), more gates merging in on the later maps, pads beside the paths dealt into fair
+  shares for two, three and four players, rock outcrops and pools, the theme's decor and lamps.
+- `tools/tune-maps.mjs <towers_soak>` sets the difficulty of maps 11 to 30 so two bots hold each while losing some of
+  the core (none on map 11, 14 of 20 on map 30); the results live in `tools/map-diffs.json` for `gen-maps.mjs`.
+  `tools/gen-broken.mjs` writes the map check's controls.
 - `tools/mapview` (`towers_mapview`) builds a map as the game does (`mapbuild.c`) and bakes its lighting:
   `scripts/build.sh towers_mapview`, then `towers_mapview --bake games/towers/assets/lightmaps` (through the GPU
   suite lock) bakes all 30 and writes each bake's hash beside it. As a cart it shows the maps for review.

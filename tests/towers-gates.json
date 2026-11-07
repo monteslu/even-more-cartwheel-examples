@@ -34,26 +34,26 @@
       "game.map": 1,
       "game.wave": 1,
       "game.towers": 4,
-      "game.kills": 36,
+      "game.kills": 47,
       "game.core": 20,
       "player.gold": [
-        65,
-        65,
+        70,
+        70,
         0,
         0
       ],
       "player.slot": [
-        1,
-        8,
+        2,
+        3,
         0,
         0
       ],
-      "game.hash": 3386763978
+      "game.hash": 16868397
     }
   },
   {
     "name": "towers-build",
-    "note": "towers, one player on a pad: start, choose map 1, then the build diamond: north builds a bolt on the first pad, a hop right, west a frost, a hop down, east a beam, and a shoulder calls the first wave early. Three towers, the gold they cost, the cursor's pad and the wave are pinned. The control hops the same way and presses no build button: no towers, so it must differ.",
+    "note": "towers, one player on a pad: start, choose map 1, then the build diamond: north builds a bolt on the first pad, a hop right, west a frost, two hops down, east a beam, and a shoulder calls the first wave early. Three towers, the gold they cost, the cursor's pad and the wave are pinned. The control hops the same way and presses no build button: no towers, so it must differ.",
     "app": "towers",
     "frames": 330,
     "input": "towers-play.json",
@@ -91,12 +91,12 @@
         0
       ],
       "player.slot": [
-        16,
+        6,
         0,
         0,
         0
       ],
-      "game.hash": 3674031457
+      "game.hash": 157047320
     }
   }
 ]
