@@ -36,13 +36,25 @@
 5. Perf: parallax merged into the sky layer (four fewer layers), back wall skipped behind rock and kept to a band,
    no full-screen quads in the lit layers.
 
+## Round two finish (2026-11-07)
+- WebGPU exited on start-up: on the first frame the canvas size is 0 x 0 (no pass yet), the zoom became 0, the view
+  NaN, and every entity in the world was drawn in one frame (604,752 vertices); Dawn aborted in the index upload.
+  `view_canvas` (view.c) falls back to the window size and draws nothing while that is 0 too. Details and the Dawn
+  side: internal-cartwheel findings/explorer-2d.md.
+- GI field at a quarter of the canvas (was an eighth): finer and, on v0.37, cheaper (bench GL 4.2 -> 3.4 ms,
+  WebGPU 4.6 -> 3.8 ms). Engine v0.38.0 cuts GI to about 0.3 ms; the pin move is the coordinator's.
+- Soak: 24 runs (12 starts, one and two players) all clear; the stall at route step 3672 in room 321 (out/tr.txt
+  of the previous session) does not happen on this world and bot. The soak test runs two starts per player count.
+
 ## Debugging switches
 - Fast looks without the GPU lock: `node tests/explorer-look.mjs` (lavapipe, out/look-explorer/r<region>.png), or
   run explorer_auto on lavapipe by hand (SDL_VIDEODRIVER=offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,
   CW_SCREENSHOT, EXPLORER_IDLE=1 EXPLORER_ROOM=n EXPLORER_NO_HUD=1).
-- Perf breakdown: `EXPLORER_PERF_OFF=shadows,vol,post,water,dist,occl,lights,frame` and `EXPLORER_NO_GI=1`.
+- Perf breakdown: `EXPLORER_PERF_OFF=shadows,vol,post,water,dist,occl,lights,frame`, `EXPLORER_NO_GI=1`, and
+  `EXPLORER_GI_RES=<share>` (the GI field's share of the canvas; 0.25 ships). Numbers per part: internal-cartwheel
+  findings/explorer-2d.md, "Perf on v0.37.0".
 - Bot: `EXPLORER_SOAK_HURT=1 explorer_soak games/explorer/assets <min> 1` prints hurts, deaths, REGRESS lines;
-  `EXPLORER_SOAK_FROM=a EXPLORER_SOAK_TRACE=b` traces ticks a..b (with the warden's state when one is up). A full
+  `EXPLORER_SOAK_SEED=n` plays another run (the bot starts n % 97 ticks late); `EXPLORER_SOAK_FROM=a EXPLORER_SOAK_TRACE=b` traces ticks a..b (with the warden's state when one is up). A full
   clear takes about 140 game minutes, about 3 s of CPU.
 
 ## Open

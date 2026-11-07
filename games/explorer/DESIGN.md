@@ -141,7 +141,9 @@ shrines, opens hidden and cracked floors the route drops through, and reads the 
 (charges jumped toward and over, tells as long as the warden's phase makes them, helpers struck first). A watchdog
 stops it minding enemies for a while when the route has not moved in twenty seconds. It plays with the assist
 (every third hit costs a leaf) and clears the game: `tests/explorer-soak.mjs` requires every pickup, all six
-wardens and the heart down, for one player and for two.
+wardens and the heart down, for one player and for two, each on two runs (the sim has no randomness, so the second
+run starts the bot 13 ticks late: every enemy and warden meets it at another point of its cycle). Twenty-four such runs
+(twelve starts, one and two players) all clear.
 
 ## The 2D renderer's new features (cartwheel-engine v0.37)
 

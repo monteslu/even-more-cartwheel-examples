@@ -135,7 +135,7 @@ void hud_menu_build(const sim *s, hud_state *h) {
 }
 
 void hud_draw(const sim *s, const hud_state *h, float t) {
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   float u = cs.y / 1080.0f;
   char b[200];
   cw_r2d_begin(NULL);

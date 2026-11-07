@@ -1,5 +1,6 @@
 // explorer soak (native, no window, no GPU): explorer_soak plays from the start through the input struct the pad
-// fills (the bot, along the checker's route, with the assist) for up to 240 game minutes, one player and then two.
+// fills (the bot, along the checker's route, with the assist) for up to 240 game minutes, one player and then two, each
+// on two runs (EXPLORER_SOAK_SEED: the bot starts later, so every enemy and warden meets it at another point of its cycle).
 // Each run must exit 0 and end with "soak ok", keep positions and health finite and every player out of the rock every
 // tick, keep resident memory within 5% of the first minute, and clear the game: every pickup, all six wardens, the
 // heart down (won 1). The control puts a NaN into the player's speed and the checks must catch it (exit 1).
@@ -18,10 +19,11 @@ if (!process.env.CW_GPU_SUITE_INNER) { /* (inside one hold of the GPU suite lock
 const exe = [join(ROOT, 'build/native/project/games/explorer/explorer_soak'), join(ROOT, 'build/native/games/explorer/explorer_soak')].find(existsSync);
 const assets = join(ROOT, 'games/explorer/assets');
 const MINUTES = 240, PICKUPS = 38, WARDENS = 6;
+const SEEDS = [0, 13];
 const run = (players, env = {}) => spawnSync(exe, [assets, String(MINUTES), String(players)], { encoding: 'utf8', timeout: 3600000, env: { ...process.env, ...env } });
 let bad = 0;
-for (const p of [1, 2]) {
-  const r = run(p);
+for (const p of [1, 2]) for (const seed of SEEDS) {
+  const r = run(p, seed ? { EXPLORER_SOAK_SEED: String(seed) } : {});
   const out = r.stdout || '';
   const m = /soak ok: (\d+) minutes, (\d+) pickups, (\d+) wardens, won (\d)/.exec(out);
   const mem = [...out.matchAll(/rss (\d+) kB \(first minute (\d+)\)/g)].map((x) => +x[1] / +x[2]);
@@ -30,9 +32,9 @@ for (const p of [1, 2]) {
   const won = m ? +m[4] : 0;
   const at = (/minute (\d+): .*pickups 38\/38/.exec(out) || [])[1];
   if (r.status !== 0 || !m || growth > 1.05 || pick < PICKUPS || ward < WARDENS || won !== 1) {
-    console.log(`FAIL soak ${p} player${p > 1 ? 's' : ''}: status ${r.status}, ${pick} pickups, ${ward} wardens, won ${won}, memory x${growth.toFixed(3)}\n${out.split('\n').filter((l) => !l.startsWith('t')).slice(-6).join('\n')}`);
+    console.log(`FAIL soak ${p} player${p > 1 ? 's' : ''} run ${seed}: status ${r.status}, ${pick} pickups, ${ward} wardens, won ${won}, memory x${growth.toFixed(3)}\n${out.split('\n').filter((l) => !l.startsWith('t')).slice(-6).join('\n')}`);
     bad++;
-  } else console.log(`ok   soak ${p} player${p > 1 ? 's' : ''}: a full clear, ${pick} pickups, ${ward} wardens, won (every pickup by game minute ${at}; memory x${growth.toFixed(3)} at worst)`);
+  } else console.log(`ok   soak ${p} player${p > 1 ? 's' : ''} run ${seed}: a full clear, ${pick} pickups, ${ward} wardens, won (every pickup by game minute ${at}; memory x${growth.toFixed(3)} at worst)`);
 }
 const c = run(1, { EXPLORER_SOAK_INJECT: '1' });
 if (c.status === 1 && /soak FAIL/.test(c.stdout)) console.log('ok   control: an injected NaN is caught');

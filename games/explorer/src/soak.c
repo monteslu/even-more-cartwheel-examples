@@ -6,6 +6,7 @@
  * falls, and checks every tick: positions and health are finite, the players stay inside the world and out of
  * solid rock. Prints progress each game minute (pickups, wardens, rooms seen, deaths, the bot's recoveries, rss),
  * then "soak ok: <minutes> minutes, <pickups> pickups, <bosses> wardens, won <0|1>" or "soak FAIL: <why>" (exit 1).
+ * EXPLORER_SOAK_SEED=n plays another run (the bot starts n % 97 ticks late, its wiggles differ).
  * EXPLORER_SOAK_INJECT=1 puts a NaN into the player's speed at minute 1: the checks must catch it (the control). */
 #include <math.h>
 #include <stdio.h>
@@ -54,12 +55,17 @@ int main(int argc, char **argv) {
   sim_init(&S, &W, players);
   S.assist = getenv("EXPLORER_ASSIST") ? atoi(getenv("EXPLORER_ASSIST")) : 3;
   bool inject = getenv("EXPLORER_SOAK_INJECT") != NULL;
+  /* EXPLORER_SOAK_SEED=n: another run of the same world (the sim has no randomness of its own): the bot waits n % 97
+   * ticks before it starts, so every enemy and warden meets it at another point of its cycle, and its wiggles go
+   * another way */
+  unsigned seed = getenv("EXPLORER_SOAK_SEED") ? (unsigned)atoi(getenv("EXPLORER_SOAK_SEED")) : 0;
+  if (seed) B.seed = 99 + seed * 7919u;
   long first_rss = 0;
   int last_i = 0, flat_minutes = 0;
   for (long tick = 0; tick < (long)minutes * 3600 && !S.won; tick++) {
     pinput in[MAXP];
     memset(in, 0, sizeof in);
-    bot_input(&B, &S, 0, &in[0]);
+    if (tick >= (long)(seed % 97)) bot_input(&B, &S, 0, &in[0]);
     for (int i = 1; i < S.players; i++) bot_follow(&S, i, &in[i]);
     static int prev_i;
     int i_before = B.i;

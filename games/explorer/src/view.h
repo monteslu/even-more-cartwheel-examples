@@ -2,6 +2,7 @@
 #ifndef EXPLORER_VIEW_H
 #define EXPLORER_VIEW_H
 
+#include "cartwheel/platform.h"
 #include "cartwheel/render2d.h"
 #include "sim.h"
 
@@ -25,6 +26,7 @@ void view_events(const sim *s);           /* particles and flashes from the tick
 void view_tick(const sim *s, float dt);   /* particles move */
 view_stats view_get_stats(void);
 cw_vec2 view_world_to_screen(cw_vec2 w); /* canvas units */
+cw_vec2 view_canvas(void); /* the window pass's canvas size, valid before the first pass too */
 float view_px_per_tile(void);
 extern cw_camera2d g_cam;
 

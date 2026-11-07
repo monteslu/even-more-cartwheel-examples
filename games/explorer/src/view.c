@@ -78,14 +78,26 @@ void view_init(void) {
   np = 0;
 }
 
+/* the canvas a window pass draws on: cw_r2d_canvas_size answers for the current or last pass, so before the first one
+ * (the first frame) it is 0 x 0; the window's logical size is the same thing then. 0 x 0 still: nothing is drawn (a
+ * zero zoom made the view NaN, every culling test false, and the first frame drew every entity in the world). */
+cw_vec2 view_canvas(void) {
+  cw_vec2 cs = cw_r2d_canvas_size();
+  if (cs.x >= 1 && cs.y >= 1) return cs;
+  int w = 0, h = 0;
+  cw_window_size(&w, &h);
+  return (cw_vec2){ (float)w, (float)h };
+}
+
 float view_px_per_tile(void) { return zoom; }
 cw_vec2 view_world_to_screen(cw_vec2 w) {
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   return (cw_vec2){ (w.x - g_cam.position.x) * zoom + cs.x * 0.5f, (w.y - g_cam.position.y) * zoom + cs.y * 0.5f };
 }
 
 void view_camera(const sim *s, float dt, bool snap) {
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
+  if (cs.y < 1) return;
   zoom = cs.y / (float)CELL_H;
   float vw = cs.x / zoom, vh = cs.y / zoom;
   /* the players' middle, a little ahead of where player 1 runs */
@@ -169,7 +181,7 @@ static void draw_sky(const sim *s, float t, int region) {
   /* a little more light behind the rock-heavy halls of the Forge, a little less in the snow (luma steps) */
   static const int8_t EXPO[NREGIONS] = { [R_FORGE] = 22, [R_CLOCK] = 10, [R_ROOTWAY] = 4, [R_FROST] = -14, [R_SKY] = -8 };
   int ex = EXPO[region];
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   cw_r2d_use_layer(L_SKY);
   /* a bright hazy depth behind everything: the playfield and the rock read as darker shapes against it */
   cw_color haze = toluma(hexc(ri->sky, 1), VAL(V_HAZE + ex));
@@ -617,7 +629,7 @@ static void draw_framing(const sim *s, float t) {
   const region_info *g = &REGIONS[r->region];
   cw_color ink = mixc(scalec(hexc(g->ground, 1), 0.32f), scalec(hexc(g->sky, 1), 0.2f), 0.35f), ink2 = scalec(ink, 1.35f);
   float X0 = (float)(r->x * CELL_W), X1 = (float)((r->x + r->w) * CELL_W), Y0 = (float)(r->y * CELL_H), Y1 = (float)((r->y + r->h) * CELL_H);
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   float vw = cs.x / zoom, vh = cs.y / zoom;
   float cxL = X0 + vw * 0.5f, cxR = X1 - vw * 0.5f, cyT = Y0 + vh * 0.5f;
   if (cxR < cxL) cxL = cxR = (X0 + X1) * 0.5f;
@@ -1123,12 +1135,12 @@ void view_draw(const sim *s, float t) {
   if (!rockdist || rock_dirty) build_rockdist(s), rock_dirty = false;
   static int empty = -1; /* the perf gate's control: nothing of the world drawn */
   if (empty < 0) empty = getenv("EXPLORER_BENCH_EMPTY") != NULL;
-  if (empty) {
+  if (empty || view_canvas().y < 1) {
     cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = rgba(0, 0, 0, 1) });
     cw_r2d_end();
     return;
   }
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
   const region_info *g = &REGIONS[region];
   cw_color amb = mixc(hexc(g->sky, 1), rgba(1, 1, 1, 1), 0.55f);
@@ -1139,7 +1151,11 @@ void view_draw(const sim *s, float t) {
   static cw_r2d_post post;
   post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .bloom_levels = 4, .tone_knee = 0.78f,
                         .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
-  static cw_r2d_gi gi = { .intensity = 0.8f, .resolution = 0.125f }; /* (an eighth of the canvas: about half the cost, still soft) */
+  /* (a quarter of the canvas, the engine's High: on v0.37 it costs less than an eighth, whose source pass reads 16
+   * taps a texel, and the bounce is finer) */
+  static cw_r2d_gi gi = { .intensity = 0.8f, .resolution = 0.25f };
+  static int gi_env = -1; /* EXPLORER_GI_RES: another share (measuring) */
+  if (gi_env < 0) gi_env = getenv("EXPLORER_GI_RES") != NULL, gi.resolution = gi_env ? (float)atof(getenv("EXPLORER_GI_RES")) : gi.resolution;
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.92f), .time = t, .post = perf_off("post") ? NULL : &post,
                                     .gi = g_gi ? &gi : NULL });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
@@ -1344,7 +1360,7 @@ void view_tick(const sim *s, float dt) {
 #endif
   /* ambient motes for the region: fireflies, embers, snow, bubbles, petals, spores */
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
-  cw_vec2 cs = cw_r2d_canvas_size();
+  cw_vec2 cs = view_canvas();
   float vw = cs.x / zoom, vh = cs.y / zoom;
   if (frand() < 0.5f) {
     float x = g_cam.position.x + (frand() - 0.5f) * vw, y = g_cam.position.y + (frand() - 0.5f) * vh;
