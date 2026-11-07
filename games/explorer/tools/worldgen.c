@@ -26,6 +26,9 @@ int main(int argc, char **argv) {
       }
     }
   for (int i = 2; i < argc; i++) map |= strcmp(argv[i], "--map") == 0;
+  for (int i = 2; i < argc; i++)
+    if (!strcmp(argv[i], "--list")) /* each room: index, region, kind, cells */
+      for (int r = 0; r < W.nrooms; r++) printf("room %d region %d kind %d %dx%d\n", r, W.rooms[r].region, W.rooms[r].kind, W.rooms[r].w, W.rooms[r].h);
   if (map) {
     for (int y = 0; y < GH; y++) {
       for (int x = 0; x < GW; x++) {

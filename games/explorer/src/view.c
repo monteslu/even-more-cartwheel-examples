@@ -15,6 +15,7 @@
 #include "view.h"
 
 cw_camera2d g_cam;
+bool g_gi = true; /* 2D global illumination (v0.37 engines): on unless a test or a slow host turns it off */
 static float zoom = 60; /* canvas units per tile */
 static view_stats VS;
 static float cur_tint[3];
@@ -108,8 +109,23 @@ static void glow(float x, float y, float r, cw_color c) {
   cw_r2d_sprite(&(cw_sprite){ .texture = A.soft, .pos = { x, y }, .size = { r * 2, r * 2 }, .pivot = { 0.5f, 0.5f }, .color = c });
 }
 static void light(float x, float y, float r, cw_color c, float e, bool shadows) {
+#ifdef EXPLORER_R2D_V2
+  /* soft penumbras from the distance field; a breath of glow in the air round each lamp */
+  cw_r2d_light(&(cw_light2d){ .pos = { x, y }, .radius = r, .color = c, .energy = e * 1.25f, .falloff = 1.6f, .height = r * 0.35f, .shadows = shadows,
+                              .softness = 0.45f, .volumetric = shadows ? 0.03f : 0.015f });
+#else
   cw_r2d_light(&(cw_light2d){ .pos = { x, y }, .radius = r, .color = c, .energy = e, .falloff = 1.6f, .height = r * 0.35f, .shadows = shadows });
+#endif
   VS.lights++;
+}
+/* things that glow: they ignore the lights (emission) and go past 1 (intensity) so the bloom picks them up */
+static void glowing(float intensity) {
+#ifdef EXPLORER_R2D_V2
+  cw_r2d_set_emissive(intensity > 1 ? 1.0f : 0.0f);
+  cw_r2d_set_intensity(intensity);
+#else
+  (void)intensity;
+#endif
 }
 
 /* ── background ── */
@@ -132,15 +148,18 @@ static void draw_sky(const sim *s, float t, int region) {
   cw_color cols[4] = { mixc(hexc(ri->far, 1), hexc(ri->sky, 1), 0.35f), hexc(ri->far, 1), hexc(ri->mid, 1), hexc(ri->near, 1) };
   for (int k = 0; k < 4; k++) {
     cw_r2d_use_layer(1 + k);
-    float w = cs.y * 2.0f, h = cs.y * (0.9f + 0.1f * (float)k);
+    /* each region its own skyline: which silhouette sits at which depth, and how wide it runs */
+    static const uint8_t SETS[4][4] = { { 0, 1, 2, 3 }, { 0, 3, 1, 2 }, { 1, 0, 3, 2 }, { 0, 2, 3, 1 } };
+    int tex = SETS[region % 4][k];
+    float w = cs.y * (1.6f + 0.3f * (float)((region * 3 + k) % 4)), h = cs.y * (0.9f + 0.1f * (float)k);
     float u0 = g_cam.position.x * zoom * PAR[k] / w;
     float yoff = -(g_cam.position.y - (float)(s->room >= 0 ? s->w->rooms[s->room].y * CELL_H : 0)) * zoom * PAR[k] * 0.35f;
     float y0 = cs.y - h + yoff + cs.y * 0.08f * (float)(3 - k);
-    if (k == 2) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
+    if (tex == 2) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
     cw_vec2 pos[4] = { { 0, y0 }, { cs.x, y0 }, { cs.x, y0 + h }, { 0, y0 + h } };
     float su = cs.x / w;
     cw_vec2 uv[4] = { { u0, 0 }, { u0 + su, 0 }, { u0 + su, 1 }, { u0, 1 } };
-    cw_r2d_quad(A.par[k], pos, uv, cols[k]);
+    cw_r2d_quad(A.par[tex], pos, uv, cols[k]);
   }
 }
 
@@ -348,7 +367,9 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
     core = v2(x + sw * len, y + len + 0.35f);
     limb(v2(x, y), v2(core.x, core.y - 0.35f), 0.03f, 0.03f, rgba(0.25f, 0.22f, 0.2f, 1));
     cw_r2d_round_rect((cw_rect){ core.x - 0.22f, core.y - 0.32f, 0.44f, 0.6f }, 0.08f, 4, rgba(0.3f, 0.25f, 0.22f, 1));
+    glowing(3.0f);
     cw_r2d_round_rect((cw_rect){ core.x - 0.15f, core.y - 0.24f, 0.3f, 0.44f }, 0.06f, 4, mixc(acc, rgba(1, 1, 1, 1), 0.45f));
+    glowing(1);
   } else if (e->sub == 7) { /* a shrine candle by an item */
     core = v2(x, y - 1.1f);
     cw_r2d_rect((cw_rect){ x - 0.12f, y - 1.0f, 0.24f, 1.0f }, rgba(0.85f, 0.8f, 0.7f, 1));
@@ -356,15 +377,22 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
     core = v2(x, y - 0.55f);
     if (e->sub == 4) {
       cw_r2d_round_rect((cw_rect){ x - 0.3f, y - 0.5f, 0.6f, 0.5f }, 0.1f, 4, rgba(0.3f, 0.26f, 0.24f, 1));
+      glowing(3.5f);
       cw_r2d_circle(core, 0.2f * flick, 10, mixc(acc, rgba(1, 1, 0.8f, 1), 0.5f));
+      glowing(1);
     } else {
       for (int k = 0; k < 3; k++) {
         cw_vec2 p[3] = { { x - 0.2f + (float)k * 0.15f, y }, { x - 0.05f + (float)k * 0.15f, y }, { x - 0.1f + (float)k * 0.12f, y - 0.5f - 0.25f * (float)(k == 1) } };
+        glowing(1.5f);
         cw_r2d_polygon(p, 3, mixc(acc, rgba(1, 1, 1, 1), 0.35f));
+        glowing(1);
       }
     }
   }
-  if (lights_on) light(core.x, core.y, 7.5f, mixc(acc, rgba(1, 0.9f, 0.7f, 1), 0.4f), 0.75f * flick, false);
+  /* lamps lean warm against cool regions and cool against warm ones: colour contrast, not darkness */
+  float warm = acc.r - acc.b;
+  cw_color lc = warm > 0.2f ? mixc(acc, rgba(0.75f, 0.9f, 1, 1), 0.35f) : mixc(acc, rgba(1, 0.78f, 0.5f, 1), 0.55f);
+  if (lights_on) light(core.x, core.y, e->hold == HOLD_CEIL ? 9.0f : 6.0f, lc, (e->hold == HOLD_CEIL ? 0.8f : 0.5f) * flick, e->hold == HOLD_CEIL);
 }
 
 /* ── the hero: a hooded lamplighter, drawn from a skeleton every frame ── */
@@ -423,7 +451,9 @@ static void draw_hero(const sim *s, int i, float t) {
   float sa = f * (arm + 2.9f);
   cw_vec2 tip = polar(hand, sa, 0.85f), butt = polar(hand, sa, -0.35f);
   limb(butt, tip, 0.04f, 0.035f, rgba(0.45f, 0.3f, 0.2f, 1));
+  glowing(4.0f);
   cw_r2d_circle(tip, 0.13f, 10, rgba(1, 0.92f, 0.6f, 1));
+  glowing(1);
   cw_r2d_circle(hand, 0.07f, 8, skin);
   /* the hood and the face in its shadow: two bright eyes */
   cw_vec2 head = v2(neck.x + f * 0.08f, neck.y - 0.24f);
@@ -431,9 +461,11 @@ static void draw_hero(const sim *s, int i, float t) {
   cw_vec2 hood[4] = { v2(head.x - f * 0.25f, head.y - 0.1f), v2(head.x - f * 0.05f, head.y - 0.42f), v2(head.x - f * 0.5f, head.y - 0.2f + wave), v2(head.x - f * 0.3f, head.y + 0.05f) };
   cw_r2d_polygon(hood, 4, cloak);
   cw_r2d_circle(v2(head.x + f * 0.09f, head.y + 0.03f), 0.17f, 12, rgba(0.12f, 0.12f, 0.18f, 1));
+  glowing(2.5f);
   for (int k = 0; k < 2; k++) cw_r2d_circle(v2(head.x + f * (0.06f + 0.09f * (float)k), head.y + 0.0f), 0.032f, 6, rgba(1, 0.95f, 0.7f, 1));
+  glowing(1);
   /* the lantern lights the world around the hero (every lamp in a lit layer adds to the light buffer) */
-  light(tip.x, tip.y, 9, rgba(1, 0.85f, 0.6f, 1), 0.7f, true);
+  light(tip.x, tip.y, 8, rgba(1, 0.85f, 0.6f, 1), 0.55f, true);
 }
 
 /* ── enemies ── */
@@ -574,7 +606,9 @@ static void draw_boss(const sim *s, float t) {
   cw_vec2 eye = v2(c.x + f * hw * 0.55f, c.y - hh * 0.25f);
   if (b->idx == 3) eye = v2(c.x + f * 0.5f, c.y - 0.3f);
   if (b->idx == 4) eye = v2(c.x + f * 0.85f, c.y - 0.7f);
+  glowing(tell ? 5.0f : 2.5f);
   cw_r2d_circle(eye, 0.16f + tk * 0.06f, 10, tell ? rgba(1, 1, 1, 1) : gl);
+  glowing(1);
   light(c.x, c.y, 10, gl, 0.6f + tk * 0.6f, false);
 }
 
@@ -658,7 +692,9 @@ static void draw_pickups(const sim *s, float t, float x0, float x1, float y0, fl
       cw_color c = e->sub == PK_ABILITY ? rgba(1, 0.85f, 0.4f, 1) : e->sub == PK_HEALTH ? rgba(1, 0.45f, 0.5f, 1) : e->sub == PK_ENERGY ? rgba(0.45f, 0.85f, 1, 1) : rgba(0.85f, 0.6f, 1, 1);
       float spin = t * 1.5f;
       cw_vec2 d[4] = { v2(e->x, y - 0.42f), v2(e->x + 0.3f * cosf(spin), y), v2(e->x, y + 0.42f), v2(e->x - 0.3f * cosf(spin), y) };
+      glowing(2.6f);
       cw_r2d_polygon(d, 4, c);
+      glowing(1);
       cw_r2d_circle(v2(e->x, y), 0.12f, 8, rgba(1, 1, 1, 1));
       light(e->x, y, 6, c, 0.9f, false);
     }
@@ -670,6 +706,83 @@ static void draw_pickups(const sim *s, float t, float x0, float x1, float y0, fl
     }
   }
 }
+
+#ifdef EXPLORER_R2D_V2
+/* the rock casts shadows: every run of solid tiles in a row in view is an occluder (the engine makes a distance field
+ * of them, so the count costs little) */
+static void submit_occluders(const sim *s, float x0, float y0, float x1, float y1) {
+  for (int y = (int)floorf(y0) - 2; y <= (int)ceilf(y1) + 2; y++) {
+    if (y < 0 || y >= TH) continue;
+    int x = (int)floorf(x0) - 4, xe = (int)ceilf(x1) + 4;
+    while (x <= xe) {
+      while (x <= xe && !(w_in(x, y) && t_solid(s->t[y][x]))) x++;
+      int a = x;
+      while (x <= xe && w_in(x, y) && t_solid(s->t[y][x])) x++;
+      if (x > a) {
+        cw_vec2 q[4] = { { (float)a, (float)y }, { (float)x, (float)y }, { (float)x, (float)y + 1 }, { (float)a, (float)y + 1 } };
+        cw_r2d_occluder(q, 4, true);
+      }
+    }
+  }
+}
+
+/* shockwaves: a plunge's landing, a warden's fall, a hidden wall breaking */
+typedef struct wave_fx { float x, y, age, size; } wave_fx;
+static wave_fx waves[8];
+static void add_wave(float x, float y, float size) {
+  for (int i = 0; i < 8; i++)
+    if (waves[i].age <= 0 || waves[i].age > 1) { waves[i] = (wave_fx){ x, y, 0.0001f, size }; return; }
+}
+static void draw_waves(void) {
+  for (int i = 0; i < 8; i++) {
+    wave_fx *w = &waves[i];
+    if (w->age <= 0 || w->age > 1) continue;
+    cw_r2d_shockwave((cw_vec2){ w->x, w->y }, w->age * w->size, 1.2f + w->size * 0.12f, 1 - w->age);
+  }
+}
+
+/* water pools: each body in view drawn by the engine from the screen texture (refraction, the world mirrored on the
+ * surface, caustics, a lit surface line), its surface a spring per column that splashes ripple */
+typedef struct pool_fx { int x0, x1, y, depth; cw_water2d *surf; int seen; } pool_fx;
+static pool_fx pools[12];
+static pool_fx *pool_at(int x0, int x1, int y, int depth) {
+  pool_fx *free_slot = NULL, *oldest = &pools[0];
+  for (int i = 0; i < 12; i++) {
+    pool_fx *p = &pools[i];
+    if (p->surf && p->x0 == x0 && p->y == y) { p->x1 = x1, p->depth = depth; return p; }
+    if (!p->surf && !free_slot) free_slot = p;
+    if (p->seen < oldest->seen) oldest = p;
+  }
+  pool_fx *p = free_slot ? free_slot : oldest;
+  if (p->surf) cw_water2d_free(p->surf);
+  *p = (pool_fx){ x0, x1, y, depth, cw_water2d_new(&(cw_water2d_desc){ .columns = (x1 - x0) * 4 < 8 ? 8 : (x1 - x0) * 4, .width = (float)(x1 - x0) }), 0 };
+  return p;
+}
+static void draw_water_v2(const sim *s, float x0, float y0, float x1, float y1, float t) {
+  static int frame;
+  frame++;
+  for (int y = (int)y0 - 1; y <= (int)y1 + 1; y++)
+    for (int x = (int)x0 - 1; x <= (int)x1 + 1;) {
+      if (!w_in(x, y) || s->t[y][x] != T_WATER || (y > 0 && s->t[y - 1][x] == T_WATER)) { x++; continue; }
+      int a = x;
+      while (w_in(x, y) && s->t[y][x] == T_WATER && s->t[y - 1][x] != T_WATER) x++;
+      int depth = 1;
+      while (w_in(a, y + depth) && s->t[y + depth][a] == T_WATER) depth++;
+      pool_fx *p = pool_at(a, x, y, depth);
+      p->seen = frame;
+      cw_vec2 tl = view_world_to_screen((cw_vec2){ (float)a, (float)y }), br = view_world_to_screen((cw_vec2){ (float)x, (float)(y + depth) });
+      cw_r2d_water(&(cw_r2d_water_desc){ .area = { tl.x, tl.y, br.x - tl.x, br.y - tl.y }, .surface = p->surf, .time = t, .wave_height = zoom * 0.05f,
+                                        .tint = rgba(0.06f, 0.3f, 0.42f, 0.55f), .refraction = zoom * 0.06f, .reflection = 0.55f, .caustics = 0.5f,
+                                        .surface_glow = 0.7f });
+    }
+}
+static void water_splash(float x, float y, float speed) {
+  for (int i = 0; i < 12; i++) {
+    pool_fx *p = &pools[i];
+    if (p->surf && x >= (float)p->x0 && x <= (float)p->x1 && y >= (float)p->y - 2 && y <= (float)(p->y + p->depth)) cw_water2d_splash(p->surf, x - (float)p->x0, speed);
+  }
+}
+#endif
 
 static void draw_water(const sim *s, float x0, float y0, float x1, float y1, float t) {
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
@@ -690,14 +803,42 @@ void view_draw(const sim *s, float t) {
   memset(&VS, 0, sizeof VS);
 
   if (!rockdist || rock_dirty) build_rockdist(s), rock_dirty = false;
+  static int empty = -1; /* the perf gate's control: nothing of the world drawn */
+  if (empty < 0) empty = getenv("EXPLORER_BENCH_EMPTY") != NULL;
+  if (empty) {
+    cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = rgba(0, 0, 0, 1) });
+    cw_r2d_end();
+    return;
+  }
   cw_vec2 cs = cw_r2d_canvas_size();
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
   const region_info *g = &REGIONS[region];
   cw_color amb = mixc(hexc(g->sky, 1), rgba(1, 1, 1, 1), 0.55f);
+#ifdef EXPLORER_R2D_V2
+  /* the HDR canvas: bloom on what glows past 1, the soft tone curve (art under its knee is untouched), a light grade
+   * toward the region's accent, a soft vignette; the lit layers get bounce light (GI) from what glows */
+  cw_color accent = hexc(g->accent, 1);
+  static cw_r2d_post post;
+  post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .tone_knee = 0.78f,
+                        .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
+  static cw_r2d_gi gi = { .intensity = 0.8f };
+  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.78f), .time = t, .post = &post,
+                                    .gi = g_gi ? &gi : NULL });
+  cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
+  for (int l = L_WALL; l <= L_FRONT; l++)
+    cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = l != L_WATER, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS,
+                                              .occluder_depth = l == L_WALL ? 0.9f : 0, .screen_read = l == L_WATER, .distortion = l == L_FRONT ? 10 : 0 });
+  for (int l = 1; l <= 4; l++) {
+    cw_color fog = mixc(hexc(g->sky, 1), rgba(1, 1, 1, 1), 0.15f);
+    fog.a = 0.42f - 0.1f * (float)l; /* far layers sink into the haze */
+    cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .fog = fog });
+  }
+#else
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.97f), .time = t });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
   for (int l = L_WALL; l <= L_FRONT; l++) cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = true, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS });
   for (int l = 1; l <= 4; l++) cw_r2d_layer_set(l, NULL);
+#endif
   cw_r2d_layer_set(L_SKY, NULL);
   cw_r2d_layer_set(L_HUD, NULL);
   draw_sky(s, t, region);
@@ -717,6 +858,9 @@ void view_draw(const sim *s, float t) {
     }
   cw_r2d_use_layer(L_TILES);
   draw_tiles(s, x0, y0, x1, y1, t);
+#ifdef EXPLORER_R2D_V2
+  submit_occluders(s, x0, y0, x1, y1);
+#endif
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
     if (e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
@@ -746,6 +890,7 @@ void view_draw(const sim *s, float t) {
   /* effects: additive glows and particles over the lit scene */
   cw_r2d_use_layer(L_FX);
   cw_r2d_set_blend(CW_BLEND_ADD);
+  glowing(1.8f); /* (unlit additive: intensity alone lifts them past 1 for the bloom) */
   draw_barriers(s, x0, y0, x1, y1, t);
   for (int i = 0; i < s->w->nents; i++) { /* halos round every light source, and the shrines' warmth */
     const ent *e = &s->w->ents[i];
@@ -772,7 +917,9 @@ void view_draw(const sim *s, float t) {
     if (p->state == PS_DASH) cw_r2d_rect((cw_rect){ p->x - (p->dash_dir > 0 ? 2.5f : 0), p->y - 1.3f, 2.5f, 0.9f }, rgba(0.6f, 0.9f, 1, 0.25f));
   }
   draw_tells(s, t);
+  glowing(3.0f);
   draw_shots(s, t);
+  glowing(1.8f);
   for (int i = 0; i < np; i++) {
     const part *q = &P[i];
     float k = q->life / q->max;
@@ -782,6 +929,7 @@ void view_draw(const sim *s, float t) {
     cw_r2d_sprite(&(cw_sprite){ .texture = A.spark, .pos = { q->x, q->y }, .size = { q->size, q->size }, .pivot = { 0.5f, 0.5f }, .color = c });
   }
   cw_r2d_set_blend(CW_BLEND_ALPHA);
+  glowing(1);
   for (int i = 0; i < np; i++) {
     const part *q = &P[i];
     if (q->add) continue;
@@ -793,7 +941,13 @@ void view_draw(const sim *s, float t) {
   }
   VS.particles = np;
   cw_r2d_use_layer(L_WATER);
+#ifdef EXPLORER_R2D_V2
+  draw_water_v2(s, x0, y0, x1, y1, t);
+  cw_r2d_use_layer(L_FRONT); /* the distortion layer: shockwaves */
+  draw_waves();
+#else
   draw_water(s, x0, y0, x1, y1, t);
+#endif
   /* a warden's tell or a pickup: a brief wash of colour */
   if (flash_t > 0) {
     cw_r2d_use_layer(L_HUD);
@@ -817,6 +971,11 @@ void view_events(const sim *s) {
       for (int k = 0; k < (p->land_v > 18 ? 14 : 6); k++) emit(p->x + (frand() - 0.5f) * 0.8f, p->y, (frand() - 0.5f) * 6, -frand() * 2, 0.5f, 0.45f, rgba(1, 1, 1, 0.3f), 0, false, 2);
     if (e & PE_DASH) burst(p->x, p->y - 0.9f, 10, 6, 0.3f, 0.3f, rgba(0.6f, 0.9f, 1, 0.9f), true, 0);
     if (e & PE_POUND_LAND) burst(p->x, p->y, 30, 10, 0.6f, 0.5f, scalec(acc, 1), true, 6), flash_t = 0.25f, flash_c = rgba(1, 0.9f, 0.7f, 0.25f);
+#ifdef EXPLORER_R2D_V2
+    if (e & PE_POUND_LAND) add_wave(p->x, p->y - 0.3f, 7);
+    if (e & PE_SPLASH) water_splash(p->x, p->y, 3.5f);
+    if (p->state == PS_SWIM && (s->tick % 12) == 0) water_splash(p->x, p->y - 1.6f, 0.8f);
+#endif
     if (e & PE_SPLASH)
       for (int k = 0; k < 16; k++) emit(p->x + (frand() - 0.5f), p->y - 1.2f, (frand() - 0.5f) * 5, -4 - frand() * 5, 0.7f, 0.25f, rgba(0.8f, 1, 1, 0.8f), 0, false, 25);
     if (e & PE_GRAPPLE) burst(p->x, p->y - 1.1f, 8, 3, 0.3f, 0.25f, rgba(1, 0.9f, 0.6f, 1), true, 0);
@@ -830,13 +989,21 @@ void view_events(const sim *s) {
     case EV_KILL: burst(e->x, e->y, 22, 7, 0.6f, 0.4f, rgba(1, 0.55f, 0.35f, 1), true, 4); break;
     case EV_HIT: burst(e->x, e->y, 8, 5, 0.3f, 0.3f, e->a == 2 ? rgba(0.8f, 0.85f, 1, 1) : rgba(1, 0.85f, 0.6f, 1), true, 0); break;
     case EV_BOSS_HIT: burst(e->x, e->y, 10, 6, 0.35f, 0.35f, rgba(1, 0.9f, 0.7f, 1), true, 0); break;
-    case EV_BOSS_DOWN: rock_dirty = true; burst(e->x, e->y, 120, 12, 1.4f, 0.6f, rgba(1, 0.85f, 0.5f, 1), true, 2), flash_t = 1, flash_c = rgba(1, 0.95f, 0.8f, 0.5f); break;
+    case EV_BOSS_DOWN:
+#ifdef EXPLORER_R2D_V2
+      add_wave(e->x, e->y, 14);
+#endif
+      rock_dirty = true; burst(e->x, e->y, 120, 12, 1.4f, 0.6f, rgba(1, 0.85f, 0.5f, 1), true, 2), flash_t = 1, flash_c = rgba(1, 0.95f, 0.8f, 0.5f); break;
     case EV_BOSS_TELL: flash_t = 0.15f, flash_c = rgba(1, 0.5f, 0.4f, 0.08f); break;
     case EV_PICKUP: burst(e->x, e->y - 0.9f, 50, 6, 1.0f, 0.45f, rgba(1, 0.9f, 0.55f, 1), true, -1), flash_t = 0.6f, flash_c = rgba(1, 0.95f, 0.8f, 0.3f); break;
     case EV_SAVE: burst(e->x, e->y - 1.45f, 30, 3, 1.2f, 0.4f, rgba(0.6f, 1, 0.9f, 1), true, -2); break;
     case EV_SEAL: case EV_BOSS_DOWN + 100: rock_dirty = true; break;
     case EV_BREAK: rock_dirty = true; burst(e->x, e->y, 26, 7, 0.9f, 0.4f, scalec(top, 0.8f), false, 22); break;
-    case EV_SECRET: rock_dirty = true; burst(e->x + 0.5f, e->y + 0.5f, 30, 6, 0.9f, 0.45f, rgba(0.85f, 0.75f, 0.65f, 1), false, 18); break;
+    case EV_SECRET:
+#ifdef EXPLORER_R2D_V2
+      add_wave(e->x + 0.5f, e->y + 0.5f, 5);
+#endif
+      rock_dirty = true; burst(e->x + 0.5f, e->y + 0.5f, 30, 6, 0.9f, 0.45f, rgba(0.85f, 0.75f, 0.65f, 1), false, 18); break;
     case EV_SHOT_HIT: burst(e->x, e->y, 8, 4, 0.3f, 0.3f, rgba(1, 0.8f, 0.6f, 1), true, 0); break;
     case EV_HURT: flash_t = 0.3f, flash_c = rgba(1, 0.2f, 0.25f, 0.2f); break;
     case EV_BOUNCE: burst(e->x, e->y, 10, 4, 0.3f, 0.3f, rgba(1, 1, 1, 0.9f), true, 0); break;
@@ -847,6 +1014,10 @@ void view_events(const sim *s) {
 
 void view_tick(const sim *s, float dt) {
   if (flash_t > 0) flash_t -= dt * 2.5f;
+#ifdef EXPLORER_R2D_V2
+  for (int i = 0; i < 8; i++) if (waves[i].age > 0 && waves[i].age <= 1) waves[i].age += dt * 1.6f;
+  for (int i = 0; i < 12; i++) if (pools[i].surf) cw_water2d_step(pools[i].surf, dt > 0 ? dt : 0);
+#endif
   /* ambient motes for the region: fireflies, embers, snow, bubbles, petals, spores */
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
   cw_vec2 cs = cw_r2d_canvas_size();

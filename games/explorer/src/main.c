@@ -16,6 +16,7 @@
 #include "bot.h"
 #include "cartwheel/core.h"
 #include "cartwheel/debug.h"
+#include "cartwheel/gpu.h"
 #include "cartwheel/input.h"
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
@@ -42,7 +43,7 @@ static struct {
   int32_t tick, room, region, abilities, pickups, bosses, hp, deaths, step, px, py, relics, won, screen;
   uint32_t hash;
   bool up_was[MAXP];
-  double t_frame, t_last;
+  double t_frame, t_last, t_gpu;
   int t_n;
 } G;
 
@@ -307,6 +308,10 @@ static void render(void *u, double alpha) {
   cw_shell_screen sc = cw_shell_screen_now();
   static float t;
   t += 1.0f / 60.0f;
+  static bool bench_env, bench_read;
+  if (!bench_read) bench_env = getenv("EXPLORER_BENCH") != NULL, bench_read = true;
+  double tb0 = 0;
+  if (bench_env) cw_gpu_finish(), tb0 = wall(); /* (the bench: this frame alone, to GPU completion) */
   view_camera(&S, 1.0f / 60.0f, G.snap);
   G.snap = false;
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE || !G.in_match) view_tick(&S, sc == CW_SHELL_PLAY ? 1.0f / 60.0f : 0);
@@ -316,6 +321,7 @@ static void render(void *u, double alpha) {
   if (getenv("EXPLORER_NO_HUD")) show_hud = false;
 #endif
   if (show_hud) hud_draw(&S, &H, t);
+  if (bench_env) cw_gpu_finish(), G.t_gpu += (wall() - tb0) * 1000;
   double now = wall();
   if (G.t_last > 0) G.t_frame += (now - G.t_last) * 1000;
   G.t_last = now;
@@ -323,7 +329,7 @@ static void render(void *u, double alpha) {
   if (getenv("EXPLORER_BENCH") && sc == CW_SHELL_PLAY && G.t_n >= 120) {
     view_stats vs = view_get_stats();
     cw_pipeline *pl = cw_pipeline_of(cw_scene_app_tree());
-    fprintf(stderr, "bench frame_ms=%.2f gpu_ms=%.3f sprites=%d lights=%d particles=%d enemies=%d room=%d boss=%d\n", G.t_frame / G.t_n,
+    fprintf(stderr, "bench frame_ms=%.2f draw_ms=%.3f gpu_ms=%.3f sprites=%d lights=%d particles=%d enemies=%d room=%d boss=%d\n", G.t_frame / G.t_n, G.t_gpu / G.t_n,
             pl ? cw_pipeline_gpu_ms(pl) : -1.0, vs.sprites, vs.lights, vs.particles, vs.enemies, S.room, S.b.active);
     const cw_pass_stat *pst;
     int np = pl ? cw_pipeline_pass_stats(pl, &pst) : 0;
@@ -331,7 +337,7 @@ static void render(void *u, double alpha) {
     for (int k = 0; k < np; k++)
       if (pst[k].ran) fprintf(stderr, " %s=%.3f/%.3f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
     fprintf(stderr, "\n");
-    G.t_frame = 0, G.t_n = 0;
+    G.t_frame = 0, G.t_n = 0, G.t_gpu = 0;
   }
   cw_shell_draw();
 }
