@@ -1,0 +1,4 @@
+[scene format=1]
+
+; explorer's main scene: the game draws itself in 2D (src/view.c, src/hud.c) from the app's render callback
+[node name="Main" type="Node2D"]
