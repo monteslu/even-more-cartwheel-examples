@@ -146,3 +146,4 @@ standard+vcol+instbig+senv+fog2+ds+l1001
 standard+vcol+instbig+senv+fog2+ds+l1001+xcluster
 standard+vcol+instbig+senv+fog2+l1001
 standard+vcol+instbig+senv+fog2+l1001+xcluster
+standard+map+rep+instbig+shadow+senv+fog2+atest+ds+l1001+xcluster

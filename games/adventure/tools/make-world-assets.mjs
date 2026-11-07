@@ -400,14 +400,14 @@ function crownOf(m, mat, mid, rad, n, r, seed, droop = 0) {
   }
 }
 const SPECIES = {
-  oak: { bark: [0.55, 0.42, 0.34], leaf: [0.34, 0.6, 0.16], trunk: (m) => { lathe(m, 'bark', [[-0.3, 0.42], [0.3, 0.32], [2.4, 0.24], [3.6, 0.18]], { n: 10, uv: 1 }); for (const [x, z] of [[1, 0.3], [-0.8, -0.6], [0.1, 0.9]]) m.cyl('bark', [x * 0.5, 3.6, z * 0.5], 0.12, 1.4, { r1: 0.06, n: 6, uv: 1 }); }, crown: { mid: [0, 4.9, 0], rad: [2.5, 1.7, 2.5], n: 11, r: 1.3 } },
+  oak: { bark: [0.55, 0.42, 0.34], leaf: [0.34, 0.6, 0.16], trunk: (m) => { lathe(m, 'bark', [[-0.3, 0.42], [0.3, 0.32], [2.4, 0.24], [3.6, 0.18]], { n: 10, uv: 1 }); for (const [x, z] of [[1, 0.3], [-0.8, -0.6], [0.1, 0.9]]) m.cyl('bark', [x * 0.5, 3.6, z * 0.5], 0.12, 1.4, { r1: 0.06, n: 6, uv: 1 }); }, crown: { mid: [0, 4.9, 0], rad: [2.5, 1.7, 2.5], n: 9, r: 1.4 } },
   birch: { bark: [0.92, 0.9, 0.84], leaf: [0.6, 0.76, 0.22], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.22], [0.3, 0.18], [4.5, 0.1]], { n: 8, uv: 1 }), crown: { mid: [0, 5.2, 0], rad: [1.5, 2.2, 1.5], n: 12, r: 0.9 } },
   aspen: { bark: [0.85, 0.8, 0.7], leaf: [0.98, 0.66, 0.14], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.24], [0.3, 0.2], [3.4, 0.12]], { n: 8, uv: 1 }), crown: { mid: [0, 4.0, 0], rad: [1.7, 1.6, 1.7], n: 12, r: 0.95 } },
   willow: { bark: [0.45, 0.36, 0.3], leaf: [0.24, 0.6, 0.48], trunk: (m) => { for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2; m.cyl('bark', [Math.cos(a) * 0.45, 0.45, Math.sin(a) * 0.45], 0.08, 1.3, { r1: 0.12, n: 6, uv: 1 }); } lathe(m, 'bark', [[0.8, 0.3], [3.4, 0.2]], { n: 8, uv: 1 }); }, crown: { mid: [0, 4.0, 0], rad: [2.4, 1.2, 2.4], n: 11, r: 1.25, droop: 0.9 } },
   pine: { bark: [0.42, 0.3, 0.24], leaf: [0.14, 0.38, 0.2], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.26], [6.0, 0.08]], { n: 8, uv: 1 }), crown: { tiers: [[1.6, 2.0], [2.6, 1.7], [3.6, 1.35], [4.6, 1.0], [5.5, 0.65], [6.2, 0.35]], r: 0.8 } },
   fir: { bark: [0.4, 0.3, 0.26], leaf: [0.62, 0.74, 0.74], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.24], [5.4, 0.08]], { n: 8, uv: 1 }), crown: { tiers: [[1.4, 1.8], [2.4, 1.5], [3.4, 1.2], [4.4, 0.85], [5.2, 0.5], [5.8, 0.3]], r: 0.75 } },
   windswept: { bark: [0.5, 0.42, 0.36], leaf: [0.4, 0.64, 0.2], trunk: (m) => { lathe(m, 'bark', [[-0.3, 0.3], [1.5, 0.22]], { n: 8, uv: 1 }); m.cyl('bark', [0.6, 2.4, 0], 0.18, 2.0, { r1: 0.1, n: 6, uv: 1 }); }, crown: { mid: [1.6, 3.6, 0], rad: [2.6, 1.0, 1.6], n: 12, r: 1.0 } },
-  deepwood: { bark: [0.36, 0.3, 0.3], leaf: [0.12, 0.5, 0.42], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.5], [0.4, 0.4], [6.5, 0.22]], { n: 10, uv: 1 }), crown: { mid: [0, 8.0, 0], rad: [3.2, 2.4, 3.2], n: 13, r: 1.65 } },
+  deepwood: { bark: [0.36, 0.3, 0.3], leaf: [0.12, 0.5, 0.42], trunk: (m) => lathe(m, 'bark', [[-0.3, 0.5], [0.4, 0.4], [6.5, 0.22]], { n: 10, uv: 1 }), crown: { mid: [0, 8.0, 0], rad: [3.2, 2.4, 3.2], n: 9, r: 1.85 } },
 };
 function writeSpecies(name, sp) {
   const glb = new Glb();
@@ -426,8 +426,8 @@ function writeSpecies(name, sp) {
 }
 function glowcap() { // the wood's giant mushroom: a pale stem, a glowing cap (the crown)
   const glb = new Glb();
-  const stem = glb.pbr('stem', TEX, null, { tint: [0.86, 0.82, 0.7], rough: 0.7, metal: 0 });
-  const cap = glb.pbr('cap', TEX, null, { tint: [0.46, 0.08, 0.7], rough: 0.45, metal: 0, emissive: [0.02, 0.06, 0.08] });
+  const stem = glb.pbr('stem', TEX, null, { tint: [0.78, 0.7, 0.74], rough: 0.7, metal: 0 });
+  const cap = glb.pbr('cap', TEX, null, { tint: [0.34, 0.02, 0.52], rough: 0.5, metal: 0, emissive: [0.06, 0.0, 0.1] });
   const t = new Mesher(), c = new Mesher();
   lathe(t, 'stem', [[-0.2, 0.5], [0.3, 0.38], [3.2, 0.3], [3.6, 0.34]], { n: 12, uv: 1 });
   lathe(c, 'cap', [[3.4, 0.4], [3.5, 2.0], [3.75, 2.1], [4.2, 1.7], [4.7, 0.9], [4.95, 0.0]], { n: 18, uv: 1 });

@@ -467,6 +467,8 @@ static void dress(int rg, float x, float z, int seed) {
     prop_solid(rg, KIND[kind], px, pz, a, 1.0f, fr, 0.02f, kind == 4 ? 1.0f : 0.35f, kind == 4 ? 1.1f : 0.8f);
   }
 }
+static cw_node LAMPS[64]; /* the world's lamps and lanterns (the perf probe can put them out) */
+static int nlamps;
 static void lamp_post(int rg, float x, float z, float yaw) {
   cw_node n = prop(rg, "lantern_post", x, z, yaw, 1.0f, 0.15f, 0.05f, true);
   if (!n.id) return;
@@ -478,6 +480,7 @@ static void lamp_post(int rg, float x, float z, float yaw) {
   cw_node_set(l, "energy", cw_val_float(10));
   cw_node_set(l, "range", cw_val_float(8));
   cw_node3d_set_position(l, (t3_vec3){ x + cw_sin(yaw) * 0.48f, p.y + 1.85f, z + cw_cos(yaw) * 0.48f });
+  if (nlamps < 64) LAMPS[nlamps++] = l;
 }
 static int shrine_obj[8], nshrine;
 int world_shrine_obj(int s) { return s >= 0 && s < nshrine ? shrine_obj[s] : -1; }
@@ -496,6 +499,7 @@ static int shrine(int rg, float x, float z, float yaw) {
   OBJ_PART[i] = c;
   cw_node l = cw_node_new("OmniLight3D", "ShrineLight");
   cw_node_add_child(W_region_node[rg], l);
+  if (nlamps < 64) LAMPS[nlamps++] = l;
   cw_node_set(l, "color", cw_val_color(0.45f, 0.95f, 1, 1));
   cw_node_set(l, "energy", cw_val_float(24));
   cw_node_set(l, "range", cw_val_float(9));
@@ -865,6 +869,7 @@ static void build_keep(void) {
     prop_solid(R, "brazier", BRAZ[i][0], BRAZ[i][1], 0, 1.0f, 0.35f, 0.02f, 0.4f, 1.1f);
     cw_node l = cw_node_new("OmniLight3D", "Fire");
     cw_node_add_child(W_region_node[R], l);
+    if (nlamps < 64) LAMPS[nlamps++] = l;
     cw_node_set(l, "color", cw_val_color(1, 0.55f, 0.2f, 1));
     cw_node_set(l, "energy", cw_val_float(30));
     cw_node_set(l, "range", cw_val_float(10));
@@ -927,6 +932,7 @@ static void lantern(int rg, float x, float y, float z, float r, float g, float b
   cw_node_set(l, "energy", cw_val_float(e));
   cw_node_set(l, "range", cw_val_float(9));
   cw_node3d_set_position(l, (t3_vec3){ x, y, z });
+  if (nlamps < 64) LAMPS[nlamps++] = l;
 }
 static void build_heights(void) {
   const int R = RG_HEIGHTS;
@@ -1191,6 +1197,7 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
   if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
   if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
+  if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "energy", cw_val_float(0));
   if (getenv("ADV_PROBE_PREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(true));
   if (getenv("ADV_PROBE_NOAA")) cw_node_set(W_post, "aa", cw_val_enum("NONE"));
   if (getenv("ADV_PROBE_FORWARD")) cw_node_set(cw_node_get(W_root, "World/Lighting"), "mode", cw_val_enum("FORWARD"));

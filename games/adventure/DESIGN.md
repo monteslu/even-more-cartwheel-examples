@@ -82,15 +82,20 @@ stairs (FootPlacement3D on the physics ground); the dead fall as ragdolls.
 - `tests/adventure-gates.json`: the bot's first 30 seconds (it rests, crosses the hollow, fights the raiders on the road
   and reaches the canyon shrine) and a scripted pad run (Start, Start, the road, the lock, three cuts, a roll, a heavy, a
   drink) with its control. Both agree to the bit across native GL, native WebGPU and the cart on romdev's WebGPU host.
-- `tests/adventure-soak.mjs`: the whole game played by the bot on software GL, 40 rule ticks a frame: it wins (about 16
-  minutes of game time: 41 foes, all three bosses, both keys, the maul, every shrine), positions stay finite, the camera
-  never has a wall between it and the player, the route never stalls 6 minutes, memory holds. Control: an empty maul
-  chest (the cracked wall never breaks) must fail.
-- `tests/adventure-grounding.mjs`: 80 props, 161 building boxes and 910 scattered trees and stones on the ground (worst
-  0 cm). Control: one tree lifted half a metre must be caught.
+- `tests/adventure-soak.mjs`: the whole game played by the bot on software GL, 30 rule ticks a frame: it wins (18.5
+  minutes of game time through all eight regions: 50 foes, all three bosses, both keys, the maul, every shrine, no
+  falls), positions stay finite, the camera never has a wall between it and the player, the route never stalls 6
+  minutes, memory holds (1 percent). Control: an empty maul chest (the cracked wall never breaks) must fail. The two
+  halves run as two suites (`--no-control`, `--control-only`) to keep each hold of the GPU suite lock short.
+- `tests/adventure-grounding.mjs`: 106 props, 546 building boxes and 1383 scattered stones on the ground (worst 0 cm).
+  Control: one tree lifted half a metre must be caught.
+- `tests/adventure-look.mjs` (frames from tools/capture-look.sh): each region's play frame is mid-key (mean luma 100
+  to 125), has real contrast (luma deviation 55 or more, local contrast 13 or more), a complementary accent and a
+  saturation in range. Control: the frames flattened halfway to their mean must fail.
 - `tests/adventure-text.json` (the engine's tools/check-text.mjs): the HUD at the readable floor on three screens.
-- `tests/adventure-perf.mjs`: 1080p High on the 890M, GL and WebGPU, four places (the boss fight in the marsh, the
-  meadow, the Thornwarden, the Ember King). Controls: 4K GL and an impossible 1 ms bound must fail. Last run (frame GPU
-  time, GL / WebGPU): the marsh boss 3.8 / 3.6 ms, the meadow 4.5 / 5.7, the Thornwarden 4.6 / 4.6, the Ember King 4.5 /
-  4.8 against a bound of 4.5. Two shadow cascades over 40 m took these from 5 to 8.6 ms; the rest of the frame is the
-  terrain under the sun's shadows, the grass (0.6 ms on WebGPU) and the post passes (about 0.8).
+- `tests/adventure-perf.mjs`: 1080p High on the 890M, GL and WebGPU, eight places (the marsh boss fight, the meadow,
+  the Thornwarden, the glowcap wood, the heights, the underway, the spire, the Ember King) against 4.5 ms. Controls: 4K
+  GL and an impossible 1 ms bound must fail. `tests/adventure-perf-probe.mjs` takes parts out (ADV_PROBE_*) and compares
+  medians of interleaved runs. What moved the frame: the terrain no longer casts the sun's shadow (about a quarter of the
+  WebGPU frame), a depth pass first (the heights from 5.7 to 3.7 ms on WebGPU), the marsh water drawn only near the
+  marsh, lighter crowns and sparser groves.
