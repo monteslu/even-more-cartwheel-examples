@@ -32,6 +32,68 @@ export function routeSegments(wp, route = 0) {
 const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
 const smax = (a, b, k) => -smin(-a, -b, k);
 const bump = (t) => (t >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * t));
+const clamp = (x, a, b) => Math.min(b, Math.max(a, x));
+function hnoise(x, y, seed) {
+  let h = (Math.imul(x, 374761393) + Math.imul(y, 668265263) + Math.imul(seed, -2048144777)) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) & 0xffffff) / 16777216;
+}
+function vnoise2(x, y, seed) {
+  const ix = Math.floor(x), iy = Math.floor(y);
+  let fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx), fy = fy * fy * (3 - 2 * fy);
+  const a = hnoise(ix, iy, seed), b = hnoise(ix + 1, iy, seed), c = hnoise(ix, iy + 1, seed), d = hnoise(ix + 1, iy + 1, seed);
+  return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+}
+// a feature's own numbers (map.c feat_n)
+const featN = (q, k) => hnoise(Math.floor(q.x * 64 + 0.5), Math.floor(q.y * 64 + 0.5), 300 + k);
+// a pool's bowl, 0 at its rim to 1 at its deepest (map.c pool_bowl)
+export function poolBowl(q, x, y) {
+  const dx = x - q.x, dy = y - q.y;
+  if (dx * dx + dy * dy >= q.r * q.r) return 0;
+  const a = featN(q, 0) * Math.PI, ca = Math.cos(a), sa = Math.sin(a);
+  const u = dx * ca + dy * sa, v = (dy * ca - dx * sa) * (1 + 0.45 * featN(q, 1)), th = Math.atan2(v, u);
+  const g = Math.sin(2 * th + 2 * Math.PI * featN(q, 2)) + 0.7 * Math.sin(3 * th + 2 * Math.PI * featN(q, 3)) + 0.45 * Math.sin(5 * th + 2 * Math.PI * featN(q, 4));
+  const t = (Math.hypot(u, v) / q.r) * (1 + 0.42 * (0.5 + (0.5 * g) / 2.15) + 0.14 * vnoise2(x * 1.3, y * 1.3, 77));
+  return bump(t * t);
+}
+// an outcrop's height over the ground (map.c rock_h): a polygon block with cliffs, a roof of tilted planes in strata,
+// boulders round its foot
+export function rockH(q, x, y) {
+  const dx = (x - q.x) / q.r, dy = (y - q.y) / q.r, d2 = dx * dx + dy * dy;
+  if (d2 >= 1) return 0;
+  let P = Math.sqrt(d2), h = 0;
+  const a0 = featN(q, 10) * 2 * Math.PI;
+  for (let i = 0; i < 7; i++) {
+    const a = a0 + i * 0.8975979 + (featN(q, 11 + i) - 0.5) * 0.45, rho = 0.56 + 0.3 * featN(q, 20 + i);
+    P = Math.max(P, (dx * Math.cos(a) + dy * Math.sin(a)) / rho);
+  }
+  if (P < 1) {
+    let top = 1;
+    const cliff = Math.min((1 - P) / 0.13, 1);
+    for (let j = 0; j < 3; j++) {
+      const a = featN(q, 30 + j) * 2 * Math.PI, m = 0.45 + 0.65 * featN(q, 33 + j), c = 0.92 + 0.12 * featN(q, 36 + j);
+      top = Math.min(top, c - m * (dx * Math.cos(a) + dy * Math.sin(a)));
+    }
+    h = Math.max(Math.min(cliff, top), 0) * q.h;
+    const st = q.h / (2 + Math.floor(featN(q, 40) * 2.99)), u = h / st, fl = Math.floor(u);
+    h += (st * (fl + clamp((u - fl - 0.62) / 0.38, 0, 1)) - h) * 0.7;
+  }
+  const nb = 3 + Math.floor(featN(q, 50) * 2.99);
+  for (let b = 0; b < nb; b++) {
+    const rb = 0.11 + 0.08 * featN(q, 51 + b * 4), ab = featN(q, 52 + b * 4) * 2 * Math.PI, db = 1 - rb * 1.45 - 0.05 * featN(q, 53 + b * 4);
+    const bx = (dx - Math.cos(ab) * db) / rb, by = (dy - Math.sin(ab) * db) / rb;
+    let pb = bx * bx + by * by;
+    if (pb >= 1) continue;
+    pb = Math.sqrt(pb);
+    for (let i = 0; i < 5; i++) {
+      const a = ab + i * 1.2566371 + featN(q, 54 + b * 4) * 1.2, rho = 0.7 + 0.25 * featN(q, 80 + b * 5 + i);
+      pb = Math.max(pb, (bx * Math.cos(a) + by * Math.sin(a)) / rho);
+    }
+    if (pb < 1) h = Math.max(h, Math.min(q.h * 0.3, 0.5) * Math.min((1 - pb) / 0.4, 1) * (0.85 + 0.15 * by));
+  }
+  return h;
+}
 
 export function fields(m) {
   const PAD = 6, gw = m.w + 2 * PAD, gh = m.h + 2 * PAD;
@@ -74,11 +136,10 @@ export function fields(m) {
   };
   const featAt = (x, y) => {
     let rock = 0, water = 0;
-    for (const q of m.feats) { const b = bump(Math.hypot(x - q.x, y - q.y) / q.r); if (q.kind === 'rock') rock = Math.max(rock, q.h * Math.pow(b, 0.55)); else water = Math.max(water, b); }
+    for (const q of m.feats) if (q.kind === 'rock') rock = Math.max(rock, rockH(q, x, y)); else water = Math.max(water, poolBowl(q, x, y));
     return { rock, water };
   };
-  // the ground's height without the outcrops' weathering (map.c adds a little noise over every outcrop: props and
-  // paths never stand on one)
+  // the ground's height (map.c map_ground_h)
   const groundH = (x, y) => {
     const { d } = floorD(x, y), t = Math.min(1, Math.max(0, d / CURB));
     let h = GROUND_H * t * t * (3 - 2 * t);

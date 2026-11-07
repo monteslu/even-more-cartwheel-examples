@@ -273,7 +273,7 @@ function makeMap(n) {
 // the ground's shape (fields.mjs, map.c) as the map stands
 const shape = (m) => fields({ w: W, h: H, tile: (x, y) => m.g[y]?.[x] ?? 'g', routes: m.routes, core: m.core, slots: m.slots, feats: m.feats });
 
-// ── the terrain's features: smooth rock outcrops and pools with banks, on open ground away from paths and pads ──
+// ── the terrain's features: rock outcrops and pools with banks, on open ground away from paths and pads ──
 const FEAT = {
   meadow: { water: 2, rock: 2 }, autumn: { water: 2, rock: 3 }, desert: { water: 2, rock: 3 }, snow: { water: 2, rock: 3 },
   volcano: { water: 2, rock: 3 }, crystal: { water: 2, rock: 2 },
@@ -298,7 +298,7 @@ function placeFeatures(m, R) {
       const x = 1 + R() * (W - 2), y = 1 + R() * (H - 2);
       if (!clear(x, y, r)) continue;
       m.feats.push({ kind, x, y, r, h: kind === 'rock' ? 1.1 + R() * 1.1 : 0 });
-      if (kind === 'rock') { // an outcrop: two or three domes run together into a ridge
+      if (kind === 'rock') { // an outcrop: two or three blocks run together into a ridge
         const n2 = 1 + R.int(2);
         for (let j = 0; j < n2; j++) {
           const a = R() * 6.283, d = r * (0.6 + R() * 0.5), r2 = r * (0.55 + R() * 0.3), x2 = x + Math.cos(a) * d, y2 = y + Math.sin(a) * d;

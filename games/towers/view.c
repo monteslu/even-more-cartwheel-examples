@@ -31,6 +31,8 @@ static const t3_mat4 ZERO;
 #define PAD_H 0.12f /* a pad's top: the towers stand on it */
 #define TSC 1.15f /* the towers drawn a little over their modelled size: a tile across, they read from above */
 #define FAR_SPHERE 400.0f
+#define GLINT_C 384 /* points on the pools the glints show at */
+#define GLINTS 96
 
 typedef struct kindv { mb_chr c; int nwalk, natk; t3_instanced_mesh *im[MB_MAXF], *edge[MB_MAXF]; float r; t3_material *edge_mat; } kindv;
 typedef struct partv { t3_instanced_mesh *surf[3], *glow[3], *trim[3]; int n; } partv; /* a model by level (frame) */
@@ -53,6 +55,9 @@ static struct {
   t3_instanced_mesh *beam_core, *beam_glow, *bolt_core, *bolt_glow, *column;
   t3_instanced_mesh *ring;      /* flat rings on the ground: the cursors, the ranges */
   t3_instanced_mesh *marker;    /* the cursors' markers: a bobbing diamond over the slot */
+  t3_instanced_mesh *glint;     /* the pools' surface: glints of the sky on the water, bubbles of light on the lava */
+  float glint_c[GLINT_C][3];    /* where they may show: points on the pools (x, z, how deep) */
+  int nglint_c;
   cw_splats *shadows, *pools, *glows;
   int nbeam_col, nring;
   view_stats st;
@@ -382,6 +387,20 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       V.marker = imesh("Markers", geo_colored(g, 1, 1, 1), m, MAXP);
       V.marker->mesh.base.render_order = 9;
     }
+    { /* a glint: a flat soft spot of light, bright in the middle, gone at its edge (stretched into a streak on the water) */
+      float P[13 * 3] = { 0 }, C[13 * 3] = { 1, 1, 1 };
+      uint16_t I[12 * 3];
+      for (int i = 0; i < 12; i++) {
+        P[(i + 1) * 3] = cw_cos((float)i * 0.5235988f), P[(i + 1) * 3 + 2] = cw_sin((float)i * 0.5235988f);
+        I[i * 3] = 0, I[i * 3 + 1] = (uint16_t)(1 + i), I[i * 3 + 2] = (uint16_t)(1 + (i + 1) % 12);
+      }
+      t3_geometry *g = t3_geometry_new();
+      t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, P, 13, 3));
+      t3_geometry_set_attribute(g, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, C, 13, 3));
+      t3_geometry_set_index(g, t3_attribute_new(T3_UINT16, I, 36, 1));
+      V.glint = imesh("PoolGlints", g, mat_add(), GLINTS);
+      V.glint->mesh.base.render_order = 2;
+    }
     V.core_light = omni("CoreLight", 12);
     for (int i = 0; i < MP_MAXSPAWN; i++) V.portal_light[i] = omni("GateLight", 9);
     for (int i = 0; i < 8; i++) V.beam_light[i] = omni("BeamLight", 6);
@@ -413,6 +432,16 @@ void view_map(const sim *s) {
     if (b) V.text = malloc(len + 1), memcpy(V.text, b, len), V.text[len] = 0, free(b);
   }
   if (!mapbuild_build(V.root, &V.m, &V.b)) return;
+  V.nglint_c = 0; /* the points on the pools a glint may show at: off their shallows */
+  for (int k = 0; k < V.m.nfeat; k++) {
+    const mp_feat *f = &V.m.feat[k];
+    if (f->kind != FEAT_WATER) continue;
+    for (int t = 0; t < 400 && V.nglint_c < GLINT_C; t++) {
+      float x = mp_wx(&V.m, f->x - 0.5f) + (h01((uint32_t)k, (uint32_t)t * 2) - 0.5f) * 2 * f->r * MP_TILE, z = mp_wz(&V.m, f->y - 0.5f) + (h01((uint32_t)k + 77, (uint32_t)t * 2 + 1) - 0.5f) * 2 * f->r * MP_TILE;
+      float d = mapbuild_pool_deep(&V.m, x, z);
+      if (d > 0.15f) V.glint_c[V.nglint_c][0] = x, V.glint_c[V.nglint_c][1] = z, V.glint_c[V.nglint_c++][2] = d;
+    }
+  }
   V.have_map = true;
   V.map_built = s->m.num;
   cw_info("towers: map %d (%s, %d x %d tiles) built", V.m.num, MP_THEME_ID[V.theme], V.m.w, V.m.h);
@@ -746,6 +775,33 @@ static void sync_cursors(const sim *s, float time, const bool show[MAXP]) {
   done(V.marker, nm);
 }
 
+/* the pools' surfaces move: glints of the sky come and go on the water, drifting with the wind; on the lava, bubbles
+ * of molten light swell and fade; sparks of light on the crystal pools */
+static void sync_pools(float time) {
+  if (!V.glint) return;
+  bool lava = V.theme == MP_THEME_VOLCANO, crystal = V.theme == MP_THEME_CRYSTAL;
+  int n = 0, want = CW_MIN(GLINTS, V.nglint_c / (lava ? 12 : crystal ? 6 : 8));
+  static const float SKY[MP_THEMES][3] = { { 0.62f, 0.78f, 0.92f }, { 0.70f, 0.76f, 0.86f }, { 0.70f, 0.86f, 0.95f }, { 0.82f, 0.88f, 0.98f }, { 0, 0, 0 }, { 0, 0, 0 } };
+  t3_color sky = lin(SKY[V.theme][0], SKY[V.theme][1], SKY[V.theme][2]);
+  for (int i = 0; i < want; i++) {
+    float T = (lava ? 4.5f : crystal ? 1.6f : 2.4f) * (0.8f + 0.5f * h01((uint32_t)i, 1)), u = time / T + h01((uint32_t)i, 2);
+    uint32_t cyc = (uint32_t)(int)floorf(u);
+    float p = u - floorf(u), k = cw_sin(3.14159265f * p);
+    const float *c = V.glint_c[hash2((uint32_t)i * 7919u, cyc) % (uint32_t)V.nglint_c];
+    float yaw = (lava || crystal ? 6.2831853f : 1.1f) * h01((uint32_t)i, cyc + 5), x = c[0] + 0.5f * p * 0.6f, z = c[1] + 0.5f * p * 0.8f, sz = 0.6f + 0.6f * h01((uint32_t)i, cyc + 9);
+    k *= k;
+    t3_color col;
+    if (lava) put_s(V.glint, n, c[0], MB_POOL_LEVEL + 0.02f, c[1], yaw, 0.35f * sz, 1, 0.35f * sz), col = (t3_color){ 1.1f * k, 0.38f * k, 0.07f * k };
+    else if (crystal) put_s(V.glint, n, x, MB_POOL_LEVEL + 0.02f, z, yaw, 0.22f * sz, 1, 0.22f * sz), col = (t3_color){ 0.3f * k, 1.1f * k, 1.2f * k };
+    else {
+      float a = (0.18f + 0.3f * c[2]) * k;
+      put_s(V.glint, n, x, MB_POOL_LEVEL + 0.02f, z, yaw, 0.42f * sz, 1, 0.07f * sz), col = (t3_color){ sky.r * a, sky.g * a, sky.b * a };
+    }
+    t3_instanced_mesh_set_color_at(V.glint, n++, col);
+  }
+  done(V.glint, n);
+}
+
 void view_sync(const sim *s, float time, const bool show_cursor[MAXP]) {
   if (!V.root.id) return;
   cw_splats_begin(V.shadows);
@@ -757,6 +813,7 @@ void view_sync(const sim *s, float time, const bool show_cursor[MAXP]) {
   sync_shells(s, time);
   sync_bolts();
   sync_cursors(s, time, show_cursor);
+  sync_pools(time);
   cw_splats_end(V.shadows);
   cw_splats_end(V.glows);
   done(V.column, V.nbeam_col);

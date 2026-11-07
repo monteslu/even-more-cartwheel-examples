@@ -1,0 +1,29 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "The wayfarer on the road through the Green Hollow, the canyon stairs ahead"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Locked on to a raider in the canyon, a cleaver coming round"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Wading the Tidemarsh toward the temple, stilt trees in the teal mist"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "The Ember Keep at sunset: the courtyard, the long walled ramp to the throne"
+    },
+    {
+      "path": "shot-5.jpg",
+      "label": "The Tidecaller in her temple, a ring on the stone where the blow will land"
+    }
+  ]
+}

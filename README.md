@@ -55,32 +55,48 @@ swept against the park's triangles, so a quarter pipe gives back exactly the
 height its speed earns; every park is checked in CI: nothing floats and a bot
 skates every line.
 
-### explorer
+### Lanternfall
 
-![explorer: a hooded wanderer under great trees in the Lantern Gate, lanterns glowing beside a statue](docs/screenshots/explorer.jpg)
+![Lanternfall: the hooded lamplighter in the Lantern Gate, lantern posts glowing under a great hanging rock](docs/screenshots/lanternfall.jpg)
 
-A 2D exploration platformer for one player, with a drop-in second (working
-title): one great underground world of 13 regions and 356 rooms, where each of
-seven abilities (a second jump, a dash, a wall climb, swimming, a grapple and
-more) opens ways you could not take before. Six wardens, shrines that save and
+A 2D exploration platformer for one player, with a drop-in second: the
+lanterns of the old city have gone out, and the hooded lamplighter wakes its
+beacons again across one great underground world of 13 regions and 356 rooms,
+where each of seven abilities (a second jump, a dash, a wall climb, swimming, a
+grapple and more) opens ways you could not take before. Six wardens, shrines that save and
 carry you between them, and a map that fills in as you go. It is drawn with the
 engine's 2D renderer: lit sprites, soft shadows, bounced light, light shafts,
 bloom and a colour grade per region. A checker proves the world can be finished
 in ability order with no dead ends, and a bot plays it through to the end.
 
-### demolition
+### Destructo
 
-![demolition: a charge brings the Great Keep down in planks and stone](docs/screenshots/demolition.jpg)
+![Destructo: a charge brings the Great Keep down in planks and stone](docs/screenshots/destructo.jpg)
 
-A physics destruction game for one to four players taking turns (working
-title). Towers, walls, bridges, castles, scaffolds, stepped pyramids and keeps
-of wood, stone, glass and steel, up to a few thousand blocks each, stand in
+A physics destruction game for one to four players taking turns. Towers,
+walls, bridges, castles, scaffolds, stepped pyramids and keeps of wood,
+stone, glass and steel, up to a few thousand blocks each, stand in
 settings of their own (highlands, a meadow, a river gorge, sea cliffs, a
 quarry, desert mesas, a snowy pass). A launcher fires shot, heavy balls and
 charges at the crystals hidden inside; blocks break into pieces, dust and
 shards and the structures come down on the engine's Box3D. 30 levels, each
 checked to stand still for a minute, float nothing and fall to the bot within
 par.
+
+### Ember Throne
+
+![Ember Throne: the wayfarer and the warden at the keep's brazier, a raider coming at them](docs/screenshots/emberthrone.jpg)
+
+A third-person action adventure through one connected world for one player,
+with a second able to drop in. The wanderer gathers the Sun Key and the Moon Key
+to open the Ember Keep and face the Ember King on his throne. Eight regions on one 640 m
+terrain, from a green hollow and an amber canyon to snowy heights over a cliff
+path, a lantern-lit underway, a spire with a stair round it and a wood of giant
+glowing mushrooms, joined so that the way back is often a shortcut. Lock-on
+sword fights with light and heavy cuts, rolls and stamina; foe groups with
+readable wind-ups and three bosses; hearts, stamina charms, keys and a maul
+that breaks cracked stone open new routes. A bot plays the whole game in CI,
+nothing floats, and every region passes a look check.
 
 More games are on the way.
 
