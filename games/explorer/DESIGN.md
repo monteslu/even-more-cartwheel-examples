@@ -108,3 +108,15 @@ the lit layers; glows and particles go on an additive layer over them.
 by tick; when knocked off it searches nearby with the same moves for a way back onto the route; it clears enemies
 first, cuts thrown things, mends when hurt, rests at shrines, and reads the wardens' tells in their arenas. It plays
 with the assist (every third hit costs a leaf).
+
+## The 2D renderer's new features (cartwheel-engine v0.37)
+
+Built against an engine whose `render2d.h` has the HDR post chain (cartwheel-engine branch engine-2d, the v0.37
+work), the game turns on (`EXPLORER_R2D_V2`, set by CMake when the header has it): an HDR pass with bloom, a soft
+tone curve that leaves ordinary art alone, a grade toward each region's accent and a vignette; emission and
+intensity on everything that glows (lamp windows, braziers, crystals, the lantern, eyes, pickups, shots), so it stays
+bright in a dim room and blooms; soft shadows from the rock (one occluder per run of solid tiles in a row, a distance
+field in the engine) with the light reaching a little way into the rock face; light shafts; bounce light (2D GI); real
+water pools drawn from the screen (refraction, the world mirrored on the surface, caustics, ripples where you splash
+and swim); shockwaves in a distortion layer (a plunge landing, a warden falling, a hidden wall breaking); fog on the
+parallax layers. Against the pinned v0.34.3 SDK the game draws as before (additive glows, flat water, no shadows).
