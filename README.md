@@ -21,6 +21,8 @@ In progress:
 - **towers**: a tower defense game for one to four players: build along a
   winding route and hold off waves of thousands.
 - **pinball**: pinball tables with real ball physics, lit and rendered in 3D.
+- **explorer**: a 2D exploration platformer: one great underground city where
+  every ability you find opens a way you could not take before.
 
 ## Building
 

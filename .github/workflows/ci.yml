@@ -14,11 +14,11 @@ concurrency:
 
 env:
   # every game in the repo (the release ships one cart each); empty until the first game lands
-  GAMES: "pinball towers"
+  GAMES: "pinball towers explorer"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: "pinball towers"
+  AUTO_GAMES: "pinball towers explorer"
   # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
-  PROMPT_GAMES: "pinball towers"
+  PROMPT_GAMES: "pinball towers explorer"
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
@@ -56,6 +56,14 @@ jobs:
         run: |
           TARGETS=native scripts/build.sh towers_soak
           node games/towers/tools/check-maps.mjs --soak build/native/games/towers/towers_soak
+      # explorer's world: the shipped world and route are current, the checker proves it completable in ability
+      # order with no soft locks, every pickup reached, every gate holding, nothing floating; the controls (worlds
+      # broken on purpose) must each fail; and the movement's feel stays in its bounds (with its controls)
+      - name: Check explorer's world and feel
+        run: |
+          TARGETS=native scripts/build.sh explorer_worldgen explorer_check explorer_feel
+          node tests/explorer-world.mjs
+          node tests/explorer-feel.mjs
       # pushes to main link the carts as releases ship (ThinLTO, wasm-opt), so a
       # v* tag publishes these very carts; pull requests link dev carts, the same simulation
       - name: Build the carts (each game, and its self-playing <game>_auto where it has one)

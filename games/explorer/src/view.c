@@ -8,6 +8,7 @@
  *   water        pools and flooded halls over everything they cover
  * Mood comes from colour: every region is mid-key under a bright ambient, the lamps add warmth or chill. */
 #include <math.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "art.h"
@@ -146,19 +147,65 @@ static void draw_sky(const sim *s, float t, int region) {
 /* ── tiles ── */
 static bool open_tile(int t) { return !t_solid(t); }
 
+/* distance (tiles, capped) from every open tile to the nearest rock: the back wall fades out away from the rock,
+ * so the middle of a big room opens onto the deep parallax behind it */
+static uint8_t (*rockdist)[TW];
+static bool rock_dirty;
+static void build_rockdist(const sim *s) {
+  if (!rockdist) rockdist = malloc(sizeof(uint8_t) * TH * TW);
+  for (int y = 0; y < TH; y++)
+    for (int x = 0; x < TW; x++) rockdist[y][x] = t_solid(s->t[y][x]) ? 0 : 20;
+  for (int y = 0; y < TH; y++) /* two chamfer passes */
+    for (int x = 0; x < TW; x++) {
+      int d = rockdist[y][x];
+      if (x > 0 && rockdist[y][x - 1] + 1 < d) d = rockdist[y][x - 1] + 1;
+      if (y > 0 && rockdist[y - 1][x] + 1 < d) d = rockdist[y - 1][x] + 1;
+      rockdist[y][x] = (uint8_t)d;
+    }
+  for (int y = TH - 1; y >= 0; y--)
+    for (int x = TW - 1; x >= 0; x--) {
+      int d = rockdist[y][x];
+      if (x < TW - 1 && rockdist[y][x + 1] + 1 < d) d = rockdist[y][x + 1] + 1;
+      if (y < TH - 1 && rockdist[y + 1][x] + 1 < d) d = rockdist[y + 1][x] + 1;
+      rockdist[y][x] = (uint8_t)d;
+    }
+}
+
+static float wall_alpha(int x, int y) {
+  x = x < 0 ? 0 : x >= TW ? TW - 1 : x, y = y < 0 ? 0 : y >= TH ? TH - 1 : y;
+  float d = (float)rockdist[y][x];
+  return d <= 2 ? 1 : d >= 10 ? 0 : 1 - (d - 2) / 8.0f;
+}
+
 static void draw_room_wall(const sim *s, int ri, float x0, float y0, float x1, float y1) {
   const room *r = &s->w->rooms[ri];
   const region_info *g = &REGIONS[r->region];
   int m = region_material(r->region);
-  cw_color c = mixc(hexc(g->far, 1), hexc(g->ground, 1), 0.45f);
-  c = scalec(c, 0.95f);
+  cw_color c = mixc(hexc(g->mid, 1), hexc(g->ground, 1), 0.35f);
+  c = mixc(c, hexc(g->sky, 1), 0.2f);
   int rx0 = r->x * CELL_W + 2, ry0 = r->y * CELL_H + 2, rx1 = (r->x + r->w) * CELL_W - 2, ry1 = (r->y + r->h) * CELL_H - 2;
   int ax = rx0 > (int)x0 - 2 ? rx0 : ((int)x0 - 2) & ~1, ay = ry0 > (int)y0 - 2 ? ry0 : ((int)y0 - 2) & ~1;
+  /* 2 x 2 tile quads of the wall texture, each corner's alpha from its distance to the rock: a smooth fade */
+  static cw_vertex2d v[4 * 1200];
+  static uint32_t idx[6 * 1200];
+  int nq = 0;
   for (int y = ay; y < ry1 && y < y1 + 2; y += 2)
     for (int x = ax; x < rx1 && x < x1 + 2; x += 2) {
-      cw_r2d_sprite(&(cw_sprite){ .texture = A.wall[m], .pos = { (float)x, (float)y }, .size = { 2, 2 }, .color = c });
-      VS.sprites++;
+      float a[4] = { wall_alpha(x, y), wall_alpha(x + 2, y), wall_alpha(x + 2, y + 2), wall_alpha(x, y + 2) };
+      if (a[0] + a[1] + a[2] + a[3] < 0.02f || nq >= 1200) continue;
+      static const float CX[4] = { 0, 2, 2, 0 }, CY[4] = { 0, 0, 2, 2 }, U[4] = { 0, 1, 1, 0 }, V[4] = { 0, 0, 1, 1 };
+      for (int k = 0; k < 4; k++) {
+        cw_color cc = c;
+        cc.a = a[k];
+        v[nq * 4 + k] = (cw_vertex2d){ { (float)x + CX[k], (float)y + CY[k] }, { U[k], V[k] }, cc };
+      }
+      uint32_t b = (uint32_t)nq * 4;
+      uint32_t q[6] = { b, b + 1, b + 2, b, b + 2, b + 3 };
+      memcpy(idx + nq * 6, q, sizeof q);
+      nq++;
     }
+  if (nq) cw_r2d_triangles(A.wall[m], v, nq * 4, idx, nq * 6);
+  VS.sprites += nq;
 }
 
 static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, float t) {
@@ -179,11 +226,14 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
         mask = (o_up ? 1 : 0) | (o_r ? 2 : 0) | (o_dn ? 4 : 0) | (o_l ? 8 : 0);
         /* skip the rock deep inside walls that no open tile is near: it is a flat dark mass */
         bool deep = !mask;
-        if (deep) {
+        if (deep) { /* rock deep in a wall: a flat fill, darker (no lip, no bevel to show) */
           bool near = false;
           for (int dy = -2; dy <= 2 && !near; dy++)
             for (int dx = -2; dx <= 2 && !near; dx++) near = w_in(x + dx, y + dy) && open_tile(s->t[y + dy][x + dx]);
-          if (!near) continue;
+          if (!near) {
+            cw_r2d_rect((cw_rect){ (float)x, (float)y, 1.02f, 1.02f }, scalec(hexc(g->ground, 1), 0.62f));
+            continue;
+          }
         }
         cw_color body = hexc(g->ground, 1);
         if (tt == T_CRACKED) body = mixc(body, rgba(1, 0.85f, 0.6f, 1), 0.18f);
@@ -638,11 +688,13 @@ static void draw_water(const sim *s, float x0, float y0, float x1, float y1, flo
 
 void view_draw(const sim *s, float t) {
   memset(&VS, 0, sizeof VS);
+
+  if (!rockdist || rock_dirty) build_rockdist(s), rock_dirty = false;
   cw_vec2 cs = cw_r2d_canvas_size();
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
   const region_info *g = &REGIONS[region];
   cw_color amb = mixc(hexc(g->sky, 1), rgba(1, 1, 1, 1), 0.55f);
-  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.82f), .time = t });
+  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.97f), .time = t });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
   for (int l = L_WALL; l <= L_FRONT; l++) cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = true, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS });
   for (int l = 1; l <= 4; l++) cw_r2d_layer_set(l, NULL);
@@ -778,12 +830,13 @@ void view_events(const sim *s) {
     case EV_KILL: burst(e->x, e->y, 22, 7, 0.6f, 0.4f, rgba(1, 0.55f, 0.35f, 1), true, 4); break;
     case EV_HIT: burst(e->x, e->y, 8, 5, 0.3f, 0.3f, e->a == 2 ? rgba(0.8f, 0.85f, 1, 1) : rgba(1, 0.85f, 0.6f, 1), true, 0); break;
     case EV_BOSS_HIT: burst(e->x, e->y, 10, 6, 0.35f, 0.35f, rgba(1, 0.9f, 0.7f, 1), true, 0); break;
-    case EV_BOSS_DOWN: burst(e->x, e->y, 120, 12, 1.4f, 0.6f, rgba(1, 0.85f, 0.5f, 1), true, 2), flash_t = 1, flash_c = rgba(1, 0.95f, 0.8f, 0.5f); break;
+    case EV_BOSS_DOWN: rock_dirty = true; burst(e->x, e->y, 120, 12, 1.4f, 0.6f, rgba(1, 0.85f, 0.5f, 1), true, 2), flash_t = 1, flash_c = rgba(1, 0.95f, 0.8f, 0.5f); break;
     case EV_BOSS_TELL: flash_t = 0.15f, flash_c = rgba(1, 0.5f, 0.4f, 0.08f); break;
     case EV_PICKUP: burst(e->x, e->y - 0.9f, 50, 6, 1.0f, 0.45f, rgba(1, 0.9f, 0.55f, 1), true, -1), flash_t = 0.6f, flash_c = rgba(1, 0.95f, 0.8f, 0.3f); break;
     case EV_SAVE: burst(e->x, e->y - 1.45f, 30, 3, 1.2f, 0.4f, rgba(0.6f, 1, 0.9f, 1), true, -2); break;
-    case EV_BREAK: burst(e->x, e->y, 26, 7, 0.9f, 0.4f, scalec(top, 0.8f), false, 22); break;
-    case EV_SECRET: burst(e->x + 0.5f, e->y + 0.5f, 30, 6, 0.9f, 0.45f, rgba(0.85f, 0.75f, 0.65f, 1), false, 18); break;
+    case EV_SEAL: case EV_BOSS_DOWN + 100: rock_dirty = true; break;
+    case EV_BREAK: rock_dirty = true; burst(e->x, e->y, 26, 7, 0.9f, 0.4f, scalec(top, 0.8f), false, 22); break;
+    case EV_SECRET: rock_dirty = true; burst(e->x + 0.5f, e->y + 0.5f, 30, 6, 0.9f, 0.45f, rgba(0.85f, 0.75f, 0.65f, 1), false, 18); break;
     case EV_SHOT_HIT: burst(e->x, e->y, 8, 4, 0.3f, 0.3f, rgba(1, 0.8f, 0.6f, 1), true, 0); break;
     case EV_HURT: flash_t = 0.3f, flash_c = rgba(1, 0.2f, 0.25f, 0.2f); break;
     case EV_BOUNCE: burst(e->x, e->y, 10, 4, 0.3f, 0.3f, rgba(1, 1, 1, 0.9f), true, 0); break;

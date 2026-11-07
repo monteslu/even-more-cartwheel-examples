@@ -36,6 +36,7 @@ static int32_t *node_at; /* tile index -> node, -1 */
 static int32_t *node_xy; /* node -> tile index */
 static int nnodes;
 static int quiet;
+static const char *only; /* --only gates|grounded: that check alone (the controls that need no walk) */
 
 static bool standable(int x, int y) {
   int t = T[y][x];
@@ -520,6 +521,7 @@ int main(int argc, char **argv) {
     if (!strcmp(argv[i], "--route") && i + 1 < argc) route = argv[++i];
     else if (!strcmp(argv[i], "--break") && i + 1 < argc) brk = atoi(argv[++i]);
     else if (!strcmp(argv[i], "--quiet")) quiet = 1;
+    else if (!strcmp(argv[i], "--only") && i + 1 < argc) only = argv[++i];
     else if (!strcmp(argv[i], "--threads") && i + 1 < argc) nthreads = atoi(argv[++i]);
   }
   if (!world_load(&W, argv[1])) {
@@ -546,6 +548,7 @@ int main(int argc, char **argv) {
   printf("world %08x: %d nodes, %d moves, %d threads\n", W.hash, nnodes, NMOVES, nthreads);
   int start = (int)roundf(W.start_y) * TW + (int)floorf(W.start_x);
   if (node_at[start] < 0) { printf("FAIL the start is not a standing spot\n"); return 1; }
+  if (!only) {
   /* stages */
   AB = 0;
   static const uint32_t ORDER[NABILITIES] = { AB_BOLT | AB_DJUMP, AB_DASH, AB_CLIMB, AB_POUND, AB_SWIM, AB_GRAPPLE, 0 };
@@ -600,6 +603,8 @@ int main(int argc, char **argv) {
   for (int i = 1; i <= NBOSSES; i++) bosses += boss_done[i];
   if (bosses != NBOSSES) fails++, printf("FAIL wardens: %d of %d arenas reached\n", bosses, NBOSSES);
   else printf("ok   wardens: all %d arenas reached\n", NBOSSES);
+  }
+  if (!only || !strcmp(only, "gates")) {
   /* the gates */
   int gate_bad = 0, ngate = 0;
   static const uint32_t GATE_AB[] = { 0, AB_DJUMP, AB_DASH, AB_CLIMB, AB_POUND, AB_SWIM, AB_GRAPPLE };
@@ -629,6 +634,8 @@ int main(int argc, char **argv) {
   }
   if (gate_bad) fails++, printf("FAIL gates: %d of %d gate rooms\n", gate_bad, ngate);
   else printf("ok   gates: all %d gate rooms hold without their ability and open with it\n", ngate);
+  }
+  if (!only || !strcmp(only, "grounded")) {
   /* grounded */
   int floating = 0;
   for (int i = 0; i < W.nents; i++)
@@ -638,6 +645,7 @@ int main(int argc, char **argv) {
     }
   if (floating) fails++, printf("FAIL grounded: %d things float\n", floating);
   else printf("ok   grounded: all %d things are held by their tiles\n", W.nents);
+  }
   struct timespec ts1;
   clock_gettime(CLOCK_MONOTONIC, &ts1);
   printf("%s in %.1f s\n", fails ? "check FAIL" : "check ok", (double)(ts1.tv_sec - ts0.tv_sec) + (double)(ts1.tv_nsec - ts0.tv_nsec) * 1e-9);

@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
     fprintf(stderr, "usage: explorer_worldgen <out.bin> [seed] [--map]\n");
     return 2;
   }
-  uint32_t seed = argc > 2 && argv[2][0] != '-' ? (uint32_t)strtoul(argv[2], NULL, 0) : 20261107u;
+  uint32_t seed = argc > 2 && argv[2][0] != '-' ? (uint32_t)strtoul(argv[2], NULL, 0) : 1u;
   world_generate(&W, seed);
   bool map = false;
   for (int i = 2; i + 1 < argc; i++)

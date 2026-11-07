@@ -170,6 +170,7 @@ static void init(void *u) {
 static void read_input(pinput in[MAXP]) {
   memset(in, 0, sizeof(pinput) * MAXP);
 #ifdef EXPLORER_AUTOPILOT
+  if (getenv("EXPLORER_IDLE")) return; /* (stills: nobody at the controls) */
   bot_input(&B, &S, 0, &in[0]);
   for (int i = 1; i < S.players; i++) bot_follow(&S, i, &in[i]);
 #else
