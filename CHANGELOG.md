@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0
+
+- **demolition** (working title): a physics destruction game for one to four players taking turns, in co-op or
+  versus. Towers, walls, bridges, castles, scaffolds, stepped pyramids and keeps of wood, stone, glass and steel,
+  from 44 to about 2500 blocks, stand in settings of their own (highlands, a meadow, a river gorge, sea cliffs, a
+  quarry, desert mesas, a snowy pass). A launcher fires shot, heavy balls and charges at glowing crystals hidden
+  inside; blocks wear down and break into pieces, dust and shards, and whole structures come down on the engine's
+  3D physics. 30 levels, each checked to stand still for a minute, float nothing and fall to the bot within par.
+  The biggest blast stays inside one 60 Hz frame (the effects are prepared at load and breaks are spread over a
+  few ticks).
+
 ## 0.4.0
 
 - towers gets a new look: paths are smooth curved roads of real materials per theme (packed earth with a brick
