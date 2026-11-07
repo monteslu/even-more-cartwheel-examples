@@ -1,0 +1,7 @@
+pinball (working title): credits and licences
+
+Code: this repository (MIT, see LICENSE). The tables, their playfield art, every mesh, the dot display's font, every
+sound and the music are made by code in this repository (src/tables.c, src/art.c, src/view.c, src/geo.c, src/dmd.c,
+src/sound.c); no third-party art or audio is shipped, so there is nothing further to attribute.
+
+The launcher art (art/) is made from the game's own frames by tools/make-art.sh.

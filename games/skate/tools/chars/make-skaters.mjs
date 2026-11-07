@@ -1,0 +1,1584 @@
+// Generates every fighter and enemy as a skinned glb (one bone layout, per-character proportions, the same clip
+// library) into assets/models/. Run:
+//   node tools/make-characters.mjs [name ...]
+// Facing is +Z in the model, +X is the character's left. Rotation values in the poses are offsets from the rest pose
+// (arms and legs hang along -Y): -x swings a limb forward, +z on the left side (+x) lifts it out sideways, +x on the
+// spine leans forward, +x on a lower leg bends the knee, -x on a lower arm bends the elbow.
+// Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time by the game's spring code.
+import { mkdirSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { Glb } from './gltf-writer.mjs';
+import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
+import { writeSet } from './texlib.mjs';
+import { writeGarments } from './garments.mjs';
+import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
+import { faceParams, headModel, buildHead, shellGrid, hairCap, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
+const HEAD_GROUPS = ['face', 'lash'];
+const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
+
+const CARD_INWARD = process.env.BRAWLER_CARD_WINDING === 'inward';
+const BRAWLER_PROP = process.env.BRAWLER_PROP; // the controls tests/brawler-heads.mjs must see fail: longneck (a tiny head on a long neck), balloon (an ellipsoid head a sixth of the body), stuckcoat (the creep's fronts stay on the body when his arms spread), stiffskirt (the fronts of his skirt do not go with his thighs), sack (the gut as a lump at the front), tanktop (the men in women's tank tops)
+const OUT = process.env.SKATE_MODELS_OUT || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'models');
+mkdirSync(OUT, { recursive: true });
+
+// ── the skeleton: names and parents are fixed; translations come from each character's proportions ──
+const COAT_BONES = ['L', 'R'].flatMap((sd) => ['Upper', 'Waist', 'Skirt', 'Grip', 'Hem'].map((n) => 'Coat' + n + sd));
+const bonesOf = (sp) => BONE_NAMES.filter((n) => sp.flashCoat || !COAT_BONES.includes(n));
+const BONE_NAMES = ['Hips', 'Spine', 'Chest', 'Neck', 'Head', 'UpperArmL', 'LowerArmL', 'HandL', 'UpperArmR', 'LowerArmR', 'HandR',
+  'UpperLegL', 'LowerLegL', 'FootL', 'UpperLegR', 'LowerLegR', 'FootR', 'Belly', 'HairA', 'HairB', 'CoatL', 'CoatR',
+  // the face (expressions; the game blinks the lids) and the hands (two finger bones curl all four fingers, and the thumb)
+  ...FACE_BONES, 'FingL1', 'FingL2', 'ThumbL', 'FingR1', 'FingR2', 'ThumbR',
+  // the creep's coat fronts, last so no other figure's joint numbers move and only he carries them (see coatPose)
+  ...COAT_BONES];
+const PARENT = { Hips: -1, Spine: 'Hips', Chest: 'Spine', Neck: 'Chest', Head: 'Neck', UpperArmL: 'Chest', LowerArmL: 'UpperArmL', HandL: 'LowerArmL',
+  UpperArmR: 'Chest', LowerArmR: 'UpperArmR', HandR: 'LowerArmR', UpperLegL: 'Hips', LowerLegL: 'UpperLegL', FootL: 'LowerLegL',
+  UpperLegR: 'Hips', LowerLegR: 'UpperLegR', FootR: 'LowerLegR', Belly: 'Spine', HairA: 'Head', HairB: 'HairA', CoatL: 'Hips', CoatR: 'Hips',
+  ...Object.fromEntries(FACE_BONES.map((n) => [n, 'Head'])), FingL1: 'HandL', FingL2: 'FingL1', ThumbL: 'HandL', FingR1: 'HandR', FingR2: 'FingR1', ThumbR: 'HandR',
+  CoatUpperL: 'Chest', CoatWaistL: 'Hips', CoatSkirtL: 'UpperLegL', CoatGripL: 'UpperLegL', CoatHemL: 'UpperLegL', CoatUpperR: 'Chest', CoatWaistR: 'Hips', CoatSkirtR: 'UpperLegR', CoatGripR: 'UpperLegR', CoatHemR: 'UpperLegR' };
+const HAND_BONES = ['FingL1', 'FingL2', 'ThumbL', 'FingR1', 'FingR2', 'ThumbR'];
+const BI = Object.fromEntries(BONE_NAMES.map((n, i) => [n, i]));
+
+/** per character bone translations (relative to the parent) */
+function skeleton(sp) {
+  const sw = shoulder(sp), hw = sp.hw ?? 0.1, HS = headScale(sp), al = sp.armLen ?? 1, ll = sp.legLen ?? 1;
+  const hair = sp.hairRoot ?? [0, 0.17, -0.1];
+  const T = {
+    Hips: [0, 0.97 * ll + 0.03 * (1 - ll), 0], Spine: [0, 0.12, 0], Chest: [0, 0.2, 0], Neck: [0, 0.24, 0], Head: [0, neckDrop(sp), 0],
+    UpperArmL: [sw, 0.17, 0], LowerArmL: [0, -0.28 * al, 0], HandL: [0, -0.26 * al, 0],
+    UpperArmR: [-sw, 0.17, 0], LowerArmR: [0, -0.28 * al, 0], HandR: [0, -0.26 * al, 0],
+    UpperLegL: [hw, -0.06, 0], LowerLegL: [0, -0.44 * ll, 0], FootL: [0, -0.43 * ll, 0],
+    UpperLegR: [-hw, -0.06, 0], LowerLegR: [0, -0.44 * ll, 0], FootR: [0, -0.43 * ll, 0],
+    Belly: [0, 0.0, 0.1], HairA: [hair[0], hair[1] * HS, hair[2] * HS], HairB: [0, -0.15, -0.03], CoatL: [0.11, -0.04, -0.1], CoatR: [-0.11, -0.04, -0.1],
+  };
+  if (sp.hairB) T.HairB = sp.hairB;
+  for (const [sd, sx] of [['L', 1], ['R', -1]]) { // the front edge from the lapel down as far as the open arm reaches: that much of the coat is what the hand holds
+    const yChest = T.Hips[1] + T.Spine[1] + T.Chest[1], yThigh = T.Hips[1] + T['UpperLeg' + sd][1], xT = T['UpperLeg' + sd][0], P = [sx * COAT_EDGE.top[0], 0.2, COAT_EDGE.top[1]], wr = sub(gripOf(T, FLASH_OPEN, sd), P);
+    const dx = sx * COAT_EDGE.hold[0] - P[0], dz = COAT_EDGE.hold[1] - P[2], yG = yChest + P[1] - Math.sqrt(Math.max(0.01, dot3(wr, wr) - dx * dx - dz * dz));
+    T['CoatUpper' + sd] = P; T['CoatWaist' + sd] = [sx * COAT_EDGE.hold[0], 0.07, COAT_EDGE.hold[1]];
+    T['CoatGrip' + sd] = T['CoatSkirt' + sd] = [sx * COAT_EDGE.hold[0] - xT, yG - yThigh, COAT_EDGE.hold[1]]; T['CoatHem' + sd] = [sx * COAT_EDGE.hold[0] - xT, T['LowerLeg' + sd][1], COAT_EDGE.hold[1]];
+  }
+  const world = {};
+  const body = BONE_NAMES.filter((n) => T[n]);
+  for (const n of body) { const p = PARENT[n] === -1 ? [0, 0, 0] : world[PARENT[n]]; world[n] = add(p, T[n]); }
+  // the face bones sit where the sculpted head puts its features; the hand bones at the knuckles and the thumb
+  const M = headOf(sp, world);
+  for (const n of FACE_BONES) world[n] = M.bones[n];
+  for (const sx of [1, -1]) {
+    const sd = sx > 0 ? 'L' : 'R', h = handGeom(sp, sx, world);
+    world['Fing' + sd + '1'] = h.k1; world['Fing' + sd + '2'] = h.k2; world['Thumb' + sd] = h.tb;
+  }
+  for (const n of BONE_NAMES) if (!T[n]) T[n] = sub(world[n], world[PARENT[n]]);
+  return { T, world, M };
+}
+
+/** the natural hairline: the ring height t at loft angle a (PI/2 the front): the forehead, the corners at the temples, a sideburn in front of the
+ *  ear, up over the ear, down behind it to the nape. h: forehead height, recede: how far back the corners go */
+export function hairlineEdge(a, h = 0.56, recede = 0.08) {
+  let d = Math.abs(a - PI / 2); if (d > PI) d = 2 * PI - d;
+  const f = curve([[0, h], [0.3, h + 0.015], [0.62, h + recede], [0.84, h - 0.08 + recede], [1.08, 0.2], [1.28, -0.06], [1.42, -0.04], [1.62, 0.2], [1.92, 0.2], [2.2, -0.16], [2.6, -0.34], [PI, -0.4]]);
+  return f(d);
+}
+/** the head: size, envelope rings (hats and hair are built on the same rings) and the sculpted face model */
+// Real proportions, checked by tools/check-heads.mjs: a figure is sp.heads head heights tall (about 7.5), so the head is solved from the body.
+const neckDrop = (sp) => (BRAWLER_PROP === 'longneck' ? 0.12 : 0.08 - (sp.neckShort ?? 0) - 0.05 * Math.max(0, (sp.neck ?? 1) - 1));
+const headScale = (sp) => {
+  const ll = sp.legLen ?? 1, yHd = 0.97 * ll + 0.03 * (1 - ll) + 0.12 + 0.2 + 0.24 + neckDrop(sp), h = 0.142 * (sp.skull?.h ?? 1), n = BRAWLER_PROP === 'longneck' ? 8.6 : BRAWLER_PROP === 'balloon' ? 6 : sp.heads ?? 7.5;
+  return yHd / (n * 2 * h - 0.125 - h); // stature = the Head joint + 0.125 HS + h HS = n * 2 h HS
+};
+/** the shoulder joint's reach: the figure over the deltoids is sp.shoulders head heights across (men about 2.25, women less, big men up to 2.6) */
+const armRadius = (sp) => 0.05 * (sp.arm ?? 1) * 0.86 * (0.8 + 0.2 * (sp.width ?? 1));
+const shoulder = (sp) => { const H = 2 * 0.142 * (sp.skull?.h ?? 1) * headScale(sp); return (BRAWLER_PROP === 'longneck' ? 2.9 : sp.shoulders ?? 2.25) * H / 2 - armRadius(sp) * 1.3 - 0.016; };
+/** a smooth curve through [t, value] points, t rising (Catmull-Rom tangents, flat past the ends) */
+function curve(pts) {
+  return (t) => {
+    let i = 0; while (i < pts.length - 2 && t > pts[i + 1][0]) i++;
+    const a = pts[Math.max(0, i - 1)], b = pts[i], c = pts[i + 1], d = pts[Math.min(pts.length - 1, i + 2)], h = c[0] - b[0], u = Math.max(0, Math.min(1, (t - b[0]) / h));
+    const m0 = ((c[1] - a[1]) / Math.max(1e-6, c[0] - a[0])) * h, m1 = ((d[1] - b[1]) / Math.max(1e-6, d[0] - b[0])) * h, u2 = u * u, u3 = u2 * u;
+    return (2 * u3 - 3 * u2 + 1) * b[1] + (u3 - 2 * u2 + u) * m0 + (3 * u2 - 2 * u3) * c[1] + (u3 - u2) * m1;
+  };
+}
+// the skull's defaults: w, h, d its overall width, height and depth; slope how far the forehead leans back; occ the back of the
+// skull; chin the chin's width, chinZ how far forward it comes; cheek and temple the cheekbones and temples (per character in SPECS skull)
+const SKULL = { w: 1, h: 1, d: 1, slope: 0.5, occ: 1, chin: 1, chinZ: 1, cheek: 1, temple: 1 };
+const HEADS = new Map();
+function headOf(sp, world) {
+  if (HEADS.has(sp.name)) return HEADS.get(sp.name);
+  const HS = headScale(sp), yHd = world.Head[1];
+  const hc = [0, yHd + 0.125 * HS, 0.008 * HS];
+  const K = { ...SKULL, ...sp.skull, jaw: sp.skull?.jaw ?? 0.72 + 0.28 * (sp.jaw ?? 1) };
+  const R = 0.104 * HS * K.w, HY = 0.142 * HS * K.h, RZ = HY * 0.85 * K.d; // about 7.5 to 8 heads to the body, as long as it is wide and deep as a person's
+  const crownZ = -0.03;
+  // a skull is not an ellipsoid. Three outlines, in head units up the head (t: -1 under the chin, +1 the crown): how wide it is
+  // seen from the front (parietals, temples, cheekbones, the jaw's angle, a chin with a width), where its front runs seen from
+  // the side (forehead, brow, face plane, chin), and its back (the occiput, in to the nape, along under the jaw to the chin)
+  const wide = curve([[-1, 0.2], [-0.95, 0.28 * K.chin], [-0.85, 0.42 * K.chin], [-0.7, 0.62 * K.jaw], [-0.5, 0.8 * K.jaw], [-0.3, 0.88 + 0.03 * K.jaw], [-0.12, 0.94 * K.cheek], [0.05, 0.94 * K.temple], [0.22, 0.97], [0.42, 1.0], [0.62, 1.0], [1, 0.96]]);
+  const front = curve([[-1, 0.4 * K.chinZ], [-0.97, 0.52 * K.chinZ], [-0.88, 0.64 * K.chinZ], [-0.75, 0.67], [-0.58, 0.72], [-0.4, 0.74], [-0.2, 0.74], [0.03, 0.76], [0.2, 0.84], [0.35, 0.82 - 0.05 * K.slope], [0.55, 0.76 - 0.1 * K.slope], [0.75, 0.62 - 0.1 * K.slope], [0.9, 0.38 - 0.05 * K.slope], [1, crownZ]]);
+  const rear = curve([[-1, 0.4 * K.chinZ], [-0.9, 0.08], [-0.75, -0.16], [-0.6, -0.36], [-0.45, -0.54], [-0.3, -0.66], [-0.1, -0.8], [0.1, -0.9 * K.occ], [0.25, -0.93 * K.occ], [0.5, -0.88 * K.occ], [0.75, -0.7], [0.9, -0.42], [1, crownZ]]);
+  const ring = BRAWLER_PROP === 'balloon' ? (t, k = 1, add2 = 0) => { const s0 = Math.sqrt(Math.max(0, 1 - t * t)); return { c: [0, hc[1] + HY * t, hc[2]], U: [1, 0, 0], V: [0, 0, 1], ru: Math.max(0.002, R * 1.06 * s0 * k + add2), rv: Math.max(0.002, RZ * 1.1 * s0 * k + add2), e: 2.3 }; } : (t, k = 1, add2 = 0) => {
+    t = Math.max(-1, Math.min(1, t));
+    const cap = t > 0 ? Math.sqrt(Math.max(0, 1 - t ** 4)) : Math.sqrt(Math.max(0, 1 - Math.abs(t) ** 12));
+    const zf = front(t) * HY, zb = rear(t) * HY, cz = hc[2] + (zf + zb) / 2 * (K.d), rz = Math.abs(zf - zb) / 2 * K.d;
+    return { c: [0, hc[1] + HY * t, cz], U: [1, 0, 0], V: [0, 0, 1], ru: Math.max(0.002, R * wide(t) * cap * k + add2), rv: Math.max(0.002, rz * k + add2), e: lerp(2.2, 2.5 + 0.5 * (K.jaw - 1), ss(0.3, -0.3, t)) };
+  };
+  const M = headModel({ hc, R, RZ, HY, HS, ring }, faceParams(sp.face));
+  HEADS.set(sp.name, M);
+  return M;
+}
+/** hand layout: palm, knuckle line (first finger bone), middle joints (second finger bone), thumb root */
+function handGeom(sp, sx, world) {
+  const H = world['Hand' + (sx > 0 ? 'L' : 'R')], s = (sp.hand ?? 1.35) * 0.8 * (sp.gloves ? 1.06 : 1);
+  const hx = H[0] + sx * 0.002, hy = H[1], ky = hy - 0.078 * s, kx = hx - sx * 0.004 * s;
+  return { s, hx, hy, k1: [kx, ky, 0], k2: [kx, ky - 0.042 * s, 0], tb: [hx - sx * 0.016 * s, hy - 0.024 * s, 0.03 * s] };
+}
+
+// ── poses and clips ─────────────────────────────────────────────────────
+const merge = (...ps) => {
+  const out = {};
+  for (const p of ps) for (const [k, v] of Object.entries(p)) out[k] = { ...(out[k] || {}), ...v };
+  return out;
+};
+const lerp = (a, b, t) => a + (b - a) * t;
+const lerpPose = (a, b, t) => {
+  const out = {};
+  for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const A = a[k] || {}, B = b[k] || {}, o = {};
+    for (const f of ['r', 'p']) {
+      if (!A[f] && !B[f]) continue;
+      const x = A[f] || [0, 0, 0], y = B[f] || [0, 0, 0];
+      o[f] = [lerp(x[0], y[0], t), lerp(x[1], y[1], t), lerp(x[2], y[2], t)];
+    }
+    out[k] = o;
+  }
+  return out;
+};
+const EASE = {
+  io: (u) => u * u * (3 - 2 * u),
+  out: (u) => 1 - Math.pow(1 - u, 3), // a snap: most of the move in the first frames
+  in: (u) => u * u * u,
+  back: (u) => { const c = 1.9; const v = u - 1; return 1 + (c + 1) * v * v * v + c * v * v; }, // overshoot then settle
+  lin: (u) => u,
+};
+/** keyframes [[t, pose, ease], ...]: the ease shapes the move INTO that key */
+const keyed = (keys) => (t) => {
+  if (t <= keys[0][0]) return keys[0][1];
+  for (let i = 1; i < keys.length; i++) {
+    if (t <= keys[i][0]) {
+      const [t0, a] = keys[i - 1], [t1, b, e] = keys[i];
+      const u = (t - t0) / (t1 - t0);
+      return lerpPose(a, b, (EASE[e] || EASE.io)(u));
+    }
+  }
+  return keys[keys.length - 1][1];
+};
+const S = Math.sin, C = Math.cos, PI = Math.PI;
+const REST = {};
+// a boxer's guard: fists up by the chin, elbows in, knees soft, weight on the balls of the feet
+const GUARD = {
+  Hips: { p: [0, -0.07, 0], r: [0, 0.18, 0] }, Spine: { r: [0.12, -0.08, 0] }, Chest: { r: [0.06, -0.1, 0] }, Neck: { r: [-0.04, 0, 0] }, Head: { r: [-0.06, 0.05, 0] },
+  UpperArmL: { r: [-0.55, -0.15, 0.32] }, LowerArmL: { r: [-2.15, 0, 0] }, HandL: { r: [0.2, 0, 0] },
+  UpperArmR: { r: [-0.75, 0.15, -0.25] }, LowerArmR: { r: [-2.25, 0, 0] }, HandR: { r: [0.2, 0, 0] },
+  UpperLegL: { r: [-0.38, -0.1, 0.1] }, LowerLegL: { r: [0.5, 0, 0] }, FootL: { r: [-0.1, 0.1, 0] },
+  UpperLegR: { r: [0.22, -0.2, -0.12] }, LowerLegR: { r: [0.45, 0, 0] }, FootR: { r: [-0.25, 0.2, 0] },
+};
+const G = (o) => merge(GUARD, o);
+
+/** the riot guard carries his shield on the left forearm (the game hangs the shield model on LowerArmL): in every clip
+ * but the falls the forearm stands upright in front of the chest, the elbow forward and in, so the shield (its face out
+ * of the back of the forearm) covers the body with the viewport at the eyes. His shove (punch2, the bash) drives the
+ * forearm forward still upright instead of the cross's straight arm, which laid the shield flat. */
+const SHIELD_FREE = ['knockdown', 'down', 'dead', 'thrown', 'getup', 'getup_prone', 'grabbed'];
+const SHIELD_CARRY = { UpperArmL: { r: [-0.8, -0.55, -0.1] }, LowerArmL: { r: [-2.1, 0, 0] }, HandL: { r: [0, 0, 0] } };
+const SHIELD_SHOVE = { UpperArmL: { r: [-1.25, -0.55, -0.1] }, LowerArmL: { r: [-1.65, 0, 0] }, HandL: { r: [0, 0, 0] } };
+// the baton hand: low at his right side, the forearm forward and down, so the baton (game side, in the right fist) points
+// up and forward past the shield's edge instead of the fist punching through the shield from behind
+const BATON_ARM = { UpperArmR: { r: [0.15, 0.1, -0.12] }, LowerArmR: { r: [-0.95, 0, 0] }, HandR: { r: [0.1, 0, 0] } };
+function shieldArm(sp, name, t, pose) {
+  if (!sp.shield || SHIELD_FREE.includes(name)) return pose;
+  pose = { ...pose, ...BATON_ARM };
+  let k = 0;
+  if (name === 'punch2') k = t < 0.1 ? -0.4 * (t / 0.1) : t < 0.17 ? lerp(-0.4, 1, EASE.out((t - 0.1) / 0.07)) : t < 0.32 ? 1 : lerp(1, 0, EASE.io(Math.min(1, (t - 0.32) / 0.13)));
+  const arm = lerpPose(SHIELD_CARRY, SHIELD_SHOVE, k);
+  return { ...pose, ...arm };
+}
+/** clip definitions: name, length, loop, pose(t seconds) */
+const CLIPS = [];
+const clip = (name, len, loop, pose, only) => CLIPS.push({ name, len, loop, pose, only }); // only: the characters that carry it (default every one)
+
+// idles: breathing and a weight shift; a neck roll; a bouncing boxer
+clip('idle', 2.4, true, (t) => {
+  const w = (t / 2.4) * PI * 2, b = S(w * 2), sh = S(w);
+  return G({
+    Hips: { p: [sh * 0.018, -0.07 + b * 0.008, 0], r: [0, 0.18, sh * 0.03] }, Spine: { r: [0.12 - b * 0.015, -0.08, -sh * 0.02] },
+    Chest: { r: [0.06 - b * 0.03, -0.1, -sh * 0.015] }, Head: { r: [-0.06 + b * 0.02, 0.05 + S(w + 1) * 0.08, 0] },
+    UpperArmL: { r: [-0.55 + b * 0.05, -0.15, 0.32] }, UpperArmR: { r: [-0.75 - b * 0.05, 0.15, -0.25] },
+    LowerArmL: { r: [-2.15 - b * 0.06, 0, 0] }, LowerArmR: { r: [-2.25 + b * 0.06, 0, 0] },
+    UpperLegL: { r: [-0.38, -0.1, 0.1 - sh * 0.03] }, UpperLegR: { r: [0.22, -0.2, -0.12 - sh * 0.03] },
+  });
+});
+clip('idle2', 2.0, true, keyed([
+  [0, GUARD],
+  [0.4, G({ Chest: { r: [-0.12, -0.1, 0] }, Head: { r: [0.1, 0, 0.35] }, UpperArmL: { r: [-0.35, -0.15, 0.45] }, UpperArmR: { r: [-0.4, 0.15, -0.45] }, LowerArmL: { r: [-1.7, 0, 0] }, LowerArmR: { r: [-1.7, 0, 0] } })],
+  [0.9, G({ Chest: { r: [-0.15, -0.1, 0] }, Head: { r: [0.1, 0, -0.35] }, UpperArmL: { r: [-0.35, -0.15, 0.45] }, UpperArmR: { r: [-0.4, 0.15, -0.45] }, LowerArmL: { r: [-1.7, 0, 0] }, LowerArmR: { r: [-1.7, 0, 0] } }), 'io'],
+  [1.25, G({ Chest: { r: [-0.08, -0.1, 0] }, Head: { r: [-0.2, 0, 0] }, Spine: { r: [0.05, -0.08, 0] } }), 'io'],
+  [2.0, GUARD, 'io']]));
+clip('idle3', 0.8, true, (t) => {
+  const w = (t / 0.8) * PI * 2, b = Math.abs(S(w)), s2 = S(w);
+  return G({
+    Hips: { p: [0, -0.07 + b * 0.03, 0], r: [0, 0.18, 0] }, Chest: { r: [0.06 + b * 0.04, -0.1 + s2 * 0.06, 0] }, Head: { r: [-0.06 - b * 0.03, 0.05, 0] },
+    UpperArmL: { r: [-0.55 - b * 0.08, -0.15, 0.32] }, UpperArmR: { r: [-0.75 + b * 0.06, 0.15, -0.25] },
+    LowerLegL: { r: [0.5 - b * 0.25, 0, 0] }, LowerLegR: { r: [0.45 - b * 0.25, 0, 0] }, FootL: { r: [-0.1 + b * 0.25, 0.1, 0] }, FootR: { r: [-0.25 + b * 0.25, 0.2, 0] },
+  });
+});
+
+// locomotion: per leg phase f (0 heel strike, 0.5 toe off), stance and swing shaped separately
+function legPose(f, run) {
+  const st = f < (run ? 0.38 : 0.5);
+  let hip, knee, foot;
+  if (st) {
+    const u = f / (run ? 0.38 : 0.5);
+    hip = lerp(run ? -0.6 : -0.42, run ? 0.55 : 0.35, u);
+    knee = (run ? 0.35 : 0.08) + (run ? 0.35 : 0.18) * S(u * PI);
+    foot = u < 0.2 ? lerp(-0.3, 0, u / 0.2) : u > 0.75 ? lerp(0, run ? 0.6 : 0.45, (u - 0.75) / 0.25) : 0;
+  } else {
+    const u = (f - (run ? 0.38 : 0.5)) / (run ? 0.62 : 0.5);
+    hip = lerp(run ? 0.55 : 0.35, run ? -0.75 : -0.42, EASE.io(u)) + (run ? -0.25 * S(u * PI) : 0);
+    knee = (run ? 0.35 : 0.08) + (run ? 1.9 : 1.05) * Math.pow(S(Math.min(1, u * 1.25) * PI), 1.2) * (u < 0.8 ? 1 : 1 - (u - 0.8) / 0.4);
+    foot = lerp(0.3, -0.2, u);
+  }
+  return { hip, knee, foot };
+}
+const walkPose = (t, period, run) => {
+  const f = (t / period) % 1, L = legPose(f, run), R = legPose((f + 0.5) % 1, run);
+  const ph = f * PI * 2, bob = C(ph * 2);
+  return merge(run ? GUARD : REST, {
+    Hips: { p: [0, (run ? -0.06 : -0.015) - bob * (run ? 0.03 : 0.018), 0], r: [0, S(ph) * (run ? 0.14 : 0.1), S(ph) * 0.04] },
+    Spine: { r: [run ? 0.22 : 0.04, -S(ph) * 0.08, -S(ph) * 0.03] }, Chest: { r: [run ? 0.06 : 0, -S(ph) * (run ? 0.2 : 0.14), 0] },
+    Head: { r: [run ? -0.15 : -0.02, S(ph) * 0.1, 0] },
+    UpperLegL: { r: [L.hip, 0, 0.04] }, LowerLegL: { r: [L.knee, 0, 0] }, FootL: { r: [L.foot, 0, 0] },
+    UpperLegR: { r: [R.hip, 0, -0.04] }, LowerLegR: { r: [R.knee, 0, 0] }, FootR: { r: [R.foot, 0, 0] },
+    UpperArmL: { r: [S(ph) * (run ? 0.85 : 0.5) + (run ? -0.3 : 0), 0, run ? 0.2 : 0.14] }, LowerArmL: { r: [-(run ? 1.7 : 0.35) - Math.max(0, -S(ph)) * 0.4, 0, 0] },
+    UpperArmR: { r: [-S(ph) * (run ? 0.85 : 0.5) + (run ? -0.3 : 0), 0, run ? -0.2 : -0.14] }, LowerArmR: { r: [-(run ? 1.7 : 0.35) - Math.max(0, S(ph)) * 0.4, 0, 0] },
+  });
+};
+clip('walk', 1, true, (t) => {
+  const p = walkPose(t, 1, false);
+  // a little swagger: shoulders roll with the step, fists stay loose
+  return merge(p, { HandL: { r: [0.15, 0, 0] }, HandR: { r: [0.15, 0, 0] } });
+});
+clip('run', 0.62, true, (t) => walkPose(t, 0.62, true));
+
+// strikes: anticipation (wind up), a snap into the hit (ease out), overshoot, then a settle back to guard
+const JAB_EXT = G({ Hips: { p: [0, -0.1, 0.12], r: [0, -0.25, 0] }, Spine: { r: [0.16, 0.3, 0] }, Chest: { r: [0.1, 0.42, 0] }, Head: { r: [0.0, -0.3, 0] },
+  UpperArmR: { r: [-1.55, 0.05, -0.08] }, LowerArmR: { r: [-0.08, 0, 0] }, HandR: { r: [0, 0, 0] }, UpperArmL: { r: [-0.7, -0.15, 0.25] }, LowerArmL: { r: [-2.3, 0, 0] },
+  UpperLegL: { r: [-0.7, -0.1, 0.12] }, LowerLegL: { r: [0.75, 0, 0] }, UpperLegR: { r: [0.4, -0.2, -0.12] }, LowerLegR: { r: [0.2, 0, 0] } });
+clip('punch1', 0.42, false, keyed([
+  [0, GUARD],
+  [0.09, G({ Hips: { p: [0, -0.1, -0.04], r: [0, 0.3, 0] }, Spine: { r: [0.14, -0.25, 0] }, Chest: { r: [0.08, -0.32, 0] }, UpperArmR: { r: [-0.55, 0.3, -0.35] }, LowerArmR: { r: [-2.45, 0, 0] } })],
+  [0.15, JAB_EXT, 'out'],
+  [0.2, merge(JAB_EXT, { Chest: { r: [0.12, 0.5, 0] }, Head: { r: [0.04, -0.36, 0] } }), 'io'],
+  [0.29, JAB_EXT, 'io'],
+  [0.42, GUARD, 'io']]));
+const CROSS_EXT = G({ Hips: { p: [0, -0.1, 0.14], r: [0, 0.55, 0] }, Spine: { r: [0.16, -0.35, 0] }, Chest: { r: [0.1, -0.5, 0] }, Head: { r: [0.0, 0.32, 0] },
+  UpperArmL: { r: [-1.55, -0.05, 0.08] }, LowerArmL: { r: [-0.08, 0, 0] }, HandL: { r: [0, 0, 0] }, UpperArmR: { r: [-0.85, 0.2, -0.2] }, LowerArmR: { r: [-2.4, 0, 0] },
+  UpperLegR: { r: [0.35, -0.3, -0.12] }, LowerLegR: { r: [0.3, 0, 0] }, FootR: { r: [0.45, 0.3, 0] } });
+clip('punch2', 0.45, false, keyed([
+  [0, GUARD],
+  [0.1, G({ Hips: { p: [0, -0.11, -0.05], r: [0, 0.05, 0] }, Spine: { r: [0.14, 0.2, 0] }, Chest: { r: [0.08, 0.32, 0] }, UpperArmL: { r: [-0.45, -0.3, 0.4] }, LowerArmL: { r: [-2.45, 0, 0] } })],
+  [0.17, CROSS_EXT, 'out'],
+  [0.23, merge(CROSS_EXT, { Chest: { r: [0.14, -0.6, 0] }, Spine: { r: [0.2, -0.42, 0] } }), 'io'],
+  [0.32, CROSS_EXT, 'io'],
+  [0.45, GUARD, 'io']]));
+const UPPER_TOP = G({ Hips: { p: [0, 0.06, 0.1], r: [0, 0.2, 0] }, Spine: { r: [-0.3, 0.25, 0] }, Chest: { r: [-0.3, 0.35, 0] }, Head: { r: [-0.35, -0.2, 0] },
+  UpperArmR: { r: [-2.9, 0, -0.15] }, LowerArmR: { r: [-0.5, 0, 0] }, UpperArmL: { r: [-0.2, 0, 0.55] }, LowerArmL: { r: [-1.2, 0, 0] },
+  UpperLegL: { r: [-0.15, 0, 0.1] }, LowerLegL: { r: [0.15, 0, 0] }, FootL: { r: [0.45, 0, 0] }, UpperLegR: { r: [0.25, 0, -0.1] }, LowerLegR: { r: [0.6, 0, 0] }, FootR: { r: [0.6, 0, 0] } });
+clip('finisher', 0.7, false, keyed([
+  [0, GUARD],
+  [0.2, G({ Hips: { p: [0, -0.3, -0.04], r: [0, 0.35, 0] }, Spine: { r: [0.45, -0.3, 0] }, Chest: { r: [0.15, -0.3, 0] }, UpperArmR: { r: [0.35, 0, -0.2] }, LowerArmR: { r: [-1.0, 0, 0] },
+    UpperLegL: { r: [-1.0, 0, 0.12] }, LowerLegL: { r: [1.35, 0, 0] }, UpperLegR: { r: [0.5, 0, -0.1] }, LowerLegR: { r: [1.1, 0, 0] } }), 'io'],
+  [0.31, UPPER_TOP, 'out'],
+  [0.38, merge(UPPER_TOP, { Chest: { r: [-0.4, 0.45, 0] }, Head: { r: [-0.45, -0.25, 0] } }), 'io'],
+  [0.5, UPPER_TOP, 'io'],
+  [0.7, GUARD, 'io']]));
+const KICK_EXT = G({ Hips: { p: [0, -0.1, 0.05], r: [0, -0.2, 0] }, Spine: { r: [-0.25, 0, 0] }, Chest: { r: [-0.15, 0.1, 0] }, Head: { r: [0.25, 0, 0] },
+  UpperLegR: { r: [-1.6, 0, -0.1] }, LowerLegR: { r: [0.1, 0, 0] }, FootR: { r: [0.5, 0, 0] }, UpperLegL: { r: [0.15, 0, 0.1] }, LowerLegL: { r: [0.35, 0, 0] },
+  UpperArmL: { r: [-0.3, 0, 0.75] }, LowerArmL: { r: [-1.2, 0, 0] }, UpperArmR: { r: [0.4, 0, -0.5] }, LowerArmR: { r: [-1.4, 0, 0] } });
+clip('kick', 0.55, false, keyed([
+  [0, GUARD],
+  [0.13, G({ Hips: { p: [0, -0.1, -0.05], r: [0, 0.0, 0] }, Spine: { r: [-0.1, 0, 0] }, UpperLegR: { r: [-1.45, 0, -0.1] }, LowerLegR: { r: [2.0, 0, 0] }, FootR: { r: [0.3, 0, 0] }, UpperLegL: { r: [0.1, 0, 0.1] }, LowerLegL: { r: [0.45, 0, 0] } })],
+  [0.21, KICK_EXT, 'out'],
+  [0.27, merge(KICK_EXT, { UpperLegR: { r: [-1.75, 0, -0.1] }, Spine: { r: [-0.32, 0, 0] } }), 'io'],
+  [0.37, KICK_EXT, 'io'],
+  [0.45, G({ UpperLegR: { r: [-1.2, 0, -0.1] }, LowerLegR: { r: [1.7, 0, 0] } }), 'io'],
+  [0.55, GUARD, 'io']]));
+const FLY = G({ Hips: { p: [0, 0, 0], r: [-0.2, 0, 0] }, Spine: { r: [-0.35, 0, 0] }, Chest: { r: [-0.2, 0, 0] }, Head: { r: [0.3, 0, 0] },
+  UpperLegR: { r: [-1.6, 0, -0.1] }, LowerLegR: { r: [0.05, 0, 0] }, FootR: { r: [0.5, 0, 0] }, UpperLegL: { r: [-0.3, 0, 0.1] }, LowerLegL: { r: [1.9, 0, 0] },
+  UpperArmL: { r: [-0.6, 0, 1.0] }, UpperArmR: { r: [0.3, 0, -1.0] }, LowerArmL: { r: [-0.8, 0, 0] }, LowerArmR: { r: [-0.8, 0, 0] } });
+clip('jumpkick', 0.8, false, keyed([
+  [0, G({ Hips: { p: [0, -0.18, 0] }, UpperLegL: { r: [-0.7, 0, 0.1] }, LowerLegL: { r: [1.2, 0, 0] }, UpperLegR: { r: [-0.7, 0, -0.1] }, LowerLegR: { r: [1.2, 0, 0] } })],
+  [0.1, G({ UpperLegL: { r: [-1.2, 0, 0.1] }, LowerLegL: { r: [2.0, 0, 0] }, UpperLegR: { r: [-1.3, 0, -0.1] }, LowerLegR: { r: [2.0, 0, 0] }, Spine: { r: [0.3, 0, 0] } }), 'out'],
+  [0.2, FLY, 'out'],
+  [0.6, merge(FLY, { UpperLegR: { r: [-1.5, 0, -0.1] }, Spine: { r: [-0.3, 0, 0] } })],
+  [0.8, G({ Hips: { p: [0, -0.15, 0] }, UpperLegL: { r: [-0.6, 0, 0.1] }, LowerLegL: { r: [1.0, 0, 0] } })]]));
+clip('jump', 0.8, false, keyed([
+  [0, G({ Hips: { p: [0, -0.22, 0] }, Spine: { r: [0.35, 0, 0] }, UpperLegL: { r: [-0.9, 0, 0.1] }, LowerLegL: { r: [1.5, 0, 0] }, UpperLegR: { r: [-0.9, 0, -0.1] }, LowerLegR: { r: [1.5, 0, 0] }, UpperArmL: { r: [0.5, 0, 0.3] }, UpperArmR: { r: [0.5, 0, -0.3] } })],
+  [0.18, G({ Spine: { r: [-0.1, 0, 0] }, UpperArmL: { r: [-1.4, 0, 0.6] }, UpperArmR: { r: [-1.4, 0, -0.6] }, LowerArmL: { r: [-0.6, 0, 0] }, LowerArmR: { r: [-0.6, 0, 0] }, UpperLegL: { r: [-0.2, 0, 0.1] }, LowerLegL: { r: [0.3, 0, 0] }, UpperLegR: { r: [0.15, 0, -0.1] }, LowerLegR: { r: [0.6, 0, 0] }, FootL: { r: [0.5, 0, 0] }, FootR: { r: [0.5, 0, 0] } }), 'out'],
+  [0.45, G({ UpperLegL: { r: [-1.0, 0, 0.1] }, LowerLegL: { r: [1.6, 0, 0] }, UpperLegR: { r: [-0.6, 0, -0.1] }, LowerLegR: { r: [1.3, 0, 0] }, UpperArmL: { r: [-0.4, 0, 0.9] }, UpperArmR: { r: [-0.4, 0, -0.9] } })],
+  [0.8, G({ Hips: { p: [0, -0.2, 0] }, Spine: { r: [0.3, 0, 0] }, UpperLegL: { r: [-0.7, 0, 0.1] }, LowerLegL: { r: [1.2, 0, 0] }, UpperLegR: { r: [-0.5, 0, -0.1] }, LowerLegR: { r: [1.1, 0, 0] } })]]));
+
+// grabs: the grabber holds the victim in front; knees; a throw over the shoulder; the victim struggles
+const HOLD = G({ Hips: { p: [0, -0.12, 0] }, Spine: { r: [0.25, 0, 0] }, Chest: { r: [0.1, 0, 0] }, UpperArmL: { r: [-1.3, 0, 0.15] }, LowerArmL: { r: [-1.0, 0, 0] }, UpperArmR: { r: [-1.3, 0, -0.15] }, LowerArmR: { r: [-1.0, 0, 0] } });
+clip('grab', 0.9, true, (t) => { const b = S((t / 0.9) * PI * 2); return merge(HOLD, { Chest: { r: [0.1 + b * 0.04, b * 0.06, 0] }, UpperArmL: { r: [-1.3 + b * 0.06, 0, 0.15] }, UpperArmR: { r: [-1.3 - b * 0.06, 0, -0.15] } }); });
+clip('knee', 0.5, false, keyed([
+  [0, HOLD],
+  [0.08, merge(HOLD, { Hips: { p: [0, -0.1, -0.06] }, Spine: { r: [0.1, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.1] }, LowerLegR: { r: [0.8, 0, 0] } })],
+  [0.16, merge(HOLD, { Hips: { p: [0, -0.06, 0.06] }, Spine: { r: [0.45, 0, 0] }, UpperArmL: { r: [-1.0, 0, 0.15] }, UpperArmR: { r: [-1.0, 0, -0.15] }, UpperLegR: { r: [-1.75, 0, -0.1] }, LowerLegR: { r: [1.9, 0, 0] }, FootR: { r: [0.5, 0, 0] } }), 'out'],
+  [0.26, merge(HOLD, { Spine: { r: [0.4, 0, 0] }, UpperLegR: { r: [-1.5, 0, -0.1] }, LowerLegR: { r: [1.9, 0, 0] } }), 'io'],
+  [0.5, HOLD, 'io']]));
+clip('throw', 0.7, false, keyed([
+  [0, HOLD],
+  [0.25, G({ Hips: { p: [0, -0.18, -0.05] }, Spine: { r: [-0.4, 0, 0] }, Chest: { r: [-0.3, 0, 0] }, Head: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-2.8, 0, 0.15] }, LowerArmL: { r: [-0.3, 0, 0] }, UpperArmR: { r: [-2.8, 0, -0.15] }, LowerArmR: { r: [-0.3, 0, 0] }, UpperLegL: { r: [-0.5, 0, 0.12] }, LowerLegL: { r: [0.9, 0, 0] }, UpperLegR: { r: [-0.5, 0, -0.12] }, LowerLegR: { r: [0.9, 0, 0] } })],
+  [0.38, G({ Hips: { p: [0, -0.2, 0.12] }, Spine: { r: [0.75, 0, 0] }, Chest: { r: [0.3, 0, 0] }, Head: { r: [0.3, 0, 0] }, UpperArmL: { r: [-0.4, 0, 0.15] }, LowerArmL: { r: [-0.2, 0, 0] }, UpperArmR: { r: [-0.4, 0, -0.15] }, LowerArmR: { r: [-0.2, 0, 0] } }), 'out'],
+  [0.5, G({ Hips: { p: [0, -0.2, 0.12] }, Spine: { r: [0.65, 0, 0] }, UpperArmL: { r: [-0.6, 0, 0.2] }, UpperArmR: { r: [-0.6, 0, -0.2] } }), 'io'],
+  [0.7, GUARD, 'io']]));
+clip('grabbed', 0.8, true, (t) => {
+  const s = S((t / 0.8) * PI * 2), c = C((t / 0.8) * PI * 4);
+  return merge(REST, { Hips: { p: [0, -0.1, 0], r: [-0.12, 0, 0] }, Spine: { r: [0.1, s * 0.1, 0] }, Chest: { r: [0.02, -s * 0.12, 0] }, Head: { r: [-0.05 + c * 0.1, s * 0.25, 0] }, // held off at arm's length, head back: clear of the holder's
+   
+    UpperArmL: { r: [-0.15 + s * 0.3, 0, 0.75] }, UpperArmR: { r: [-0.15 - s * 0.3, 0, -0.75] }, LowerArmL: { r: [-0.9, 0, 0] }, LowerArmR: { r: [-0.9, 0, 0] }, // flailing out at the sides, clear of the arms that hold him
+    UpperLegL: { r: [-0.4 + s * 0.35, 0, 0.1] }, UpperLegR: { r: [-0.4 - s * 0.35, 0, -0.1] }, LowerLegL: { r: [0.7, 0, 0] }, LowerLegR: { r: [0.7, 0, 0] } });
+});
+clip('thrown', 0.7, true, (t) => {
+  const s = S((t / 0.7) * PI * 2);
+  return merge(REST, { Hips: { r: [-0.9, 0, s * 0.1] }, Spine: { r: [-0.3, 0, 0] }, Head: { r: [-0.4, 0, 0] }, UpperArmL: { r: [-2.4, 0, 0.6 + s * 0.3] }, UpperArmR: { r: [-2.4, 0, -0.6 - s * 0.3] }, LowerArmL: { r: [-0.4, 0, 0] }, LowerArmR: { r: [-0.4, 0, 0] },
+    UpperLegL: { r: [-0.7 + s * 0.3, 0, 0.25] }, UpperLegR: { r: [-0.3 - s * 0.3, 0, -0.25] }, LowerLegL: { r: [1.0, 0, 0] }, LowerLegR: { r: [0.7, 0, 0] } });
+});
+
+// hurt: a head snap, a body blow that folds the target, a big stagger; each recoils, overshoots and settles
+clip('hit', 0.32, false, keyed([
+  [0, GUARD],
+  [0.05, G({ Hips: { p: [0, -0.08, -0.08], r: [0, 0.1, 0] }, Spine: { r: [-0.25, 0, 0] }, Chest: { r: [-0.25, -0.2, 0] }, Neck: { r: [-0.25, 0, 0] }, Head: { r: [-0.55, 0.35, 0.15] }, UpperArmL: { r: [-0.3, 0, 0.6] }, UpperArmR: { r: [-0.3, 0, -0.6] }, LowerArmL: { r: [-0.9, 0, 0] }, LowerArmR: { r: [-0.9, 0, 0] } }), 'out'],
+  [0.17, G({ Spine: { r: [0.2, 0, 0] }, Head: { r: [0.15, 0.1, 0] } }), 'io'],
+  [0.32, GUARD, 'io']]));
+clip('hit_gut', 0.36, false, keyed([
+  [0, GUARD],
+  [0.06, G({ Hips: { p: [0, -0.14, -0.1], r: [0, 0, 0] }, Spine: { r: [0.65, 0, 0] }, Chest: { r: [0.35, 0, 0] }, Head: { r: [-0.35, 0, 0] }, UpperArmL: { r: [-0.6, 0, 0.1] }, UpperArmR: { r: [-0.6, 0, -0.1] }, LowerArmL: { r: [-1.9, 0, 0] }, LowerArmR: { r: [-1.9, 0, 0] }, UpperLegL: { r: [-0.5, 0, 0.1] }, LowerLegL: { r: [0.8, 0, 0] }, UpperLegR: { r: [-0.1, 0, -0.1] }, LowerLegR: { r: [0.7, 0, 0] } }), 'out'],
+  [0.2, G({ Spine: { r: [0.4, 0, 0] }, Chest: { r: [0.2, 0, 0] }, Head: { r: [-0.1, 0, 0] } }), 'io'],
+  [0.36, GUARD, 'io']]));
+clip('hit_hard', 0.42, false, keyed([
+  [0, GUARD],
+  [0.07, G({ Hips: { p: [0, -0.1, -0.18], r: [-0.25, 0.3, 0] }, Spine: { r: [-0.4, 0.35, 0] }, Chest: { r: [-0.3, 0.35, 0] }, Head: { r: [-0.65, 0.5, 0.2] }, UpperArmL: { r: [-0.2, 0, 1.1] }, UpperArmR: { r: [-0.5, 0, -0.8] }, LowerArmL: { r: [-0.4, 0, 0] }, LowerArmR: { r: [-0.6, 0, 0] }, UpperLegL: { r: [0.3, 0, 0.15] }, LowerLegL: { r: [0.3, 0, 0] } }), 'out'],
+  [0.22, G({ Hips: { p: [0, -0.12, -0.05] }, Spine: { r: [0.3, -0.1, 0] }, Head: { r: [0.2, -0.1, 0] } }), 'io'],
+  [0.42, GUARD, 'io']]));
+const LYING = merge(REST, {
+  Hips: { p: [0, -0.82, 0], r: [-1.5708, 0, 0] }, Head: { r: [0.2, 0.3, 0] }, Spine: { r: [-0.05, 0, 0] },
+  UpperArmL: { r: [-0.4, 0, 0.7] }, UpperArmR: { r: [-0.3, 0, -0.8] }, LowerArmL: { r: [-0.6, 0, 0] }, LowerArmR: { r: [-0.4, 0, 0] },
+  UpperLegL: { r: [0.05, 0, 0.2] }, UpperLegR: { r: [-0.4, 0, -0.25] }, LowerLegL: { r: [0.15, 0, 0] }, LowerLegR: { r: [0.9, 0, 0] }, FootL: { r: [0.4, 0, 0] }, FootR: { r: [0.2, 0, 0] },
+});
+clip('knockdown', 0.85, false, keyed([
+  [0, GUARD],
+  [0.12, merge(GUARD, { Hips: { p: [0, 0.05, -0.2], r: [-0.55, 0, 0] }, Spine: { r: [-0.35, 0, 0] }, Head: { r: [-0.6, 0, 0] }, UpperArmL: { r: [-1.6, 0, 0.6] }, UpperArmR: { r: [-1.6, 0, -0.6] }, LowerArmL: { r: [-0.3, 0, 0] }, LowerArmR: { r: [-0.3, 0, 0] }, UpperLegL: { r: [-0.6, 0, 0.2] }, LowerLegL: { r: [0.8, 0, 0] }, UpperLegR: { r: [-0.2, 0, -0.2] } }), 'out'],
+  [0.42, merge(LYING, { Hips: { p: [0, -0.74, -0.5], r: [-1.85, 0, 0] }, UpperLegL: { r: [-0.9, 0, 0.2] }, UpperLegR: { r: [-0.7, 0, -0.2] }, UpperArmL: { r: [-0.9, 0, 0.9] }, UpperArmR: { r: [-0.9, 0, -0.9] } }), 'in'],
+  [0.54, merge(LYING, { Hips: { p: [0, -0.66, -0.55], r: [-1.35, 0, 0] }, Head: { r: [0.5, 0.2, 0] }, UpperLegL: { r: [-0.5, 0, 0.2] }, UpperLegR: { r: [-0.6, 0, -0.2] } }), 'out'],
+  [0.66, merge(LYING, { Hips: { p: [0, -0.8, -0.58], r: [-1.6, 0, 0] } }), 'in'],
+  [0.85, LYING, 'io']]));
+clip('down', 1.5, true, (t) => { const b = S((t / 1.5) * PI * 2); return merge(LYING, { Chest: { r: [b * 0.04, 0, 0] }, Head: { r: [0.2 + b * 0.05, 0.3, 0] }, LowerLegR: { r: [0.9 + b * 0.05, 0, 0] } }); });
+clip('getup', 0.9, false, keyed([
+  [0, LYING],
+  [0.22, merge(LYING, { Hips: { p: [0, -0.72, -0.05], r: [-1.2, 0.6, 0.3] }, Spine: { r: [0.3, 0.3, 0] }, UpperArmR: { r: [-0.2, 0, -0.3] }, UpperLegR: { r: [-1.4, 0, -0.1] }, LowerLegR: { r: [2.0, 0, 0] } })],
+  [0.45, merge(REST, { Hips: { p: [0, -0.5, -0.08], r: [-0.6, 0.2, 0] }, Spine: { r: [0.6, 0, 0] }, Head: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-0.9, 0, 0.3] }, UpperArmR: { r: [-0.5, 0, -0.3] }, LowerArmR: { r: [-0.3, 0, 0] }, UpperLegL: { r: [-1.7, 0, 0.2] }, LowerLegL: { r: [2.1, 0, 0] }, UpperLegR: { r: [0.1, 0, -0.1] }, LowerLegR: { r: [1.9, 0, 0] } }), 'io'],
+  [0.7, G({ Hips: { p: [0, -0.16, 0] }, Spine: { r: [0.35, 0, 0] }, Head: { r: [-0.2, 0, 0] } }), 'io'],
+  [0.9, GUARD, 'io']]));
+clip('dead', 1, true, () => merge(LYING, { Head: { r: [0.3, 0.6, 0] } }));
+// face down on the street (a ragdoll that settled on its front gets up with this one): push up, a knee under, stand
+const PRONE = merge(REST, {
+  Hips: { p: [0, -0.84, 0], r: [1.5708, 0, 0] }, Spine: { r: [0.05, 0, 0] }, Head: { r: [-0.45, 0.35, 0] },
+  UpperArmL: { r: [-0.9, 0, 0.75] }, LowerArmL: { r: [-1.5, 0, 0] }, UpperArmR: { r: [-0.9, 0, -0.75] }, LowerArmR: { r: [-1.5, 0, 0] },
+  UpperLegL: { r: [0.05, 0, 0.12] }, UpperLegR: { r: [0.0, 0, -0.15] }, LowerLegL: { r: [0.2, 0, 0] }, LowerLegR: { r: [0.35, 0, 0] }, FootL: { r: [0.5, 0, 0] }, FootR: { r: [0.5, 0, 0] },
+});
+clip('getup_prone', 0.9, false, keyed([
+  [0, PRONE],
+  [0.24, merge(PRONE, { Hips: { p: [0, -0.68, 0.04], r: [1.15, 0, 0] }, Spine: { r: [-0.35, 0, 0] }, Head: { r: [-0.5, 0, 0] }, UpperArmL: { r: [-1.25, 0, 0.25] }, LowerArmL: { r: [-0.15, 0, 0] }, UpperArmR: { r: [-1.25, 0, -0.25] }, LowerArmR: { r: [-0.15, 0, 0] } }), 'io'],
+  [0.46, merge(REST, { Hips: { p: [0, -0.48, -0.06], r: [0.45, 0, 0] }, Spine: { r: [0.45, 0, 0] }, Head: { r: [-0.35, 0, 0] }, UpperArmL: { r: [-0.6, 0, 0.3] }, LowerArmL: { r: [-0.4, 0, 0] }, UpperArmR: { r: [-0.7, 0, -0.3] }, LowerArmR: { r: [-0.3, 0, 0] },
+    UpperLegL: { r: [-1.6, 0, 0.15] }, LowerLegL: { r: [1.95, 0, 0] }, UpperLegR: { r: [-0.15, 0, -0.1] }, LowerLegR: { r: [1.95, 0, 0] }, FootR: { r: [0.6, 0, 0] } }), 'io'],
+  [0.7, G({ Hips: { p: [0, -0.16, 0] }, Spine: { r: [0.35, 0, 0] }, Head: { r: [-0.2, 0, 0] } }), 'io'],
+  [0.9, GUARD, 'io']]));
+
+// weapons, pick-up, taunt, boss moves, block
+const SWING_DOWN = G({ Hips: { p: [0, -0.2, 0.12] }, Spine: { r: [0.6, 0.2, 0] }, Chest: { r: [0.35, 0.25, 0] }, Head: { r: [-0.2, -0.1, 0] },
+  UpperArmR: { r: [-1.1, 0, -0.1] }, LowerArmR: { r: [-0.1, 0, 0] }, UpperArmL: { r: [-1.0, 0, 0.15] }, LowerArmL: { r: [-0.2, 0, 0] },
+  UpperLegL: { r: [-0.8, 0, 0.12] }, LowerLegL: { r: [0.9, 0, 0] }, UpperLegR: { r: [0.45, 0, -0.1] }, LowerLegR: { r: [0.3, 0, 0] } });
+clip('swing', 0.62, false, keyed([
+  [0, GUARD],
+  [0.18, G({ Hips: { p: [0, -0.06, -0.06] }, Spine: { r: [-0.3, -0.35, 0] }, Chest: { r: [-0.25, -0.35, 0] }, Head: { r: [-0.15, 0.2, 0] }, UpperArmR: { r: [-3.0, 0, -0.15] }, LowerArmR: { r: [-0.9, 0, 0] }, UpperArmL: { r: [-2.7, 0, 0.15] }, LowerArmL: { r: [-1.1, 0, 0] } })],
+  [0.27, SWING_DOWN, 'out'],
+  [0.33, merge(SWING_DOWN, { Spine: { r: [0.72, 0.25, 0] }, UpperArmR: { r: [-0.8, 0, -0.1] }, UpperArmL: { r: [-0.7, 0, 0.15] } }), 'io'],
+  [0.44, SWING_DOWN, 'io'],
+  [0.62, GUARD, 'io']]));
+const STAB_EXT = G({ Hips: { p: [0, -0.12, 0.16], r: [0, -0.3, 0] }, Spine: { r: [0.2, 0.4, 0] }, Chest: { r: [0.1, 0.35, 0] }, UpperArmR: { r: [-1.55, 0, -0.05] }, LowerArmR: { r: [-0.05, 0, 0] }, UpperLegL: { r: [-0.85, 0, 0.12] }, LowerLegL: { r: [0.85, 0, 0] }, UpperLegR: { r: [0.5, 0, -0.1] }, LowerLegR: { r: [0.2, 0, 0] } });
+clip('stab', 0.5, false, keyed([
+  [0, GUARD], [0.12, G({ Spine: { r: [0.08, -0.35, 0] }, Chest: { r: [0.04, -0.3, 0] }, UpperArmR: { r: [-0.4, 0.3, -0.3] }, LowerArmR: { r: [-2.3, 0, 0] }, Hips: { p: [0, -0.12, -0.06] } })],
+  [0.2, STAB_EXT, 'out'], [0.34, merge(STAB_EXT, { Chest: { r: [0.15, 0.45, 0] } }), 'io'], [0.5, GUARD, 'io']]));
+clip('pickup', 0.5, false, keyed([
+  [0, GUARD], [0.22, G({ Hips: { p: [0, -0.42, 0.05] }, Spine: { r: [0.75, 0, 0] }, UpperArmR: { r: [-0.5, 0, -0.1] }, LowerArmR: { r: [-0.3, 0, 0] }, UpperLegL: { r: [-1.1, 0, 0.12] }, LowerLegL: { r: [1.7, 0, 0] }, UpperLegR: { r: [-0.6, 0, -0.1] }, LowerLegR: { r: [1.5, 0, 0] } }), 'io'],
+  [0.5, GUARD, 'io']]));
+const BECKON_A = G({ Hips: { p: [0, -0.04, 0] }, Chest: { r: [-0.2, 0, 0] }, Head: { r: [-0.25, 0, 0] }, UpperArmR: { r: [-1.4, 0.3, -0.1] }, LowerArmR: { r: [-0.5, 0, 0] }, HandR: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-0.1, 0, 0.35] }, LowerArmL: { r: [-0.3, 0, 0] } });
+const BECKON_B = merge(BECKON_A, { LowerArmR: { r: [-1.9, 0, 0] }, HandR: { r: [0.6, 0, 0] } });
+clip('taunt', 1.4, false, keyed([
+  [0, GUARD],
+  [0.25, G({ Chest: { r: [-0.3, 0, 0] }, Head: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-0.3, 0, 1.25] }, UpperArmR: { r: [-0.3, 0, -1.25] }, LowerArmL: { r: [-0.6, 0, 0] }, LowerArmR: { r: [-0.6, 0, 0] } }), 'back'],
+  [0.5, G({ Chest: { r: [-0.3, 0, 0] }, Head: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-0.3, 0, 1.25] }, UpperArmR: { r: [-0.3, 0, -1.25] }, LowerArmL: { r: [-0.6, 0, 0] }, LowerArmR: { r: [-0.6, 0, 0] } })],
+  [0.66, BECKON_A, 'io'], [0.8, BECKON_B, 'io'], [0.94, BECKON_A, 'io'], [1.08, BECKON_B, 'io'],
+  [1.4, GUARD, 'io']]));
+const SLAM_DOWN = G({ Hips: { p: [0, -0.34, 0.2] }, Spine: { r: [0.95, 0, 0] }, Chest: { r: [0.4, 0, 0] }, Head: { r: [-0.4, 0, 0] }, UpperArmL: { r: [-0.5, 0, 0.3] }, UpperArmR: { r: [-0.5, 0, -0.3] }, LowerArmL: { r: [-0.2, 0, 0] }, LowerArmR: { r: [-0.2, 0, 0] },
+  UpperLegL: { r: [-1.0, 0, 0.2] }, LowerLegL: { r: [1.2, 0, 0] }, UpperLegR: { r: [0.1, 0, -0.2] }, LowerLegR: { r: [0.9, 0, 0] } });
+clip('slam', 1.1, false, keyed([
+  [0, GUARD],
+  [0.5, G({ Hips: { p: [0, -0.02, -0.12] }, Spine: { r: [-0.55, 0, 0] }, Chest: { r: [-0.35, 0, 0] }, Head: { r: [-0.3, 0, 0] }, UpperArmL: { r: [-3.05, 0, 0.3] }, UpperArmR: { r: [-3.05, 0, -0.3] }, LowerArmL: { r: [-0.4, 0, 0] }, LowerArmR: { r: [-0.4, 0, 0] }, FootL: { r: [0.4, 0, 0] }, FootR: { r: [0.4, 0, 0] } }), 'io'],
+  [0.64, SLAM_DOWN, 'in'],
+  [0.72, merge(SLAM_DOWN, { Hips: { p: [0, -0.38, 0.2] }, Spine: { r: [1.05, 0, 0] } }), 'out'],
+  [0.92, SLAM_DOWN, 'io'],
+  [1.1, GUARD, 'io']]));
+// spin: the whole body turns once, arms out
+const SPIN_ARMS = { UpperArmL: { r: [-0.15, 0, 1.45] }, UpperArmR: { r: [-0.15, 0, -1.45] }, LowerArmL: { r: [-0.15, 0, 0] }, LowerArmR: { r: [-0.15, 0, 0] }, Spine: { r: [0.05, 0, 0] } };
+clip('spin', 0.7, false, (t) => {
+  if (t < 0.12) return lerpPose(GUARD, G({ ...SPIN_ARMS, Hips: { p: [0, -0.12, 0], r: [0, -0.4, 0] } }), EASE.io(t / 0.12));
+  if (t < 0.52) { const u = (t - 0.12) / 0.4; return G({ ...SPIN_ARMS, Hips: { p: [0, -0.12 + 0.05 * S(u * PI), 0], r: [0, -0.4 + EASE.out(u) * (PI * 2 + 0.4), 0] }, Head: { r: [0, -0.3, 0] } }); }
+  return lerpPose(G({ ...SPIN_ARMS, Hips: { p: [0, -0.12, 0], r: [0, PI * 2, 0] } }), merge(GUARD, { Hips: { p: [0, -0.07, 0], r: [0, PI * 2 + 0.18, 0] } }), EASE.io((t - 0.52) / 0.18));
+});
+// Dolly's own moves (the windows are the shared attacks': hammer = finisher, headbutt = kick, lariat = spin)
+const HAMMER_UP = G({ Hips: { p: [0, 0.0, -0.1] }, Spine: { r: [-0.45, 0, 0] }, Chest: { r: [-0.3, 0, 0] }, Head: { r: [-0.2, 0, 0] }, UpperArmL: { r: [-3.0, -0.2, -0.1] }, UpperArmR: { r: [-3.0, 0.2, 0.1] }, LowerArmL: { r: [-0.5, 0, 0] }, LowerArmR: { r: [-0.5, 0, 0] }, UpperLegL: { r: [-0.25, 0, 0.12] }, LowerLegL: { r: [0.3, 0, 0] }, UpperLegR: { r: [0.15, 0, -0.12] }, LowerLegR: { r: [0.2, 0, 0] } });
+const HAMMER_DN = G({ Hips: { p: [0, -0.26, 0.14] }, Spine: { r: [0.75, 0, 0] }, Chest: { r: [0.35, 0, 0] }, Head: { r: [-0.2, 0, 0] }, UpperArmL: { r: [-1.3, -0.25, -0.1] }, UpperArmR: { r: [-1.3, 0.25, 0.1] }, LowerArmL: { r: [-0.25, 0, 0] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperLegL: { r: [-0.85, 0, 0.14] }, LowerLegL: { r: [1.05, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.14] }, LowerLegR: { r: [0.65, 0, 0] } });
+clip('hammer', 0.72, false, keyed([[0, GUARD], [0.27, HAMMER_UP, 'io'], [0.37, HAMMER_DN, 'in'], [0.5, HAMMER_DN, 'io'], [0.72, GUARD, 'io']]), ['dolly']);
+const BUTT_BACK = G({ Hips: { p: [0, -0.08, -0.08] }, Spine: { r: [-0.35, 0, 0] }, Chest: { r: [-0.2, 0, 0] }, Head: { r: [-0.35, 0, 0] }, UpperArmL: { r: [-1.2, 0, 0.3] }, UpperArmR: { r: [-1.2, 0, -0.3] }, LowerArmL: { r: [-1.6, 0, 0] }, LowerArmR: { r: [-1.6, 0, 0] } });
+const BUTT_IN = G({ Hips: { p: [0, -0.1, 0.16] }, Spine: { r: [0.55, 0, 0] }, Chest: { r: [0.3, 0, 0] }, Head: { r: [0.5, 0, 0] }, UpperArmL: { r: [-1.5, 0, 0.3] }, UpperArmR: { r: [-1.5, 0, -0.3] }, LowerArmL: { r: [-1.1, 0, 0] }, LowerArmR: { r: [-1.1, 0, 0] }, UpperLegL: { r: [-0.6, 0, 0.1] }, LowerLegL: { r: [0.65, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.1] }, LowerLegR: { r: [0.3, 0, 0] } });
+clip('headbutt', 0.56, false, keyed([[0, GUARD], [0.17, BUTT_BACK, 'io'], [0.25, BUTT_IN, 'in'], [0.38, BUTT_IN, 'io'], [0.56, GUARD, 'io']]), ['dolly']);
+clip('lariat', 0.72, false, (t) => { // a running clothesline: one arm straight out from the shoulder, chest leading
+  const run = walkPose(t, 0.36, true), arm = { UpperArmR: { r: [-1.5, 0.55, 0] }, LowerArmR: { r: [-0.1, 0, 0] }, UpperArmL: { r: [-0.5, -0.1, 0.5] }, LowerArmL: { r: [-1.7, 0, 0] }, Hips: { p: [0, -0.1, 0], r: [0, -0.5, 0] }, Spine: { r: [0.2, -0.25, 0] }, Chest: { r: [0.1, -0.3, 0] }, Head: { r: [0, 0.5, 0] } };
+  const hold = merge(run, arm);
+  return t < 0.1 ? lerpPose(GUARD, hold, EASE.io(t / 0.1)) : t < 0.56 ? hold : lerpPose(hold, GUARD, EASE.io((t - 0.56) / 0.16));
+}, ['dolly']);
+clip('block', 0.5, true, (t) => { const b = S((t / 0.5) * PI * 2); return G({ Hips: { p: [0, -0.14, 0] }, Spine: { r: [0.2, 0, 0] }, UpperArmL: { r: [-1.15 + b * 0.04, 0.35, 0.05] }, LowerArmL: { r: [-2.35, 0, 0] }, UpperArmR: { r: [-1.15 - b * 0.04, -0.35, -0.05] }, LowerArmR: { r: [-2.35, 0, 0] }, Head: { r: [0.25, 0, 0] } }); });
+
+// a 1950s tough: fists up high by the chin, a bounce on the toes, the comb run back through the pompadour (a taunt), a
+// lowered-shoulder charge, a jacket flick (both hands snap the leather open, then a backhand)
+const BOXER = G({ Hips: { p: [0, -0.09, 0], r: [0, 0.3, 0] }, Spine: { r: [0.16, -0.12, 0] }, Chest: { r: [0.08, -0.16, 0] }, Head: { r: [0.1, 0.12, 0] },
+  UpperArmL: { r: [-0.95, -0.3, 0.22] }, LowerArmL: { r: [-2.35, 0, 0] }, UpperArmR: { r: [-1.0, 0.25, -0.18] }, LowerArmR: { r: [-2.4, 0, 0] } });
+clip('idle_boxer', 0.9, true, (t) => {
+  const w = (t / 0.9) * PI * 2, b = Math.abs(S(w)), s2 = S(w);
+  return merge(BOXER, { Hips: { p: [s2 * 0.012, -0.09 + b * 0.025, 0], r: [0, 0.3, 0] }, Chest: { r: [0.08 + b * 0.03, -0.16 + s2 * 0.05, 0] },
+    UpperArmL: { r: [-0.95 - b * 0.06, -0.3, 0.22] }, UpperArmR: { r: [-1.0 + s2 * 0.08, 0.25, -0.18] }, Head: { r: [0.1, 0.12 + s2 * 0.04, 0] },
+    LowerLegL: { r: [0.5 - b * 0.2, 0, 0] }, LowerLegR: { r: [0.45 - b * 0.2, 0, 0] }, FootL: { r: [-0.1 + b * 0.2, 0.1, 0] }, FootR: { r: [-0.25 + b * 0.2, 0.2, 0] } });
+});
+const COMB_HIP = { UpperArmL: { r: [0.15, 0, 0.55] }, LowerArmL: { r: [-1.5, 0, 0] }, HandL: { r: [0, 0, -0.3] } };
+const COMB_A = merge(REST, COMB_HIP, { Hips: { p: [0, -0.02, 0], r: [0, -0.15, 0.04] }, Spine: { r: [-0.04, 0, 0] }, Head: { r: [-0.12, -0.25, 0.12] },
+  UpperArmR: { r: [-2.4, 0.3, 0.75] }, LowerArmR: { r: [-1.6, 0, 0] }, HandR: { r: [-0.4, 0, 0.3] } });
+const COMB_B = merge(COMB_A, { Head: { r: [0.08, -0.25, 0.12] }, UpperArmR: { r: [-2.85, 0.2, 0.55] }, LowerArmR: { r: [-1.15, 0, 0] }, HandR: { r: [0.2, 0, 0.3] } });
+clip('comb', 1.6, false, keyed([
+  [0, BOXER], [0.25, COMB_A, 'io'], [0.55, COMB_B, 'io'], [0.7, COMB_A, 'io'], [1.0, COMB_B, 'io'],
+  [1.2, merge(COMB_B, { UpperArmR: { r: [-2.2, 0.2, -0.9] }, LowerArmR: { r: [-0.9, 0, 0] }, Head: { r: [-0.1, -0.1, 0] } }), 'io'], [1.6, BOXER, 'io']]));
+clip('shoulder', 0.5, true, (t) => {
+  const p = walkPose(t, 0.5, true);
+  return merge(p, { Hips: { p: [0, -0.12, 0], r: [0.1, -0.7, 0] }, Spine: { r: [0.45, -0.35, 0.1] }, Chest: { r: [0.15, -0.3, 0.15] }, Head: { r: [-0.35, 0.6, 0] },
+    UpperArmL: { r: [-0.4, 0, 0.15] }, LowerArmL: { r: [-1.9, 0, 0] }, UpperArmR: { r: [-0.6, 0.2, -0.3] }, LowerArmR: { r: [-2.2, 0, 0] } });
+});
+const LAPELS = G({ Spine: { r: [0.1, 0, 0] }, Chest: { r: [0.15, 0, 0] }, Head: { r: [0.15, 0, 0] }, UpperArmL: { r: [-0.6, 0.6, -0.35] }, LowerArmL: { r: [-2.3, 0, 0] }, UpperArmR: { r: [-0.6, -0.6, 0.35] }, LowerArmR: { r: [-2.3, 0, 0] } });
+const FLICK_OUT = G({ Hips: { p: [0, -0.06, 0.06] }, Spine: { r: [-0.15, 0, 0] }, Chest: { r: [-0.25, 0, 0] }, Head: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-0.2, 0.1, 0.95] }, LowerArmL: { r: [-0.5, 0, 0] }, UpperArmR: { r: [-0.2, -0.1, -0.95] }, LowerArmR: { r: [-0.5, 0, 0] } });
+const BACKHAND = G({ Hips: { p: [0, -0.1, 0.14], r: [0, -0.5, 0] }, Spine: { r: [0.12, 0.45, 0] }, Chest: { r: [0.08, 0.6, 0] }, Head: { r: [0, -0.4, 0] },
+  UpperArmR: { r: [-1.45, -0.5, -0.4] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-0.7, -0.15, 0.25] }, LowerArmL: { r: [-2.3, 0, 0] } });
+clip('flick', 0.6, false, keyed([
+  [0, GUARD], [0.1, LAPELS, 'io'], [0.2, FLICK_OUT, 'out'], [0.3, merge(FLICK_OUT, { Chest: { r: [-0.3, -0.3, 0] }, UpperArmR: { r: [-0.9, 0.6, -0.5] }, LowerArmR: { r: [-1.6, 0, 0] } }), 'io'],
+  [0.38, BACKHAND, 'out'], [0.46, BACKHAND, 'io'], [0.6, GUARD, 'io']]));
+
+// the thumbs-up taunt: weight dropped onto one hip, a lean back, chin up and cocked, the right arm out front with the
+// thumb up (a fist, the thumb raised), the left hand on the hip; the thumb pumps twice on the beat
+const THUMB = merge(REST, {
+  Hips: { p: [0.035, -0.025, 0], r: [0, -0.3, 0.08] }, Spine: { r: [-0.07, 0.12, -0.1] }, Chest: { r: [-0.1, 0.16, -0.05] },
+  Neck: { r: [-0.04, 0.05, 0] }, Head: { r: [-0.14, 0.22, 0.16] },
+  UpperArmR: { r: [-1.25, -0.2, -0.12] }, LowerArmR: { r: [-0.6, 0, 0] }, HandR: { r: [0.1, 0, 0] },
+  UpperArmL: { r: [0.15, 0, 0.55] }, LowerArmL: { r: [-1.5, 0, 0] }, HandL: { r: [0, 0, -0.3] },
+  UpperLegL: { r: [-0.04, 0.08, 0.1] }, LowerLegL: { r: [0.04, 0, 0] },
+  UpperLegR: { r: [-0.16, -0.28, -0.12] }, LowerLegR: { r: [0.36, 0, 0] }, FootR: { r: [0.12, -0.25, 0] },
+});
+const THUMB_PUMP = merge(THUMB, { UpperArmR: { r: [-1.38, -0.2, -0.12] }, LowerArmR: { r: [-0.5, 0, 0] }, Head: { r: [-0.06, 0.22, 0.12] }, Hips: { p: [0.035, -0.04, 0], r: [0, -0.3, 0.08] } });
+clip('thumbsup', 1.5, false, keyed([
+  [0, BOXER], [0.24, THUMB, 'back'], [0.42, THUMB_PUMP, 'out'], [0.56, THUMB, 'io'], [0.7, THUMB_PUMP, 'out'], [0.84, THUMB, 'io'],
+  [1.15, THUMB, 'io'], [1.5, BOXER, 'io']]));
+// the jukebox thump: the right fist goes up behind his head while he looks at the fighters (the wind-up is the tell),
+// then a hammer fist down onto the jukebox in front of him at 0.6 s, a bounce off it, back to the guard
+const THUMP_UP = G({ Hips: { p: [0, -0.04, -0.04], r: [0, 0.3, 0] }, Spine: { r: [-0.12, 0.18, 0.06] }, Chest: { r: [-0.16, 0.3, 0.1] }, Head: { r: [-0.05, 0.55, 0] },
+  UpperArmR: { r: [-2.75, 0.1, -0.35] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.3, 0, 0] }, UpperArmL: { r: [-0.5, -0.1, 0.35] }, LowerArmL: { r: [-1.9, 0, 0] } });
+const THUMP_HIT = G({ Hips: { p: [0, -0.13, 0.06], r: [0, -0.1, 0] }, Spine: { r: [0.3, -0.05, 0.05] }, Chest: { r: [0.22, -0.1, 0.08] }, Head: { r: [0.15, -0.05, 0] },
+  UpperArmR: { r: [-1.1, 0.15, -0.3] }, LowerArmR: { r: [-0.35, 0, 0] }, HandR: { r: [0.35, 0, 0] }, UpperArmL: { r: [-0.4, -0.1, 0.4] }, LowerArmL: { r: [-1.6, 0, 0] },
+  UpperLegL: { r: [-0.6, -0.1, 0.12] }, LowerLegL: { r: [0.75, 0, 0] } });
+clip('thump', 1.0, false, keyed([
+  [0, BOXER], [0.3, THUMP_UP, 'io'], [0.5, merge(THUMP_UP, { UpperArmR: { r: [-2.85, 0.1, -0.35] }, Head: { r: [-0.05, 0.6, 0] } }), 'io'],
+  [0.6, THUMP_HIT, 'in'], [0.68, merge(THUMP_HIT, { UpperArmR: { r: [-1.25, 0.15, -0.3] }, Spine: { r: [0.26, -0.05, 0.05] } }), 'out'], [0.76, THUMP_HIT, 'io'], [1.0, BOXER, 'io']]));
+
+// ── pose to rotation tracks ─────────────────────────────────────────────
+// the wanker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
+// round in an arc, then the follow-through carries him off balance and he has to catch himself (an opening)
+const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r: [0.05, -0.4, 0] }, Chest: { r: [-0.08, -0.6, 0] }, Head: { r: [-0.05, 0.4, 0] },
+  UpperArmR: { r: [0.15, 0.35, -1.25] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.2, 0, 0] }, UpperArmL: { r: [-0.95, -0.2, 0.35] }, LowerArmL: { r: [-1.5, 0, 0] },
+  UpperLegL: { r: [-0.35, -0.1, 0.12] }, LowerLegL: { r: [0.3, 0, 0] }, UpperLegR: { r: [0.15, -0.25, -0.15] }, LowerLegR: { r: [0.65, 0, 0] } });
+const HAY_HIT = G({ Hips: { p: [0, -0.12, 0.14], r: [0, -0.45, 0] }, Spine: { r: [0.25, 0.5, 0] }, Chest: { r: [0.15, 0.78, 0] }, Head: { r: [0.05, -0.45, 0] },
+  UpperArmR: { r: [-1.5, -0.3, -0.6] }, LowerArmR: { r: [-0.55, 0, 0] }, UpperArmL: { r: [-0.3, 0, 0.65] }, LowerArmL: { r: [-1.0, 0, 0] },
+  UpperLegL: { r: [-0.75, -0.1, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [0.45, -0.25, -0.12] }, LowerLegR: { r: [0.25, 0, 0] }, FootR: { r: [0.4, 0.3, 0] } });
+// (the wanker's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
+// and the follow-through spins him round off balance)
+const HAY_OVER = merge(HAY_HIT, { Hips: { p: [0, -0.18, 0.22], r: [0.1, -0.95, 0.12] }, Spine: { r: [0.55, 0.8, 0.1] }, Chest: { r: [0.42, 1.2, 0.08] }, Head: { r: [0.35, -0.7, 0.2] },
+  UpperArmR: { r: [-0.9, -0.95, 0.35] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-1.6, 0, 1.4] }, LowerArmL: { r: [-0.3, 0, 0] } });
+clip('haymaker', 1.15, false, keyed([
+  [0, GUARD],
+  [0.43, HAY_BACK, 'io'],
+  [0.5, HAY_HIT, 'out'],
+  [0.6, HAY_OVER, 'io'],
+  [0.85, merge(HAY_OVER, { UpperArmL: { r: [-2.4, 0, 1.0] }, UpperArmR: { r: [0.3, 0, -1.2] }, Head: { r: [0.15, -0.4, 0.25] }, Hips: { p: [0.05, -0.14, 0.18], r: [0.05, -1.2, 0.15] } }), 'io'],
+  [1.15, GUARD, 'io']]), ['wanker']);
+// the creep: a hunched lurching walk (one leg dragged), and the flash: he spreads his coat wide with both hands and lunges
+clip('lurch', 1.3, true, (t) => {
+  const p = walkPose(t, 1.3, false), w = (t / 1.3) * PI * 2;
+  return merge(p, { Spine: { r: [0.32, -S(w) * 0.12, S(w) * 0.06] }, Chest: { r: [0.18, -S(w) * 0.1, 0] }, Neck: { r: [-0.15, 0, 0] }, Head: { r: [-0.25, S(w * 0.5) * 0.25, S(w) * 0.1] },
+    Hips: { p: [S(w) * 0.03, -0.04 - Math.abs(S(w)) * 0.03, 0], r: [0, S(w) * 0.08, S(w) * 0.08] }, UpperLegR: { r: [p.UpperLegR.r[0] * 0.45 + 0.1, 0, -0.08] }, LowerLegR: { r: [0.15, 0, 0] }, FootR: { r: [0.25, 0, 0] },
+    UpperArmL: { r: [-0.35, 0, 0.12] }, LowerArmL: { r: [-1.1, 0, 0] }, UpperArmR: { r: [-0.3 - S(w) * 0.2, 0, -0.1] }, LowerArmR: { r: [-0.9, 0, 0] } });
+}, ['creep']);
+const FLASH_OPEN = merge(REST, { Hips: { p: [0, -0.06, 0.12] }, Spine: { r: [-0.18, 0, 0] }, Chest: { r: [-0.22, 0, 0] }, Head: { r: [-0.2, 0, 0] },
+  UpperArmL: { r: [-0.5, 0, 1.35] }, LowerArmL: { r: [-0.5, 0, 0] }, UpperArmR: { r: [-0.5, 0, -1.35] }, LowerArmR: { r: [-0.5, 0, 0] },
+  UpperLegL: { r: [-0.6, 0, 0.1] }, LowerLegL: { r: [0.6, 0, 0] }, UpperLegR: { r: [0.35, 0, -0.1] }, LowerLegR: { r: [0.2, 0, 0] } });
+clip('flash', 1.1, false, keyed([
+  [0, merge(REST, { Spine: { r: [0.3, 0, 0] }, UpperArmL: { r: [-0.9, 0.3, 0.1] }, LowerArmL: { r: [-1.9, 0, 0] }, UpperArmR: { r: [-0.9, -0.3, -0.1] }, LowerArmR: { r: [-1.9, 0, 0] } })],
+  [0.42, merge(REST, { Hips: { p: [0, -0.1, -0.06] }, Spine: { r: [0.45, 0, 0] }, Head: { r: [0.1, 0, 0] }, UpperArmL: { r: [-0.6, 0.4, 0.05] }, LowerArmL: { r: [-2.2, 0, 0] }, UpperArmR: { r: [-0.6, -0.4, -0.05] }, LowerArmR: { r: [-2.2, 0, 0] }, UpperLegL: { r: [-0.3, 0, 0.1] }, LowerLegL: { r: [0.6, 0, 0] }, UpperLegR: { r: [-0.1, 0, -0.1] }, LowerLegR: { r: [0.5, 0, 0] } }), 'io'],
+  [0.52, FLASH_OPEN, 'out'],
+  [0.8, merge(FLASH_OPEN, { Spine: { r: [-0.25, 0, 0] }, Head: { r: [-0.3, 0.2, 0] } }), 'io'],
+  [1.1, REST, 'io']]), ['creep']);
+// hit reactions that sell the face from the street camera (B-PT13): the big men recoil, the small ones rage, the creep
+// swoons. Each snaps in, holds and settles back to the guard; the game plays them instead of the plain flinch.
+const RECOIL = merge(REST, { Hips: { p: [0, -0.1, -0.12], r: [0.12, 0, 0] }, Spine: { r: [-0.28, 0, 0] }, Chest: { r: [-0.22, 0, 0] }, Neck: { r: [0.25, 0, 0] }, Head: { r: [-0.1, 0, 0] },
+  UpperArmL: { r: [-0.4, -0.9, 1.25] }, LowerArmL: { r: [-1.6, 0, 0] }, HandL: { r: [-0.6, 0, 0] }, UpperArmR: { r: [-0.4, 0.9, -1.25] }, LowerArmR: { r: [-1.6, 0, 0] }, HandR: { r: [-0.6, 0, 0] },
+  UpperLegL: { r: [-0.35, 0, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [-0.1, 0, -0.14] }, LowerLegR: { r: [0.5, 0, 0] }, FootL: { r: [-0.3, 0, 0] } });
+clip('react_fear', 0.75, false, (t) => {
+  const u = t / 0.75, k = ss(0, 0.12, u) * (1 - ss(0.72, 1, u)), sh = Math.sin(t * 70) * 0.04 * k; // a quick cower and a tremble
+  return lerpPose(GUARD, merge(RECOIL, { Chest: { r: [-0.22, sh * 2, 0] }, Head: { r: [-0.1, sh * 3, 0] }, Hips: { p: [sh * 0.2, -0.1, -0.12] } }), k);
+});
+const RAGE = G({ Hips: { p: [0, -0.12, 0.1] }, Spine: { r: [0.38, 0, 0] }, Chest: { r: [0.2, 0, 0] }, Neck: { r: [-0.15, 0, 0] }, Head: { r: [-0.25, 0, 0] },
+  UpperArmL: { r: [0.35, 0, 0.55] }, LowerArmL: { r: [-1.25, 0, 0] }, UpperArmR: { r: [0.35, 0, -0.55] }, LowerArmR: { r: [-1.25, 0, 0] },
+  UpperLegL: { r: [-0.55, 0, 0.12] }, LowerLegL: { r: [0.8, 0, 0] }, UpperLegR: { r: [0.3, 0, -0.12] }, LowerLegR: { r: [0.5, 0, 0] } });
+clip('react_rage', 0.75, false, (t) => {
+  const u = t / 0.75, k = ss(0, 0.12, u) * (1 - ss(0.75, 1, u)), shake = Math.sin(t * 40) * 0.45 * k * ss(0.1, 0.2, u); // fists down and shaking, head shaking no
+  return lerpPose(GUARD, merge(RAGE, { Head: { r: [-0.25, shake, 0] }, Neck: { r: [-0.15, shake * 0.4, 0] }, LowerArmL: { r: [-1.25 + Math.abs(shake) * 0.3, 0, 0] }, LowerArmR: { r: [-1.25 + Math.abs(shake) * 0.3, 0, 0] } }), k);
+});
+const SWOON = merge(REST, { Hips: { p: [0, -0.06, 0.1] }, Spine: { r: [-0.4, 0, 0] }, Chest: { r: [-0.35, 0, 0] }, Neck: { r: [-0.3, 0, 0] }, Head: { r: [-0.45, 0, 0] },
+  UpperArmL: { r: [0.25, 0, 0.75] }, LowerArmL: { r: [-0.3, 0, 0] }, HandL: { r: [0.4, 0, 0] }, UpperArmR: { r: [0.25, 0, -0.75] }, LowerArmR: { r: [-0.3, 0, 0] }, HandR: { r: [0.4, 0, 0] },
+  UpperLegL: { r: [-0.15, 0, 0.1] }, LowerLegL: { r: [0.35, 0, 0] }, UpperLegR: { r: [-0.15, 0, -0.1] }, LowerLegR: { r: [0.35, 0, 0] } });
+clip('react_bliss', 0.85, false, (t) => {
+  const u = t / 0.85, k = ss(0, 0.15, u) * (1 - ss(0.75, 1, u)), sway = Math.sin(t * 9) * 0.12 * k; // head back, chest arched, arms open, a happy sway
+  return lerpPose(GUARD, merge(SWOON, { Hips: { p: [sway * 0.2, -0.06, 0.1], r: [0, sway, sway * 0.5] }, Head: { r: [-0.45, -sway, 0] } }), k);
+});
+// the creep's flash: the coat's fronts go with his hands. The front edge (x, z off the middle at the lapel and where he holds it, measured from the mesh by tools/check-garments.mjs)
+const COAT_EDGE = { top: [0.04, 0.12], hold: [0.055, 0.18] };
+const dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const qmul = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+const qconj = (q) => [-q[0], -q[1], -q[2], q[3]];
+const qrot3 = (q, v) => { const r = qmul(qmul(q, [v[0], v[1], v[2], 0]), qconj(q)); return [r[0], r[1], r[2]]; };
+const qnorm = (q) => { const l = Math.hypot(...q) || 1; return q.map((x) => x / l); };
+const qfrom = (a, b) => { const A = norm(a), B = norm(b), c = [A[1] * B[2] - A[2] * B[1], A[2] * B[0] - A[0] * B[2], A[0] * B[1] - A[1] * B[0]]; return qnorm([c[0], c[1], c[2], 1 + dot3(A, B)]); };
+const qtoward = (q, k) => { const d = q[3] < 0 ? -1 : 1; return qnorm([q[0] * d * k, q[1] * d * k, q[2] * d * k, 1 - k + q[3] * d * k]); }; // from no turn, a share k of the way to q
+/** the palm in the chest's frame for a pose */
+function gripOf(T, pose, sd) {
+  const qU = quat(pose['UpperArm' + sd]?.r ?? [0, 0, 0]), qL = quat(pose['LowerArm' + sd]?.r ?? [0, 0, 0]);
+  return add(T['UpperArm' + sd], qrot3(qU, add(T['LowerArm' + sd], qrot3(qL, add(T['Hand' + sd], [0, -0.05, 0])))));
+}
+/** a bone's place and turn in the model for a pose, and a point carried by it (the root's scale left out: only the creep, scale 1, asks) */
+function fkOf(T, pose, name) {
+  const par = PARENT[name], lq = pose[name]?.r ? quat(pose[name].r) : [0, 0, 0, 1], o = pose[name]?.p ?? [0, 0, 0];
+  if (par === -1) return { p: add(T[name], o), q: lq };
+  const P = fkOf(T, pose, par);
+  return { p: add(P.p, qrot3(P.q, T[name])), q: qmul(P.q, lq) };
+}
+const fkPoint = (F, v) => add(F.p, qrot3(F.q, v));
+/**
+ * The coat's fronts in a pose. Skin weights are fixed, so these bones wear two transforms: closed they do what the old weights did (the chest, the hips, a share of the thigh, so the skirt goes
+ * with the leg in every clip and on a ragdoll), and in the flash all of them leave for the hand: the front edge runs in a straight line from the lapel to his palm and
+ * below the grip the coat hangs straight down from it. Keyed in every clip of his, so an interrupted flash closes when the next clip fades in.
+ */
+function coatPose(sp, T, clipName, t, pose) {
+  if (!sp.flashCoat) return pose;
+  const o = { ...pose }, u = clipName === 'flash' && BRAWLER_PROP !== 'stuckcoat' ? ss(0.4, 0.5, t) * (1 - ss(0.84, 1.05, t)) : 0;
+  const Hips = fkOf(T, pose, 'Hips'), Chest = fkOf(T, pose, 'Chest'), share = BRAWLER_PROP === 'stiffskirt' ? 0 : 1;
+  for (const sd of ['L', 'R']) {
+    const Thigh = fkOf(T, pose, 'UpperLeg' + sd), thighLocal = pose['UpperLeg' + sd]?.r ? quat(pose['UpperLeg' + sd].r) : [0, 0, 0, 1];
+    const lapel = fkPoint(Chest, T['CoatUpper' + sd]), palm = fkPoint(fkOf(T, pose, 'Hand' + sd), [0, -0.05, 0]);
+    // the bind places: lapel (in the chest's frame at rest), grip, hem and waist, relative to the lapel and the grip
+    const b0 = { Hips: T.Hips, Thigh: add(T.Hips, T['UpperLeg' + sd]) }, bLapel = add(add(add(T.Hips, T.Spine), T.Chest), T['CoatUpper' + sd]), bWaist = add(T.Hips, T['CoatWaist' + sd]), bGrip = add(b0.Thigh, T['CoatGrip' + sd]), bHem = add(b0.Thigh, T['CoatHem' + sd]);
+    const line = qfrom(sub(bGrip, bLapel), sub(palm, lapel)), I = [0, 0, 0, 1];
+    const wants = {
+      Upper: { par: Chest, closed: { p: lapel, q: Chest.q }, open: { p: lapel, q: line } },
+      Waist: { par: Hips, closed: { p: fkPoint(Hips, T['CoatWaist' + sd]), q: Hips.q }, open: { p: add(lapel, qrot3(line, sub(bWaist, bLapel))), q: line } },
+    };
+    const thighShare = (bind, k) => { const q = qmul(Hips.q, qtoward(thighLocal, k * share)); return { p: add(Thigh.p, qrot3(q, sub(bind, b0.Thigh))), q }; }; // a share of the thigh about the hip joint
+    wants.Skirt = { par: Thigh, closed: thighShare(bGrip, 0.6), open: { p: add(lapel, qrot3(line, sub(bGrip, bLapel))), q: line } }; // above the grip: on the line to the hand
+    for (const [n, bind, k] of [['Grip', bGrip, 0.7], ['Hem', bHem, 1]]) wants[n] = { par: Thigh, closed: thighShare(bind, k), open: { p: add(palm, sub(bind, bGrip)), q: I } }; // below it: hanging
+    for (const [n, w] of Object.entries(wants)) {
+      const d = qmul(qconj(w.closed.q), w.open.q), q = qmul(w.closed.q, qtoward(d, u)), p = add(w.closed.p, mul(sub(w.open.p, w.closed.p), u)), ip = qconj(w.par.q);
+      o['Coat' + n + sd] = { q: qmul(ip, q), tr: qrot3(ip, sub(p, w.par.p)) };
+    }
+  }
+  return o;
+}
+function quat(r) { // rest-relative euler, q = qz * qy * qx
+  const [x, y, z] = r;
+  const qx = [Math.sin(x / 2), 0, 0, Math.cos(x / 2)], qy = [0, Math.sin(y / 2), 0, Math.cos(y / 2)], qz = [0, 0, Math.sin(z / 2), Math.cos(z / 2)];
+  const m = (a, b) => [a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0], a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+  return m(qz, m(qy, qx));
+}
+
+// ── the body ────────────────────────────────────────────────────────────
+const hexRaw = (h) => [((h >> 16) & 255) / 255, ((h >> 8) & 255) / 255, (h & 255) / 255];
+const hex = (h) => hexRaw(h).map((c) => Math.pow(c, 2.2));
+const TEX = join(dirname(fileURLToPath(import.meta.url)), 'out', 'textures');
+const ss = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+const gauss = (x, w) => Math.exp(-(x * x) / (w * w));
+const wrapA = (a) => { a = ((a + PI) % (PI * 2) + PI * 2) % (PI * 2) - PI; return a; }; // -PI..PI
+const FRONT = PI / 2, BACK = -PI / 2; // loft angles: +Z is the front
+/** a soft fold pattern: narrow ridges at the given heights, stronger on one side (angle) */
+const folds = (y, a, list) => { let m = 0; for (const [fy, amp, w, side, sw] of list) m += amp * gauss(y - fy, w) * (side == null ? 1 : 0.35 + 0.65 * gauss(wrapA(a - side), sw ?? 1.2)); return m; };
+const noise1 = (x, s) => { const i = Math.floor(x), f = x - i, h = (n) => { let v = Math.imul(n ^ s, 0x27d4eb2d); v ^= v >>> 15; v = Math.imul(v, 0x85ebca6b); v ^= v >>> 13; return (v >>> 0) / 4294967296; }; const u = f * f * (3 - 2 * f); return lerp(h(i), h(i + 1), u); };
+
+function build(sp) {
+  const m = new SkinMesh(); m.lod = 0.75; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
+  const { world } = skeleton(sp);
+  const B = (n) => world[n];
+  const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
+  const W = sp.width ?? 1, AR = (sp.arm ?? 1) * 0.86, LG = (sp.leg ?? 1) * 0.88, HS = headScale(sp), HL = HS / 0.84, HN = (sp.hand ?? 1.35) * 0.8, belly = sp.belly ?? 0, chest = sp.chest ?? 1;
+  const sw = shoulder(sp), hw = sp.hw ?? 0.1;
+  const yH = B('Hips')[1], yS = B('Spine')[1], yC = B('Chest')[1], yN = B('Neck')[1], yHd = B('Head')[1];
+  const ySh = B('UpperArmL')[1], yEl = B('LowerArmL')[1], yWr = B('HandL')[1];
+  const yHip = B('UpperLegL')[1], yKn = B('LowerLegL')[1], yAn = B('FootL')[1];
+
+  // ── the gut: a real belly, not a lump on the front: it starts under the ribs, runs full and round to a crease over the belt with its weight
+  // low, sagging just above the belt and turning back under to the waistband; it is as wide as it is deep (the flanks and love handles grow
+  // with it) and the lower back sways forward to carry it. The rings themselves grow, so every garment and the skin follow it.
+  const SACK = BRAWLER_PROP === 'sack'; // the control tests/brawler-heads.mjs must see fail: the belly as a narrow sack at the very front
+  const gutFold = yH + 0.078, gutTop = yC + 0.04, gutPeak = gutFold + 0.4 * (gutTop - gutFold), flankPeak = gutFold + 0.34 * (gutTop - gutFold);
+  const gutAt = (y, peak) => { // 0..1 up the front: a full round under the peak (it meets the crease square on), a long easy slope above it
+    if (y <= gutFold || y >= gutTop) return 0;
+    if (y < peak) return Math.sqrt(1 - Math.pow((peak - y) / (peak - gutFold), 2));
+    const u = (y - peak) / (gutTop - peak); return Math.pow(1 - u * u, 1.5);
+  };
+  const gutD = SACK ? 0 : belly * 0.038, gutW = gutD * 0.36, swayD = Math.min(0.02, gutD * 0.2);
+  const softChest = sp.softChest ?? 0;
+  // ── skin weights by position ──
+  const torsoW = (P, a) => {
+    const y = P[1], ax = Math.abs(P[0]), sd = P[0] >= 0 ? 'L' : 'R';
+    let w = [];
+    const tHS = ss(yH + 0.02, yS + 0.04, y), tSC = ss(yS + 0.04, yC + 0.02, y), tCN = ss(yN - 0.03, yN + 0.04, y);
+    w.push([BI.Hips, 1 - tHS], [BI.Spine, tHS * (1 - tSC)], [BI.Chest, tSC * (1 - tCN)], [BI.Neck, tCN]);
+    // the belly moves with its spring bone
+    if (belly > 0) { const kb = SACK ? 0.85 * gauss(y - (yS - 0.02), 0.12) * Math.pow(Math.max(0, Math.sin(a)), 2) : Math.min(0.9, 0.85 * ss(gutFold - 0.03, gutFold + 0.07, y) * ss(gutTop + 0.01, gutPeak + 0.02, y) + 0.14 * softChest / 0.16 * gauss(y - (yC + 0.035), 0.05)) * ss(-0.35, 0.75, Math.sin(a)); w = w.map(([b, x]) => [b, x * (1 - kb)]); w.push([BI.Belly, kb]); }
+    // shoulders follow the arm a little; the seat follows the thighs a little
+    const ka = 0.55 * ss(sw - 0.08, sw + 0.02, ax) * ss(ySh - 0.12, ySh - 0.02, y) * (1 - ss(ySh + 0.05, ySh + 0.1, y) * 0.5);
+    if (ka > 0) { w = w.map(([b, x]) => [b, x * (1 - ka)]); w.push([BI['UpperArm' + sd], ka]); }
+    const kl = 0.45 * ss(yHip + 0.05, yHip - 0.08, y) * ss(0.02, 0.1, ax);
+    if (kl > 0) { w = w.map(([b, x]) => [b, x * (1 - kl)]); w.push([BI['UpperLeg' + sd], kl]); }
+    return w;
+  };
+  const armW = (P, side) => {
+    const y = P[1], sd = side;
+    const a = ss(ySh + 0.07, ySh - 0.05, y), b = ss(yEl + 0.04, yEl - 0.04, y), c = ss(yWr + 0.03, yWr - 0.02, y);
+    return [[BI.Chest, 1 - a], [BI['UpperArm' + sd], a * (1 - b)], [BI['LowerArm' + sd], a * b * (1 - c)], [BI['Hand' + sd], a * b * c]];
+  };
+  const legW = (P, side) => {
+    const y = P[1], sd = side;
+    const a = ss(yHip + 0.07, yHip - 0.08, y), b = ss(yKn + 0.05, yKn - 0.05, y), c = ss(yAn + 0.06, yAn + 0.0, y);
+    return [[BI.Hips, 1 - a], [BI['UpperLeg' + sd], a * (1 - b)], [BI['LowerLeg' + sd], a * b * (1 - c)], [BI['Foot' + sd], a * b * c]];
+  };
+  const headW = (P) => { const t = ss(yHd - 0.03, yHd + 0.04, P[1]); return [[BI.Neck, 1 - t], [BI.Head, t]]; };
+  const tailW = (P, side) => { // coat skirts: hips at the waist, the spring bones toward the hem, a share of the thigh
+    const y = P[1], sd = side, t = ss(yH - 0.02, yKn + 0.05, y), back = lerp(0.3, 1, ss(0.08, -0.08, P[2])); // front panels follow the thigh, the back the spring bone, blended round the side (a hard switch tore the side seam on kicks)
+    return [[BI.Hips, 1 - t], [BI['Coat' + sd], t * 0.75 * back], [BI['UpperLeg' + sd], t * (1 - 0.75 * back)]];
+  };
+
+  // the creep's coat fronts: the front edge goes all the way with his hand, the side seam stays on the body, the collar stays on the neck
+  const coatOpenW = (base, P, a) => {
+    if (!sp.flashCoat) return base;
+    const sd = P[0] >= 0 ? 'L' : 'R', k = ss(1.45, 0.62, Math.abs(wrapA(a - FRONT))) * ss(yN + 0.02, yN - 0.09, P[1]), yG = world['CoatGrip' + sd][1], yH0 = world['CoatHem' + sd][1];
+    if (k <= 0) return base;
+    const y = P[1], low = ss(yC + 0.02, yS - 0.02, y), skirt = ss(yHip + 0.12, yHip + 0.03, y), hang = ss(yG + 0.03, yG - 0.03, y), hem = ss(yG - 0.05, yH0 + 0.02, y);
+    const line = k * (1 - hang), w = [[BI['CoatUpper' + sd], line * (1 - low)], [BI['CoatWaist' + sd], line * low * (1 - skirt)], [BI['CoatSkirt' + sd], line * low * skirt], [BI['CoatGrip' + sd], k * hang * (1 - hem)], [BI['CoatHem' + sd], k * hang * hem]];
+    return [...base.map(([b, x]) => [b, x * (1 - k)]), ...w];
+  };
+  // ── the torso: rings from the crotch to the neck; pecs, glutes, belly, shoulder mass by angle ──
+  const bw = 0.78 + 0.22 * W, bd = 0.85 + 0.15 * W, sws = sw / 0.2;
+  const hN = headOf(sp, world).H, NECKR = hN.R * (0.74 + 0.25 * ((sp.neck ?? 1) - 1) + 0.04 * (W - 1)), wkTop = sws * (0.92 + 0.08 * chest);
+  // [y, half width, half depth, z offset, superellipse]
+  const PROF = [[yHip - 0.08, 0.04, 0.045, 0, 2], [yHip - 0.05, 0.13, 0.095, 0, 2.2], [yHip, 0.172, 0.115, -0.005, 2.4], [yHip + 0.06, 0.18, 0.122, -0.008, 2.5],
+    [yH + 0.07, 0.168, 0.112, -0.004, 2.5], [yS + 0.03, 0.152, 0.104, 0, 2.5], [yS + 0.11, 0.165, 0.112, 0.004, 2.6], [yC + 0.02, 0.19, 0.124, 0.008, 2.7],
+    [yC + 0.09, 0.2, 0.13, 0.008, 2.8], [ySh - 0.06, 0.2, 0.124, 0.002, 2.9], [ySh - 0.02, sw * 1.05 / wkTop, 0.116, -0.002, 2.8], [ySh + 0.012, sw * 0.97 / wkTop, 0.102, -0.006, 2.5], [ySh + 0.038, sw * 0.8 / wkTop, 0.088, -0.012, 2.3],
+    [yN + 0.0, NECKR * 1.42 / wkTop, 0.075, -0.016, 2.4], [yN + 0.035, NECKR * 1.08 / wkTop, 0.066, -0.016, 2.2]];
+  const prof = (y) => { // interpolate the profile at y
+    let i = 0; while (i < PROF.length - 2 && PROF[i + 1][0] < y) i++;
+    const A = PROF[i], Bq = PROF[i + 1], t = EASE.io(Math.max(0, Math.min(1, (y - A[0]) / (Bq[0] - A[0]))));
+    return A.map((v, k) => lerp(v, Bq[k], t));
+  };
+  const torsoMod = (y, extra = 0, foldList = null) => (a) => {
+    let k = 1 + extra;
+    const s = Math.sin(a), c = Math.cos(a);
+    const front = Math.max(0, s), back = Math.max(0, -s);
+    k += (0.07 * chest + 0.2 * FIG.bust) * gauss(y - (yC + 0.06 - 0.02 * FIG.bust), 0.06) * (gauss(wrapA(a - (FRONT - 0.5)), 0.42) + gauss(wrapA(a - (FRONT + 0.5)), 0.42)); // pecs, a bust
+    k += 0.08 * gauss(y - (yHip + 0.03), 0.06) * (gauss(wrapA(a - (BACK - 0.5)), 0.5) + gauss(wrapA(a - (BACK + 0.5)), 0.5)); // seat
+    if (SACK) k += belly * 0.3 * gauss(y - (yS - 0.01), 0.1) * Math.pow(front, 2.5);
+    k += 0.07 * gutAt(y, gutPeak) * (gutD / 0.13) * Math.pow(front, 2); // the gut's front is rounder than its flanks
+    // a soft chest on an out of shape man: fat that hangs a little, a short round underside and a long slope above, flowing into the gut (not a bust)
+    if (softChest) k += softChest * gauss(y - (yC + 0.035), y < yC + 0.035 ? 0.04 : 0.09) * (gauss(wrapA(a - (FRONT - 0.62)), 0.5) + gauss(wrapA(a - (FRONT + 0.62)), 0.5));
+    k += 0.05 * gauss(y - (yC + 0.03), 0.07) * Math.pow(Math.abs(c), 3); // lats
+    k -= 0.025 * gauss(y - yC, 0.15) * gauss(wrapA(a - BACK), 0.18); // the spine groove
+    if (foldList) k += folds(y, a, foldList);
+    return k;
+  };
+  // below the ribs the width follows the build; from the chest up it follows the shoulders, so arms never sink into it
+  const FIG = { waist: 0.94, hip: 1, bust: 0, ...sp.fig };
+  const figW = (y) => 1 - (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1) + (FIG.hip - 1) * gauss(y - (yHip + 0.04), 0.09);
+  const figD = (y) => 1 - 0.55 * (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1);
+  const ringAt = (y, k = 1, kz = 1, add = 0, mod = null) => { const p = prof(y); const u = ss(yS + 0.05, yC + 0.06, y); const wk = lerp(bw, sws * (0.92 + 0.08 * chest), u); const g = gutAt(y, gutPeak) * gutD, sway = swayD * gauss(y - (yS + 0.01), 0.08); return { c: [0, y, p[3] + (g + sway) / 2], U: X, V: Z, ru: p[1] * wk * k * figW(y) + add + gutW * gutAt(y, flankPeak), rv: p[2] * bd * (1 + (chest - 1) * 0.6 * u) * kz * figD(y) + add + (g - sway) / 2, e: lerp(p[4], 2.08, Math.min(1, g / 0.05)), mod }; };
+  // bare skin over the chest: collarbones running out from the notch at the throat, the notch itself
+  const clavicle = (y, a) => { const da = Math.abs(wrapA(a - FRONT)), yc = yN - 0.035 + 0.022 * da; return 0.035 * gauss(y - yc, 0.011) * ss(0.12, 0.3, da) * ss(1.5, 1.05, da) - 0.05 * gauss(da, 0.2) * gauss(y - (yN - 0.012), 0.016); };
+  const skinUpper = (y0) => { const l0 = m.lod; m.lod = 1; m.loft('skin', ys(y0, yN + 0.035, 0.013).map((y) => ringAt(y, 1, 1, 0, (a) => torsoMod(y)(a) + clavicle(y, a))), { n: 30, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); m.lod = l0; };
+  const ys = (y0, y1, step = 0.025) => { const n = Math.max(1, Math.round((y1 - y0) / step)), r = []; for (let i = 0; i <= n; i++) r.push(y0 + ((y1 - y0) * i) / n); return r; };
+
+  const top = BRAWLER_PROP === 'tanktop' && sp.top === 'cutoff' ? 'tank' : sp.top ?? 'tee', bottom = sp.bottom ?? 'jeans';
+  const cutoff = top === 'cutoff', gutHem = gutD > 0.08; // a gut big enough to carry the shirt up: the hem rides over it (the jeans stay under the overhang)
+  const waist = yH + 0.06; // where trousers end and the top begins
+  const shirtMat = sp.shirtMat ?? 'shirt', shirtTile = sp.shirtTile ?? 0.5; // a 1 m tile: a print or stains laid out once round the torso
+  const tuck = sp.tuck ?? false;
+  // skaters' clothes hang loose: a roomy seat, a long boxy tee or hoodie (sp.fit metres of room), wide sleeves and legs
+  const cl01 = (x) => Math.max(0, Math.min(1, x)), dims = { shirt: {}, pants: {} };
+  const seatLoose = bottom === 'jeans' || bottom === 'cargo' || bottom === 'shorts' ? 0.015 : 0, fit = sp.fit ?? 0;
+  // trousers over the pelvis
+  const pantsFolds = [[waist - 0.03, 0.02, 0.012, FRONT, 1.0], [yHip - 0.02, 0.025, 0.015, FRONT, 0.6]];
+  const briefs = bottom === 'briefs', bandTop = yHip + 0.085, sagBand = (a) => -0.012 * (0.5 + 0.5 * Math.sin(a)) - 0.006 * Math.cos(a * 2); // the waistband has given up
+  if (briefs) { // bare legs and old white briefs: a band that sags under the belly, a slip of pale gut between it and the tucked shirt
+    m.loft('pants', [...ys(PROF[0][0], bandTop - 0.026).map((y) => ({ ...ringAt(y, 1.03, 1.04, 0.004), dy: y > yHip ? sagBand : undefined })),
+      ...[[-0.022, 1.045, 0.008], [-0.019, 1.055, 0.011], [-0.002, 1.055, 0.011], [0, 1.03, 0.005]].map(([d, k, ad]) => ({ ...ringAt(bandTop + d, k, k, ad), dy: sagBand }))], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+    m.loft('skin', [...ys(bandTop - 0.03, waist + 0.02, 0.016).map((y) => ringAt(y, 1, 1, 0, torsoMod(y)))], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+  } else
+  // the seat: mapped once round (u) and from the waistband down (v 0.8..1 of the rider's trouser texture, garments.mjs)
+  m.loft(bottom === 'none' ? 'skin' : 'pants', [...ys(PROF[0][0], waist).map((y) => ringAt(y, 1.04 + seatLoose, 1.05 + seatLoose, 0.006, torsoMod(y, 0, pantsFolds))), ...(gutHem ? [{ ...ringAt(gutFold, 1.0, 1.0, 0), c: [0, gutFold + 0.03, prof(gutFold)[3]] }] : [])], { n: 32, weights: (k, P, a) => torsoW(P, a), ...(bottom === 'none' ? { tile: 0.5 } : { uvFn: (p, k, j, n) => [j / n, 0.8 + 0.2 * cl01((waist - p[1]) / (waist - PROF[0][0]))] }) });
+  { const r = ringAt(yHip, 1.04 + seatLoose, 1.05 + seatLoose, 0.006); dims.pants.PC = PI * Math.sqrt(2 * (r.ru * r.ru + r.rv * r.rv)); dims.pants.PH = waist - PROF[0][0]; }
+  // the upper body: a shirt from the waist up (bare skin for none), with a hem that flares and waist folds
+  const shirtTop = top === 'tank' ? ySh - 0.02 : yN + 0.0;
+  const crew = cutoff || gutHem, dip = (y) => (a) => -0.02 * ss(yN - 0.05, yN, y) * gauss(wrapA(a - FRONT), 0.85); // a crew neck: it dips at the front of the throat
+  const hemY = tuck ? waist : waist - (fit ? sp.hemDrop ?? 0.1 : 0.06);
+  const shirtFolds = [[hemY + 0.06, 0.018, 0.012, FRONT, 1.2], [hemY + 0.12, 0.014, 0.012, FRONT + 0.6, 0.6], [hemY + 0.1, 0.012, 0.012, FRONT - 0.7, 0.6], [yC - 0.02, 0.01, 0.015, null]];
+  if (top === 'none') { m.loft('skin', ys(waist - 0.01, ySh - 0.03).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); skinUpper(ySh - 0.03); }
+  else {
+    if (gutHem) {
+      // the tee over a big gut: it drapes from the chest, is pulled up in front (the hem climbs the flanks to the crease and turns under the overhang) and
+      // hangs over the belt at the back. Texture: once round whatever the girth, and up the cloth's own length, so stains stay whole and lie on the belly
+      const hemBack = waist - 0.055, hemQ = (a) => lerp(0.08, 1, ss(1, -0.6, Math.sin(a)));
+      const gf = [[gutFold + 0.03, 0.012, 0.012, FRONT - 1.05, 0.45], [gutFold + 0.05, 0.012, 0.014, FRONT + 1.1, 0.45], [gutPeak + 0.09, 0.008, 0.016, FRONT - 1.0, 0.5], [gutPeak + 0.07, 0.008, 0.016, FRONT + 0.95, 0.5], [yC - 0.02, 0.008, 0.015, null]];
+      const hang = (y) => lerp(1, 0, ss(gutFold, gutFold + 0.1, y));
+      const smile = (y) => (a) => { const sn = Math.sin(a); return 0.028 * (1 - Math.pow((Math.min(y, gutPeak) - gutFold) / (gutPeak - gutFold), 1.5)) * ss(1, 0.5, sn) * ss(-0.3, 0.4, sn); }; // the crease climbs each side of the belly, so it hangs lowest in the middle
+      const ringS = (y) => { const h = hang(y), sm = smile(y), dp = dip(y); return { ...ringAt(y, lerp(1.05, 1.07, h), lerp(1.06, 1.08, h), lerp(0.01, 0.014, h), torsoMod(y, 0, gf)), dy: (a) => sm(a) + dp(a) }; };
+      const below = (y) => ({ ...ringS(y), dy: (a) => (gutFold - y) * (1 - hemQ(a)) + smile(gutFold)(a) });
+      const rings = [{ ...below(hemBack), ru: ringAt(hemBack, 1.03, 1.03, 0).ru, rv: ringAt(hemBack, 1.03, 1.03, 0).rv }, below(hemBack - 0.003), below(hemBack + 0.03), below(gutFold - 0.002),
+        ...[0.012, 0.05, 0.13, 0.25, 0.42, 0.62, 0.82].map((t) => ringS(gutFold + t * (gutPeak - gutFold))), ...ys(gutPeak, shirtTop, 0.028).map(ringS)];
+      const along = (sn) => { const o = [0]; let d = 0; const pt = (r) => [r.c[1], r.c[2] + sn * r.rv * (r.mod ? r.mod(sn > 0 ? FRONT : BACK) : 1)]; for (let i = 1; i < rings.length; i++) { const A = pt(rings[i - 1]), Bq = pt(rings[i]); d += Math.hypot(Bq[0] - A[0], Bq[1] - A[1]); o.push(d); } return o; };
+      const vF = along(1), vB = along(-1), l0 = m.lod; m.lod = 1;
+      m.loft(shirtMat, rings, { n: 32, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n, a) => [j / n, lerp(vB[k], vF[k], ss(-0.5, 0.9, Math.sin(a))) / shirtTile] });
+      m.lod = l0;
+    } else {
+    // a sleeveless man's top is a T-shirt with the sleeves cut off: it hangs loose from the chest, over the belt, to the hip
+    const loose = (y) => (cutoff ? ss(yC + 0.03, yS - 0.02, y) : 0);
+    // a loose fit hangs straight down from the chest (no waist), with room all round and soft ripples toward the hem
+    const chestR = ringAt(yC + 0.04, 1.05, 1.06, 0.01);
+    const hang = (r, y) => {
+      if (!fit) return r;
+      const u = ss(yC + 0.04, hemY, y), room = fit * lerp(0.35, 1, u);
+      const mod0 = r.mod;
+      return { ...r, ru: Math.max(r.ru, lerp(r.ru, chestR.ru * 0.97, u)) + room, rv: Math.max(r.rv, lerp(r.rv, chestR.rv * 0.96, u)) + room * 0.8,
+        mod: (a) => (mod0 ? mod0(a) : 1) + 0.03 * u * u * (Math.sin(a * 6 + 1.3) + 0.6 * Math.sin(a * 11 + 0.4)), dy: (a) => -0.016 * u * Math.max(0, -Math.sin(a)) };
+    };
+    const rings = ys(hemY, shirtTop).map((y) => hang({ ...ringAt(y, 1.05 + 0.09 * loose(y), 1.06 + 0.07 * loose(y), 0.01 + 0.017 * loose(y), torsoMod(y, 0, shirtFolds)), e: cutoff ? lerp(prof(y)[4], 2.1, loose(y)) : prof(y)[4], dy: cutoff ? dip(y) : undefined }, y));
+    rings.unshift({ ...hang({ ...ringAt(hemY, 1.06 + 0.09 * loose(hemY), 1.07 + 0.07 * loose(hemY), 0.008 + 0.017 * loose(hemY), torsoMod(hemY)), e: cutoff ? 2.1 : prof(hemY)[4] }, hemY), c: [0, hemY - 0.005, prof(hemY)[3]] });
+    const sH = shirtTop - (hemY - 0.01);
+    dims.shirt.H = sH; { const r = rings[Math.floor(rings.length * 0.6)]; dims.shirt.C = PI * Math.sqrt(2 * (r.ru * r.ru + r.rv * r.rv)); }
+    m.loft(shirtMat, rings, { n: 36, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n) => [j / n, 0.6 * cl01((shirtTop - p[1]) / sH)] });
+    }
+    if (top === 'tank') { // straps over the shoulders and skin above
+      skinUpper(shirtTop - 0.02);
+      { const yS1 = ySh + 0.044, strapP = (ac) => { const r = ringAt(yS1, 1, 1, 0.006), sc = (v, e) => Math.sign(v) * Math.pow(Math.abs(v), 2 / e); return [r.ru * sc(Math.cos(ac), r.e), yS1 + 0.004, r.c[2] + r.rv * sc(Math.sin(ac), r.e)]; };
+      for (const ac of [0.72, -0.72, PI - 0.72, -PI + 0.72]) // straps: front and back, left and right, an even width
+        m.loft(shirtMat, ys(shirtTop - 0.03, yS1, 0.012).map((y) => { const r = ringAt(y, 1, 1, 0.006, torsoMod(y)), w = 0.016 / Math.max(0.05, r.ru); return { ...r, arc: [ac - w, ac + w] }; }), { n: 3, arc: [ac - 0.1, ac + 0.1], weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+      for (const [af, ab] of [[0.72, -0.72], [PI - 0.72, -PI + 0.72]]) m.capsule(shirtMat, strapP(af), strapP(ab), 0.0075, 0.0075, { weights: (t, P) => torsoW(P, FRONT), n: 5, caps: 1, rings: 2, ratio: 0.5 }); }
+    } else if (sp.hood !== 'up') { // a collar (a rib from the plain patch of the shirt texture)
+      m.loft(shirtMat, [ringAt(yN - 0.02, 1.0, 1.0, 0.012), ringAt(yN + 0.002, 1.0, 1.0, 0.016), ringAt(yN + 0.012, 0.96, 0.96, 0.012)].map((r) => (crew ? { ...r, dy: dip(yN) } : r)), { n: 24, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n) => [j / n, 0.93 + 0.01 * k] });
+    }
+  }
+  if (sp.tiedSleeves) { // the coverall's top half peeled down: its sleeves round the waist, knotted in front, the ends hanging
+    const yw = waist - 0.015, rg = ringAt(yw, 1.04, 1.05, 0.012), rx = rg.ru, rz = rg.rv, cz = rg.c[2];
+    const onW = [[BI.Hips, 1]], E = (a) => [rx * Math.cos(a), yw + 0.012 * Math.sin(a * 2), cz + rz * Math.sin(a)];
+    for (const sd of [1, -1]) {
+      for (let i = 0; i < 9; i++) {
+        const a0 = PI / 2 + sd * (1 - i / 9) * 2.7, a1 = PI / 2 + sd * (1 - (i + 1) / 9) * 2.7;
+        m.capsule('pants', E(a0), E(a1), 0.03, 0.03, { weights: () => onW, n: 10, caps: 2, rings: 1, ratio: 0.75 });
+      }
+      const k = E(PI / 2), tip = add(k, [sd * 0.06, -0.25, 0.025]);
+      m.capsule('pants', add(k, [sd * 0.012, -0.012, 0.012]), tip, 0.028, 0.04, { weights: (t) => [[BI.Hips, 1 - t * 0.5], [BI[sd > 0 ? 'UpperLegL' : 'UpperLegR'], t * 0.5]], n: 10, caps: 2, rings: 4, ratio: 0.55 });
+    }
+    m.ellipsoid('pants', add(E(PI / 2), [0, -0.005, 0.016]), 0.036, 0.03, 0.028, { weights: () => onW, steps: 6, n: 12 });
+  }
+  if (sp.belt) {
+    const bk = gutHem ? 0.035 : 0, ba = gutHem ? 0.007 : 0; // under a tee that hangs over it, the belt lies flatter
+    m.loft('belt', [ringAt(waist - 0.035, 1.07 - bk, 1.08 - bk, 0.016 - ba), ringAt(waist - 0.03, 1.09 - bk, 1.1 - bk, 0.02 - ba), ringAt(waist + 0.005, 1.09 - bk, 1.1 - bk, 0.02 - ba), ringAt(waist + 0.01, 1.07 - bk, 1.08 - bk, 0.016 - ba)], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+    const p = prof(waist - 0.012);
+    m.ellipsoid('buckle', [0, waist - 0.012, p[2] * bd * 1.1 + 0.022 + p[3]], 0.032, 0.024, 0.008, { bone: BI.Hips, steps: 4, n: 10, e: 3 });
+  }
+  // open garments over the top: jackets, vests, coats (double sided, the front left open), armour plates
+  const outer = sp.outer;
+  if (outer) {
+    const open = sp.openFront ?? 0.38, kind = sp.outerKind ?? 'jacket';
+    const y0 = kind === 'vest' || kind === 'jacket' || kind === 'hivis' ? waist - 0.07 : waist - 0.02;
+    const y1 = ySh + 0.04;
+    const of = [[y0 + 0.08, 0.02, 0.014, FRONT, 0.8], [yC - 0.05, 0.016, 0.02, FRONT - 0.9, 0.5], [yC - 0.02, 0.016, 0.02, FRONT + 0.9, 0.5], [y0 + 0.2, 0.012, 0.015, BACK, 1]];
+    const rings = ys(y0, y1).map((y) => ringAt(y, 1.1, 1.13, 0.024 + 0.01 * ss(yC, y0, y), torsoMod(y, 0, of)));
+    rings.push({ ...ringAt(yN + 0.01, 1.02, 1.02, 0.02), c: [0, yN + 0.01, prof(yN)[3] - 0.01] });
+    rings.push({ ...ringAt(yN + 0.055, 1.25, 1.25, 0.03), c: [0, yN + 0.055, prof(yN)[3] - 0.015] }); // the collar stands and rolls out
+    m.loft('outer', rings, { n: 36, arc: [FRONT + open, FRONT - open + PI * 2], weights: (k, P, a) => coatOpenW(torsoW(P, a), P, a), tile: 0.5 });
+    if (kind === 'hivis') for (const y of [yS + 0.06, yC + 0.06]) m.loft('reflect', [ringAt(y - 0.018, 1.1, 1.13, 0.028), ringAt(y + 0.018, 1.1, 1.13, 0.028)].map((r) => ({ ...r, mod: torsoMod(r.c[1]) })), { n: 36, arc: [FRONT + open, FRONT - open + PI * 2], weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+    if (kind === 'longcoat' || kind === 'tailcoat') { // skirts below the waist (tails are split at the back)
+      const yb = kind === 'tailcoat' ? yKn + 0.02 : yKn + (sp.coatHem ?? -0.1);
+      const rr = ys(yb, waist - 0.01, 0.03).reverse().map((y) => { const t = ss(waist, yb, y); const r = ringAt(Math.max(y, PROF[1][0]), 1.12 + 0.18 * t, 1.18 + 0.2 * t, 0.03 + 0.035 * t, torsoMod(Math.max(y, PROF[1][0]), 0, [[y, 0, 1, null]])); r.c = [0, y, r.c[2] - (sp.flashCoat ? 0.03 : 0.01) * t]; if (sp.flashCoat) r.rv += 0.012 * t; /* his hangs off the seat, clear of bare calves */ r.ru = Math.max(r.ru, prof(yHip)[1] * bw * 1.12 + 0.03 + 0.06 * t); r.rv = Math.max(r.rv, prof(yHip)[2] * bd * 1.15 + 0.03 + 0.05 * t); r.mod = (a) => 1 + 0.03 * Math.sin(a * 7 + y * 9) * t; return r; });
+      if (kind === 'tailcoat') { m.loft('outer', rr, { n: 12, arc: [BACK + 0.06, BACK + 1.6], weights: (k, P) => tailW(P, 'L'), tile: 0.5 }); m.loft('outer', rr, { n: 12, arc: [BACK - 1.6, BACK - 0.06], weights: (k, P) => tailW(P, 'R'), tile: 0.5 }); }
+      else { const lap = sp.flashCoat ? 0.05 : 0.15; /* his skirt all but meets in front: the briefs are the flash's to show */ m.loft('outer', rr, { n: 18, arc: [FRONT + open + lap, FRONT + PI - 0.03], weights: (k, P, a) => coatOpenW(tailW(P, 'R'), P, a), tile: 0.5 }); m.loft('outer', rr, { n: 18, arc: [FRONT + PI + 0.03, FRONT + 2 * PI - open - lap], weights: (k, P, a) => coatOpenW(tailW(P, 'L'), P, a), tile: 0.5 }); }
+    }
+  }
+  if (sp.armor) { // a chest plate and a back plate
+    const rr = ys(yS + 0.02, ySh - 0.02).map((y) => ringAt(y, 1.06, 1.12, 0.02, torsoMod(y)));
+    m.loft('metal', rr, { n: 20, arc: [FRONT - 1.25, FRONT + 1.25], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+    m.loft('metal', rr, { n: 20, arc: [BACK - 1.1, BACK + 1.1], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+  }
+  if (sp.hood && sp.hood !== 'up') { // a hood lying on the upper back
+    const hc = [0, yN - 0.03, -prof(yN)[2] * bd - 0.04];
+    m.ellipsoid('shirt', hc, 0.15 * bw, 0.07, 0.075, { weights: (k, P, a) => torsoW(P, a), steps: 7, n: 16, mod: (a) => 1 + 0.06 * Math.sin(a * 5) });
+    for (const sx of [0.035, -0.035]) { const on = (y) => { const p = prof(y); return [sx, y, p[3] + p[2] * bd * 1.12 + 0.016]; }; const y0 = ySh + 0.0, y1 = ySh - 0.06, y2 = yC - 0.01; m.capsule('band', on(y0), on(y1), 0.0035, 0.0035, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 1 }); m.capsule('band', on(y1), on(y2), 0.0035, 0.0045, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 2 }); }
+  }
+
+  // ── neck ──
+  // a column that leans forward going up, wider at its root (the trapezius), a slight flare for the sternomastoids and an Adam's apple;
+  // a thick neck grows sideways more than forward. Its top stays inside the skull so turning the head never opens a gap.
+  const hcN = hN.hc, hyN = hN.HY, yTop = hcN[1] - 0.12 * hyN, nd = NECKR * 0.9;
+  m.lod = 0.75;
+  m.loft('skin', ys(yN - 0.02, yTop, 0.012).map((y) => { const u = ss(yN - 0.02, yTop, y); return { c: [0, y, lerp(-0.2, -0.13, u) * hyN], U: X, V: Z, ru: NECKR * (1 + 0.42 * ss(yN + 0.045, yN - 0.01, y)), rv: nd * (1 + 0.1 * ss(yN + 0.04, yN - 0.02, y)), e: 2.2,
+    mod: (a) => 1 + 0.035 * (sp.adam === false ? 0 : 1) * gauss(wrapA(a - FRONT), 0.26) * gauss(y - (yN + 0.04), 0.018) + 0.05 * (gauss(wrapA(a - FRONT - 0.95), 0.35) + gauss(wrapA(a - FRONT + 0.95), 0.35)) * ss(yTop, yN, y) }; }), { n: 24, weights: (k, P) => (P[1] < yN + 0.01 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
+  m.lod = 0.75;
+
+  // ── head: a sculpted face (sockets, eyes and lids, nose, lips and a mouth that opens, teeth, ears) on the head envelope ──
+  const M = headOf(sp, world), { hc, R, RZ, HY } = M.H, headRing = M.H.ring, F = M.F;
+  buildHead(m, M, BI, { glowEyes: !!sp.glowEyes, piercings: sp.piercings, lipRing: sp.lipRing, cols: 48, rows: 40 });
+  if (sp.shades) { // pushed up on the forehead
+    const P = M.surf(0, 0.4);
+    m.ellipsoid('shades', add(P, [0, 0.004, 0.008 * HS]), 0.1 * HS, 0.02 * HS, 0.016 * HS, { bone: BI.Head, steps: 6, n: 16, e: 3, axis: norm([0, 1, -0.35]), U: X, V: norm([0, 0.35, 1]) });
+  }
+  if (sp.moustache) { // along the upper lip, riding on the lip and corner bones; a handlebar curls up at the ends
+    for (const sd of [1, -1]) {
+      const pts = [], rad = [];
+      for (let i = 0; i <= 7; i++) {
+        const u = i / 7, xn = sd * lerp(0.01, F.mw * 1.15, u), yn = F.tm + 0.085 - 0.03 * u * u + (sp.moustache === 'handlebar' ? 0.16 * ss(0.7, 1, u) : -0.06 * ss(0.75, 1, u));
+        const P = M.surf(Math.max(-0.95, Math.min(0.95, xn)), yn);
+        pts.push(add(P, [0, 0, (0.035 - 0.012 * u) * R])); rad.push((0.06 - 0.03 * u) * R * (sp.moustache === 'thick' ? 1.4 : sp.moustache === 'pencil' ? 0.38 : 1));
+      }
+      m.loft('hair', pts.map((p, i) => { const t = norm(sub(pts[Math.min(7, i + 1)], pts[Math.max(0, i - 1)])); const U = norm([t[1], -t[0], 0]); return { c: p, U, V: Z, ru: rad[i], rv: rad[i] * 0.55, mod: (a) => 1 + 0.12 * Math.sin(a * 5 + i) }; }),
+        { n: 8, weights: (k) => { const u = k / 7; return [[BI.LipU, 0.6 * (1 - u)], [BI['Mouth' + (sd > 0 ? 'L' : 'R')], 0.6 * u], [BI.Head, 0.4]]; }, tile: 0.1 });
+    }
+  }
+  if (sp.goatee) { const P = M.surf(0, -0.8); m.cone('hair', add(P, [0, 0.01, -0.012]), add(P, [0, -0.07 * HS, 0.01 * HS]), 0.034 * HS, { bone: BI.Jaw, n: 10, ratio: 0.6, bend: [0, 0, 0.01] }); }
+  if (sp.beard) shellGrid(m, 'hair', M, -1, F.tm - 0.04, 1.7, 0.008, { jaw: BI.Jaw, head: BI.Head, rows: 10, cols: 30, rough: 0.12 });
+  if (sp.mask) shellGrid(m, 'mask', M, -1, -0.04, 1.85, 0.006, { jaw: BI.Jaw, head: BI.Head, rows: 18, cols: 40, drape: true, folds: 0.02 });
+
+  // hair and hats
+  const hairW = (P) => { // the hair root moves with the head; long hair hands over to the spring bones below it
+    const ya = B('HairA')[1], yb = B('HairB')[1];
+    if (P[1] > ya) return [[BI.Head, 1]];
+    const t = ss(ya, yb, P[1]);
+    return [[BI.Head, (1 - t) * ss(ya - 0.12, ya, P[1])], [BI.HairA, (1 - t) * (1 - ss(ya - 0.12, ya, P[1])) + 0.001], [BI.HairB, t]];
+  };
+  const shell = (t0, t1, k, add, steps, o = {}) => { const r = []; for (let i = 0; i <= steps; i++) { const t = t0 + (t1 - t0) * (i / steps); const hr = headRing(Math.min(t, 0.999), k, add); if (o.mod) hr.mod = o.mod(t, i); if (t > 0) hr.c = [hr.c[0], hr.c[1] + ((k - 1) * HY + add) * t, hr.c[2]]; r.push(hr); } if (t1 >= 1) { const l = r[r.length - 1]; r.push({ ...l, c: [l.c[0], l.c[1] + add * 0.4, l.c[2]], ru: 0.0005, rv: 0.0005 }); } return r; };
+  const tuft = (seed, amp) => (t, i) => (a) => 1 + amp * (noise1(a * 7 + seed, seed) - 0.5) * ss(-0.6, 0.6, t);
+  const hairCut = sp.hair ?? 'crop';
+  // the front of the crown shell sinks under the skin below the hairline, higher at the temples
+  const hairline = (t, a) => { const f = Math.pow(Math.max(0, Math.sin(a)), 1.4), ax = Math.abs(Math.cos(a)); return 1 - 0.13 * f * ss(0.5 + 0.06 * gauss(ax - 0.42, 0.18), 0.36, t); };
+  const hairEdge = (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08);
+  const scalp = (k = 1.06, add = 0.006, seed = 1) => hairCap(m, 'hair', M, hairEdge, { bone: BI.Head, lift: 0.006, rough: 0.05, cols: 26, rows: 9 });
+  // swept clumps over the scalp break up the outline (a smooth shell reads as a helmet)
+  const clumps = (rows, len, rad, sweep, seed) => {
+    for (let r = 0; r < rows; r++) for (let i = 0, nI = 5 + r * 2; i < nI; i++) {
+      const ph = 0.12 + (r / rows) * 1.35, th = -PI * 0.9 + 1.8 * PI * ((i + 0.5) / nI) + (noise1(i * 3 + r * 17, seed) - 0.5) * 0.3;
+      const nrm = norm([Math.sin(ph) * Math.sin(th), Math.cos(ph), Math.sin(ph) * Math.cos(th)]);
+      if (nrm[2] > 0.42 && nrm[1] < 0.84) continue; // keep the forehead clear
+      const base = add(hc, [nrm[0] * R * 1.02, nrm[1] * HY * 1.02, nrm[2] * RZ * 1.02]);
+      const tdir = norm(add(mul(nrm, 0.2), [nrm[0] * 0.3, -0.25 - 0.5 * sweep, -0.85 * sweep - 0.2]));
+      const side = norm([tdir[1] * nrm[2] - tdir[2] * nrm[1], tdir[2] * nrm[0] - tdir[0] * nrm[2], tdir[0] * nrm[1] - tdir[1] * nrm[0]]);
+      m.cone('hair', base, add(base, mul(tdir, len * (0.75 + 0.5 * noise1(i + r * 7, seed + 1)))), rad, { ratio: 0.42, U: side, V: nrm, bone: BI.Head, n: 7, rings: 4, bend: mul(nrm, -0.02) });
+    }
+  };
+  // ── hair cards: ribbons of the alpha-tested strand texture (assets/textures/hair_card) grown along curves over the
+  // scalp, lit with the outward normal of the hair mass (so they shade like hair, not flat planes), with real tangents for
+  // the anisotropic highlight along the strands. Each style keeps a solid core under its cards so it reads at game distance.
+  let rs = sp.name.length * 977 + 13;
+  const rnd = () => { rs = (Math.imul(rs, 1664525) + 1013904223) >>> 0; return rs / 4294967296; };
+  const hcC = [0, hc[1] - 0.02 * HS, hc[2]];
+  const ell = (p) => Math.hypot(p[0] / R, (p[1] - hc[1]) / HY, (p[2] - hc[2]) / RZ); // 1 on the skull ellipsoid
+  /** a point on the scalp at ring height t and loft angle a (PI/2 the front), pushed out by o metres, and its outward direction */
+  const scalpPt = (t, a, o = 0) => { const r = headRing(t); const cs = Math.cos(a), sn = Math.sin(a); const p = [r.ru * Math.sign(cs) * Math.pow(Math.abs(cs), 2 / r.e), r.c[1], r.c[2] + r.rv * Math.sign(sn) * Math.pow(Math.abs(sn), 2 / r.e)]; const n = norm(sub(p, hcC)); return [add(p, mul(n, o)), n]; };
+  /** grow a curve from p along dir in seg steps of len/seg, bending by bend(i, p, d); kept off (head units) off the skull */
+  const grow = (p, dir, len, seg, bend, off = 0) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); let q = add(pts[pts.length - 1], mul(d, len / seg)); if (off > 0) { const e = ell(q); if (e < 1 + off) q = add(q, mul(norm(sub(q, hcC)), (1 + off - e) * R)); } pts.push(q); } return pts; };
+  /** q put back onto the scalp `o` metres out (the same height and angle around the head): lying cards follow the head */
+  const onScalp = (q, o) => { const t = Math.max(-0.5, Math.min(0.995, (q[1] - hc[1]) / HY)), r = headRing(t); return scalpPt(t, Math.atan2((q[2] - r.c[2]) / r.rv, q[0] / r.ru), o)[0]; };
+  /** grow a curve that lies on the scalp: each step along the (bent) direction, then back onto the scalp at o metres */
+  const growS = (p, dir, len, seg, bend, o) => { const pts = [p]; let d = norm(dir); for (let i = 0; i < seg; i++) { d = norm(bend(i, pts[pts.length - 1], d)); const q = onScalp(add(pts[pts.length - 1], mul(d, len / seg)), o); d = norm(sub(q, pts[pts.length - 1])); pts.push(q); } return pts; };
+  const crossv = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const dotv = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  // the cards' facing: per triangle, the sign of (face normal . its vertices' normals), summed over every card (checked below)
+  const facing = { out: 0, in: 0 };
+  /** one card along pts: width w0 at the root to w1 at the tip; twist 0 lies flat on the mass, PI/2 stands; o.outAt(i, p) is
+      the outward direction of the mass there (the skull's by default), o.mat the material */
+  const card = (pts, w0, w1, twist, weights, o = {}) => {
+    const verts = [], tris = [], K = pts.length, u0 = o.u0 ?? rnd() * 0.6, uw = o.uw ?? 0.4, mat = o.mat ?? 'hairCard';
+    for (let i = 0; i < K; i++) {
+      const sv = i / (K - 1), tg = norm(sub(pts[Math.min(K - 1, i + 1)], pts[Math.max(0, i - 1)])), out = o.outAt ? o.outAt(i, pts[i]) : norm(sub(pts[i], hcC));
+      const side0 = norm(crossv(tg, out)), up0 = norm(crossv(side0, tg));
+      const side = add(mul(side0, Math.cos(twist)), mul(up0, Math.sin(twist))), w = lerp(w0, w1, Math.pow(sv, 0.8)) * 0.5;
+      const n = norm(add(out, mul(tg, -0.15)));
+      const tn = norm(sub(side, mul(n, dotv(side, n))));
+      for (const k of [-1, 1]) verts.push({ p: add(pts[i], mul(side, k * w)), n, t: [...tn, 1], uv: [u0 + (k > 0 ? uw : 0), sv], w: weights(sv, pts[i]), tag: 'hair' });
+      if (i) { const a = (i - 1) * 2, b = i * 2; tris.push([a, b + 1, b], [a, a + 1, b + 1]); }
+    }
+    // wound so the front face looks the way the normals point (out of the hair mass). A card wound the other way is a back
+    // face from outside: double-sided shading turns its normal inward and the rim and key lights light the hair pale. Which
+    // winding that is depends on the card's twist (a lying card and a standing tuft face different ways), so it is chosen
+    // per card from the sum over its triangles. BRAWLER_CARD_WINDING=inward keeps the opposite choice: the facing check
+    // below must stop it (its control).
+    const fd = ([a, b, c]) => dotv(crossv(sub(verts[b].p, verts[a].p), sub(verts[c].p, verts[a].p)), add(add(verts[a].n, verts[b].n), verts[c].n));
+    if ((tris.reduce((q, t) => q + fd(t), 0) < 0) !== CARD_INWARD) for (const t of tris) [t[1], t[2]] = [t[2], t[1]];
+    for (const t of tris) { const d = fd(t); if (d > 0) facing.out++; else if (d < 0) facing.in++; }
+    m.raw(mat, verts, tris);
+  };
+  const onHead = () => [[BI.Head, 1]];
+  const slick = () => hairCap(m, 'hair', M, hairEdge, { bone: BI.Head, lift: 0.0022, cols: 26, rows: 9 });
+  if (hairCut === 'spiky') { scalp(1.05, 0.004, sp.name.length); clumps(3, 0.085 * HS, 0.03 * HS, 0.6, sp.name.length); }
+  if (hairCut === 'crop' || hairCut === 'long') {
+    scalp(1.04, 0.003, sp.name.length);
+    // short hair combed back: layered lying cards over the crown and the back (none low on the sides: the shell carries those)
+    const n = hairCut === 'crop' ? 120 : 90;
+    for (let i = 0; i < n; i++) {
+      const t = lerp(0.38, 0.97, Math.pow(rnd(), 0.8)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.08) continue; // none below the hairline
+      const [p, nn] = scalpPt(t, a, 0.004 + 0.004 * rnd());
+      const back = [0, hairCut === 'long' ? -0.35 : -0.15, -1];
+      const dir = add(sub(back, mul(nn, dotv(back, nn))), [(rnd() - 0.5) * 0.25, 0, 0]);
+      const len = (hairCut === 'crop' ? 0.04 + 0.03 * rnd() : 0.07 + 0.05 * rnd()) * HS;
+      const pts = growS(p, dir, len, 4, (k, q, d) => d, 0.004 + 0.005 * rnd());
+      card(pts, (hairCut === 'crop' ? 0.034 : 0.044) * HS, 0.014 * HS, 0, onHead);
+    }
+  }
+  if (hairCut === 'long' || sp.longHair) { // a fall of hair down the back to the shoulder blades: a solid core and long cards over it
+    if (hairCut !== 'long') scalp(); // (under a hat: the scalp shows below its edge)
+    const ya = hc[1] + 0.02, yb = yC + 0.06;
+    const rr = ys(yb, ya, 0.03).reverse().map((y, i) => {
+      const t = ss(ya, yb, y), hr = headRing(Math.max(-0.75, (y - hc[1]) / HY), 1.06, 0.006);
+      hr.c = [0, y, hc[2] - 0.035 - 0.05 * t]; hr.ru = Math.max(hr.ru, R * (0.93 + 0.23 * t)); hr.rv = Math.max(hr.rv * 0.9, RZ * 0.68);
+      hr.mod = (a) => 1 + 0.07 * Math.sin(a * 11 + i * 0.3) * t; return hr;
+    });
+    m.loft('hair', rr, { n: 26, arc: [BACK - 1.55, BACK + 1.55], weights: (k, P) => hairW(P), tile: 0.3 });
+    for (let i = 0; i < 80; i++) {
+      const a = BACK + (rnd() * 2 - 1) * 1.45, [p] = hairCut === 'long' ? scalpPt(lerp(0.35, 0.75, rnd()), a, 0.012) : scalpPt(lerp(-0.12, 0.06, rnd()), a, 0.006); // under a hat they start below its edge
+      const out = norm([Math.cos(a), 0, Math.sin(a)]);
+      const pts = grow(p, [out[0] * 0.25, -1, out[2] * 0.25 - 0.15], (0.3 + 0.08 * rnd()) * HL, 8, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.06 - 0.02]));
+      card(pts, 0.05 * HS, 0.025 * HS, 0, (sv, q) => hairW(q), { outAt: (k, q) => norm(add([q[0], 0, q[2] - hc[2]], [0, 0, -0.02])) });
+    }
+  }
+  if (hairCut === 'mohawk') { // shaved sides; a crest of tall stiff tufts along the midline over thin cores, tips raked back
+    const mid = (ang, k) => { const t = Math.max(-0.5, Math.cos(ang)) * k, r = headRing(t); return [0, r.c[1], r.c[2] + Math.sign(Math.sin(ang)) * r.rv * k]; };
+    for (let i = 0; i < 7; i++) {
+      const u = i / 6, ang = lerp(0.55, -1.75, u), dir = norm([0, Math.cos(ang) * 0.9 + 0.1, Math.sin(ang) + 0.15]);
+      const base = mid(ang, 0.94);
+      const h = (0.1 + 0.05 * Math.sin(u * PI)) * HS * 1.15 * (sp.mohawk ?? 1);
+      m.cone('hair', base, add(base, mul(dir, h)), 0.026 * HS, { ratio: 0.4, U: [0, -dir[2], dir[1]], V: X, weights: () => (u > 0.6 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]]), n: 8, bend: [0, -0.01, -0.035] });
+    }
+    for (let i = 0; i < 80; i++) {
+      const u = i / 79, ang = lerp(0.62, -1.7, u), base = add(mid(ang, 0.985), [(rnd() - 0.5) * 0.022 * HS, 0, 0]);
+      const h = (0.11 + 0.07 * Math.sin(u * PI) + 0.03 * rnd()) * HS * 1.15 * (sp.mohawk ?? 1), nn = norm(sub(base, hcC));
+      const dir = add(nn, [(rnd() - 0.5) * 0.25, 0.25, -0.15]);
+      const pts = grow(base, dir, h, 5, (k, q, d) => add(d, [0, -0.02 * k, -0.07 * k]));
+      const w = u > 0.55 ? [[BI.Head, 0.6], [BI.HairA, 0.4]] : [[BI.Head, 1]], tw = rnd() * PI;
+      card(pts, 0.03 * HS, 0.004 * HS, PI / 2 + (rnd() - 0.5) * 0.4, () => w); card(pts, 0.022 * HS, 0.004 * HS, tw, () => w);
+    }
+  }
+  if (hairCut === 'ponytail') { // swept back over the scalp to a tie at the crown, the tail on its spring bones
+    slick();
+    const tie = add(hc, [0, HY * 0.5, -RZ * 1.03]);
+    m.capsule('band', add(tie, [0, 0.008, 0.012]), add(tie, [0, -0.006, -0.01]), 0.02 * HS, 0.02 * HS, { bone: BI.Head, n: 12, caps: 2 });
+    for (let i = 0; i < 110; i++) {
+      const t = lerp(0.3, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97;
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.06) continue;
+      const [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
+      const to = sub(tie, p), L0 = Math.hypot(...to);
+      if (L0 < 0.03) continue;
+      const pts = growS(p, to, L0 * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(tie, q)), 0.35)), 0.002 + 0.003 * rnd());
+      card(pts, 0.042 * HS, 0.036 * HS, 0, onHead);
+    }
+    { const a = add(tie, [0, -0.004, -0.012]), b = add(a, [0, -0.13, -0.085]), c = add(b, [0, -0.2, -0.02]);
+      m.capsule('hair', a, b, 0.028 * HS, 0.042 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
+      m.capsule('hair', b, c, 0.042 * HS, 0.01 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
+    const tw = (sv) => (sv < 0.4 ? [[BI.Head, 1 - sv / 0.4], [BI.HairA, sv / 0.4]] : [[BI.HairA, 1 - (sv - 0.4) / 0.6], [BI.HairB, (sv - 0.4) / 0.6]]);
+    for (let i = 0; i < 44; i++) {
+      const ang = rnd() * PI * 2, rr2 = 0.012 * Math.sqrt(rnd()), p = add(tie, [Math.cos(ang) * rr2, Math.sin(ang) * rr2 * 0.6, -0.008]);
+      const len = (0.28 + 0.14 * rnd()) * HL, spread = [Math.cos(ang) * 0.1, 0.1, Math.sin(ang) * 0.08 - 0.5];
+      const pts = grow(p, add([0, 0.25, -1], spread), len, 9, (k, q, d) => add(d, [Math.cos(ang) * 0.04 * (k < 4 ? 1 : -1.2), -0.32, 0.02]));
+      card(pts, 0.048 * HS, 0.014 * HS, ang, (sv) => tw(sv), { outAt: () => norm([Math.cos(ang) * 0.3, 0.35, 0.9]) });
+    }
+  }
+  if (hairCut === 'bun') { // pulled tight up the head to a bun on the crown, wisps left at the nape
+    slick();
+    const bun = add(hc, [0, HY * 1.02, -RZ * 0.42]);
+    m.ellipsoid('hair', bun, 0.058 * HS, 0.05 * HS, 0.058 * HS, { bone: BI.Head, steps: 7, n: 18, e: 2.1, tile: 0.2, mod: (a) => 1 + 0.05 * Math.sin(a * 5) });
+    for (let i = 0; i < 110; i++) { // strands drawn up over the scalp to the bun
+      const t = lerp(0.3, 0.98, Math.pow(rnd(), 0.7)), a = PI / 2 + (rnd() * 2 - 1) * PI * 0.97, [p] = scalpPt(t, a, 0.0012 + 0.003 * rnd());
+      if (t < hairEdge(((a % (2 * PI)) + 2 * PI) % (2 * PI)) + 0.06) continue;
+      const to = sub(bun, p), L0 = Math.hypot(...to);
+      if (L0 < 0.05) continue;
+      const pts = growS(p, to, (L0 - 0.03) * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(bun, q)), 0.35)), 0.002 + 0.003 * rnd());
+      card(pts, 0.038 * HS, 0.03 * HS, 0, onHead);
+    }
+    for (let i = 0; i < 60; i++) { // wound round the bun
+      const a0 = rnd() * PI * 2, y0 = (rnd() - 0.5) * 0.06 * HS, rr2 = Math.sqrt(Math.max(0.05, 1 - (y0 / (0.05 * HS)) ** 2)) * 0.06 * HS, pts = [];
+      for (let k = 0; k <= 7; k++) { const an = a0 + k * 0.38; pts.push(add(bun, [Math.cos(an) * rr2, y0 + k * 0.0015, Math.sin(an) * rr2])); }
+      card(pts, 0.022 * HS, 0.012 * HS, 0, onHead, { outAt: (k, q) => norm(sub(q, bun)) });
+    }
+    for (let i = 0; i < 26; i++) { // wisps at the nape
+      const a = BACK + (rnd() * 2 - 1) * 1.0, [p, nn] = scalpPt(lerp(-0.42, -0.25, rnd()), a, 0.004);
+      const pts = growS(p, sub([0, -1, -0.1], mul(nn, dotv([0, -1, -0.1], nn))), (0.03 + 0.03 * rnd()) * HS, 3, (k, q, d) => d, 0.004);
+      card(pts, 0.012 * HS, 0.004 * HS, 0, onHead);
+    }
+  }
+  if (hairCut === 'pompadour') {
+    // a 1950s pompadour (research in findings/brawler.md B-PT11) as one combed surface (pompadour.mjs), not a stack of lofts
+    // and cards: a roll standing off the forehead and leaning past the brow, lying back over the crown, the sides slick and
+    // flat, the hairline ending in strands (alpha). The furrows and strands run along its comb lines, and the tangent runs
+    // across them, so the pomade's highlight lies across the comb lines as on real slicked hair.
+    const NU = 42, NV = 32, HK = HS * 1.05, P = [], out = (s, u, lift = 0) => {
+      const d = pompDir(s, u), [t, a] = pompTA(d), [q, nn] = scalpPt(Math.max(-0.95, Math.min(0.995, t)), a, 0);
+      const e = pompEdge(a), rise = ss(e, e + 0.1, t); // sinks under the skin past the hairline
+      return add(q, mul(nn, (0.0025 + pompHeight(s, u) * HK) * rise - 0.012 * ss(e, e - 0.1, t) + lift));
+    };
+    for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) P.push(out(j / NV * 2 - 1, i / NU));
+    const at = (i, j) => P[Math.min(NU, Math.max(0, i)) * (NV + 1) + Math.min(NV, Math.max(0, j))];
+    const verts = [], tris = [];
+    for (let i = 0; i <= NU; i++) for (let j = 0; j <= NV; j++) {
+      const du = sub(at(i + 1, j), at(i - 1, j)), ds = sub(at(i, j + 1), at(i, j - 1));
+      let n = norm(crossv(ds, du)); if (dotv(n, sub(at(i, j), hcC)) < 0) n = mul(n, -1);
+      const tn = norm(sub(ds, mul(n, dotv(ds, n))));
+      verts.push({ p: at(i, j), n, t: [...tn, 1], uv: [j / NV, i / NU], w: [[BI.Head, 1]], tag: 'hair' });
+    }
+    for (let i = 0; i < NU; i++) for (let j = 0; j < NV; j++) {
+      const a = i * (NV + 1) + j, b = a + 1, c = a + NV + 1, d = c + 1, fn = crossv(sub(P[b], P[a]), sub(P[c], P[a]));
+      if (dotv(fn, verts[a].n) > 0) tris.push([a, b, c], [b, d, c]); else tris.push([a, c, b], [b, c, d]);
+    }
+    m.raw('pomadeShell', verts, tris);
+    const pc = { mat: 'pomadeCard' };
+    // the duck tail: the two sides meet in a seam down the back of the head, tips pointing down and in
+    for (let i = 0; i < 110; i++) {
+      const sd = i & 1 ? 1 : -1, t = lerp(-0.42, 0.3, rnd()), [p, nn] = scalpPt(t, BACK + sd * lerp(0.15, 0.95, rnd()), 0.012);
+      const dir = sub([-sd * 0.85, -0.45, -0.25], mul(nn, dotv([-sd * 0.85, -0.45, -0.25], nn)));
+      const pts = growS(p, dir, (0.07 + 0.04 * rnd()) * HS, 5, (k, q, d) => d, 0.013 + 0.003 * rnd());
+      card(pts, 0.035 * HS, 0.012 * HS, 0, onHead, pc);
+    }
+    // the front curl: a few strands slipping off the front of the roll and curling down over the forehead
+    for (let i = 0; i < 6; i++) {
+      const s = 0.1 + (rnd() - 0.5) * 0.1, u0 = lerp(0.03, 0.05, rnd()), steps = 7, rad = (0.008 + 0.004 * rnd()) * HS;
+      const p0 = out(s, u0, -0.002), o0 = norm(sub(p0, hcC));
+      const pts = []; for (let k = 0; k <= steps; k++) { const a = (k / steps) * PI * 1.15; pts.push(add(p0, [0.004 * k * (s > 0.08 ? 1 : -1), rad * (Math.cos(a) - 1) * 1.3, rad * Math.sin(a) * 0.9 + 0.003])); }
+      card(pts, 0.022 * HS, 0.007 * HS, 0, onHead, { ...pc, outAt: (k) => norm(add(o0, [0, -0.3 * k / steps, 0.6 * k / steps])) });
+    }
+  }
+  if (facing.out + facing.in > 0) {
+    // most card triangles must face the way their normals point (standing cards sit edge on to the normal, so not all)
+    console.log(`${sp.name}: hair cards face out ${facing.out}, in ${facing.in}`);
+    if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in): double-sided shading would light them from inside`);
+  }
+  if (hairCut === 'beanie') {
+    const sl = (r) => { const k = ss(0.4, 1.05, (r.c[1] - hc[1]) / HY) * (sp.slouch ?? 0), back = 0.07 * k * HS, tiny = r.ru < 0.002; return { ...r, c: [0, r.c[1] + 0.008 * k, r.c[2] - back], ru: tiny ? r.ru : r.ru * (1 + 0.05 * k), rv: tiny ? r.rv : r.rv + back }; }; // the front stays on the brow, the crown grows back
+    // a slouch beanie: the crown sags back off the head (sp.slouch), it is pulled down over the back of the head and sits
+    // on the forehead in front (its rings tilt back), a turned-up cuff
+    const tilt = sp.slouch ? 0.42 : 0, t0 = sp.slouch ? 0.22 : 0.34;
+    const tl = (r, t) => { const th = tilt * (1 - ss(0.45, 1.0, t)); return { ...r, V: [0, Math.sin(th), Math.cos(th)] }; };
+    m.loft('hat', shell(t0, 1.0, 1.04, 0.007, 14, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }).map((r, i, A) => tl(sl(r), t0 + (1 - t0) * Math.min(1, i / (A.length - 2)))), { n: 40, bone: BI.Head, tile: 0.25 });
+    m.loft('hat', [[t0 - 0.06, 1.03, 0.005], [t0 - 0.03, 1.05, 0.01], [t0 + 0.12, 1.05, 0.01], [t0 + 0.16, 1.04, 0.006]].map(([t, k, ad]) => tl(headRing(t, k, ad), t)), { n: 40, bone: BI.Head, tile: 0.25 });
+  }
+  if (hairCut === 'cap' || hairCut === 'capback') {
+    scalp(1.05, 0.004, 5);
+    m.loft('hat', shell(0.34, 1.0, 1.035, 0.006, 11), { n: 36, bone: BI.Head, tile: 0.25 });
+    const fwd = hairCut === 'cap' ? 1 : -1, y = hc[1] + HY * 0.38;
+    m.ellipsoid('hat', [0, y, hc[2] + fwd * RZ * 1.2], 0.085 * HS, 0.007, 0.08 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4 });
+  }
+  if (hairCut === 'foamcap') { // a foam-front cap pushed back on a mullet: the foam front stands tall with the letters on it
+    scalp(1.05, 0.004, 5);
+    const t0 = 0.44, steps = 12, front = { mod: (t) => (a) => 1 + 0.07 * gauss(wrapA(a - FRONT), 0.55) * ss(0.32, 0.7, t) };
+    // u once round the head (the front at 0.5, decreasing with the loft angle so the words read left to right from
+    // outside), v from the top of the crown (0) down to the band (1): the layout cap_logo is drawn for
+    m.loft('capLogo', shell(t0, 1.0, 1.035, 0.006, steps, front), { n: 48, bone: BI.Head, uvFn: (p, k, j, n, a) => [0.75 - a / (PI * 2), 0.55 - (0.32 + ((p[1] - hc[1]) / HY - t0) * (0.68 / (1 - t0)) - 0.57) * 0.9] }); // the crown's height, top to band, is the logo's layout
+    // the brim stands at the top of the forehead and tips up, so both eyes show from the street camera, which looks down on him
+    const y = hc[1] + HY * 0.45;
+    m.ellipsoid('capLogo', [0, y + 0.006 * HS, hc[2] + RZ * 1.2], 0.088 * HS, 0.007, 0.08 * HS, { bone: BI.Head, steps: 4, n: 18, e: 2.4, axis: norm([0, 1, -0.2]), U: X, V: norm([0, 0.2, 1]), uvFn: (p) => [0.02 + 0.3 * (p[0] + 0.12), 0.3 + 0.3 * (p[2] - hc[2])] });
+    // the mullet: business under the cap, a fall to the collar at the back over a solid core
+    const ya = hc[1] - 0.01, yb = yN + 0.035;
+    const rr = ys(yb, ya, 0.025).reverse().map((yy, i) => {
+      const tt = ss(ya, yb, yy), hr = headRing(Math.max(-0.75, (yy - hc[1]) / HY), 1.06, 0.006);
+      hr.c = [0, yy, hc[2] - 0.03 - 0.035 * tt]; hr.ru = Math.max(hr.ru, R * (0.9 + 0.12 * tt)); hr.rv = Math.max(hr.rv * 0.9, RZ * 0.66);
+      hr.mod = (a) => 1 + 0.08 * Math.sin(a * 9 + i * 0.4) * tt; return hr;
+    });
+    m.loft('hair', rr, { n: 22, arc: [BACK - 1.35, BACK + 1.35], weights: (k, P) => hairW(P), tile: 0.3 });
+    for (let i = 0; i < 70; i++) {
+      const a = BACK + (rnd() * 2 - 1) * 1.25, [p] = scalpPt(lerp(0.05, 0.3, rnd()), a, 0.012);
+      const out = norm([Math.cos(a), 0, Math.sin(a)]);
+      const pts = grow(p, [out[0] * 0.2, -1, out[2] * 0.3 - 0.1], (0.15 + 0.05 * rnd()) * HL, 6, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.07 - 0.01]));
+      card(pts, 0.05 * HS, 0.03 * HS, 0, (sv, q) => hairW(q), { outAt: (k, q) => norm(add([q[0], 0, q[2] - hc[2]], [0, 0, -0.02])) });
+    }
+    // these cards come after the facing check above: the same rule, here
+    console.log(`${sp.name}: hair cards face out ${facing.out}, in ${facing.in}`);
+    if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in)`);
+  }
+  if (hairCut === 'fedora') { // a sweat-stained fedora; under it a bald pate and a thin slicked fringe of hair at the sides
+    m.loft('hair', shell(-0.45, 0.3, 1.02, 0.002, 8, { mod: tuft(4, 0.04) }), { n: 22, arc: [BACK - 1.6, BACK + 1.6], bone: BI.Head, tile: 0.25 });
+    const tb = 0.4, rb = headRing(tb), y0 = hc[1] + HY * tb, cz = rb.c[2], R0 = rb.ru, Z0 = rb.rv, pinch = (a) => 1 - 0.1 * Math.pow(Math.max(0, Math.sin(a)), 4);
+    m.loft('hat', [[0, 0.002, 0.002], [0, 1.05, 1.05], [0.08, 1.04, 1.04], [0.14, 0.98, 0.99], [0.16, 0.8, 0.82], [0.165, 0.002, 0.002]].map(([dy, k, kk], i) => ({ c: [0, y0 + dy * HS, cz], U: X, V: Z, ru: R0 * k, rv: Z0 * kk, e: 2.3, mod: i >= 3 ? pinch : null })), { n: 32, bone: BI.Head, tile: 0.3 });
+    m.loft('band', [{ c: [0, y0 + 0.012 * HS, cz], U: X, V: Z, ru: R0 * 1.06, rv: Z0 * 1.06 }, { c: [0, y0 + 0.036 * HS, cz], U: X, V: Z, ru: R0 * 1.055, rv: Z0 * 1.055 }], { n: 32, bone: BI.Head, tile: 0.3 });
+    m.ellipsoid('hat', [0, y0 + 0.004, cz], R0 * 1.55, 0.008, Z0 * 1.42, { bone: BI.Head, steps: 4, n: 28, e: 2.2, mod: (a) => 1 + 0.06 * Math.sin(a) });
+  }
+  if (hairCut === 'tophat') {
+    scalp(1.05, 0.004, 7);
+    const tb = 0.42, rb = headRing(tb), y0 = hc[1] + HY * tb, cz = rb.c[2], R0 = rb.ru, Z0 = rb.rv;
+    m.loft('hat', [[0, 0.002, 0.002], [0, 1.04, 1.04], [0.02, 1.04, 1.04], [0.24, 0.99, 0.99], [0.27, 1.04, 1.04], [0.275, 0.94, 0.94], [0.276, 0.002, 0.002]].map(([dy, k, kk]) => ({ c: [0, y0 + dy * HS, cz], U: X, V: Z, ru: R0 * k, rv: Z0 * kk, e: 2.2 })), { n: 32, bone: BI.Head, tile: 0.3 });
+    m.loft('band', [{ c: [0, y0 + 0.025 * HS, cz], U: X, V: Z, ru: R0 * 1.05, rv: Z0 * 1.05 }, { c: [0, y0 + 0.06 * HS, cz], U: X, V: Z, ru: R0 * 1.045, rv: Z0 * 1.045 }], { n: 32, bone: BI.Head, tile: 0.3 });
+    m.ellipsoid('hat', [0, y0 + 0.004, cz], R0 * 1.55, 0.008, Z0 * 1.42, { bone: BI.Head, steps: 4, n: 28, e: 2.2 });
+  }
+  if (hairCut === 'hardhat' || hairCut === 'helmet') {
+    if (hairCut === 'hardhat') scalp(1.04, 0.003, 9);
+    const hmod = { mod: (t) => (a) => 1 + 0.035 * gauss(wrapA(a - FRONT), 0.18) * ss(0.2, 0.7, t) };
+    if (hairCut === 'hardhat') m.loft('helmet', shell(0.28, 1.0, 1.1, 0.012, 11, hmod), { n: 36, bone: BI.Head, tile: 0.3 });
+    else { // an open-faced riot helmet: the crown, then sides and back that leave the face clear
+      m.loft('helmet', shell(0.42, 1.0, 1.1, 0.012, 9, hmod), { n: 36, bone: BI.Head, tile: 0.3 });
+      m.loft('helmet', shell(-0.42, 0.44, 1.1, 0.012, 7), { n: 26, arc: [FRONT + 1.02, FRONT - 1.02 + PI * 2], bone: BI.Head, tile: 0.3 });
+    }
+    if (hairCut === 'hardhat') m.ellipsoid('helmet', [0, hc[1] + HY * 0.3, hc[2] + 0.005], R * 1.34, 0.008, RZ * 1.3, { bone: BI.Head, steps: 4, n: 28, e: 2.3, mod: (a) => 1 + 0.25 * Math.pow(Math.max(0, Math.sin(a)), 3) });
+    if (hairCut === 'helmet') { // a visor bar and cheek guards
+      m.loft('helmet', [headRing(0.4, 1.1, 0.012), headRing(0.44, 1.14, 0.02), headRing(0.52, 1.14, 0.02), headRing(0.56, 1.1, 0.012)], { n: 24, arc: [FRONT - 1.05, FRONT + 1.05], bone: BI.Head, tile: 0.3 });
+      m.loft('glow', [headRing(0.46, 1.146, 0.021), headRing(0.5, 1.146, 0.021)], { n: 24, arc: [FRONT - 0.8, FRONT + 0.8], bone: BI.Head, tile: 0.3 });
+      for (const sd of [1, -1]) m.ellipsoid('helmet', [sd * R * 1.04, hc[1] - 0.05 * HS, hc[2] - 0.015], 0.025 * HS, 0.06 * HS, 0.06 * HS, { bone: BI.Head, steps: 5, n: 12 });
+    }
+  }
+  if (sp.hood === 'up') {
+    // the hood up: roomy over the head, peaked a little at the back, open round the face from the chin to the brow, its
+    // sides meeting in a V at the throat; it rides on the head and hands over to the neck and chest below the jaw.
+    // Drawn double sided (its inside shows round the face), mapped to the plain patch of the shirt texture.
+    const addH = 0.042 * HS, yB = yN - 0.012, yChin = hc[1] - HY * 0.92, tB = (yB - hc[1]) / HY;
+    const openW = curve([[tB, 0.42], [-1.0, 0.75], [-0.7, 0.98], [0.15, 1.02], [0.45, 0.8], [0.68, 0.0], [1.2, 0.0]]);
+    const lower = ys(yB, yChin - 0.01, 0.02).map((y) => {
+      const u = ss(yB, yChin, y), a = ringAt(yB, 1.08, 1.08, 0.026), b = headRing(-0.92, 1, addH);
+      return { c: [0, y, lerp(a.c[2], b.c[2] - 0.02, u)], U: X, V: Z, ru: Math.max(lerp(a.ru, b.ru, u), NECKR * 1.55 + 0.035), rv: Math.max(lerp(a.rv, b.rv + 0.02, u), NECKR * 1.35 + 0.035), e: 2.3 };
+    });
+    const upper = shell(-0.9, 1.0, 1.0, addH, 13).map((r) => {
+      const t = (r.c[1] - hc[1]) / HY, back = ss(0.2, 1.05, t);
+      return { ...r, c: [0, r.c[1], r.c[2] - 0.018 - 0.035 * back], rv: r.rv + 0.016, mod: (a) => 1 + 0.07 * Math.cos(a) ** 2 * (1 - back) };
+    });
+    const rr = [...lower, ...upper], yT = rr[rr.length - 1].c[1];
+    for (const r of rr) { const w = openW((r.c[1] - hc[1]) / HY); r.arc = [FRONT + w, FRONT - w + 2 * PI]; }
+    m.loft('hood', rr, { n: 34, arc: [FRONT, FRONT + 2 * PI], weights: (k, P) => { const t2 = ss(yN + 0.02, yChin + 0.04, P[1]); return t2 >= 1 ? [[BI.Head, 1]] : [[BI.Head, t2], [BI.Neck, (1 - t2) * 0.4], [BI.Chest, (1 - t2) * 0.6]]; },
+      uvFn: (p, k, j, n) => [j / n, 0.925 + 0.07 * cl01((p[1] - yB) / (yT - yB))] });
+    // the drawstrings out of the V
+    for (const sx of [0.03, -0.03]) { const on = (y) => { const p = prof(y); return [sx, y, p[3] + p[2] * bd * 1.12 + 0.02 + fit * 0.6]; }; const y0 = yN - 0.01, y1 = ySh - 0.07, y2 = yC - 0.03; m.capsule('band', on(y0), on(y1), 0.004, 0.004, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 1 }); m.capsule('band', on(y1), on(y2), 0.004, 0.0055, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 2 }); }
+  }
+  if (hairCut === 'buzz') scalp();
+  if (sp.headband) m.loft('band', [-0.014, 0.014].map((dy) => headRing(0.66 + dy / HY, 1.04, 0.009)), { n: 32, bone: BI.Head, tile: 0.3 });
+  if (sp.headband) { const a = add(hc, [0, HY * 0.66, -RZ * 0.95]); m.capsule('band', a, add(a, [0.03, -0.14, -0.05]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); m.capsule('band', a, add(a, [-0.04, -0.12, -0.04]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); }
+
+  // ── arms: deltoid, biceps and triceps, elbow, forearm, wrist; sleeves are a layer over them ──
+  const armR = 0.05 * AR * (0.8 + 0.2 * W);
+  const sleeve = sp.sleeves ?? (top === 'longsleeve' || top === 'hoodie' ? 'long' : top === 'tee' ? 'short' : 'none');
+  const outerSleeve = outer && (sp.outerKind ?? 'jacket') !== 'vest' && sp.outerKind !== 'hivis';
+  const armRad = (y) => { // [radius side to side, radius front to back]
+    const top0 = ySh + 0.045, d = (top0 - y);
+    const k = lerp(0.6, 1.1, ss(0, 0.07, d)) // the shoulder cap: the arm comes out of the shoulder, no puff
+      + 0.1 * gauss(y - (ySh - 0.06), 0.05) // deltoid
+      + lerp(0, -0.2, ss(ySh - 0.02, yEl + 0.02, y)) // down to the elbow
+      + 0.13 * gauss(y - (yEl - 0.07), 0.05) // forearm
+      - 0.3 * ss(yEl - 0.07, yWr + 0.01, y); // the wrist
+    return [armR * k * 1.05, armR * k];
+  };
+  const armMod = (y) => (a) => 1 + 0.1 * gauss(y - (ySh - 0.13), 0.05) * gauss(wrapA(a - FRONT), 0.6) + 0.06 * gauss(y - (ySh - 0.12), 0.06) * gauss(wrapA(a - BACK), 0.8);
+  for (const sx of [1, -1]) {
+    const ax = sx * sw; const sd = sx > 0 ? 'L' : 'R';
+    const ringA = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = armRad(y); return { c: [ax + sx * 0.008 * gauss(y - ySh, 0.05), y, 0.004], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.15, mod: fl ? (a) => armMod(y)(a) + folds(y, a, fl) : armMod(y) }; };
+    const yTop = ySh + (cutoff ? 0.0 : 0.02), yWristEnd = yWr - 0.005; // a cut-off shirt keeps the cloth over the top of the shoulder
+    const sleeveEnd = outerSleeve || sleeve === 'long' ? yWr + 0.03 : sleeve === 'short' ? ySh - (sp.sleeveLen ?? 0.15) : yTop;
+    const sFolds = [[yEl + 0.04, 0.05, 0.012, BACK, 0.9], [yEl - 0.0, 0.045, 0.012, FRONT, 0.6], [yEl - 0.035, 0.04, 0.012, BACK, 0.9], [yEl + 0.08, 0.03, 0.014, null], [yWr + 0.06, 0.035, 0.012, null]];
+    const skinY = ys(yWristEnd, Math.min(yTop, sleeveEnd + 0.02), 0.02).reverse();
+    const dome = (k, add) => [{ ...ringA(yTop + 0.02, 0.1, add * 0.3), mod: null, c: [ax - sx * 0.022, yTop + 0.02, 0.0] }, { ...ringA(yTop + 0.012, 0.8 * k, add * 0.7), mod: null, c: [ax - sx * 0.01, yTop + 0.012, 0.002] }];
+    if (skinY.length > 1) m.loft('skin', [...(sleeveEnd >= yTop ? dome(1, 0) : []), ...skinY.map((y) => ringA(y))], { n: 20, weights: (k, P) => armW(P, sd), tile: 0.3 });
+    if (cutoff) { // where the sleeve was cut off: a rough lip of the shirt round the arm hole, frayed by hand, nothing over the top of the shoulder
+      const inA = sx > 0 ? PI : 0, l0 = m.lod, yy = ys(ySh - 0.08, ySh + 0.012, 0.0065).reverse(); m.lod = 1;
+      m.loft(shirtMat, yy.map((y, i) => { const t = (y - (ySh - 0.08)) / 0.092, w = (0.3 + 1.35 * Math.pow(Math.max(0, Math.sin(t * PI)), 0.8)) + 0.2 * (noise1(i * 1.7, 31 + sx) - 0.5) + 0.12 * (noise1(i * 4.1, 37 + sx) - 0.5), r = ringA(y, 1.03, 0.006); return { ...r, arc: [inA - w, inA + w] }; }), { n: 8, arc: [inA - 1.6, inA + 1.6], weights: (k, P) => armW(P, sd), tile: shirtTile });
+      m.lod = l0;
+    }
+    if (sleeveEnd < yTop) {
+      const mat = outerSleeve ? 'outer' : shirtMat, th0 = outerSleeve ? 0.018 : 0.007;
+      // a loose sleeve: roomy down the arm; a short one flares a little at its opening, a long one gathers into a rib cuff
+      const th = (y) => (!fit || outerSleeve ? th0 : sleeve === 'long' ? lerp(0.006, fit * 0.85, ss(sleeveEnd + 0.02, sleeveEnd + 0.08, y)) : fit * 0.6 + 0.014 * ss(yTop - 0.04, sleeveEnd, y));
+      const yy = ys(sleeveEnd, yTop, 0.018).reverse();
+      const rr = [...dome(1.03, th(yTop)), ...yy.map((y) => ringA(y, 1.03, th(y), sFolds))];
+      rr.push({ ...ringA(sleeveEnd, 1.04, th(sleeveEnd) + 0.003), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
+      const sl = yTop - sleeveEnd;
+      if (sx > 0) Object.assign(dims.shirt, { SC: 2 * PI * (armRad(ySh - 0.1)[0] + th(ySh - 0.1)), SH: sl, elbow: (yTop - yEl) / sl, long: sleeve === 'long' });
+      // u once round the arm (mirrored on the right, so the inside of both arms is u 0.5), v 0.62..0.9 down the sleeve
+      m.loft(mat, rr, { n: 22, weights: (k, P) => armW(P, sd), ...(outerSleeve ? { tile: 0.4 } : { uvFn: (p, k, j, n) => [sx > 0 ? j / n : 0.5 - j / n, 0.62 + 0.28 * cl01((yTop - p[1]) / sl)] }) });
+      if (outerSleeve && sleeve !== 'long') { /* the jacket hides the shirt sleeve */ }
+    }
+    if (sp.pads) m.ellipsoid(sp.padMat ?? 'pad', [ax + sx * 0.035, ySh + 0.04, 0], 0.085 * (0.8 + 0.2 * W), 0.05, 0.095 * (0.8 + 0.2 * W), { weights: () => [[BI.Chest, 0.4], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.6]], steps: 6, n: 16, e: 2.4 });
+    if (sp.spikes) for (let i = 0; i < 3; i++) { const base = [ax + sx * (0.05 + 0.02 * i), ySh + 0.08 - 0.012 * i, -0.04 + 0.04 * i]; m.cone('buckle', base, add(base, [sx * 0.03, 0.05, 0]), 0.012, { weights: () => [[BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 1]], n: 6 }); }
+    if (sp.bracers) m.loft('metal', ys(yWr + 0.02, yEl - 0.04, 0.02).reverse().map((y) => ringA(y, 1.12, 0.012)), { n: 18, weights: (k, P) => armW(P, sd), tile: 0.3 });
+    if (sp.wristband) m.loft('band', [ringA(yWr + 0.05, 1.12, 0.008), ringA(yWr + 0.015, 1.12, 0.008)], { n: 16, weights: (k, P) => armW(P, sd), tile: 0.3 });
+    // the hand: a palm, four fingers in two segments (FingX1 curls them at the knuckles, FingX2 at the middle joints), a
+    // thumb on its own bone; the clips pose them open, as fists or gripping
+    const hg = handGeom(sp, sx, world), s = hg.s, hm = sp.gloves ? 'glove' : 'skin';
+    const H = BI['Hand' + sd], F1 = BI['Fing' + sd + '1'], F2 = BI['Fing' + sd + '2'], TH = BI['Thumb' + sd], LA = BI['LowerArm' + sd];
+    const { hx, hy } = hg, ky = hg.k1[1], kx = hg.k1[0];
+    const palm = ys(ky + 0.006 * s, hy + 0.005, 0.01).reverse().map((y) => { const t = ss(hy, ky, y); return { c: [hx - sx * 0.002 * s * t, y, 0.004 * s], U: X, V: Z, ru: 0.021 * s * (1 - 0.1 * t), rv: 0.044 * s * (1 + 0.1 * gauss(t - 0.7, 0.3)), e: 3.0, mod: (a) => 1 + 0.12 * gauss(wrapA(a - (sx > 0 ? PI : 0)), 0.5) * gauss(t - 0.45, 0.3) }; });
+    palm.push({ c: [kx, ky - 0.004 * s, 0.004 * s], U: X, V: Z, ru: 0.012 * s, rv: 0.036 * s, e: 3 });
+    m.loft(hm, palm, { n: 18, weights: (k, P) => (P[1] > hy - 0.01 ? [[H, 0.7], [LA, 0.3]] : [[H, 1]]), tile: 0.2 });
+    const FL = [[0.04, 1.0, 0.052], [0.014, 1.04, 0.058], [-0.012, 0.98, 0.054], [-0.036, 0.86, 0.042]]; // z, thickness, distal length
+    for (const [fz, th, l2] of FL) {
+      const z = fz * s, r = 0.0122 * s * th, K = [kx, ky + 0.006 * s, z], J = [kx, hg.k2[1], z], T = [kx - sx * 0.003 * s, hg.k2[1] - l2 * s, z];
+      m.capsule(hm, K, J, r * 1.05, r, { n: 10, caps: 1, rings: 2, weights: (t) => (t < 0.25 ? [[H, 0.5 - 2 * t], [F1, 0.5 + 2 * t]] : t > 0.85 ? [[F1, 1 - (t - 0.85) * 3.3], [F2, (t - 0.85) * 3.3]] : [[F1, 1]]) });
+      m.capsule(hm, J, T, r * 0.98, r * 0.82, { n: 10, caps: 2, rings: 2, weights: (t) => (t < 0.15 ? [[F1, 0.5 - 3.3 * t], [F2, 0.5 + 3.3 * t]] : [[F2, 1]]) });
+      if (!sp.gloves) m.ellipsoid('nail', add(T, [sx * r * 0.72, 0.009 * s, 0]), 0.0035 * s, 0.01 * s, r * 0.72, { bone: F2, steps: 3, n: 6, e: 3 }); // a nail on the back of the tip
+    }
+    const tb = hg.tb, dT = norm([-sx * 0.3, -0.75, 0.6]), tm = add(tb, mul(dT, 0.036 * s)), tt = add(tm, mul(norm([-sx * 0.25, -0.85, 0.45]), 0.036 * s));
+    m.capsule(hm, tb, tm, 0.017 * s, 0.014 * s, { n: 10, caps: 2, rings: 3, weights: (t) => [[H, 0.6 * (1 - t)], [TH, 0.4 + 0.6 * t]] });
+    m.capsule(hm, tm, tt, 0.0135 * s, 0.011 * s, { n: 10, caps: 2, rings: 3, bone: TH });
+  }
+
+  // ── legs: thigh, knee, calf, ankle; trousers are a layer over them ──
+  const legR = 0.078 * LG * (0.8 + 0.2 * W);
+  const legRad = (y) => {
+    const k = 1.1 + 0.1 * gauss(y - (yHip - 0.1), 0.09) - 0.46 * ss(yHip - 0.06, yKn + 0.03, y) // thigh to knee
+      + 0.2 * gauss(y - (yKn - 0.13), 0.075) // calf
+      - 0.3 * ss(yKn - 0.12, yAn + 0.07, y); // ankle
+    const thin = bottom === 'briefs' ? 1 - 0.1 * ss(yHip - 0.05, yKn, y) - 0.1 * ss(yKn, yKn - 0.1, y) : 1; // bare legs: spindly, the shins thinnest
+    return [legR * k * thin, legR * k * 1.04 * thin];
+  };
+  const legMod = (y, sx) => (a) => 1 + 0.08 * gauss(y - (yHip - 0.16), 0.08) * gauss(wrapA(a - (FRONT - sx * 0.4)), 0.7) + 0.16 * gauss(y - (yKn - 0.13), 0.07) * gauss(wrapA(a - BACK), 0.8) + 0.08 * gauss(y - yKn, 0.03) * gauss(wrapA(a - FRONT), 0.5) + 0.04 * gauss(y - (yHip - 0.12), 0.1) * gauss(wrapA(a - (sx > 0 ? 0 : PI)), 0.6);
+  const pantsEnd = sp.cuffs ? yAn + 0.11 : bottom === 'briefs' ? yHip - 0.05 : bottom === 'shorts' ? yKn + (sp.shortsEnd ?? 0.1) : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + (sp.hemAt ?? 0.075);
+  const longPants = pantsEnd < yKn, loose = sp.legLoose ?? (bottom === 'cargo' ? 0.02 : bottom === 'tight' || bottom === 'briefs' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02);
+  for (const sx of [1, -1]) {
+    const lx = sx * hw; const sd = sx > 0 ? 'L' : 'R';
+    const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); return { c: [lx, y, 0.0], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.1, mod: fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx) }; };
+    const yTop = yHip + 0.07;
+    const pFolds = [[yKn + 0.05, 0.05, 0.014, BACK, 0.8], [yKn - 0.01, 0.04, 0.012, BACK, 0.8], [yKn + 0.02, 0.035, 0.014, FRONT, 0.5], [yHip - 0.06, 0.03, 0.015, FRONT + sx * 0.5, 0.5],
+      [pantsEnd + 0.05, 0.05, 0.012, null], [pantsEnd + 0.1, 0.04, 0.012, null], [pantsEnd + 0.16, 0.03, 0.015, FRONT, 1]];
+    if (bottom === 'cargo') pFolds.push([yHip - 0.25, 0.06, 0.045, sx > 0 ? 0 : PI, 0.45]); // side pockets
+    if (pantsEnd > yAn + 0.03) m.loft(bottom === 'briefs' ? 'legs' : 'skin', ys(yAn + 0.02, pantsEnd + (bottom === 'briefs' ? 0.1 : 0.02), 0.025).reverse().map((y) => ringL(y)), { n: 20, weights: (k, P) => legW(P, sd), tile: 0.3 });
+    const hangs = bottom === 'jeans' || bottom === 'cargo' || bottom === 'joggers', kneeR = legRad(yKn)[0];
+    // a loose leg: shorts flare a little to a wide opening; long legs break over the shoe (the hem rides up over the instep and the cloth stacks above it)
+    const flare = (y) => (bottom === 'shorts' && fit ? 0.016 * ss(yTop - 0.12, pantsEnd, y) : 0), brk = (y) => (longPants && fit ? ss(pantsEnd + 0.13, pantsEnd, y) : 0);
+    const breakAt = (r, y) => { const b = brk(y); if (b <= 0) return r; const m0 = r.mod; return { ...r, mod: (a) => (m0 ? m0(a) : 1) + 0.03 * b * Math.sin(a * 5 + y * 90 + sx), dy: (a) => 0.032 * b * Math.max(0, Math.sin(a)) }; };
+    const rr = ys(pantsEnd, yTop, 0.022).reverse().map((y) => { const r = ringL(y, 1.05, loose + flare(y) + 0.01 * ss(yKn, yAn, y) * (bottom === 'jeans' ? 1 : 0), bottom === 'none' ? null : pFolds); if (hangs && y < yKn) { r.ru = Math.max(r.ru, lerp(kneeR * 1.06 + loose, kneeR * 1.1 + loose, ss(yKn, yAn, y))); r.rv = Math.max(r.rv, lerp(kneeR * 1.08 + loose, kneeR * 1.16 + loose, ss(yKn, yAn, y))); } return breakAt(r, y); });
+    rr.push(breakAt({ ...ringL(pantsEnd, 1.08, loose + flare(pantsEnd) + 0.006), c: [lx, pantsEnd - 0.006, 0] }, pantsEnd));
+    const LH = yTop - pantsEnd + 0.006;
+    if (sx > 0) Object.assign(dims.pants, { LC: 2 * PI * (legRad(yHip - 0.15)[0] * 1.05 + loose), LH, knee: (yTop - yKn) / LH, long: longPants });
+    if (bottom === 'briefs') { // cut high on the hip: the leg opening climbs to the outside; a limp elastic edge
+      const cut = (a) => 0.035 * Math.max(0, Math.cos(a) * sx) - 0.012 * Math.max(0, -Math.cos(a) * sx);
+      rr.forEach((r, i) => { const t = i / (rr.length - 1); r.mod = null; r.dy = (a) => cut(a) * t * t; });
+      rr.pop(); rr.push({ ...ringL(pantsEnd, 1.07, loose + 0.004), c: [lx, pantsEnd, 0], mod: null, dy: cut }, { ...ringL(pantsEnd - 0.004, 1.03, loose - 0.002), c: [lx, pantsEnd - 0.004, 0], mod: null, dy: cut });
+      // dark socks, pulled to mid shin and slipping
+      m.loft('sole', [[yAn - 0.02, 1.1, 0.006], [yAn + 0.08, 1.09, 0.007], [yAn + 0.15, 1.1, 0.008], [yAn + 0.178, 1.11, 0.009], [yAn + 0.184, 1.0, 0.002]].reverse().map(([y, k, ad]) => ({ ...ringL(y, k, ad), mod: null, dy: (a) => 0.008 * Math.sin(a * 2 + sx) })), { n: 16, weights: (k, P) => legW(P, sd), tile: 0.3 });
+    }
+    // u once round the leg (mirrored on the right: the outside of both legs is u 0, the inside 0.5), v 0..0.78 down it
+    m.loft(bottom === 'none' ? 'skin' : 'pants', rr, { n: 24, weights: (k, P) => legW(P, sd), ...(bottom === 'none' || bottom === 'briefs' ? { tile: 0.5 } : { uvFn: (p, k, j, n) => [sx > 0 ? j / n : 0.5 - j / n, 0.78 * cl01((yTop - p[1]) / LH)] }) });
+    if (sp.socks) { // crew socks: ribbed, a rolled top edge, two stripes (garments.mjs sockTex)
+      const y0 = yAn + 0.05, y1 = yAn + sp.socks;
+      m.loft('sock', [{ ...ringL(y1 + 0.003, 0.97, 0.001), mod: null }, ...ys(y0, y1, 0.02).reverse().map((y) => ({ ...ringL(y, 1.0, 0.0045), mod: (a) => legMod(y, sx)(a) * (1 + 0.02 * Math.max(0, Math.sin(a * 14))) }))],
+        { n: 20, weights: (k, P) => legW(P, sd), uvFn: (p, k, j, n) => [j / n, cl01((y1 - p[1]) / (y1 - y0))] });
+    }
+    if (sp.cuffs) { // turned-up hems: a band of the lighter reverse of the denim, a rolled top edge and a stitched lower fold
+      const cy = pantsEnd - 0.004, ch = 0.068, cl = loose + 0.016;
+      m.loft('cuff', [[cy - 0.004, 1.06, cl - 0.002], [cy, 1.1, cl + 0.002], [cy + 0.01, 1.1, cl + 0.004], [cy + ch * 0.5, 1.1, cl + 0.002], [cy + ch - 0.008, 1.1, cl + 0.005], [cy + ch, 1.1, cl + 0.002], [cy + ch + 0.004, 1.05, cl - 0.006]].reverse().map(([y, k, a]) => ({ ...ringL(y, k, a), c: [lx, y, 0] })), { n: 24, weights: (k, P) => legW(P, sd), tile: 0.3 });
+    }
+    if (bottom === 'joggers' || bottom === 'tight') m.loft('band', ys(yHip - 0.35, yHip - 0.02, 0.03).reverse().map((y) => ringL(y, 1.05, loose + 0.003)), { n: 4, arc: sx > 0 ? [-0.12, 0.12] : [PI - 0.12, PI + 0.12], weights: (k, P) => legW(P, sd), tile: 0.3 }); // a side stripe
+    if (sp.kneepads) m.ellipsoid('pad', [lx, yKn + 0.01, legR * 0.85], 0.05, 0.06, 0.03, { weights: () => [[BI['LowerLeg' + (sx > 0 ? 'L' : 'R')], 0.5], [BI['UpperLeg' + (sx > 0 ? 'L' : 'R')], 0.5]], steps: 5, n: 14 });
+    // footwear: a loft heel to toe with a thick sole, boots with a shaft
+    const f = B('Foot' + (sx > 0 ? 'L' : 'R')), F = BI['Foot' + (sx > 0 ? 'L' : 'R')], fs = sp.foot ?? 1.12, wsh = (0.82 + 0.18 * W) * fs;
+    // skate shoes: a thick cupsole, a padded high collar round the ankle, a tongue, a roomy toe box; mapped heel to toe (v)
+    // and round (u) onto the rider's shoe texture (garments.mjs shoeTex: the upper over v 0..0.78, the sole's wall below)
+    const Zs = (z) => f[2] + z * fs * 0.82, wsk = wsh * 1.06, uz = (p) => cl01(((p[2] - f[2]) / (fs * 0.82) + 0.108) / 0.346);
+    const shoeW = (k, P) => { const t = 0.4 * ss(yAn - 0.03, yAn + 0.03, P[1]); return [[F, 1 - t], [BI['LowerLeg' + sd], t]]; };
+    const sh = [[-0.104, 0.03, 0.036], [-0.1, 0.046, 0.07], [-0.086, 0.054, 0.09], [-0.056, 0.058, 0.098], [-0.02, 0.06, 0.098], [0.02, 0.061, 0.09], [0.06, 0.062, 0.078], [0.1, 0.063, 0.066], [0.14, 0.061, 0.056], [0.175, 0.055, 0.048], [0.2, 0.045, 0.04], [0.218, 0.03, 0.032], [0.23, 0.01, 0.022]];
+    m.loft('shoe', sh.map(([z, w, h]) => ({ c: [f[0], 0.026 + h * 0.5 * fs, Zs(z)], U: X, V: Y, ru: w * wsk, rv: h * 0.5 * fs, e: 2.5 })), { n: 22, weights: shoeW, uvFn: (p, k, j, n) => [j / n, 0.78 * uz(p)] });
+    { const yc = 0.026 + 0.094 * fs, cz = Zs(-0.042); // the padded collar and the tongue
+      m.loft('shoe', [[-0.014, 0.96, 0.0], [-0.004, 1.06, 0.004], [0.006, 1.0, 0.004], [0.01, 0.88, 0.0]].map(([dy, k, ad]) => ({ c: [f[0], yc + dy, cz], U: X, V: Z, ru: 0.05 * wsk * k + ad, rv: 0.064 * fs * k + ad, e: 2.2 })), { n: 22, weights: shoeW, uvFn: (p, k, j, n) => [j / n, 0.78 * 0.12] });
+      m.ellipsoid('shoe', [f[0], yc - 0.004, Zs(0.045)], 0.032 * wsk, 0.03, 0.011, { weights: shoeW, steps: 5, n: 12, axis: norm([0, 1, 0.45]), U: X, V: norm([0, -0.45, 1]), uvFn: () => [0.25, 0.78 * 0.5] }); }
+    m.loft('sole', [[-0.108, 0.034], [-0.105, 0.05], [-0.088, 0.059], [-0.045, 0.063], [0.04, 0.064], [0.12, 0.068], [0.18, 0.062], [0.212, 0.05], [0.23, 0.032], [0.238, 0.012]].map(([z, w]) => ({ c: [f[0], 0.0145 + 0.009 * ss(0.17, 0.238, z), Zs(z)], U: X, V: Y, ru: w * wsk, rv: 0.0185, e: 3.4 })),
+      { n: 22, bone: F, uvFn: (p, k, j, n) => [j / n, 0.8 + 0.2 * uz(p)] });
+    if (sp.boots) m.loft('shoe', ys(yAn - 0.01, sp.cuffs ? yAn + 0.1 : yAn + 0.22, 0.03).reverse().map((y) => ringL(y, 1.1, 0.016 + loose * 0.3)).concat([{ ...ringL(yAn - 0.02, 1.15, 0.02), c: [lx, yAn - 0.02, 0.01] }]), { n: 18, weights: (k, P) => legW(P, sd), tile: 0.3 });
+  }
+  return { m, world, dims };
+}
+
+/** skin tones lose a little saturation so they read as skin, not orange plastic, under a warm key */
+// where the pompadour's slicked sides meet the skin (ring height by loft angle): the shell sinks under the skin below it, and
+// the face texture paints a fading band of strands under it
+const desat = (c, k) => { const l = 0.3 * c[0] + 0.55 * c[1] + 0.15 * c[2]; return c.map((x) => lerp(x, l, k)); };
+/** the skin colour a sheet's hex becomes, on the body's material and under the face's paint alike (looks.c skin_lin does the same): the street's warm lights add the rest */
+const skinOf = (h) => desat(hexRaw(h), 0.2).map((x) => x * 0.95);
+/** the face and eye textures each character wears */
+function writeFace(sp) {
+  const { M } = skeleton(sp), p = sp.paint ?? {};
+  const skin = skinOf(sp.colors.skin), hair = hexRaw(sp.colors.hair), col = (h) => (h == null ? undefined : Array.isArray(h) ? h : hexRaw(h));
+  const t = paintFace(M, {
+    seed: sp.name.length * 7 + sp.name.charCodeAt(0), skin, hair: col(p.beardColor) ?? hair, brow: col(p.browColor) ?? hair.map((c) => c * 0.75),
+    stubble: p.stubble ?? (sp.stubble ? 1 : 0), shadow: p.shadow ?? (sp.stubble ? 0.6 : 0), goatee: sp.goatee, chinstrap: p.chinstrap,
+    frown: sp.frown, age: p.age ?? 0, freckles: p.freckles, ruddy: p.ruddy, lipstick: col(sp.lip), shadowCol: col(p.eyeShadow), shadowAmt: p.eyeShadowAmt,
+    liner: p.liner, rouge: col(p.rouge), war: col(sp.war), scars: p.scars ?? (sp.scar ? [[0.3, 0.32, 0.5, -0.12, 0.012, true]] : []), tattoos: p.tattoos,
+    mole: p.mole, scalp: p.scalp, browSparse: p.browSparse, browSlit: p.browSlit,
+    hairEdge: sp.hair === 'pompadour' ? pompEdge : ['crop', 'long', 'ponytail', 'bun', 'cap', 'capback', 'foamcap', 'hardhat', 'tophat', 'spiky', 'buzz', 'beanie'].includes(sp.hair) ? (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08) : undefined, hairFade: sp.hair === 'pompadour' ? 0.14 : 0.09,
+  }, 512);
+  writeSet(TEX, 'face_' + sp.name, t, 2.2);
+  writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, sp.name.length), 1.0);
+}
+// The file carries the shading (glTF material extensions, read by the engine's glTF loading), so the game converts
+// nothing: ordinary cloth is matte with a soft grazing sheen and little specular; leather a thin clear coat; skin a
+// moderate roughness with skin shading (extras.skin_shading: wrap and translucency) and a faint sheen; eyes a wet coat;
+// hair a sheen, and hair cards the anisotropic highlight along the strands (KHR_materials_anisotropy, rotated so it runs
+// along the card's v; the cards carry real tangents). Brows, lashes and stubble get no anisotropy (no clean direction).
+function shading(cls, t, sp) {
+  t = t ?? [1, 1, 1];
+  const ext = {};
+  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.25 * (0.03 + 0.35 * x)), sheenRoughnessFactor: 0.9 }; ext.KHR_materials_specular = { specularFactor: 0.05 }; }
+  if (cls === 'rubber') ext.KHR_materials_specular = { specularFactor: 0.4 };
+  if (cls === 'skin') {
+    const sk = hexRaw(sp.colors.skin), dark = 1 - (sk[0] + sk[1] + sk[2]) / 3;
+    ext.KHR_materials_sheen = { sheenColorFactor: [0.1 * (0.1 + 0.35 * t[0]), 0.1 * (0.05 + 0.2 * t[1]), 0.1 * (0.04 + 0.15 * t[2])], sheenRoughnessFactor: 0.7 };
+    ext.KHR_materials_specular = { specularFactor: 0.2 }; ext.KHR_materials_ior = { ior: 1.4 };
+    return { ext, extras: { skin_shading: { scatter: [lerp(0.62, 0.55, dark), lerp(0.38, 0.32, dark), lerp(0.3, 0.24, dark)], wrap: 0.28, translucency: lerp(0.12, 0.08, dark) } } };
+  }
+  if (cls === 'hair') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.3 * (0.05 + 0.4 * x)), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; }
+  if (cls === 'card') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.01 + 0.08 * x), sheenRoughnessFactor: 0.7 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.2, anisotropyRotation: PI / 2 }; }
+  // pomade is one of the things that shines: a wet, slick highlight along the comb lines (the same extensions as hair, so the
+  // same program states, with more specular and a tighter sheen)
+  if (cls === 'pomadecore') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.05 + 0.15 * x), sheenRoughnessFactor: 0.35 }; ext.KHR_materials_specular = { specularFactor: 0.5 }; }
+  // (the cards: the gloss comes from the core under them; bright cards read as white flakes on the front of the roll)
+  if (cls === 'pomade') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.02 + 0.06 * x), sheenRoughnessFactor: 0.5 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.25, anisotropyRotation: PI / 2 }; }
+  if (cls === 'fur') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.02 + 0.15 * x), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.15 }; }
+  if (cls === 'leather') ext.KHR_materials_clearcoat = { clearcoatFactor: 0.35, clearcoatRoughnessFactor: 0.38 };
+  if (cls === 'eye') { ext.KHR_materials_clearcoat = { clearcoatFactor: 0.7, clearcoatRoughnessFactor: 0.09 }; ext.KHR_materials_ior = { ior: 1.376 }; }
+  if (cls === 'enamel') ext.KHR_materials_specular = { specularFactor: 0.6 };
+  return { ext };
+}
+function materials(glb, sp, used) {
+  const c = Object.fromEntries(Object.entries(sp.colors).map(([k, v]) => [k, hex(v)]));
+  c.skin = skinOf(sp.colors.skin).map((x) => Math.pow(x, 2.2));
+  const d = TEX, P = (n, cls, set, o) => [n, () => { const sh = shading(cls === 'gloss' && n === 'teeth' ? 'enamel' : cls === 'hair' && n === 'pomade' ? 'pomadecore' : cls, o.sheenTint ?? o.tint, sp); return glb.pbr(cls + '_' + n, d, set, { ext: sh.ext, extras: sh.extras, ...o }); }];
+  const fab = (k) => (k === 'denim' ? 'fab_denim' : k === 'knit' ? 'fab_knit' : k === 'leather' ? 'fab_leather' : k === 'dirty' ? 'fab_dirty' : 'fab_cloth');
+  const garment = (n) => n + '_' + sp.name, W1 = [1, 1, 1];
+  return Object.fromEntries([
+    P('skin', 'skin', 'fab_skin', { tint: c.skin, rough: 1, normal: 0.7 }),
+    ...(sp.bottom === 'briefs' ? [P('legs', 'skin', 'fab_hairyleg', { tint: c.skin, rough: 1, normal: 0.7 })] : []),
+    P('face', 'skin', 'face_' + sp.name, { rough: 1, normal: 1 }),
+    // eyes are wet (the game gives them a glossy clear coat), lashes are hair, teeth and the mouth are their own surfaces
+    P('eye', 'eye', 'eye_' + sp.name, { rough: 1, normal: 0.6 }), P('lash', 'fur', 'fab_hair', { tint: c.hair.map((x) => x * 0.35 + 0.004), rough: 1 }),
+    P('teeth', 'gloss', 'fab_skin', { tint: [0.78, 0.74, 0.64], rough: 0.62, normal: 0.2 }), P('mouth', 'gloss', 'fab_skin', { tint: [0.2, 0.035, 0.035], rough: 0.75, normal: 0.3 }),
+    P('nail', 'skin', 'fab_skin', { tint: c.skin.map((x, i) => x * [1.05, 0.92, 0.92][i] + 0.04), rough: 0.7, normal: 0.3 }),
+    // the clothes: each rider's own painted sets (garments.mjs), colours baked, the sheen tinted by the cloth's colour
+    P('shirt', 'cloth', garment('shirt'), { tint: W1, sheenTint: c.shirt, rough: 1, normal: 1 }),
+    P('hood', 'cloth', garment('shirt'), { tint: W1, sheenTint: c.shirt, rough: 1, normal: 1, doubleSided: true }),
+    P('pants', 'cloth', garment('pants'), { tint: W1, sheenTint: c.pants, rough: 1, normal: 1 }),
+    P('sock', 'cloth', garment('sock'), { tint: W1, sheenTint: [0.8, 0.8, 0.8], rough: 1, normal: 0.8 }),
+    P('outer', (sp.outerFab ?? 'leather') === 'leather' ? 'leather' : 'cloth', fab(sp.outerFab ?? 'leather'), { tint: c.outer ?? c.accent, rough: 1, normal: 0.6, doubleSided: true }),
+    // suede and canvas uppers (matte), a rubber cupsole (a little shinier), both from the rider's shoe set
+    P('shoe', 'cloth', garment('shoe'), { tint: W1, sheenTint: c.shoes, rough: 1, normal: 1 }), P('sole', 'rubber', garment('shoe'), { tint: W1, rough: 1, normal: 0.8 }),
+    P('belt', 'leather', 'fab_leather', { tint: c.belt || [0.03, 0.025, 0.02], rough: 0.9 }), P('buckle', 'metal', 'paint_metal', { tint: [0.85, 0.75, 0.45], rough: 0.45 }),
+    P('glove', 'leather', 'fab_leather', { tint: c.glove ?? c.accent, rough: 0.7 }),
+    P('hair', 'hair', 'fab_hair', { tint: c.hair, rough: 1, normal: 1.2, doubleSided: true }),
+    // the pompadour's solid core under its cards: combed grooves in the normal map, a soft pomade sheen (not a clear coat)
+    P('pomade', 'hair', 'fab_hair', { tint: c.hair.map((x) => x * 0.85), rough: 0.55, normal: 1.6, doubleSided: true }),
+    P('hairCard', 'card', 'hair_card', { tint: c.hair, rough: 1, normal: 0.4, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 }),
+    P('pomadeCard', 'pomade', 'hair_card', { tint: c.hair, rough: 0.85, normal: 0.5, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 }),
+    ...(sp.hair === 'pompadour' ? [P('pomadeShell', 'pomade', 'pomp_shell', { tint: c.hair, rough: 0.8, normal: 1.1, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 })] : []),
+    P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
+    P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
+    P('band', 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.band ?? c.accent, rough: 1 }), // (the hat's weave: one texture fewer in the file)
+    // the wanker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
+    // (only in the files that wear it: every listed material and its textures go into each glb)
+    ...(sp.hair === 'foamcap' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
+    P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'rubber', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.75 }),
+    P('helmet', sp.hair === 'hardhat' ? 'gloss' : 'metal', 'paint_metal', { tint: c.helmet ?? c.hair, rough: sp.hair === 'hardhat' ? 0.35 : 0.5, metal: sp.hair === 'hardhat' ? 0 : 1 }), P('metal', 'metal', 'paint_metal', { tint: c.metal ?? [0.5, 0.52, 0.55], rough: 0.4 }),
+    P('shades', 'gloss', 'fab_leather', { tint: [0.015, 0.015, 0.02], rough: 0.15, metal: 0 }),
+    P('reflect', 'gloss', 'fab_cloth', { tint: [0.7, 0.72, 0.68], rough: 0.4, emissive: [0.22, 0.24, 0.2] }),
+    P('glow', 'gloss', null, { tint: [0.1, 0.4, 0.5], rough: 0.2, emissive: c.glow ?? [0.2, 1.4, 1.8] }),
+  ].filter(([n]) => used.has(n)).map(([n, f]) => [n, f()]));
+}
+
+// ── faces and hands per clip: which expression (weights over time u 0..1 through the clip) and how each hand is held ──
+const strike = (peak) => (u) => ss(0, peak, u) * (1 - 0.55 * ss(0.72, 1, u)); // build to the blow, ease off on recovery
+const hitEnv = (u) => ss(0, 0.12, u) * (1 - 0.6 * ss(0.45, 1, u));
+const CLIP_FACE = {
+  run: () => [['effort', 0.4]], jump: (u) => [['effort', 0.6 * Math.sin(u * PI)]],
+  punch1: (u) => [['snarl', strike(0.35)(u)]], punch2: (u) => [['snarl', strike(0.38)(u)]], kick: (u) => [['snarl', strike(0.38)(u)]],
+  stab: (u) => [['snarl', strike(0.4)(u)]], knee: (u) => [['snarl', strike(0.32)(u)]],
+  finisher: (u) => [['shout', strike(0.45)(u)]], haymaker: (u) => [['effort', ss(0, 0.3, u) * (1 - ss(0.38, 0.44, u))], ['shout', ss(0.38, 0.46, u) * (1 - 0.7 * ss(0.6, 1, u))]], jumpkick: (u) => [['shout', strike(0.25)(u)]], swing: (u) => [['shout', strike(0.45)(u)]],
+  slam: (u) => [['effort', ss(0, 0.4, u) * (1 - ss(0.45, 0.6, u))], ['shout', ss(0.45, 0.62, u) * (1 - 0.6 * ss(0.8, 1, u))]],
+  spin: (u) => [['shout', strike(0.2)(u)]], throw: (u) => [['effort', ss(0, 0.3, u) * (1 - ss(0.35, 0.5, u))], ['shout', ss(0.35, 0.55, u) * (1 - 0.6 * ss(0.8, 1, u))]],
+  grab: () => [['effort', 0.7]], pickup: (u) => [['effort', 0.5 * Math.sin(u * PI)]], getup: (u) => [['effort', 0.8 * Math.sin(u * PI * 0.9)]], getup_prone: (u) => [['effort', 0.8 * Math.sin(u * PI * 0.9)]],
+  hit: (u) => [['wince', hitEnv(u)]], hit_gut: (u) => [['wince', hitEnv(u)], ['grimace', 0.4 * hitEnv(u)]], hit_hard: (u) => [['wince', hitEnv(u)], ['grimace', 0.3 * hitEnv(u)]],
+  knockdown: (u) => [['wince', ss(0, 0.1, u) * (1 - ss(0.4, 0.7, u))], ['ko', ss(0.45, 0.85, u)]],
+  down: () => [['ko', 1]], dead: () => [['dead', 1]], grabbed: () => [['grimace', 0.85]], thrown: () => [['wince', 0.7], ['grimace', 0.4]],
+  react_fear: (u) => [['fear', ss(0, 0.08, u) * (1 - 0.3 * ss(0.75, 1, u))]], react_rage: (u) => [['anger', ss(0, 0.08, u) * (1 - 0.3 * ss(0.75, 1, u))]], react_bliss: (u) => [['bliss', ss(0, 0.1, u) * (1 - 0.3 * ss(0.8, 1, u))]],
+  flash: (u) => [['bliss', ss(0.3, 0.5, u) * (1 - ss(0.85, 1, u))]], lurch: () => [['grin', 0.35]],
+  comb: (u) => [['grin', ss(0.05, 0.2, u) * (1 - ss(0.88, 1, u))]], shoulder: () => [['effort', 0.85]], flick: (u) => [['snarl', strike(0.6)(u)]],
+  thumbsup: (u) => [['grin', ss(0.04, 0.18, u) * (1 - ss(0.86, 1, u))]], thump: (u) => [['effort', ss(0, 0.3, u) * (1 - ss(0.55, 0.62, u))], ['shout', ss(0.55, 0.62, u) * (1 - ss(0.7, 0.95, u))]],
+  taunt: (u) => [['grin', ss(0.05, 0.25, u) * (1 - ss(0.85, 1, u))]], block: () => [['wince', 0.35], ['effort', 0.3]],
+};
+// hand holds: [knuckle curl, middle curl, thumb across (0 open .. 1 over the fingers)]
+const THUMB_UP = [1.55, 1.8, 0, [-1.05, 0.0, 0.3]]; // fingers curled tight, the thumb raised off them
+const FIST = [1.5, 1.75, 1], LOOSE = [0.55, 0.75, 0.5], OPEN = [0.08, 0.12, 0], GRIP = [0.95, 1.1, 0.65], CLAW = [0.55, 1.0, 0.3];
+const both = (h) => () => ({ L: h, R: h });
+const CLIP_HANDS = {
+  walk: both(LOOSE), hit_hard: both(OPEN), knockdown: (u) => ({ L: u < 0.3 ? CLAW : LOOSE, R: u < 0.3 ? CLAW : LOOSE }), down: both(LOOSE), dead: both(LOOSE),
+  getup: (u) => ({ L: u < 0.6 ? OPEN : FIST, R: u < 0.6 ? OPEN : FIST }), getup_prone: (u) => ({ L: u < 0.6 ? OPEN : FIST, R: u < 0.6 ? OPEN : FIST }), grab: both(GRIP), knee: both(GRIP), throw: (u) => ({ L: u < 0.45 ? GRIP : OPEN, R: u < 0.45 ? GRIP : OPEN }),
+  grabbed: both(CLAW), thrown: both(OPEN), spin: both(OPEN), pickup: (u) => ({ L: LOOSE, R: u < 0.15 ? OPEN : GRIP }), jump: both(LOOSE),
+  taunt: (u) => { const t = u * 1.4, b = t > 0.6 && t < 1.15 ? 0.5 + 0.5 * Math.cos(((t - 0.66) / 0.14) * PI) : 0; return { L: OPEN, R: t < 0.55 ? OPEN : [lerp(0.1, 1.3, b), lerp(0.1, 1.5, b), 0.2] }; },
+  hit: both(LOOSE), hit_gut: both(LOOSE),
+  comb: () => ({ L: LOOSE, R: GRIP }), flick: (u) => ({ L: u < 0.55 ? GRIP : FIST, R: u < 0.55 ? GRIP : FIST }),
+  react_fear: both(OPEN), react_rage: both(FIST), react_bliss: both(LOOSE),
+  thumbsup: (u) => ({ L: FIST, R: u > 0.1 && u < 0.85 ? THUMB_UP : FIST }), thump: both(FIST),
+};
+/** the face and hand bones of one sampled pose: rotations (radians) and offsets in head units (scaled by R in emit) */
+function faceHands(name, u) {
+  const out = {};
+  for (const [ex, w] of (CLIP_FACE[name] ?? (() => []))(u)) {
+    for (const [b, v] of Object.entries(EXPRESSIONS[ex])) {
+      if (b !== 'Jaw') continue; // the rest of the face is morph targets the game drives by name; the Jaw bone opens the mouth
+      const o = (out[b] ||= { r: [0, 0, 0], p: [0, 0, 0] });
+      for (let i = 0; i < 3; i++) { o.r[i] += (v.r?.[i] ?? 0) * w; o.p[i] += (v.p?.[i] ?? 0) * w; }
+    }
+  }
+  const hands = (CLIP_HANDS[name] ?? both(FIST))(u);
+  for (const [sd, sx] of [['L', 1], ['R', -1]]) {
+    const [c1, c2, th, tr] = hands[sd];
+    out['Fing' + sd + '1'] = { r: [0, 0, -sx * c1] }; out['Fing' + sd + '2'] = { r: [0, 0, -sx * c2] };
+    out['Thumb' + sd] = { r: tr ? [tr[0], sx * tr[1], sx * tr[2]] : [lerp(-0.45, 0.55, th), sx * lerp(0.0, 0.85, th), -sx * lerp(-0.35, 0.95, th)] };
+  }
+  return out;
+}
+
+function emit(sp) {
+  const glb = new Glb();
+  writeFace(sp);
+  const { m: g, world, dims } = build(sp);
+  writeGarments(TEX, sp, dims);
+  const mats = materials(glb, sp, new Set([...g.groups].filter(([, x]) => x.idx.length).map(([n]) => n)));
+  const { T, M } = skeleton(sp);
+  const FR = M.H.R; // expression offsets are in head units
+  // two skinned mesh nodes: Face (the head surface with its lids and ears, the lash rims: the expression morph targets) and
+  // Body (the rest). A morphed mesh draws on its own and reads every target per vertex, so only the head carries them.
+  const targets = faceTargets(g, M, HEAD_GROUPS);
+  const names = FACE_TARGETS.filter((n) => HEAD_GROUPS.some((h) => targets[n][h]?.any));
+  const head = [], body = [], hairCards = [];
+  for (const [gg, mi] of g.prims(mats)) {
+    const gname = [...g.groups].find(([, x]) => x === gg)[0];
+    if (HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else if (HAIR_GROUPS.includes(gname)) hairCards.push([gg, mi]); else body.push([gg, mi]);
+  }
+  const BONES = bonesOf(sp);
+  const jointNodes = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
+  BONES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[BI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
+  const ibm = new Float32Array(BONES.length * 16);
+  BONES.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
+  glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jointNodes, skeleton: jointNodes[0] });
+  const meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 }), glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 })];
+  if (hairCards.length) meshNodes.push(glb.node({ name: 'Hair', mesh: glb.mesh(sp.name + '_hair', hairCards), skin: 0 })); // its own mesh: alpha-tested cards cast no shadow (the game turns that off by this name)
+  const s = sp.scale ?? 1; // the root hip node scales the whole body
+  glb.nodes[jointNodes[0]].translation = [0, T.Hips[1] * s, 0];
+  glb.nodes[jointNodes[0]].scale = [s, s, s];
+  glb.sceneNodes.push(...meshNodes, jointNodes[0]);
+  for (const c of CLIPS.filter((c) => c.name === 'idle')) { // the game poses the rider itself (src/pose.c): one clip, for viewers
+    if (c.only && !c.only.includes(sp.name)) continue;
+    const n = Math.max(2, Math.round(c.len * 30) + 1);
+    const times = Array.from({ length: n }, (_, i) => (i / (n - 1)) * c.len);
+    const poses = times.map((t) => coatPose(sp, T, c.name, t, armsOut(sp, shieldArm(sp, c.name, t, { ...c.pose(t), ...faceHands(c.name, t / c.len) })))), chans = [];
+    for (const name of BONES) {
+      const rot = [], pos = [];
+      let prev = null;
+      poses.forEach((p, i) => {
+        let r = (p[name] && p[name].r) || [0, 0, 0];
+        if (c.loop && i === n - 1) r = (poses[0][name] && poses[0][name].r) || [0, 0, 0];
+        let q = p[name]?.q ?? quat(r);
+        if (c.loop && i === n - 1 && poses[0][name]?.q) q = poses[0][name].q;
+        if (prev && q[0] * prev[0] + q[1] * prev[1] + q[2] * prev[2] + q[3] * prev[3] < 0) q = q.map((v) => -v); // keep one hemisphere
+        prev = q; rot.push(...q);
+        let o = (p[name] && p[name].p) || [0, 0, 0];
+        if (c.loop && i === n - 1) o = (poses[0][name] && poses[0][name].p) || [0, 0, 0];
+        if (name === 'Hips') pos.push(T.Hips[0] + o[0] * s, T.Hips[1] * s + o[1] * s, T.Hips[2] + o[2] * s);
+      });
+      const node = jointNodes[BI[name]];
+      // face and hand bones are keyed in every clip (the game layers blinks over the lids and reads the clip's value back)
+      const always = FACE_BONES.includes(name) || HAND_BONES.includes(name) || COAT_BONES.includes(name);
+      if (always || rot.some((v, i) => Math.abs(v - [0, 0, 0, 1][i % 4]) > 1e-6)) chans.push({ node, path: 'rotation', times, values: rot });
+      if (name === 'Hips') chans.push({ node, path: 'translation', times, values: pos });
+      if (COAT_BONES.includes(name)) chans.push({ node, path: 'translation', times, values: poses.flatMap((p, i) => (c.loop && i === n - 1 ? poses[0] : p)[name].tr) });
+      if (FACE_BONES.includes(name)) {
+        const tv = []; poses.forEach((p, i) => { const pp = (c.loop && i === n - 1 ? poses[0] : p)[name]?.p ?? [0, 0, 0]; tv.push(T[name][0] + pp[0] * FR, T[name][1] + pp[1] * FR, T[name][2] + pp[2] * FR); });
+        chans.push({ node, path: 'translation', times, values: tv });
+      }
+    }
+    glb.anim(c.name, chans);
+  }
+  glb.write(join(OUT, sp.name + '.glb'));
+  console.log(sp.name, 'tris', g.tris(), 'targets', names.join(','));
+}
+
+// a big gut pushes the arms out: they hang clear of it in every clip (the rest of the rig stays the same)
+function armsOut(sp, pose) {
+  if (!sp.armOut) return pose;
+  const o = { ...pose };
+  for (const [n, sg] of [['UpperArmL', 1], ['UpperArmR', -1]]) { const r = pose[n]?.r ?? [0, 0, 0]; o[n] = { ...pose[n], r: [r[0], r[1], r[2] + sg * sp.armOut] }; }
+  return o;
+}
+
+// the four skaters: proportions, outfit pieces and colours (bright and sunny; each reads from behind by its silhouette and
+// its top: a cap worn back to front and an orange tee, a high ponytail and a teal tee, the hood up on a yellow hoodie, a
+// slouch beanie over long hair and a purple long sleeve). Clothes hang loose (fit: metres of room in the shirt, legLoose
+// in the legs); every shirt has its own print on the back (garments.mjs PRINTS, inks its colours); the shoes are skate
+// shoes with a guard band, a heel panel, a plain straight side stripe and a cupsole (shoe: their colours).
+export const SPECS = [
+  { name: 'kai', shoulders: 2.25, heads: 7.4, skull: { chinZ: 1.03, slope: 0.4, chin: 1.05 }, face: { noseW: 1.0, hook: 0.2, brow: 1.2, browThick: 0.06, jawAng: 1.3, chin: 1.15, cheek: 1.1, lidUp: 0.24 }, paint: { age: 0.05, hairline: true, iris: 0x5a3418, freckles: 0.3 },
+    scale: 1.02, width: 1.1, chest: 1.0, sw: 0.21, arm: 1.12, leg: 1.05, head: 1.1, hand: 1.25, jaw: 1.2, neck: 1.05, hair: 'capback', wristband: true,
+    top: 'tee', sleeves: 'short', bottom: 'jeans', pantsFab: 'denim', fit: 0.035, hemDrop: 0.1, sleeveLen: 0.2, legLoose: 0.04, hemAt: 0.045,
+    print: 'sun', inks: [0x2a8ad0, 0xf4f0e6], shoe: { guard: 0xd8d4cc, heel: 0x2a8ad0, stripe: 0x2a8ad0, sole: 0xf0ece0, line: 0x2a8ad0 },
+    colors: { skin: 0xc98e60, shirt: 0xf08c1e, pants: 0x3a5a90, shoes: 0xf2f2f2, hair: 0x2a1d14, accent: 0x2a8ad0, hat: 0x2a8ad0, band: 0x2a8ad0 } },
+  { name: 'nova', fig: { waist: 0.78, hip: 1.08, bust: 0.72 }, neckShort: 0.012, hairlineH: 0.66, shoulders: 1.9, heads: 7.4, skull: { w: 0.96, h: 0.97, d: 0.97, slope: 0.25, chin: 0.88 }, adam: false, face: { eyeR: 0.168, noseLen: 0.88, noseW: 0.86, noseProj: 0.85, tipUp: 0.8, lipU: 1.15, lipL: 1.2, mw: 0.235, cheek: 1.2, jawAng: 0.7, chin: 0.85, chinW: 0.82, brow: 0.65, browThick: 0.042, browArch: 0.05, tilt: 0.06, socket: 0.9, naso: 0.4 }, paint: { freckles: 0.8, iris: [0.22, 0.4, 0.5], hairline: true },
+    scale: 0.98, width: 0.92, chest: 0.95, sw: 0.188, hw: 0.096, arm: 0.96, leg: 1.0, head: 1.12, hand: 1.22, jaw: 0.78, nose: 0.82, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true, kneepads: true,
+    top: 'tee', sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth', fit: 0.03, hemDrop: 0.09, sleeveLen: 0.19, shortsEnd: 0.07, legLoose: 0.03, socks: 0.17,
+    print: 'arcs', inks: [0xffd040, 0xf04050, 0xf4f0e6], shoe: { guard: 0xf4f0e6, heel: 0xffd040, stripe: 0xf4f0e6, sole: 0xf0ece0, line: 0xffd040 }, sock: { stripe: 0xf04050 },
+    colors: { skin: 0xf0c4a0, shirt: 0x22b0a8, pants: 0x2a2a38, shoes: 0xf04050, hair: 0x6a2c16, accent: 0xffd040, band: 0xffd040, pad: 0x2a2a38 } },
+  { name: 'dex', shoulders: 2.2, heads: 7.5, skull: { w: 0.98, d: 1.0, occ: 1.03, chinZ: 1.02 }, face: { noseW: 1.25, noseLen: 0.95, noseProj: 0.88, lipU: 1.25, lipL: 1.3, mw: 0.265, browThick: 0.05, cheek: 1.1, jawAng: 1.0 }, paint: { browSlit: 0, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05] },
+    scale: 1.0, width: 1.05, sw: 0.205, arm: 1.1, leg: 1.05, head: 1.12, hand: 1.28, hair: 'buzz', hood: 'up',
+    top: 'hoodie', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', fit: 0.045, hemDrop: 0.12, legLoose: 0.045, hemAt: 0.045,
+    print: 'chevrons', printY: 0.52, hoodie: true, inks: [0xd03070, 0xf4f0e6, 0x202020], shoe: { guard: 0x303030, heel: 0xd03070, stripe: 0xf0c030, sole: 0xf0ece0, line: 0xd03070 },
+    colors: { skin: 0x8a5838, shirt: 0xf0c030, pants: 0x50583a, shoes: 0x202020, hair: 0x141010, accent: 0xd03070, hat: 0xd03070, band: 0xd03070 } },
+  { name: 'marlo', fig: { waist: 0.84, hip: 1.04, bust: 0.7 }, neckShort: 0.008, hairlineH: 0.64, shoulders: 2.2, heads: 7.35, skull: { w: 1.0, slope: 0.3, chin: 0.98 }, adam: false, face: { jawAng: 1.05, chin: 1.0, brow: 0.95, browThick: 0.048, noseW: 1.05, cheek: 1.2, lipU: 1.0, lipL: 1.1, mw: 0.245, tilt: 0.03, lidUp: 0.23, naso: 0.6 }, paint: { age: 0.05, iris: [0.25, 0.18, 0.1], hairline: true, freckles: 0.2 },
+    scale: 1.04, width: 1.15, chest: 1.05, sw: 0.215, hw: 0.112, arm: 1.12, leg: 1.06, head: 1.06, hand: 1.25, jaw: 1.0, neck: 1.0, hair: 'beanie', hatFab: 'knit', slouch: 1, longHair: true, wristband: true,
+    top: 'longsleeve', shirtFab: 'cloth', bottom: 'shorts', pantsFab: 'cloth', fit: 0.035, hemDrop: 0.1, shortsEnd: -0.05, legLoose: 0.03, socks: 0.21,
+    print: 'waves', printY: 0.56, inks: [0x40d0ff, 0xf4f0e6], shoe: { guard: 0x6a3ab0, heel: 0x40d0ff, stripe: 0x6a3ab0, sole: 0xf0ece0, line: 0x40d0ff }, sock: { stripe: 0x8a4ad0 },
+    colors: { skin: 0x9a6440, shirt: 0x8a4ad0, pants: 0xd8c8a0, shoes: 0xf0f0f0, hair: 0x2a1a10, accent: 0x40d0ff, band: 0x40d0ff, hat: 0x40d0ff } },
+];
+const only = process.argv.slice(2);
+for (const s of SPECS) if (!only.length || only.includes(s.name)) emit(s);

@@ -1,0 +1,14 @@
+; towers' release builds: node <host sdk>/tools/cwexport.mjs --project games/towers --preset <preset>
+name = "Towers"
+app = "towers"
+version = "0.1.0"
+app_id = "org.cartwheel.towers"
+export.linux-x64.platform = "linux-x64"
+export.linux-arm64.platform = "linux-arm64"
+export.windows-x64.platform = "windows-x64"
+export.macos-arm64.platform = "macos"
+export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "Tower defense for one to four players on one screen: each player builds in their own share of the map while thousands of creeps pour down the paths. Chain lightning, freeze fields, beams and mortars, three levels each, across 30 maps."
+author = "Luis Montes"

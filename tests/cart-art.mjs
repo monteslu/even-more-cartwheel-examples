@@ -11,7 +11,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const GAMES = ['adventure', 'pinball', 'towers'];
+const GAMES = ['adventure', 'demolition', 'explorer', 'pinball', 'skate', 'towers'];
 const games = process.argv.slice(2).length ? process.argv.slice(2) : GAMES;
 // the checks the cart SDK's pack tool uses (wasmcart src/cartArt.js)
 const lib = join(ROOT, 'deps', 'cartwheel-sdk', 'cart-wgpu', 'deps', 'wasmcart-wgpu', 'src', 'cartArt.js');

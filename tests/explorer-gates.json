@@ -1,0 +1,80 @@
+[
+  {
+    "name": "explorer-auto",
+    "note": "explorer_auto: the bot plays from the start for 2400 ticks along the checker's route through the real input struct (the spark's shrine, the first rooms of the Lantern Gate, enemies cleared on the way). Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "app": "explorer_auto",
+    "frames": 2400,
+    "maxGt16": 0.5,
+    "fields": [
+      "game.tick",
+      "game.room",
+      "game.abilities",
+      "game.pickups",
+      "game.bosses",
+      "player.hp",
+      "player.x100",
+      "player.y100",
+      "bot.step",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5,
+      "vsGl": 0.5
+    },
+    "expect": {
+      "game.tick": 2400,
+      "game.room": 104,
+      "game.abilities": 0,
+      "game.pickups": 0,
+      "game.bosses": 0,
+      "player.hp": 4,
+      "player.x100": 90987,
+      "player.y100": 8800,
+      "bot.step": 59,
+      "game.hash": 1177849990
+    }
+  },
+  {
+    "name": "explorer-play",
+    "note": "explorer, one player on a pad as a person plays it: start, then run right, a tapped jump and a held one (the variable height), a strike, run left with a held jump, an upward strike, a running tapped jump, the map opened and closed. The player's place, the tick and the hash are pinned. The control runs the same way with no jumps and no strikes: it must differ.",
+    "app": "explorer",
+    "frames": 520,
+    "input": "explorer-play.json",
+    "controlInput": "explorer-play-control.json",
+    "maxGt16": 0.5,
+    "fields": [
+      "game.tick",
+      "game.room",
+      "player.hp",
+      "player.x100",
+      "player.y100",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5,
+      "vsGl": 0.5
+    },
+    "expect": {
+      "game.tick": 439,
+      "game.room": 18,
+      "player.hp": 5,
+      "player.x100": 104889,
+      "player.y100": 7000,
+      "game.hash": 3737673241
+    }
+  }
+]

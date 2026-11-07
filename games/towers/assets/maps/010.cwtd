@@ -1,0 +1,163 @@
+towers-map 1
+# written by tools/gen-maps.mjs (seed 80190, a spiral layout)
+map 10
+name Copper Dell
+theme autumn
+size 36 20
+seed 80190
+waves 15
+diff 1.169
+kinds ghoul skitter hound imp
+grid
+ggggggggggggggggggggggggggggg..ggggg
+gggggggggogoggogoggggggg.......goggg
+.................................ggg
+..................................gg
+gggggggg................ggogogog..gg
+ggggggggogogogoggogogogogggggggg..gg
+ggggggggggggggggggg..ggggogoggog..gg
+gggggg......................ggg...gg
+gggggg.......................gg..ggg
+ggggggo..ogogggggggggggggg...og..ggg
+ggggggg..ggggggggggggggggg...gg..ogg
+gggggg...ggggggggggggggg....ggo...gg
+gggggg..gogggggggggggggg....ggg...gg
+gggggg..ggggggggggggggggggggogog..gg
+gggggg..gogggggg.....ggggggggggg..gg
+gggggg............................gg
+ggggggg..........................ggg
+ggggggggg..gggggogogoggggggggggggggg
+gggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggg
+end
+spawn 0 2
+spawn 29 0
+core 24 11
+slot 17 5 0 1 2
+slot 19 5 1 1 1
+slot 21 5 1 1 1
+slot 14 5 0 1 0
+slot 12 5 0 0 0
+slot 10 5 0 0 0
+slot 23 5 1 1 1
+slot 8 5 0 0 0
+slot 30 4 1 2 1
+slot 30 13 1 2 3
+slot 9 14 0 0 2
+slot 29 9 1 2 3
+slot 26 4 1 2 1
+slot 9 9 0 0 2
+slot 30 11 1 2 3
+slot 28 13 1 2 3
+slot 25 6 1 1 3
+slot 30 6 1 2 3
+slot 28 4 1 2 1
+slot 33 10 1 2 3
+slot 6 9 0 0 2
+slot 11 1 0 0 0
+slot 14 1 0 0 0
+slot 16 1 0 1 0
+slot 18 17 0 1 2
+slot 9 1 0 0 0
+slot 16 17 0 1 2
+slot 20 17 1 1 3
+slot 27 6 1 2 3
+slot 11 9 0 0 2
+slot 9 12 0 0 2
+slot 32 1 1 2 1
+route -2 3 2 2 3 2 18 3.398 3.354 32 3 2.2 32 10 2.4 32 16 2.2 18 15.564 2.313 8 16 2.2 8 9 2.02 9 8 2.2 26 8 2.292 27 12 2.2 27 12 2 25 12 2
+route 30 -2 2 30 2 2 25.931 2.55 1.45 26.541 2.739 2
+feature water 1.09 8.97 3.27 0.00
+feature water 1.95 15.77 2.67 0.00
+prop 26 0 lamp 0 2
+prop 5 7 lamp 0 1
+prop 15 9 lamp 0 0
+prop 20 9 lamp 0 0
+prop 5 12 lamp 0 1
+prop 17 13 lamp 0 2
+prop 26 14 lamp 0 2
+prop 0 0 decor 2 0
+prop 1 0 decor 0 3
+prop 2 0 decor 1 0
+prop 3 0 decor 0 0
+prop 4 0 decor 1 1
+prop 6 0 decor 0 2
+prop 7 0 decor 1 2
+prop 10 0 decor 6 2
+prop 18 0 decor 3 3
+prop 19 0 decor 3 3
+prop 20 0 decor 7 3
+prop 22 0 decor 0 2
+prop 32 0 decor 7 0
+prop 34 0 decor 2 0
+prop 35 0 decor 3 2
+prop 34 1 decor 0 2
+prop 35 3 decor 1 0
+prop 35 4 decor 1 0
+prop 4 5 decor 6 1
+prop 5 5 decor 0 0
+prop 35 5 decor 0 2
+prop 35 6 decor 1 1
+prop 35 7 decor 0 1
+prop 35 9 decor 2 0
+prop 13 10 decor 1 1
+prop 20 10 decor 1 1
+prop 11 11 decor 1 0
+prop 12 11 decor 7 0
+prop 13 11 decor 1 3
+prop 14 11 decor 0 3
+prop 35 11 decor 1 1
+prop 10 12 decor 7 0
+prop 11 12 decor 6 1
+prop 13 12 decor 3 2
+prop 14 12 decor 4 3
+prop 15 12 decor 2 1
+prop 16 12 decor 7 2
+prop 18 12 decor 1 0
+prop 21 12 decor 6 1
+prop 35 12 decor 0 0
+prop 12 13 decor 0 0
+prop 13 13 decor 0 2
+prop 29 13 decor 7 2
+prop 35 14 decor 5 3
+prop 35 15 decor 1 2
+prop 35 16 decor 2 1
+prop 5 17 decor 2 2
+prop 34 17 decor 5 0
+prop 5 18 decor 2 0
+prop 7 18 decor 5 2
+prop 14 18 decor 4 2
+prop 16 18 decor 5 1
+prop 19 18 decor 6 0
+prop 30 18 decor 4 1
+prop 32 18 decor 0 1
+prop 34 18 decor 7 2
+prop 35 18 decor 3 0
+prop 5 19 decor 0 1
+prop 6 19 decor 1 0
+prop 7 19 decor 0 2
+prop 8 19 decor 3 0
+prop 9 19 decor 3 3
+prop 11 19 decor 2 3
+prop 12 19 decor 1 3
+prop 13 19 decor 0 0
+prop 17 19 decor 3 2
+prop 18 19 decor 3 0
+prop 20 19 decor 0 2
+prop 22 19 decor 1 3
+prop 24 19 decor 3 1
+prop 25 19 decor 1 0
+prop 27 19 decor 2 1
+prop 29 19 decor 3 0
+prop 30 19 decor 1 3
+prop 31 19 decor 1 3
+prop 33 19 decor 2 3
+prop 34 19 decor 0 1
+prop 35 19 decor 0 2
+light 26 0 1.5 1 0.65 0.35 45 7
+light 5 7 1.5 1 0.65 0.35 45 7
+light 15 9 1.5 1 0.65 0.35 45 7
+light 20 9 1.5 1 0.65 0.35 45 7
+light 5 12 1.5 1 0.65 0.35 45 7
+light 17 13 1.5 1 0.65 0.35 45 7
+light 26 14 1.5 1 0.65 0.35 45 7

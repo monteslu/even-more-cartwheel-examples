@@ -1,0 +1,156 @@
+towers-map 1
+# written by tools/gen-maps.mjs (seed 119785, a spiral layout)
+map 15
+name Sunscorch Pass
+theme desert
+size 36 20
+seed 119785
+waves 17
+diff 3.296
+kinds skitter ghoul imp hound sporeling
+grid
+ggggggggggggggggggggggggg..ggggggggg
+ggggggggggggg..................ggggg
+.................................ggg
+.........................g........gg
+gggggggggoggogogoggogogogogo...o..gg
+ggggggggggggggggggggggggggggg.....gg
+gggggggggogogggggggggggggggggo....gg
+gggggggg..................gggg....gg
+gggggggg...................gogo..ggg
+gggggggg..goggggggggggggg...ggg..ogg
+gggggggg..ggggggggggggggg..gggg..ggg
+gggggggg.gggggggggggggg....gggg..ggg
+ggggggg..gggggggggggggg....gggo...gg
+ggggggg..gggggggogogoggggggggggg..gg
+ggggggg..gogog..........gggoggog..gg
+ggggggg...........................gg
+gggggggg.........................ggg
+ggggggggg......gggggggg........ggggg
+gggggggggggogoggggggggggogogoggggggg
+gggggggggggggggggggggggggggggggggggg
+end
+spawn 0 2
+spawn 25 0
+core 23 11
+slot 31 4 1 2 1
+slot 30 14 1 2 3
+slot 10 14 0 0 2
+slot 27 4 1 1 1
+slot 16 4 0 1 0
+slot 19 4 0 1 0
+slot 14 4 0 0 0
+slot 27 14 1 2 3
+slot 21 4 1 1 1
+slot 30 8 1 2 3
+slot 29 6 1 2 1
+slot 25 4 1 1 1
+slot 23 4 1 1 1
+slot 12 14 0 0 2
+slot 20 13 0 1 2
+slot 12 4 0 0 0
+slot 11 9 0 0 2
+slot 11 6 0 0 0
+slot 18 13 0 1 2
+slot 33 9 1 2 3
+slot 9 4 0 0 0
+slot 26 18 1 1 3
+slot 30 12 1 2 3
+slot 16 13 0 1 2
+slot 28 18 1 2 3
+slot 11 18 0 0 2
+slot 9 6 0 0 0
+slot 28 8 1 2 1
+slot 24 18 1 1 3
+slot 13 18 0 0 2
+route -2 3 2 2 3 2 18 2.551 2.301 32 3 2.2 32 10 2.005 32 16 2.2 18 15.628 3.424 9 16 2.2 9 9 1.45 10 8 2.2 25 8 2.046 26 12 2.2 26 12 2 24 12 2
+route 26 -2 2 26 2 2 29.141 3.86 2.081 32.282 8.336 2
+feature water 1.20 11.31 2.69 0.00
+feature water 2.32 18.06 2.86 0.00
+prop 15 0 lamp 0 2
+prop 20 0 lamp 0 2
+prop 34 3 lamp 0 3
+prop 4 4 lamp 0 0
+prop 7 9 lamp 0 1
+prop 18 9 lamp 0 0
+prop 23 9 lamp 0 0
+prop 14 13 lamp 0 2
+prop 6 14 lamp 0 1
+prop 9 18 lamp 0 0
+prop 0 0 decor 0 1
+prop 4 0 decor 0 2
+prop 5 0 decor 1 1
+prop 7 0 decor 3 3
+prop 8 0 decor 3 3
+prop 11 0 decor 2 1
+prop 33 0 decor 2 1
+prop 35 1 decor 0 1
+prop 35 2 decor 1 3
+prop 35 3 decor 2 3
+prop 0 5 decor 3 2
+prop 2 5 decor 4 3
+prop 5 5 decor 6 1
+prop 7 5 decor 1 2
+prop 12 5 decor 5 2
+prop 15 5 decor 5 0
+prop 35 5 decor 4 3
+prop 0 6 decor 0 2
+prop 6 6 decor 0 1
+prop 0 7 decor 2 3
+prop 1 7 decor 2 1
+prop 2 7 decor 3 0
+prop 5 7 decor 0 0
+prop 5 9 decor 0 3
+prop 34 9 decor 6 3
+prop 35 9 decor 3 3
+prop 5 10 decor 2 3
+prop 6 10 decor 6 3
+prop 13 10 decor 2 2
+prop 14 10 decor 3 0
+prop 16 10 decor 7 1
+prop 19 10 decor 0 3
+prop 20 10 decor 1 1
+prop 29 10 decor 7 0
+prop 17 11 decor 6 3
+prop 18 11 decor 2 1
+prop 5 12 decor 3 3
+prop 12 12 decor 4 3
+prop 18 12 decor 6 2
+prop 35 12 decor 3 2
+prop 10 13 decor 7 0
+prop 11 13 decor 5 2
+prop 35 13 decor 2 2
+prop 35 14 decor 2 1
+prop 35 16 decor 1 2
+prop 34 17 decor 1 0
+prop 6 18 decor 0 0
+prop 16 18 decor 1 2
+prop 17 18 decor 7 2
+prop 19 18 decor 3 3
+prop 20 18 decor 0 1
+prop 21 18 decor 0 2
+prop 34 18 decor 2 2
+prop 7 19 decor 2 0
+prop 8 19 decor 0 1
+prop 9 19 decor 0 3
+prop 11 19 decor 7 2
+prop 15 19 decor 1 0
+prop 16 19 decor 5 2
+prop 17 19 decor 2 2
+prop 20 19 decor 0 3
+prop 24 19 decor 5 0
+prop 27 19 decor 6 0
+prop 30 19 decor 6 3
+prop 32 19 decor 1 0
+prop 33 19 decor 3 1
+prop 34 19 decor 1 2
+light 15 0 1.5 1 0.72 0.4 45 7
+light 20 0 1.5 1 0.72 0.4 45 7
+light 34 3 1.5 1 0.72 0.4 45 7
+light 4 4 1.5 1 0.72 0.4 45 7
+light 7 9 1.5 1 0.72 0.4 45 7
+light 18 9 1.5 1 0.72 0.4 45 7
+light 23 9 1.5 1 0.72 0.4 45 7
+light 14 13 1.5 1 0.72 0.4 45 7
+light 6 14 1.5 1 0.72 0.4 45 7
+light 9 18 1.5 1 0.72 0.4 45 7

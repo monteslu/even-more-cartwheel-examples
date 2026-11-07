@@ -1,0 +1,22 @@
+; skate project settings (packed into the carts: the actions and their bindings)
+name = Skate
+app = skate
+version = 0.1.0
+app_id = org.cartwheel.skate
+; the board: steer and lean on the stick or the d-pad (push and brake on up and down, balance a manual on them); the
+; four face buttons pop (south), flip (west), grab (east) and grind (north); either shoulder is the manual; back takes
+; the rider to a start point. The menus' actions (ui_*, pause) come from the engine's shell.
+input.steer_left = key:a, key:left, pad:left, axis:lx-
+input.steer_right = key:d, key:right, pad:right, axis:lx+
+input.steer_up = key:w, key:up, pad:up, axis:ly-
+input.steer_down = key:s, key:down, pad:down, axis:ly+
+input.ollie = key:k, key:space, pad:south
+input.flip = key:j, pad:west
+input.grab = key:l, pad:east
+input.grind = key:i, pad:north
+input.manual = key:u, key:o, pad:lshoulder, pad:rshoulder
+input.reset = key:r, key:backspace, pad:back
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true

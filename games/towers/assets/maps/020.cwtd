@@ -1,0 +1,158 @@
+towers-map 1
+# written by tools/gen-maps.mjs (seed 159380, a spiral layout)
+map 20
+name Snowcap Drift
+theme snow
+size 36 20
+seed 159380
+waves 20
+diff 2.287
+kinds ghoul skitter hound sporeling bloater imp
+grid
+gggggggggggggggggggggggggggggggggggg
+gggggggggggg...................ggggg
+.................................ggg
+..................................gg
+gggggggggogogogogogogogogogoggog..gg
+gggggggggggggggggggggggggggggggg..gg
+gggggggggogoggggggg..ggggoggggog..gg
+gggggggg...................gggg...og
+gggggggg...................gggo...gg
+gggggggo..gogggggggoggggg...ggg...og
+gggggggg..ggggggggggggggg...ggo...gg
+ggggggg...ogggggggggggg....gggg...gg
+ggggggg..gggggggggggggg....oggo.....
+ggggggg..ggggggggggggggggggggggg....
+ggggggg..goggggggggggggggggogogo..gg
+ggggggg....ggg....................gg
+gggggggg.........................ggg
+gggggggggg..gggggggggggggggg.ggggggg
+gggggggggggggggggggggggggggggggggggg
+gggggggggggggggggggggggggggggggggggg
+end
+spawn 0 2
+spawn 35 12
+core 23 11
+slot 21 4 0 1 2
+slot 19 4 0 1 0
+slot 17 4 0 1 0
+slot 30 4 1 2 1
+slot 31 14 1 2 3
+slot 23 4 1 1 1
+slot 15 4 0 0 0
+slot 13 4 0 0 0
+slot 25 4 1 1 1
+slot 34 9 1 2 3
+slot 11 9 0 0 2
+slot 10 14 0 0 2
+slot 29 14 1 2 3
+slot 30 10 1 2 3
+slot 11 4 0 0 0
+slot 27 14 1 2 3
+slot 27 4 1 1 1
+slot 30 12 1 2 3
+slot 11 6 0 0 2
+slot 9 4 0 0 0
+slot 25 6 1 1 1
+slot 27 12 1 1 3
+slot 9 6 0 0 2
+slot 30 6 1 2 1
+slot 30 8 1 2 1
+slot 19 9 0 1 2
+slot 34 7 1 2 1
+slot 7 9 0 0 2
+slot 10 11 0 0 2
+route -2 3 2 2 3 2 18 2.597 2.445 32 3 2.2 32 10 2.416 32 16 2.2 18 16.116 1.45 9 16 2.2 9 9 2.075 10 8 2.2 25 8 2.315 26 12 2.2 26 12 2 24 12 2
+route 38 13 2 34 13 2 32.504 9.292 2.03 33.02 4.548 2
+feature water 1.65 18.41 1.96 0.00
+feature water 3.12 8.80 1.89 0.00
+feature rock 1.51 13.14 1.46 1.64
+feature rock 0.38 12.27 1.16 2.19
+feature rock 2.40 12.95 0.88 1.07
+feature rock 13.33 12.51 1.40 1.72
+prop 12 0 lamp 0 2
+prop 18 0 lamp 0 2
+prop 27 0 lamp 0 2
+prop 6 4 lamp 0 0
+prop 13 9 lamp 0 0
+prop 21 9 lamp 0 0
+prop 28 10 lamp 0 3
+prop 6 13 lamp 0 1
+prop 15 14 lamp 0 2
+prop 20 14 lamp 0 2
+prop 10 18 lamp 0 0
+prop 0 0 decor 3 3
+prop 1 0 decor 0 1
+prop 3 0 decor 2 2
+prop 4 0 decor 2 0
+prop 6 0 decor 0 1
+prop 8 0 decor 2 0
+prop 9 0 decor 0 0
+prop 32 0 decor 2 3
+prop 33 0 decor 0 3
+prop 34 1 decor 3 2
+prop 35 1 decor 4 0
+prop 35 2 decor 0 3
+prop 35 3 decor 3 1
+prop 35 4 decor 1 3
+prop 1 5 decor 3 2
+prop 2 5 decor 0 0
+prop 4 5 decor 2 2
+prop 8 5 decor 7 2
+prop 11 5 decor 4 3
+prop 16 5 decor 4 1
+prop 28 5 decor 4 3
+prop 35 5 decor 3 3
+prop 0 6 decor 0 2
+prop 5 6 decor 5 3
+prop 29 6 decor 4 3
+prop 0 7 decor 2 2
+prop 6 7 decor 0 3
+prop 29 9 decor 6 2
+prop 16 10 decor 2 2
+prop 29 10 decor 5 3
+prop 4 11 decor 0 2
+prop 17 12 decor 5 3
+prop 20 13 decor 7 1
+prop 2 15 decor 0 0
+prop 35 15 decor 3 0
+prop 5 16 decor 1 0
+prop 5 17 decor 2 0
+prop 35 17 decor 3 0
+prop 7 18 decor 4 1
+prop 13 18 decor 5 1
+prop 14 18 decor 4 1
+prop 16 18 decor 5 0
+prop 17 18 decor 2 0
+prop 24 18 decor 7 2
+prop 31 18 decor 2 3
+prop 35 18 decor 0 2
+prop 7 19 decor 3 3
+prop 9 19 decor 3 1
+prop 10 19 decor 5 3
+prop 11 19 decor 2 0
+prop 13 19 decor 1 3
+prop 14 19 decor 5 1
+prop 16 19 decor 2 0
+prop 17 19 decor 3 3
+prop 18 19 decor 2 1
+prop 19 19 decor 7 1
+prop 21 19 decor 2 3
+prop 22 19 decor 1 1
+prop 24 19 decor 5 2
+prop 25 19 decor 0 1
+prop 26 19 decor 0 1
+prop 29 19 decor 2 1
+prop 33 19 decor 0 2
+prop 34 19 decor 0 1
+light 12 0 1.5 1 0.8 0.55 45 7
+light 18 0 1.5 1 0.8 0.55 45 7
+light 27 0 1.5 1 0.8 0.55 45 7
+light 6 4 1.5 1 0.8 0.55 45 7
+light 13 9 1.5 1 0.8 0.55 45 7
+light 21 9 1.5 1 0.8 0.55 45 7
+light 28 10 1.5 1 0.8 0.55 45 7
+light 6 13 1.5 1 0.8 0.55 45 7
+light 15 14 1.5 1 0.8 0.55 45 7
+light 20 14 1.5 1 0.8 0.55 45 7
+light 10 18 1.5 1 0.8 0.55 45 7

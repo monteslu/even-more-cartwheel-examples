@@ -13,12 +13,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
 
 env:
-  # every game in the repo (the release ships one cart each); empty until the first game lands
-  GAMES: "adventure"
+  # every game in the repo (the release ships one cart each)
+  GAMES: "adventure demolition explorer pinball skate towers"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: "adventure"
+  AUTO_GAMES: "adventure demolition explorer pinball skate towers"
   # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
-  PROMPT_GAMES: "adventure"
+  PROMPT_GAMES: "adventure demolition explorer pinball skate towers"
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
@@ -49,6 +49,28 @@ jobs:
       # controls are shown with the engine's button prompts (cartwheel/prompt.h), never a maker's button names
       - name: Check prompts
         run: for g in $PROMPT_GAMES; do node deps/cartwheel-engine/tools/check-prompts.mjs games/$g || exit 1; done
+      # towers' maps: every gate reaches the core, pads beside the path in fair shares, every prop grounded, its bake
+      # present and current, and held by two bots in the native soak build; the controls (maps broken on purpose)
+      # must each fail
+      - name: Check towers' maps
+        run: |
+          TARGETS=native scripts/build.sh towers_soak
+          node games/towers/tools/check-maps.mjs --soak build/native/games/towers/towers_soak
+      # skate's board against ramp physics (a naive one-step solver must fail) and its parks: nothing floats, every
+      # line skated by a bot through the real controls; the controls (parks broken on purpose) must each fail
+      - name: Check skate's physics and parks
+        run: |
+          TARGETS=native scripts/build.sh skate_check
+          node tests/skate-physics.mjs
+          node tests/skate-parks.mjs
+      # explorer's world: the shipped world and route are current, the checker proves it completable in ability
+      # order with no soft locks, every pickup reached, every gate holding, nothing floating; the controls (worlds
+      # broken on purpose) must each fail; and the movement's feel stays in its bounds (with its controls)
+      - name: Check explorer's world and feel
+        run: |
+          TARGETS=native scripts/build.sh explorer_worldgen explorer_check explorer_feel
+          node tests/explorer-world.mjs
+          node tests/explorer-feel.mjs
       # pushes to main link the carts as releases ship (ThinLTO, wasm-opt), so a
       # v* tag publishes these very carts; pull requests link dev carts, the same simulation
       - name: Build the carts (each game, and its self-playing <game>_auto where it has one)

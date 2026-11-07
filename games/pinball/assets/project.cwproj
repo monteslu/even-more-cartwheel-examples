@@ -1,0 +1,19 @@
+; pinball project settings
+name = Pinball
+app = pinball
+main_scene = scenes/main.cwscene
+version = 0.1.0
+app_id = org.cartwheel.pinball
+; the flippers: the shoulders, the d-pad's sides, the outer face buttons (and the triggers where a pad has them)
+input.flip_left = key:lshift, key:z, key:left, pad:lshoulder, pad:left, pad:west, axis:lt+@0.4
+input.flip_right = key:rshift, key:slash, key:right, pad:rshoulder, pad:right, pad:east, axis:rt+@0.4
+; the plunger: hold, let go to fire
+input.launch = key:space, key:enter, key:down, pad:south, pad:down, axis:ly+@0.6
+; nudging the cabinet: forward, and the sides on the stick
+input.nudge = key:up, key:x, pad:north, pad:up
+input.nudge_left = key:a, axis:lx-@0.8
+input.nudge_right = key:d, axis:lx+@0.8
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true

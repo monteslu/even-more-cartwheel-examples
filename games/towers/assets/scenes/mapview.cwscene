@@ -1,0 +1,10 @@
+[scene format=1]
+
+; towers_mapview's main scene: only the camera; each map brings its theme's light scene
+[node name="View" type="Node3D"]
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 160, 40)
+fov = 14
+near = 1
+far = 500
