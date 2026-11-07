@@ -1,5 +1,6 @@
 /* explorer: drawing the world (view.h). Canvas layers, back to front:
  *   sky          a bright hazy gradient, then three parallax depths of the region's own shapes (screen space, unlit)
+ *   drop         a hole through a floor falls away into the dark: dusk, mist, hanging roots (unlit)
  *   wall         the room's back wall (lit: the lamps and the hero's lantern shade its relief)
  *   tiles        rock, its bright walkable lip, ledges, thorns, props, lamps (lit, normal-mapped)
  *   actors       the hero (a skeleton of shapes, animated in code), enemies, wardens (lit)
@@ -232,7 +233,8 @@ static bool open_tile(int t) { return !t_solid(t); }
 
 /* distance (tiles, capped) from every open tile to the nearest rock: the back wall fades out away from the rock,
  * so the middle of a big room opens onto the deep parallax behind it */
-static uint8_t (*rockdist)[TW];
+static uint8_t (*rockdist)[TW], (*rockin)[TW]; /* rockin: how deep each rock tile sits in the rock (0 open, to 3) */
+static uint32_t fhash(uint32_t a, uint32_t b);
 static bool rock_dirty;
 static void build_rockdist(const sim *s) {
   if (!rockdist) rockdist = malloc(sizeof(uint8_t) * TH * TW);
@@ -251,6 +253,23 @@ static void build_rockdist(const sim *s) {
       if (x < TW - 1 && rockdist[y][x + 1] + 1 < d) d = rockdist[y][x + 1] + 1;
       if (y < TH - 1 && rockdist[y + 1][x] + 1 < d) d = rockdist[y + 1][x] + 1;
       rockdist[y][x] = (uint8_t)d;
+    }
+  if (!rockin) rockin = malloc(sizeof(uint8_t) * TH * TW);
+  for (int y = 0; y < TH; y++)
+    for (int x = 0; x < TW; x++) rockin[y][x] = t_solid(s->t[y][x]) ? 3 : 0;
+  for (int y = 0; y < TH; y++)
+    for (int x = 0; x < TW; x++) {
+      int d = rockin[y][x];
+      if (x > 0 && rockin[y][x - 1] + 1 < d) d = rockin[y][x - 1] + 1;
+      if (y > 0 && rockin[y - 1][x] + 1 < d) d = rockin[y - 1][x] + 1;
+      rockin[y][x] = (uint8_t)d;
+    }
+  for (int y = TH - 1; y >= 0; y--)
+    for (int x = TW - 1; x >= 0; x--) {
+      int d = rockin[y][x];
+      if (x < TW - 1 && rockin[y][x + 1] + 1 < d) d = rockin[y][x + 1] + 1;
+      if (y < TH - 1 && rockin[y + 1][x] + 1 < d) d = rockin[y + 1][x] + 1;
+      rockin[y][x] = (uint8_t)d;
     }
 }
 
@@ -297,41 +316,221 @@ static void draw_room_wall(const sim *s, int ri, float x0, float y0, float x1, f
   VS.sprites += nq;
 }
 
+/* the rock: each tile a quad of its region's atlas (the cell for its open sides and its place in the two-tile period),
+ * its corners shaded by how deep in the rock they sit and by a slow grain across the world, so the fill reads as one
+ * mass with no tile grid. Under overhangs the rock is shaped past the tiles: a wedge from each step's tip to the next
+ * step's tip turns a staircase underside into one sloping face, and a concave corner left over gets a round fillet,
+ * as the convex corners are rounded in the art. (Only drawing: the tiles are what the bodies collide with.) */
+static bool rock_at(const sim *s, int x, int y) {
+  if (!w_in(x, y)) return true;
+  int t = s->t[y][x];
+  return t == T_SOLID || t == T_CRACKED || t == T_SECRET;
+}
+static bool empty_at(const sim *s, int x, int y) { return w_in(x, y) && s->t[y][x] == T_EMPTY; }
+static float grain(float x, float y) { /* smooth value noise over the world, 0..1 */
+  int xi = (int)floorf(x), yi = (int)floorf(y);
+  float fx = x - (float)xi, fy = y - (float)yi;
+  fx = fx * fx * (3 - 2 * fx), fy = fy * fy * (3 - 2 * fy);
+#define GH_(a, b) ((float)(fhash((uint32_t)(a) * 73856093u, (uint32_t)(b) * 19349663u) & 0xffff) / 65535.0f)
+  float a = GH_(xi, yi), b = GH_(xi + 1, yi), c = GH_(xi, yi + 1), d = GH_(xi + 1, yi + 1);
+#undef GH_
+  return a + (b - a) * fx + (c - a) * fy + (a - b - c + d) * fx * fy;
+}
+/* a tile corner's colour: deeper in the rock a step darker and a little toward the region's complementary accent
+ * (cool shadow in warm rock, warm in cool), and the slow grain */
+static int rock_region; /* (the region whose accent the corners lean to: the room in view) */
+static cw_color corner_colour(cw_color body, int x, int y) {
+  float d = 0;
+  for (int k = 0; k < 4; k++) {
+    int tx = x - 1 + (k & 1), ty = y - 1 + (k >> 1);
+    d += w_in(tx, ty) ? (float)rockin[ty][tx] : 3;
+  }
+  d *= 0.25f;
+  d = d > 3 ? 3 : d;
+  float sh = (1.2f - 0.05f * d) * (0.93f + 0.14f * grain((float)x * 0.21f, (float)y * 0.21f));
+  cw_color c = scalec(body, sh);
+  cw_color k = comp_accent(rock_region);
+  bool warm = k.b > k.r; /* (a warm region: its accent is cool; cool shadow suits warm rock, the reverse muddies) */
+  return mixc(c, toluma(k, luma(c)), warm ? 0.1f + 0.16f * d : 0.03f + 0.03f * d);
+}
+
+enum { RB_MAX = 4, RB_V = 4 * 3600, RB_I = 6 * 3600 };
+typedef struct rock_batch { int region, nv, ni; cw_vertex2d v[RB_V]; uint32_t i[RB_I]; } rock_batch;
+static rock_batch *RBS;
+static int nrb;
+static rock_batch *batch_of(int region) {
+  if (!RBS) RBS = malloc(sizeof(rock_batch) * RB_MAX);
+  for (int k = 0; k < nrb; k++)
+    if (RBS[k].region == region) return &RBS[k];
+  if (nrb == RB_MAX) return NULL;
+  RBS[nrb] = (rock_batch){ .region = region };
+  return &RBS[nrb++];
+}
+/* a convex polygon (world points) inside tile (tx, ty), textured by atlas cell `mask` of that tile's place */
+static void rock_poly(int region, int tx, int ty, int mask, const cw_vec2 *p, const cw_color *c, int n) {
+  rock_batch *b = batch_of(region);
+  if (!b || b->nv + n > RB_V || b->ni + (n - 2) * 3 > RB_I) return;
+  const float AT = (float)(TILE_PX * 8);
+  float ox = (float)((tx & 1) * TILE_PX * 4 + (mask % 4) * TILE_PX) + 0.5f, oy = (float)((ty & 1) * TILE_PX * 4 + (mask / 4) * TILE_PX) + 0.5f;
+  const float S = (float)TILE_PX - 1.0f; /* (half a texel in from each side: no bleed from the next cell) */
+  for (int k = 0; k < n; k++)
+    b->v[b->nv + k] = (cw_vertex2d){ p[k], { (ox + (p[k].x - (float)tx) * S) / AT, (oy + (p[k].y - (float)ty) * S) / AT }, c[k] };
+  for (int k = 1; k + 1 < n; k++) b->i[b->ni++] = (uint32_t)b->nv, b->i[b->ni++] = (uint32_t)(b->nv + k), b->i[b->ni++] = (uint32_t)(b->nv + k + 1);
+  b->nv += n;
+  VS.sprites++;
+}
+static int tile_region(const sim *s, int x, int y) {
+  int cr = s->w->cell_room[y / CELL_H][x / CELL_W];
+  return cr != 0xffff ? s->w->rooms[cr].region : s->room >= 0 ? s->w->rooms[s->room].region : 0;
+}
+static cw_color rock_body(int region, int tt) {
+  cw_color body = toluma(hexc(REGIONS[region].ground, 1), VAL(V_ROCK));
+  if (tt == T_CRACKED) body = mixc(body, rgba(1, 0.85f, 0.6f, 1), 0.18f);
+  if (tt == T_SECRET) body = scalec(body, 0.93f);
+  return body;
+}
+/* the part of air tile (tx, ty) above the line y = ya + (x - xa) * k (rock above it): a wedge's piece */
+enum { SW = 160, SH = 100 };
+static uint8_t keep_sq[SH][SW]; /* open-side bits of the rock tiles in view not to bevel or round (a wedge covers that side) */
+static int kx0, ky0;
+static void keep(int x, int y, int bit) {
+  int kx = x - kx0, ky = y - ky0;
+  if (kx >= 0 && ky >= 0 && kx < SW && ky < SH) keep_sq[ky][kx] |= (uint8_t)bit;
+}
+static void wedge_piece(const sim *s, int tx, int ty, float xa, float ya, float k, cw_color body) {
+  { /* a side of this tile the wedge covers whole: the rock tile beyond it runs on into the wedge, no bevel between */
+    float la = ya + ((float)tx - xa) * k, lb = ya + ((float)tx + 1 - xa) * k, lo = fminf(la, lb);
+    if (lo >= (float)ty - 1e-4f) keep(tx, ty - 1, 4); /* (at the wedge's thin end the tip above turns square: an obtuse corner) */
+    if (la >= (float)ty + 1 - 1e-4f) keep(tx - 1, ty, 2);
+    if (lb >= (float)ty + 1 - 1e-4f) keep(tx + 1, ty, 8);
+  }
+  cw_vec2 p[6];
+  int n = 0;
+  float X[2] = { (float)tx, (float)tx + 1 };
+  float Y[2] = { ya + (X[0] - xa) * k, ya + (X[1] - xa) * k };
+  /* clip the tile's square to y <= line: walk its corners clockwise */
+  cw_vec2 q[4] = { { X[0], (float)ty }, { X[1], (float)ty }, { X[1], (float)ty + 1 }, { X[0], (float)ty + 1 } };
+  for (int i = 0; i < 4; i++) {
+    cw_vec2 a = q[i], b = q[(i + 1) & 3];
+    float la = ya + (a.x - xa) * k, lb = ya + (b.x - xa) * k;
+    bool ina = a.y <= la + 1e-5f, inb = b.y <= lb + 1e-5f;
+    if (ina) p[n++] = a;
+    if (ina != inb) {
+      float da = a.y - la, db = b.y - lb, t = da / (da - db);
+      p[n++] = (cw_vec2){ a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t };
+    }
+  }
+  (void)Y;
+  if (n < 3) return;
+  cw_color c[6];
+  for (int i = 0; i < n; i++) c[i] = corner_colour(body, (int)lroundf(p[i].x), (int)lroundf(p[i].y));
+  rock_poly(tile_region(s, tx, ty), tx, ty, 0, p, c, n);
+}
+/* a dark rim along a wedge's face, as the tiles' bevels darken their edges */
+static void wedge_rim(cw_vec2 a, cw_vec2 b, float nx, float ny, cw_color body) {
+  cw_color e = scalec(body, 0.5f), i = e;
+  e.a = 0.6f, i.a = 0;
+  const float w = 0.13f;
+  cw_vertex2d v[4] = { { a, { 0, 0 }, e }, { b, { 0, 0 }, e }, { { b.x + nx * w, b.y + ny * w }, { 0, 0 }, i }, { { a.x + nx * w, a.y + ny * w }, { 0, 0 }, i } };
+  uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
+  cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
+}
+/* a round fillet in air tile (tx, ty) at its corner (cx, cy) (one of its four), rock on both sides of the corner */
+static void fillet(const sim *s, int tx, int ty, int cx, int cy, cw_color body) {
+  const float R = 30.0f / 64.0f;
+  float sx = cx == tx ? 1 : -1, sy = cy == ty ? 1 : -1; /* into the tile */
+  cw_vec2 p[8];
+  int n = 0;
+  p[n++] = (cw_vec2){ (float)cx, (float)cy };
+  for (int k = 0; k <= 6; k++) { /* the arc round (cx + sx R, cy + sy R), from the side wall to the ceiling */
+    float a = (float)k / 6 * 1.5707963f;
+    p[n++] = (cw_vec2){ (float)cx + sx * R - sx * R * cosf(a), (float)cy + sy * R - sy * R * sinf(a) };
+  }
+  cw_color c[8];
+  for (int i = 0; i < n; i++) c[i] = corner_colour(body, cx, cy);
+  rock_poly(tile_region(s, tx, ty), tx, ty, 0, p, c, n);
+}
+
 static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, float t) {
   int tx0 = (int)floorf(x0) - 1, ty0 = (int)floorf(y0) - 1, tx1 = (int)ceilf(x1) + 1, ty1 = (int)ceilf(y1) + 1;
+  nrb = 0;
+  rock_region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
+  /* shaping under overhangs first: it says which tips must keep a square corner where a wedge meets them */
+  for (int y = 0; y < SH; y++) memset(keep_sq[y], 0, SW);
+  kx0 = tx0, ky0 = ty0;
+  if (!perf_off("shape"))
+    for (int y = ty0; y <= ty1; y++)
+      for (int x = tx0 - 6; x <= tx1 + 6;) {
+        if (rock_at(s, x, y) || !rock_at(s, x, y - 1)) { x++; continue; }
+        int a = x, b = x;
+        while (!rock_at(s, b + 1, y) && rock_at(s, b + 1, y - 1)) b++;
+        x = b + 1;
+        bool lcon = rock_at(s, a - 1, y), rcon = rock_at(s, b + 1, y);
+        int w = b - a + 1;
+        cw_color body = rock_body(tile_region(s, a < 0 ? 0 : a, y), T_SOLID);
+        bool lf = lcon, rf = rcon; /* concave corners still to fillet */
+        for (int side = 0; side < 2; side++) {
+          if (side == 0 ? !(rcon && !lcon) : !(lcon && !rcon)) continue;
+          /* the step's face: the rock beside the run reaches down to row y + h */
+          int cx = side == 0 ? b + 1 : a - 1, h = 0;
+          while (h < 4 && rock_at(s, cx, y + h)) h++;
+          if (h < 1 || h > 3) continue;
+          int L = 2 * h + 1;
+          L = L > w ? w : L > 5 ? 5 : L;
+          float k = (float)h / (float)L;
+          /* descending toward the step (side 0: to the right) from (xa, y): the line and the tiles it covers */
+          float xa = side == 0 ? (float)(b + 1 - L) : (float)(a + L), kk = side == 0 ? k : -k;
+          bool ok = true;
+          for (int i = 0; i < L && ok; i++) {
+            int tx = side == 0 ? b - i : a + i;
+            float edge = side == 0 ? (float)(tx + 1) : (float)tx, ly = (float)y + (edge - xa) * kk;
+            for (int ty = y; (float)ty < ly - 1e-4f && ok; ty++) ok = empty_at(s, tx, ty);
+          }
+          if (!ok) continue;
+          for (int i = 0; i < L; i++) {
+            int tx = side == 0 ? b - i : a + i;
+            for (int ty = y; ty < y + h; ty++) wedge_piece(s, tx, ty, xa, (float)y, kk, body);
+          }
+          cw_vec2 pa = { xa, (float)y }, pb = { (float)cx + (side == 0 ? 0 : 1), (float)(y + h) };
+          float ex = pb.x - pa.x, ey = pb.y - pa.y, el = sqrtf(ex * ex + ey * ey);
+          float nx = side == 0 ? ey / el : -ey / el, ny = side == 0 ? -ex / el : ex / el; /* (into the rock) */
+          if (ny > 0) nx = -nx, ny = -ny;
+          wedge_rim(pa, pb, nx, ny, body);
+          if (side == 0) rf = false; else lf = false;
+        }
+        if (lf && empty_at(s, a, y)) fillet(s, a, y, a, y, body);
+        if (rf && empty_at(s, b, y)) fillet(s, b, y, b + 1, y, body);
+      }
   for (int y = ty0; y <= ty1; y++)
     for (int x = tx0; x <= tx1; x++) {
       if (!w_in(x, y)) continue;
       int tt = s->t[y][x];
-      int cr = s->w->cell_room[y / CELL_H][x / CELL_W];
-      int region = cr != 0xffff ? s->w->rooms[cr].region : s->room >= 0 ? s->w->rooms[s->room].region : 0;
+      if (!t_solid(tt) || tt == T_BOSSDOOR || tt == T_SEAL) continue; /* (the doors: drawn in the effects layer) */
+      int region = tile_region(s, x, y);
+      bool o_up = open_tile(s->t[y - 1 < 0 ? 0 : y - 1][x]), o_r = x + 1 < TW && open_tile(s->t[y][x + 1]);
+      bool o_dn = y + 1 < TH && open_tile(s->t[y + 1][x]), o_l = x > 0 && open_tile(s->t[y][x - 1]);
+      int mask = (o_up ? 1 : 0) | (o_r ? 2 : 0) | (o_dn ? 4 : 0) | (o_l ? 8 : 0);
+      int kx = x - kx0, ky = y - ky0;
+      if (kx >= 0 && ky >= 0 && kx < SW && ky < SH) mask &= ~keep_sq[ky][kx];
+      cw_color body = rock_body(region, tt);
+      cw_vec2 p[4] = { { (float)x, (float)y }, { (float)x + 1, (float)y }, { (float)x + 1, (float)y + 1 }, { (float)x, (float)y + 1 } };
+      cw_color c[4];
+      for (int k = 0; k < 4; k++) c[k] = corner_colour(body, (int)p[k].x, (int)p[k].y);
+      rock_poly(region, x, y, mask, p, c, 4);
+    }
+  for (int k = 0; k < nrb; k++)
+    if (RBS[k].ni) cw_r2d_triangles(A.rock[RBS[k].region], RBS[k].v, RBS[k].nv, RBS[k].i, RBS[k].ni);
+  /* what lies on the rock: lips, cracks; ledges, thorns, molten channels */
+  for (int y = ty0; y <= ty1; y++)
+    for (int x = tx0; x <= tx1; x++) {
+      if (!w_in(x, y)) continue;
+      int tt = s->t[y][x];
+      int region = tile_region(s, x, y);
       const region_info *g = &REGIONS[region];
       int m = region_material(region);
       if (t_solid(tt)) {
-        int up = w_tile(s->w, x, y - 1), mask = 0;
-        bool o_up = open_tile(s->t[y - 1 < 0 ? 0 : y - 1][x]), o_r = x + 1 < TW && open_tile(s->t[y][x + 1]);
-        bool o_dn = y + 1 < TH && open_tile(s->t[y + 1][x]), o_l = x > 0 && open_tile(s->t[y][x - 1]);
-        (void)up;
-        mask = (o_up ? 1 : 0) | (o_r ? 2 : 0) | (o_dn ? 4 : 0) | (o_l ? 8 : 0);
-        /* skip the rock deep inside walls that no open tile is near: it is a flat dark mass */
-        bool deep = !mask;
-        if (deep) { /* rock deep in a wall: a flat fill, darker (no lip, no bevel to show) */
-          bool near = false;
-          for (int dy = -2; dy <= 2 && !near; dy++)
-            for (int dx = -2; dx <= 2 && !near; dx++) near = w_in(x + dx, y + dy) && open_tile(s->t[y + dy][x + dx]);
-          if (!near) { /* the rock's grain carries on into the mass, a step darker */
-            cw_r2d_sprite(&(cw_sprite){ .texture = A.tiles[m], .src = { 0, 0, TILE_PX, TILE_PX }, .pos = { (float)x, (float)y }, .size = { 1.02f, 1.02f },
-                                        .color = scalec(toluma(hexc(g->ground, 1), VAL(V_ROCK)), 0.8f) });
-            continue;
-          }
-        }
-        cw_color body = toluma(hexc(g->ground, 1), VAL(V_ROCK));
-        if (tt == T_CRACKED) body = mixc(body, rgba(1, 0.85f, 0.6f, 1), 0.18f);
-        if (tt == T_SECRET) body = scalec(body, 0.93f);
-        if (tt == T_BOSSDOOR || tt == T_SEAL) continue; /* drawn in the effects layer */
-        cw_r2d_sprite(&(cw_sprite){ .texture = A.tiles[m], .src = { (float)((mask % 4) * TILE_PX), (float)((mask / 4) * TILE_PX), TILE_PX, TILE_PX },
-                                    .pos = { (float)x, (float)y }, .size = { 1.0f, 1.0f }, .color = body });
-        VS.sprites++;
+        if (tt == T_BOSSDOOR || tt == T_SEAL) continue;
+        bool o_up = open_tile(s->t[y - 1 < 0 ? 0 : y - 1][x]), o_r = x + 1 < TW && open_tile(s->t[y][x + 1]), o_l = x > 0 && open_tile(s->t[y][x - 1]);
         if (tt == T_CRACKED) { /* the cracks show */
           cw_vec2 a = v2((float)x + 0.15f, (float)y + 0.3f), b = v2((float)x + 0.5f, (float)y + 0.55f), c = v2((float)x + 0.85f, (float)y + 0.35f);
           limb(a, b, 0.03f, 0.02f, rgba(0.15f, 0.1f, 0.08f, 0.8f));
@@ -366,7 +565,92 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
         VS.sprites++;
       }
     }
-  (void)t;
+}
+
+/* drops: a hole through a room's floor (a trapdoor down) falls away into the dark, with mist low in it and roots,
+ * icicles, chains or weed hanging from the floor's edge and the bridge, never the sky's bands through a window; a hole
+ * through a room's ceiling darkens up into its shaft */
+static void draw_drops(const sim *s, float x0, float x1, float y0, float y1, float t) {
+  int tx0 = (int)floorf(x0) - 1, tx1 = (int)ceilf(x1) + 1;
+  for (int cy = (int)floorf(y0 / CELL_H) - 1; cy <= (int)(y1 / CELL_H) + 1; cy++) {
+    if (cy < 0 || cy >= GH) continue;
+    for (int edge = 0; edge < 2; edge++) { /* 0: a room's bottom row (a drop), 1: a room's top row (a shaft up) */
+      int y = edge == 0 ? cy * CELL_H + CELL_H - 1 : cy * CELL_H;
+      for (int x = tx0; x <= tx1;) {
+        if (!w_in(x, y) || rock_at(s, x, y) || s->t[y][x] == T_BOSSDOOR || s->t[y][x] == T_SEAL) { x++; continue; }
+        int cr = s->w->cell_room[cy][x / CELL_W];
+        const room *rm = cr != 0xffff ? &s->w->rooms[cr] : NULL;
+        if (!rm || (edge == 0 ? (rm->y + rm->h) * CELL_H - 1 : rm->y * CELL_H) != y) { x++; continue; }
+        int a = x;
+        while (x <= tx1 + 8 && w_in(x, y) && !rock_at(s, x, y)) x++;
+        int b = x - 1, region = rm->region;
+        const region_info *g = &REGIONS[region];
+        cw_color dk = toluma(hexc(g->ground, 1), 0.035f), clear = dk;
+        clear.a = 0;
+        float fa = (float)a, fb = (float)b + 1;
+        if (edge == 0) {
+          /* the gradient: a dusk leaning to the region's complementary accent under the bridge (the far air's colour), falling to near black at the room's edge */
+          float ya = (float)y - 1.0f, ym = (float)y + 0.45f, yb = (float)y + 1.02f;
+          cw_color hi = toluma(mixc(hexc(g->near, 1), comp_accent(region), 0.85f), 0.22f), mid = toluma(mixc(hexc(g->near, 1), comp_accent(region), 0.75f), 0.13f);
+          hi.a = 0.96f, mid.a = 1;
+          cw_vertex2d v[8] = { { { fa, ya }, { 0, 0 }, hi }, { { fb, ya }, { 0, 0 }, hi }, { { fb, ym }, { 0, 0 }, mid }, { { fa, ym }, { 0, 0 }, mid },
+                               { { fb, yb }, { 0, 0 }, dk }, { { fa, yb }, { 0, 0 }, dk } };
+          uint32_t idx[12] = { 0, 1, 2, 0, 2, 3, 3, 2, 4, 3, 4, 5 };
+          cw_r2d_triangles((cw_texture){ 0 }, v, 6, idx, 12);
+          /* the hanging things: from the bridge (one-way tiles over the hole) and from the floor's edges */
+          int mat = region_material(region);
+          cw_color hc = toluma(hexc(g->ground, 1), 0.045f); /* (silhouettes against the dusk) */
+          for (int hx = a - 1; hx <= b + 1; hx++) {
+            bool bridge = hx >= a && hx <= b && w_in(hx, y - 1) && s->t[y - 1][hx] == T_ONEWAY;
+            bool rim = (hx == a - 1 || hx == b + 1) && rock_at(s, hx, y - 1);
+            if (!bridge && !rim) continue;
+            for (int k = 0; k < (rim ? 2 : 1); k++) {
+              uint32_t hsh = fhash((uint32_t)hx * 2654435761u, (uint32_t)(y * 3 + k));
+              float px = rim ? (hx == a - 1 ? fa + 0.05f + 0.12f * (float)k : fb - 0.05f - 0.12f * (float)k) : (float)hx + 0.2f + 0.6f * (float)(hsh & 255) / 255.0f;
+              float top = bridge ? (float)y - 1 + 0.42f : (float)y - 0.1f, len = 0.5f + 1.1f * (float)((hsh >> 8) & 255) / 255.0f;
+              if (!bridge && (hsh & 1)) continue;
+              float sway = 0.06f * sinf(t * 1.3f + (float)hx);
+              if (mat == MAT_CRYSTAL) { /* icicles and shards */
+                cw_vec2 q[3] = { { px - 0.09f, top }, { px + 0.09f, top }, { px + sway, top + len * 0.7f } };
+                cw_r2d_polygon(q, 3, mixc(hc, rgba(0.7f, 0.85f, 1, 1), 0.25f));
+              } else if (mat == MAT_BRASS) { /* chains */
+                for (float cyy = top; cyy < top + len; cyy += 0.16f) cw_r2d_circle_lines(v2(px, cyy + 0.08f), 0.05f, 0.025f, 8, hc);
+              } else if (mat == MAT_CORAL) { /* weed */
+                limb(v2(px, top), v2(px + sway * 3, top + len * 0.5f), 0.05f, 0.04f, hc);
+                limb(v2(px + sway * 3, top + len * 0.5f), v2(px - sway * 2, top + len), 0.04f, 0.015f, hc);
+              } else if (mat == MAT_CLOUD) { /* wisps */
+                cw_color wc = toluma(hexc(g->sky, 1), 0.5f);
+                wc.a = 0.35f;
+                glow(px + sway * 2, top + len * 0.5f, 0.35f + 0.25f * len, wc);
+              } else { /* roots: a crooked strand and a fork */
+                cw_vec2 r0 = v2(px, top), r1 = v2(px + 0.12f + sway, top + len * 0.45f), r2 = v2(px - 0.05f + sway * 2, top + len);
+                limb(r0, r1, 0.045f, 0.03f, hc);
+                limb(r1, r2, 0.03f, 0.01f, hc);
+                if (len > 1) limb(r1, v2(r1.x + 0.25f, r1.y + 0.35f), 0.02f, 0.008f, hc);
+              }
+            }
+          }
+          /* mist low in the drop, drifting */
+          cw_color mc = toluma(mixc(hexc(g->sky, 1), comp_accent(region), 0.7f), 0.5f);
+          for (int k = 0; k < (b - a + 3) / 2; k++) {
+            float ph = (float)k * 1.7f + (float)a, mx = fa + fmodf((float)k * 1.37f + t * 0.25f + ph * 0.1f, fb - fa + 1) - 0.5f;
+            cw_color c = mc;
+            c.a = 0.28f + 0.08f * sinf(t * 0.7f + ph);
+            cw_r2d_sprite(&(cw_sprite){ .texture = A.soft, .pos = { mx, (float)y - 0.05f + 0.12f * sinf(t * 0.5f + ph) }, .size = { 2.6f, 0.7f },
+                                        .pivot = { 0.5f, 0.5f }, .color = c });
+          }
+        } else {
+          float ya = (float)y, ym = (float)y + 0.6f, yb = (float)y + 2.4f; /* (inside the room: the room above draws its own drop) */
+          cw_color mid = dk;
+          mid.a = 0.9f;
+          cw_vertex2d v[6] = { { { fa, ya }, { 0, 0 }, dk }, { { fb, ya }, { 0, 0 }, dk }, { { fb, ym }, { 0, 0 }, mid }, { { fa, ym }, { 0, 0 }, mid },
+                               { { fb, yb }, { 0, 0 }, clear }, { { fa, yb }, { 0, 0 }, clear } };
+          uint32_t idx[12] = { 0, 1, 2, 0, 2, 3, 3, 2, 4, 3, 4, 5 };
+          cw_r2d_triangles((cw_texture){ 0 }, v, 6, idx, 12);
+        }
+      }
+    }
+  }
 }
 
 /* doors that are shut by a warden, and the heart's seal: bright bars of light */
@@ -1159,19 +1443,21 @@ void view_draw(const sim *s, float t) {
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.92f), .time = t, .post = perf_off("post") ? NULL : &post,
                                     .gi = g_gi ? &gi : NULL });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
-  for (int l = L_WALL; l <= L_FRONT; l++)
+  for (int l = L_DROP; l <= L_FRONT; l++)
     cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = l != L_WATER, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS,
                                               .occluder_depth = l == L_WALL ? 0.9f : 0, .screen_read = l == L_WATER, .distortion = l == L_FRONT ? 10 : 0 });
 #else
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.97f), .time = t });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
-  for (int l = L_WALL; l <= L_FRONT; l++) cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = true, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS });
+  for (int l = L_DROP; l <= L_FRONT; l++) cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = true, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS });
 #endif
   cw_r2d_layer_set(L_SKY, NULL);
   cw_r2d_layer_set(L_HUD, NULL);
   draw_sky(s, t, region);
   float vw = cs.x / zoom, vh = cs.y / zoom;
   float x0 = g_cam.position.x - vw * 0.5f, x1 = g_cam.position.x + vw * 0.5f, y0 = g_cam.position.y - vh * 0.5f, y1 = g_cam.position.y + vh * 0.5f;
+  cw_r2d_use_layer(L_DROP);
+  draw_drops(s, x0, x1, y0, y1, t);
   /* back walls of every room in view */
   cw_r2d_use_layer(L_WALL);
   for (int cy = (int)(y0 / CELL_H); cy <= (int)(y1 / CELL_H) && cy < GH; cy++)

@@ -1,9 +1,10 @@
-/* explorer: the art made in code at start-up (art.c): tile sets with normal maps for six materials, the bright
+/* explorer: the art made in code at start-up (art.c): each region's rock with normal maps, the bright
  * lips of walkable surfaces, ledges, thorns, back walls, the parallax silhouettes, soft glows. */
 #ifndef EXPLORER_ART_H
 #define EXPLORER_ART_H
 
 #include "cartwheel/render2d.h"
+#include "world.h"
 
 enum { MAT_STONE, MAT_EARTH, MAT_CRYSTAL, MAT_BRASS, MAT_CORAL, MAT_CLOUD, NMAT };
 #define TILE_PX 64
@@ -11,7 +12,8 @@ enum { MAT_STONE, MAT_EARTH, MAT_CRYSTAL, MAT_BRASS, MAT_CORAL, MAT_CLOUD, NMAT 
 enum { PAR_RIDGE, PAR_ARCH, PAR_TREES, PAR_CRYSTAL, PAR_MACHINE, PAR_HANG, NPAR };
 
 typedef struct art {
-  cw_texture tiles[NMAT];  /* 4x4 atlas of the 16 edge variants (bit 1 top open, 2 right, 4 bottom, 8 left), normal-mapped */
+  cw_texture rock[NREGIONS]; /* each region's rock, normal-mapped: 2x2 blocks (the tile's place in the body's two-tile period) of
+                                * 4x4 edge variants (bit 1 top open, 2 right, 4 bottom, 8 left), TILE_PX each */
   cw_texture lip[NMAT];    /* 4 variants side by side, TILE_PX x 40 each: the walkable top */
   cw_texture ledge[NMAT];  /* one-way ledge, 3 pieces (left, middle, right) */
   cw_texture wall[NMAT];   /* back wall, 128 x 128, normal-mapped */
