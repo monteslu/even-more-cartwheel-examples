@@ -559,6 +559,9 @@ static void place_board(seat *s, const skater *k, v3 p, v3 f, v3 u, float t) {
     const trick_def *d = &FLIPS[k->flip];
     lq = qmul(qmul(qaxis(V(1, 0, 0), d->roll * 2 * PI_F * e), qaxis(V(0, 1, 0), d->yaw * 2 * PI_F * e)), qaxis(V(0, 0, 1), d->pitch * 2 * PI_F * e));
     lp = V(0, 0.18f * cw_sin(e * PI_F) + 0.06f, 0); /* it pops up to the feet and comes back under them */
+    /* about the deck's middle, not its wheels' line: lp + c - q c */
+    v3 c = V(0, 0.07f, 0), qc = t3_vec3_apply_quat(c, lq);
+    lp = vadd(lp, vsub(c, qc));
   }
   if (k->st == SK_AIR) lp.y += rig_board_lift(&s->rig);
   if (k->st == SK_ROLL && !k->manual) /* a carve tips the deck onto its edge, the way the rider leans */
@@ -631,6 +634,17 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     const skater *k = &S->s[i];
     v3 p, f, u;
     interp(&prev[i], k, alpha, &p, &f, &u);
+    v3 bp = p, bf = f, bu = u; /* the board's own placement (a bail throws it off the rider) */
+    if (k->st == SK_BAIL && VW.k) {
+      /* a bail: the board gets away from the rider, lying on the ground and spinning out as it slides */
+      phit gh;
+      v3 n = park_ground(VW.k, p, 0.5f, 3.0f, &gh) ? gh.n : V(0, 1, 0);
+      if (park_ground(VW.k, p, 0.5f, 3.0f, &gh)) bp = gh.p;
+      v3 ff = vperp(f, n);
+      if (vlen(ff) < 0.2f) ff = vperp(V(1, 0, 0), n);
+      float spin = 2.5f * (1 - cw_exp(-(float)k->bail_t * 0.04f));
+      bf = vrot(vnorm(ff), n, spin), bu = n;
+    }
     if (k->st == SK_AIR && k->vert) {
       /* vert air, drawn: the board stays square to the wall as it leaves and comes back, and turns level over the
          coping at the top (the rider upright there), about the line of the coping */
@@ -643,7 +657,8 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
         p = vsub(c, vmul(u, 0.6f));
       }
     }
-    place_board(s, k, p, f, u, t);
+    if (k->st == SK_BAIL) place_board(s, k, bp, bf, bu, t);
+    else place_board(s, k, p, f, u, t);
     /* the rider stands on the deck, turned with the board (not its flips) */
     v3 side = vcross(f, u);
     t3_quat q = quat_basis(f, u, side);
