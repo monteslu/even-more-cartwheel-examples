@@ -22,3 +22,7 @@ standard+vcol+instbig+shadow+senv+icol+l2000+s100+xcluster_plain
 standard+map+vcol+instbig+shadow+senv+atest+ds+icol+l2000+s100+xcluster_plain
 standard+vcol+instbig+shadow+senv+icol+l2000+s100+xcluster
 standard+map+vcol+instbig+shadow+senv+atest+ds+icol+l2000+s100+xcluster
+standard+vcol+instbig+senv+icol+l2000+xcluster_plain
+standard+map+vcol+instbig+senv+atest+ds+icol+l2000+xcluster_plain
+standard+vcol+instbig+senv+icol+l2000+xcluster
+standard+map+vcol+instbig+senv+atest+ds+icol+l2000+xcluster

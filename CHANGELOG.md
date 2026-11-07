@@ -4,6 +4,12 @@
 
 - demolition is now **Destructo**: the game, its carts (destructo.wasc), apps, tests and launcher art carry the
   new name.
+- Destructo gets a new look: towers of warm stone, timber and plaster under slate, terracotta and copper roofs, and
+  the tall towers carry stepped roofs too, so the roofs and finials show from the launcher. Trees of layered foliage
+  (oaks, birches, spruces, snow-laden firs, date palms, two species a setting) sway in the wind; the ground rolls past
+  the field of play and the yard and track are worn into it. The desert is pale dunes under red mesas instead of an
+  orange haze, and the snow is shaded. The look check passes on all seven settings, the biggest collapse stays under
+  4 ms on GL and WebGPU and the biggest blast inside one 60 Hz frame.
 
 ## 0.5.0
 

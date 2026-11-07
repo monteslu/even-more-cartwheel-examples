@@ -413,7 +413,7 @@ static const setting SETTINGS[K_COUNT] = {
   [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 0.95f, { 0.7f, 0.74f, 0.82f }, { 0.58f, 0.56f, 0.56f }, { 0.75f, 0.82f, 0.95f }, 0.0012f,
                BD_MOUNTAINS, { 0.04f, 0.045f, 0.06f }, { 0.78f, 0.8f, 0.86f },
                { { 0.48f, 0.28f, 0.14f }, { 0.42f, 0.42f, 0.45f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } },
-               0.22f, 3.0f, { SP_FIR_SNOW, SP_FIR_SNOW }, 0, 90, { { 1, 1, 1 }, { 1, 1, 1 } } },
+               0.22f, 3.0f, { SP_FIR_SNOW, SP_FIR_SNOW }, 0, 72, { { 1, 1, 1 }, { 1, 1, 1 } } },
 };
 /* how much of the contrast grade (assets/grade/contrast.cube) each setting takes */
 static const float GRADE[K_COUNT] = { [K_TOWER] = 0.55f, [K_WALL] = 0.55f, [K_BRIDGE] = 0.55f, [K_CASTLE] = 0.65f,
@@ -522,7 +522,7 @@ static float relief_h(const setting *S, const game *g, float x, float z) {
 /* a grid of ground from (x0, z0), w x l metres, cells of about cell metres, its texture laid in world space (so two
  * grids over one another match). decal: the yard round the structure and the track to the launcher, the setting's
  * worn earth or trodden snow fading into the ground at a ragged edge */
-static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float z0, float w, float l, float cell, bool decal) {
+static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float z0, float w, float l, float cell, bool decal, const float *hole) {
   int nx = (int)(w / cell + 0.5f) + 1, nz = (int)(l / cell + 0.5f) + 1;
   float dx = w / (float)(nx - 1), dz = l / (float)(nz - 1);
   int nv = nx * nz;
@@ -553,6 +553,8 @@ static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float
   for (int j = 0; j < nz - 1; j++)
     for (int i = 0; i < nx - 1; i++) {
       unsigned a = (unsigned)(j * nx + i), b = a + (unsigned)nx, c = a + 1, d = b + 1;
+      /* a hole where the decal lies over the ground (the yard drawn once, not twice) */
+      if (hole && x0 + dx * i >= hole[0] && x0 + dx * (i + 1) <= hole[1] && z0 + dz * j >= hole[2] && z0 + dz * (j + 1) <= hole[3]) continue;
       idx[n++] = a, idx[n++] = b, idx[n++] = c, idx[n++] = c, idx[n++] = b, idx[n++] = d; /* facing up */
     }
   t3_geometry *geo = t3_geometry_new();
@@ -614,9 +616,10 @@ void view_level(const game *g) {
     t3_material *gm = ground_mat(grey, 1, 1, S->ground[1] > S->ground[0] * 1.3f ? 0 : 4, 0.95f); /* blades on grass, grit elsewhere */
     gm->vertex_colors = true;
     t3_retain(gm);
-    piece(V.field, "Ground", ground_grid(S, g, -320, sea ? -40 : -320, 640, sea ? 360 : 640, 5, false), gm, false);
     float r = g->extent + 5, zt = fmaxf(r, g->muzzle.z + 4) + 4;
-    piece(V.field, "Yard", ground_grid(S, g, -r - 4, -r - 4, 2 * r + 8, zt + r + 4, 0.5f, true), gm, false);
+    const float hole[4] = { -r - 4, r + 4, -r - 4, zt };
+    piece(V.field, "Ground", ground_grid(S, g, -320, sea ? -40 : -320, 640, sea ? 360 : 640, 5, false, hole), gm, false);
+    piece(V.field, "Yard", ground_grid(S, g, -r - 4, -r - 4, 2 * r + 8, zt + r + 4, 0.5f, true, NULL), gm, false);
   }
   if (sea) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon */
     t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
@@ -642,7 +645,7 @@ void view_level(const game *g) {
     piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
   }
   /* trees: the setting's two species, in groves, outside the field of fire */
-  if (S->ntrees > 0) {
+  if (S->ntrees > 0 && !getenv("DESTRUCTO_NO_TREES")) {
     static tree_spot spots[TREES_MAX];
     int n = 0;
     bool autumn = g->L->kind == K_WALL, groves = S->sp[0] == SP_PALM;

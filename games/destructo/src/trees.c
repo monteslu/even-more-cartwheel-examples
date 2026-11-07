@@ -137,9 +137,9 @@ static void birch(mb *w, mb *f) {
 static void spruce(mb *w, mb *f, bool snow) {
   t3_color bark = C(0.06f, 0.04f, 0.03f), nd = C(0.05f, 0.13f, 0.07f), white = C(0.8f, 0.84f, 0.92f);
   tube(w, V3(0, -0.2f, 0), V3(0, 10.0f, 0), 0.26f, 0.05f, 6, bark, bark);
-  for (int tier = 0; tier < 11; tier++) {
-    float y = 1.0f + 0.82f * (float)tier, l = 3.0f - 0.25f * (float)tier;
-    int nb = 9 - tier / 3;
+  for (int tier = 0; tier < 9; tier++) {
+    float y = 1.0f + 1.0f * (float)tier, l = 3.0f - 0.3f * (float)tier;
+    int nb = 8 - tier / 3;
     for (int k = 0; k < nb; k++) {
       float a = 2 * PI_F * (float)k / (float)nb + (float)tier * 0.7f + rr(-0.2f, 0.2f);
       t3_vec3 out = V3(cosf(a), -0.32f, sinf(a)), side = V3(-sinf(a), 0, cosf(a));
@@ -150,8 +150,8 @@ static void spruce(mb *w, mb *f, bool snow) {
       t3_color lo = cmul(nd, sh * 0.8f), hi = cmul(nd, sh * 1.15f);
       if (snow) hi = clerp(hi, white, 0.42f), lo = clerp(lo, white, 0.03f);
       card(f, c, ax, ay, n, lo, hi);
-      /* and one lying across it, the spray's breadth seen from above and below */
-      card(f, add(c, V3(0, 0.1f, 0)), ax, mul(norm(add(side, V3(0, -0.25f, 0))), l * 0.38f), n, lo, hi);
+      /* and on every other branch one lying across it, the spray's breadth seen from above and below */
+      if (k & 1) card(f, add(c, V3(0, 0.1f, 0)), ax, mul(norm(add(side, V3(0, -0.25f, 0))), l * 0.38f), n, lo, hi);
     }
   }
   t3_color tip = snow ? clerp(nd, white, 0.5f) : nd;
@@ -316,7 +316,7 @@ void trees_init(void) {
 
 static t3_instanced_mesh *forest_mesh(cw_node parent, const char *name, t3_geometry *g, t3_material *m, int n) {
   t3_instanced_mesh *im = t3_instanced_mesh_new(g, m, n);
-  im->mesh.base.cast_shadow = true, im->mesh.base.receive_shadow = true;
+  im->mesh.base.cast_shadow = false, im->mesh.base.receive_shadow = false; /* past the sun's shadow map (30 m round the structure): casting or sampling it would only cost time */
   im->instance_matrix->usage = T3_DYNAMIC_DRAW;
   t3_sphere sph = { { 0, 5, 0 }, 160 };
   t3_instanced_mesh_set_bounding_sphere(im, &sph);

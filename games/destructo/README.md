@@ -32,17 +32,22 @@ speed the break did not use and goes on through.
   ticks, a shell a tick: a blast that broke hundreds of blocks in one tick was a dropped frame in the cart.
 - `src/levels.c`: thirty levels from seven kits. Walls are running-bond brick courses that hand the corners to the
   other pair of walls each course, so they lock; floors are planks that the storey above stands on. Each kit has a
-  character: stepped roofs in red, slate or copper with gilded finials, battlements, trim courses, timber-framed top
-  storeys, a castle gate under a steel lintel, brick piers with cream caps, a turquoise-banded pyramid with a gilded
+  character: stepped roofs in red, slate or copper with gilded finials (a wide step is a ring of four boards, a third
+  the weight of a solid slab; a six-storey tower's roof stands on its top floor, since every course more on it is a
+  lean that creeps), battlements, trim courses, timber-framed top storeys, a castle gate under a steel lintel, brick piers with cream caps, a turquoise-banded pyramid with a gilded
   shrine; banners on poles ride the blocks they stand on; windows are glass bricks lit from inside.
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
   ball into what holds it up, then holds and taps the aim buttons until the launcher points there.
-- `src/view.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at start-up and the
-  builder's paints; a setting per kit (highlands under snow-capped mountains, a golden meadow, a river gorge, a
-  headland over the sea, a quarry, desert mesas, a snowy pass) with its own ground, backdrop, trees, light, haze and
-  share of a contrast grade (`assets/grade/contrast.cube`, from `tools/gen-grade.mjs`); a
-  column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
+- `src/view.c`, `src/trees.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at
+  start-up and the builder's paints in real material colours (warm stone, timber, plaster, slate, terracotta,
+  copper), the roofs' boards drawn with a course texture of their own; a setting per kit (highlands under
+  snow-capped mountains, a golden meadow, a river gorge, a headland over the sea, a quarry, red mesas over pale
+  dunes, a snowy pass) with its own ground (rolling past the field of play, its colour wandering, the yard and the
+  track worn into it), backdrop, light, haze and share of a contrast grade (`assets/grade/contrast.cube`, from
+  `tools/gen-grade.mjs`); trees of layered foliage (alpha-cut leaf, needle and frond cards made at start-up, their
+  normals out from each clump so a crown shades like a volume): oaks, birches, spruces, snow-laden firs and date
+  palms, two species a setting, swaying in the wind; a column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
   under the ground at load so no effect compiles its programs mid-game; sounds made in code.
 
 ## What Box3D can do here (tools/physcheck.c, tests/destructo-physics.mjs)
@@ -66,8 +71,10 @@ speed the break did not use and goes on through.
 ## Performance
 
 On the Radeon 890M at 1920x1080 on High, during Great Keep's collapse (1241 blocks broken, 2182 bodies awake and
-drawn): GPU 3.2 ms on GL and 3.15 ms on WebGPU (`tests/destructo-perf.mjs`). SSAO is off (0.9 ms, the edges of the
-block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU
+drawn): GPU 3.56 ms on GL and 3.41 ms on WebGPU (`tests/destructo-perf.mjs`); without the trees
+(`DESTRUCTO_NO_TREES=1`) the same collapse measured 3.3 ms and 3.0 ms. The trees cast and take no shadow (they stand
+past the sun's shadow map) and the ground has a hole under the yard, which is drawn once. SSAO is off (0.9 ms, the
+edges of the block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU
 multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during the same
 collapse: about 2.3 ms a step at worst over the collapse windows.
 
@@ -76,7 +83,7 @@ collapse: about 2.3 ms a step at worst over the collapse windows.
   compiled their GPU programs on that frame. Three things fix it: every effect is fired once under the ground at
   load, so its programs are built before play; breaks wait in a fracture queue and at most 24 run a tick; and a
   charge's push runs outward over four ticks, a shell of the blast a tick. The longest frame of the blast is now
-  13.2 ms in the cart on romdev and 10.1 ms natively, against 16.6 ms (`tests/destructo-hitch.mjs`; its control,
+  13.2 ms in the cart on romdev and 10.3 ms natively, against 16.6 ms (`tests/destructo-hitch.mjs`; its control,
   `destructo_bench_nobudget`, is the game as before the fix and must go over).
 
 - **Memory.** Making, stepping and destroying worlds gives the memory back; natively the job threads' own glibc
