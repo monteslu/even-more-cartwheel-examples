@@ -528,11 +528,23 @@ static int cmd_auto(int park_id, int players, int ticks) {
     memset(in, 0, sizeof in);
     for (int i = 0; i < S.players; i++) bot_tick(&B[i], &S, i, &in[i]);
     sim_step(&S, in);
-    for (int i = 0; i < S.players; i++)
+    for (int i = 0; i < S.players; i++) {
+      if (getenv("SKATE_SCAN")) {
+        if (i != 0 || t % 10) continue;
+        printf("t%d", t);
+        for (int j = 0; j < S.players; j++) printf(" %c%c%d", "RAGB"[S.s[j].st], S.s[j].grab >= 0 ? 'g' : S.s[j].flip >= 0 ? 'f' : S.s[j].manual ? 'm' : '.', (int)S.s[j].p.y);
+        printf("\n");
+        continue;
+      }
       if (S.s[i].ev & (EV_BAIL | EV_COMBO) || t % 120 == 0)
         printf("t%d p%d ph%d line %d %-5s p(%.1f %.1f %.1f) v%.1f score %d%s%s\n", t, i, B[i].phase, B[i].line, sk_state_name(S.s[i].st), (double)S.s[i].p.x, (double)S.s[i].p.y,
                (double)S.s[i].p.z, (double)vlen(S.s[i].v), S.s[i].score, S.s[i].ev & EV_BAIL ? " BAIL " : "", S.s[i].ev & EV_BAIL && S.s[i].bail_why ? S.s[i].bail_why : "");
+    }
   }
+  printf("final tick %d clock %d hash %u score [%d,%d,%d,%d] tricks [%d,%d,%d,%d] bails [%d,%d,%d,%d] grinds [%d,%d,%d,%d] manuals [%d,%d,%d,%d] tokens [%d,%d,%d,%d] best_combo [%d,%d,%d,%d] lines [%d,%d,%d,%d] state [%d,%d,%d,%d]\n", S.tick, S.clock, S.hash,
+         S.s[0].score, S.s[1].score, S.s[2].score, S.s[3].score, S.s[0].tricks, S.s[1].tricks, S.s[2].tricks, S.s[3].tricks, S.s[0].bails, S.s[1].bails, S.s[2].bails, S.s[3].bails,
+         S.s[0].grinds, S.s[1].grinds, S.s[2].grinds, S.s[3].grinds, S.s[0].manuals, S.s[1].manuals, S.s[2].manuals, S.s[3].manuals, S.s[0].tokens, S.s[1].tokens, S.s[2].tokens, S.s[3].tokens,
+         S.s[0].best_combo, S.s[1].best_combo, S.s[2].best_combo, S.s[3].best_combo, B[0].lines_done, B[1].lines_done, B[2].lines_done, B[3].lines_done, S.s[0].st, S.s[1].st, S.s[2].st, S.s[3].st);
   return 0;
 }
 

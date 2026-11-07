@@ -10,5 +10,5 @@ export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
 # launcher art and credits, packed into the cart (art/art.json)
 art = art
-description = "Skateboarding for one to four players in split screen: five sunny parks of bowls, quarter pipes, rails, ledges, a mega ramp and rooftops; flips, grabs, grinds and manuals linked into combos; free skate, a timed score attack with each park's goals, and score battles."
+description = "Skateboarding for one to four players in split screen: five sunny parks of bowls, quarter pipes, rails, ledges, a mega ramp and rooftops. Flips, grabs, grinds and manuals link into combos. Free skate, timed score attacks with goals and high scores, and score battles."
 author = "Luis Montes"

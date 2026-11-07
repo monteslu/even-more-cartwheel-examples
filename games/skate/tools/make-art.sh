@@ -9,13 +9,13 @@ OUT="$ROOT/out/art"; ART="$ROOT/games/skate/art"
 FONT="$ROOT/deps/cartwheel-engine/src/ui/fonts/FiraSans-Regular.ttf"
 mkdir -p "$OUT" "$ART"
 node "$ROOT/tests/skate-shot.mjs" \
-  skate_auto 1500 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=0 -- \
-  skate_auto 1700 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=2 -- \
-  skate_auto 1300 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=1 -- \
-  skate_auto 1400 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=3 -- \
-  skate_auto 1260 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 SKATE_PARK=0 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 -- \
-  skate_auto 1500 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 SKATE_PARK=4 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 -- \
-  skate_auto 1100 "$OUT/key-2.png" gl CW_RENDER_SCALE=3 SKATE_PARK=2 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1
+  skate_auto 727 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=0 -- \
+  skate_auto 742 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=2 -- \
+  skate_auto 662 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=1 -- \
+  skate_auto 634 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=3 -- \
+  skate_auto 173 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 SKATE_PARK=0 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
+  skate_auto 293 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 SKATE_PARK=4 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
+  skate_auto 752 "$OUT/key-2.png" gl CW_RENDER_SCALE=3 SKATE_PARK=2 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1
 # the logo: the working title, sunny orange on a dark outline, a little italic lean
 convert -size 1600x500 xc:none -font "$FONT" -pointsize 360 -gravity center \
   -stroke "#1a1430" -strokewidth 34 -fill "#1a1430" -annotate 0x-12+0+0 "SKATE" \
