@@ -1,5 +1,5 @@
 // The luma of a PNG as the engine writes it (8-bit RGB or RGBA, any filter): mean and standard deviation of Rec. 709
-// luma over the sRGB values, 0..255. Used by tests/demolition-look.mjs.
+// luma over the sRGB values, 0..255. Used by tests/destructo-look.mjs.
 import { readFileSync } from 'node:fs';
 import { inflateSync } from 'node:zlib';
 
