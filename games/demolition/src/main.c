@@ -7,7 +7,7 @@
  *             bring every crystal down within par for three stars; hold the wide view to look the structure over
  *   result    the stars, then the next level or another try
  *   demolition_auto plays itself (the bot, through the same controls); demolition_bench is the perf gate's scene
- *   (the bot on the biggest castle, the camera on the collapse). Environment (development, native):
+ *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse). Environment (development, native):
  *   DEMOLITION_LEVEL=n, DEMOLITION_PLAYERS=n, DEMOLITION_QUALITY=0..4, DEMOLITION_NO_HUD=1. */
 #include <math.h>
 #include <stdio.h>
@@ -36,7 +36,7 @@
 #define DEMOLITION_BENCH 0
 #endif
 #ifndef DEMOLITION_BENCH_LEVEL
-#define DEMOLITION_BENCH_LEVEL 21
+#define DEMOLITION_BENCH_LEVEL 24
 #endif
 
 typedef struct save_data {

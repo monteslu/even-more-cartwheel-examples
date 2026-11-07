@@ -45,7 +45,7 @@ cluster_far = 120
 [node name="Post" parent="." type="PostProcess"]
 msaa = 4
 tonemap = AGX
-exposure = 1.1
+exposure = 1.25
 bloom = true
 bloom_intensity = 0.09
 bloom_threshold = 1.2

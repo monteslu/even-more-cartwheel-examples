@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The launcher art (art/) from the game's own frames. Takes the frames through the GPU lock (tests/demolition-shot.mjs):
-# play frames with the HUD (the bench's castle coming down, aiming at three other levels), and key frames without it
+# play frames with the HUD (the bench's keep coming down, aiming at three other levels), and key frames without it
 # at 3840x2160, then crops and composites them with ImageMagick. The logo is the working title set in Fira Sans Bold
 # (SIL Open Font License, from cartwheel-engine's samples).
 #   games/demolition/tools/make-art.sh
@@ -10,11 +10,11 @@ OUT="$ROOT/out/art"; ART="$ROOT/games/demolition/art"
 FONT="$ROOT/deps/cartwheel-engine/samples/ui_assets/fonts/FiraSans-Bold.ttf"
 mkdir -p "$OUT" "$ART"
 node "$ROOT/tests/demolition-shot.mjs" \
-  demolition_bench 365 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 -- \
-  demolition_auto 110 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=15 -- \
-  demolition_auto 110 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=11 -- \
-  demolition_bench 430 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 -- \
-  demolition_bench 352 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 DEMOLITION_NO_HUD=1 -- \
+  demolition_bench 320 "$OUT/play-0.png" gl CW_RENDER_SCALE=1.5 -- \
+  demolition_auto 70 "$OUT/play-1.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=15 -- \
+  demolition_auto 70 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 DEMOLITION_LEVEL=11 -- \
+  demolition_bench 470 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 -- \
+  demolition_bench 316 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 DEMOLITION_NO_HUD=1 -- \
   demolition_auto 110 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 DEMOLITION_LEVEL=24 DEMOLITION_NO_HUD=1
 convert -size 1600x420 xc:none -font "$FONT" -pointsize 250 -gravity center \
   -fill '#2a1408' -annotate +10+14 'DEMOLITION' -stroke '#3a1a08' -strokewidth 12 -fill '#ffb347' -annotate +0+0 'DEMOLITION' \
@@ -32,10 +32,10 @@ cat > "$ART/art.json" <<'JSON'
   "logo": "logo.png",
   "title": "title.jpg",
   "screenshots": [
-    { "path": "shot-1.jpg", "label": "Twin Gates: a charge goes off in the keep and the castle comes apart" },
+    { "path": "shot-1.jpg", "label": "Great Keep: a charge opens the keep and its storeys come down in planks and stone" },
     { "path": "shot-2.jpg", "label": "Lantern Tower: the aim path climbing toward a six-storey tower" },
-    { "path": "shot-3.jpg", "label": "Sun Steps: lining up a shot at a stepped pyramid with a shrine on top" },
-    { "path": "shot-4.jpg", "label": "Twin Gates after the blast: dust, debris and the crystals falling" }
+    { "path": "shot-3.jpg", "label": "Sun Steps: a shot on its way to a stepped pyramid with a shrine on top" },
+    { "path": "shot-4.jpg", "label": "Great Keep settling: the dust drifts and the debris comes to rest" }
   ]
 }
 JSON
