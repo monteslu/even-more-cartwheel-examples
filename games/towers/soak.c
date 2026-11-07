@@ -1,6 +1,6 @@
 /* towers_soak: the rules and the bots with no window and no GPU.
  *
- *   towers_soak --clear <map.cwtd> [players] [minutes]
+ *   towers_soak --clear <map.cwtd> [players] [minutes] [tries]
  *       The map check's clear run: bots (two by default) play the map from its start with the game's rules; exit 0
  *       when they hold the core through every wave within the time (40 game minutes by default; up to three tries,
  *       each its own seed), 1 when they do not (the line says why: the core fell, the time ran out, a check failed),
@@ -145,9 +145,9 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
   return 1;
 }
 
-static int clear_run(const char *file, int players, int minutes) {
+static int clear_run(const char *file, int players, int minutes, int tries) {
   int r = 1;
-  for (int k = 0; k < 3 && r == 1; k++) {
+  for (int k = 0; k < tries && r == 1; k++) {
     r = clear_once(file, players, minutes, 4242u + (uint32_t)k * 7919u);
     if (r == 0 && k) printf("clear: (on try %d)\n", k + 1);
   }
@@ -156,7 +156,7 @@ static int clear_run(const char *file, int players, int minutes) {
 
 int main(int argc, char **argv) {
   cw_jobs_init(3);
-  if (argc > 2 && !strcmp(argv[1], "--clear")) return clear_run(argv[2], argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 40);
+  if (argc > 2 && !strcmp(argv[1], "--clear")) return clear_run(argv[2], argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 40, argc > 5 ? CW_CLAMP(atoi(argv[5]), 1, 3) : 3);
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, map0 = argc > 3 ? atoi(argv[3]) : 1;
   sim_init(&S, players, 4242);
   if (!load_map(map0, &M)) { printf("soak: no map %d\n", map0); return 2; }

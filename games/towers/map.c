@@ -105,6 +105,12 @@ bool map_parse(const char *text, tdmap *m, int (*kind_by_name)(const char *), ch
       int kind = !strcmp(w1, "decor") ? 0 : !strcmp(w1, "lamp") ? 1 : -1;
       if (kind < 0) FAIL("line %d: unknown prop %s", ln_no, w1);
       m->prop[m->nprop++] = (mp_prop){ (uint8_t)a, (uint8_t)b, (uint8_t)kind, (uint8_t)c, (uint8_t)(d & 3) };
+    } else if (!strcmp(w0, "feature")) {
+      mp_feat f;
+      if (sscanf(ln, "%*s %63s %f %f %f %f", w1, &f.x, &f.y, &f.r, &f.h) != 5 || m->nfeat >= MP_MAXFEAT || !(f.r > 0.2f && f.r < 12)) FAIL("line %d: bad feature", ln_no);
+      f.kind = !strcmp(w1, "rock") ? FEAT_ROCK : !strcmp(w1, "water") ? FEAT_WATER : 255;
+      if (f.kind == 255) FAIL("line %d: unknown feature %s", ln_no, w1);
+      m->feat[m->nfeat++] = f;
     } else if (!strcmp(w0, "light")) {
       mp_light l;
       if (sscanf(ln, "%*s %d %d %f %f %f %f %f %f", &a, &b, &l.h, &l.r, &l.g, &l.b, &l.energy, &l.range) != 8 || m->nlight >= MP_MAXLIGHT) FAIL("line %d: bad light", ln_no);
@@ -195,7 +201,7 @@ uint64_t map_bake_hash(const char *text) {
       sscanf(s + 5, "%d %d", &w, &hgt);
       take = true;
     } else
-      take = !strncmp(s, "theme ", 6) || !strncmp(s, "prop ", 5) || !strncmp(s, "light ", 6);
+      take = !strncmp(s, "theme ", 6) || !strncmp(s, "prop ", 5) || !strncmp(s, "light ", 6) || !strncmp(s, "feature ", 8);
     if (!take) continue;
     for (const char *c = s; *c; c++) h = (h ^ (uint8_t)*c) * 0x100000001b3ull;
     h = (h ^ (uint8_t)'\n') * 0x100000001b3ull;

@@ -21,6 +21,8 @@
  *                                  (0-based seats; one player owns every slot)
  *   prop <x> <y> <kind> <frame> <turn>   scenery on a ground tile: kind decor (the theme's kit, its frame) or lamp;
  *                                  turn in quarter turns (0..3)
+ *   feature <rock|water> <x> <y> <r> <h>   a smooth rock outcrop (a dome h metres high) or a pool with banks: its
+ *                                  middle and radius in tiles (fractions allowed); the tiles under it stay ground
  *   light <x> <y> <height> <r> <g> <b> <energy> <range>   a light in the bake only (lamps, glows): its tile centre
  *                                  and height in metres, colour 0..1, energy and range as OmniLight3D
  *
@@ -37,7 +39,7 @@
 #define MP_TILE 2.0f   /* metres a tile */
 #define MP_GROUND_H 0.5f /* raised ground's height over the path */
 #define MP_ROCK_H 1.6f   /* rock's */
-enum { MP_MAXSPAWN = 4, MP_MAXSLOT = 64, MP_MAXPROP = 400, MP_MAXLIGHT = 96, MP_MAXKIND = 8 };
+enum { MP_MAXSPAWN = 4, MP_MAXSLOT = 64, MP_MAXPROP = 400, MP_MAXLIGHT = 96, MP_MAXKIND = 8, MP_MAXFEAT = 16 };
 enum { MP_THEME_MEADOW, MP_THEME_AUTUMN, MP_THEME_DESERT, MP_THEME_SNOW, MP_THEME_VOLCANO, MP_THEME_CRYSTAL, MP_THEMES };
 extern const char *const MP_THEME_ID[MP_THEMES];
 
@@ -47,6 +49,10 @@ enum { T_PATH, T_GROUND, T_SLOT, T_ROCK, T_WATER, T_KINDS };
 typedef struct mp_slot { uint8_t x, y, own[4]; } mp_slot; /* own[n - 1]: the owner when n play */
 typedef struct mp_prop { uint8_t x, y, kind, frame, turn; } mp_prop; /* kind 0 decor, 1 lamp */
 typedef struct mp_light { uint8_t x, y; float h, r, g, b, energy, range; } mp_light;
+/* a smooth terrain feature over the tiles (they stay ground for the rules): a rock outcrop (a dome h metres over the
+ * ground) or a pool (a bowl down under its water); x, y its middle and r its radius in tiles */
+enum { FEAT_ROCK, FEAT_WATER };
+typedef struct mp_feat { uint8_t kind; float x, y, r, h; } mp_feat;
 
 typedef struct tdmap {
   int num, theme, w, h, waves;
@@ -54,13 +60,14 @@ typedef struct tdmap {
   float diff;
   char name[48];
   uint8_t t[MP_MAX_H][MP_MAX_W]; /* [y][x] tile kind */
-  int nspawn, nslot, nprop, nlight, nkind;
+  int nspawn, nslot, nprop, nlight, nkind, nfeat;
   uint8_t spawn[MP_MAXSPAWN][2];
   uint8_t core[2];
   uint8_t kind[MP_MAXKIND];
   mp_slot slot[MP_MAXSLOT];
   mp_prop prop[MP_MAXPROP];
   mp_light light[MP_MAXLIGHT];
+  mp_feat feat[MP_MAXFEAT];
 } tdmap;
 
 /* Parse a .cwtd from its text; false with a message in err when it is not a valid map. kind_by_name names the creeps
@@ -89,7 +96,7 @@ static inline void mp_gate_pos(const tdmap *m, int k, float *x, float *z) {
 static inline void mp_core_pos(const tdmap *m, float *x, float *z) { *x = mp_wx(m, m->core[0]) + MP_TILE * 0.5f, *z = mp_wz(m, m->core[1]) + MP_TILE * 0.5f; }
 /* the slot's owner when n play (0 when one plays) */
 static inline int mp_owner(const mp_slot *s, int n) { return n <= 1 ? 0 : s->own[(n > 4 ? 4 : n) - 1]; }
-/* the hash of what a map's bake depends on: FNV-1a 64 over its text's theme, size, grid, prop and light lines (each trimmed, with a newline), in file order. The bake tool writes it beside the .cwlm (lightmaps/<n>.hash,
+/* the hash of what a map's bake depends on: FNV-1a 64 over its text's theme, size, grid, feature, prop and light lines (each trimmed, with a newline), in file order. The bake tool writes it beside the .cwlm (lightmaps/<n>.hash,
  * 16 hex digits); tools/check-maps.mjs computes the same from the text and compares. */
 uint64_t map_bake_hash(const char *text);
 

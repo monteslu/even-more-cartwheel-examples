@@ -9,6 +9,7 @@
 //   grounded   stand every prop on flat ground: the lowest point of every decor and lamp frame at the floor (1 cm),
 //              and the ground under its footprint (the model's reach, the heightfield as mapbuild.c builds it) flat at
 //              the ground's height, so nothing floats over a bank or sinks into one
+//   terrain    keep its rock outcrops and pools off the path and the pads (the heightfield flat over every one)
 //   bake       have its bake: lightmaps/<n>.cwlm present and lightmaps/<n>.hash equal to the map's bake hash (a map
 //              or a kit changed after its bake fails)
 //   clear      be held by the bots in the soak build (--soak <towers_soak>): two bots from the start hold the core
@@ -34,12 +35,12 @@ const JOBS = Number(opt('--jobs') || Math.max(1, cpus().length - 2));
 const CONTROLS = !argv.includes('--no-controls');
 const THEMES = ['meadow', 'autumn', 'desert', 'snow', 'volcano', 'crystal'];
 const KINDS = ['skitter', 'ghoul', 'hound', 'imp', 'sporeling', 'bloater', 'shade', 'ogre'];
-const TILE = 2, GROUND_H = 0.5, RES = 4, MARGIN = 6;
+const TILE = 2, GROUND_H = 0.5, RES = 4, MARGIN = 3;
 
 // ── the format (map.c) ──────────────────────────────────────────────
 function parse(text) {
   const lines = text.split('\n').map((l) => l.replace(/[\s\r]+$/, ''));
-  const m = { grid: [], spawn: [], slot: [], prop: [], light: [], kinds: [] };
+  const m = { grid: [], spawn: [], slot: [], prop: [], light: [], kinds: [], feat: [] };
   let i = 0;
   const next = () => lines[i++];
   while (i < lines.length && (!lines[i] || lines[i][0] === '#')) i++;
@@ -69,6 +70,7 @@ function parse(text) {
     else if (k === 'core') m.core = n;
     else if (k === 'slot') { if (n.length !== 5 || n[2] > 1 || n[3] > 2 || n[4] > 3) throw new Error(`bad slot ${ln}`); m.slot.push({ x: n[0], y: n[1], own: [0, n[2], n[3], n[4]] }); }
     else if (k === 'prop') { if (!['decor', 'lamp'].includes(w[3])) throw new Error(`unknown prop ${w[3]}`); m.prop.push({ x: +w[1], y: +w[2], kind: w[3], frame: +w[4], turn: +w[5] & 3 }); }
+    else if (k === 'feature') { if (!['rock', 'water'].includes(w[1]) || w.length !== 6 || !(+w[4] > 0.2 && +w[4] < 12)) throw new Error(`bad feature ${ln}`); m.feat.push({ kind: w[1], x: +w[2], y: +w[3], r: +w[4], h: +w[5] }); }
     else if (k === 'light') m.light.push(n);
     else throw new Error(`unknown record ${k}`);
   }
@@ -99,7 +101,7 @@ function bakeHash(text, theme, models) {
     if (grid) { if (s === 'end') grid = false; else take = rows++ < hgt; if (!take) continue; }
     else if (s === 'grid') { grid = true; continue; }
     else if (s.startsWith('size ')) { hgt = +s.split(/\s+/)[2]; take = true; }
-    else take = s.startsWith('theme ') || s.startsWith('prop ') || s.startsWith('light ');
+    else take = s.startsWith('theme ') || s.startsWith('prop ') || s.startsWith('light ') || s.startsWith('feature ');
     if (!take) continue;
     h = fold(h, Buffer.from(s, 'latin1'));
     h = fold(h, [10]);
@@ -165,7 +167,23 @@ function heightfield(m) {
     if (j % RES) ty0 = ty1;
     let h = Infinity;
     for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) h = Math.min(h, kh(tileAt(x, y)));
-    return h;
+    if (h > 0.01) { // a notch in a curve of path cut on the diagonal (mapbuild.c)
+      const fx = i / RES - MARGIN, fy = j / RES - MARGIN;
+      for (let y = ty0; y <= ty1; y++) for (let x = tx0; x <= tx1; x++) {
+        if (tileAt(x, y) !== 'g') continue;
+        for (const [dx, dy] of [[1, -1], [1, 1], [-1, 1], [-1, -1]]) {
+          if (tileAt(x + dx, y) !== '.' || tileAt(x, y + dy) !== '.' || tileAt(x + dx, y + dy) !== '.') continue;
+          const sd = Math.abs(fx - x - (dx > 0 ? 1 : 0)) + Math.abs(fy - y - (dy > 0 ? 1 : 0));
+          h = Math.min(h, GROUND_H * Math.min(1, Math.max(0, (sd - 0.5) / Math.SQRT2 / 0.25)));
+        }
+      }
+    }
+    // the features (mapbuild.c feat_at): the highest outcrop dome added on ground, the deepest pool cut down
+    const px = i / RES - MARGIN, py = j / RES - MARGIN, bump = (t) => (t >= 1 ? 0 : 0.5 + 0.5 * Math.cos(Math.PI * t));
+    let rock = 0, water = 0;
+    for (const q of m.feat) { const b = bump(Math.hypot(px - q.x, py - q.y) / q.r); if (q.kind === 'rock') rock = Math.max(rock, q.h * b); else water = Math.max(water, b); }
+    if (h >= GROUND_H - 0.01) h += rock;
+    return water > 0 ? Math.min(h, GROUND_H - (GROUND_H + 0.6) * water) : h;
   };
   return (x, z) => {
     const fi = (x / TILE + m.w / 2 + MARGIN) * RES, fj = (z / TILE + m.h / 2 + MARGIN) * RES;
@@ -248,6 +266,18 @@ function checkMap(text, { bakeDir = join(A, 'lightmaps'), models = join(A, 'mode
       const h = hf(px, pz);
       if (Math.abs(h - GROUND_H) > 0.02) { fails.push({ check: 'grounded', msg: `a ${p.kind} at ${p.x} ${p.y} reaches over a bank (ground ${h.toFixed(2)} m under its edge)` }); break; }
     }
+  }
+  // terrain: the outcrops and pools leave every path tile and pad flat (sampled over each tile)
+  for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) {
+    const t = m.grid[y][x];
+    if (t !== '.' && t !== 'o') continue;
+    const want = t === '.' ? 0 : GROUND_H;
+    let bad = false;
+    for (const [a, b] of [[0.5, 0.5], [0.3, 0.3], [0.7, 0.3], [0.3, 0.7], [0.7, 0.7]]) {
+      const h = hf((x + a - m.w / 2) * TILE, (y + b - m.h / 2) * TILE);
+      if (Math.abs(h - want) > 0.02) bad = true;
+    }
+    if (bad) { fails.push({ check: 'terrain', msg: `a feature reaches the ${t === '.' ? 'path' : 'pad'} at ${x} ${y}` }); break; }
   }
   // bake
   const id = String(m.num).padStart(3, '0');

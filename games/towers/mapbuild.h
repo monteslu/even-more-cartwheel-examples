@@ -30,7 +30,7 @@ void mb_chr_free(mb_chr *c);
 void mb_chr_simplify(mb_chr *c, int g, float cell); /* fewer triangles for a model seen small (one topology kept) */
 t3_color mb_lin(float r, float g, float b);
 
-#define MB_MARGIN 6 /* tiles of scenery drawn round the map (the camera sees past its edges) */
+#define MB_MARGIN 3 /* tiles of scenery drawn round the map (the camera sees past its edges) */
 
 typedef struct mb_built {
   cw_node node;      /* "Level" */

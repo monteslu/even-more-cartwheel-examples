@@ -180,20 +180,45 @@ static int tile_at(const tdmap *m, int x, int y) {
 static float kind_h(int t) { return t == T_PATH ? 0.0f : t == T_WATER ? -0.4f : t == T_ROCK ? MP_ROCK_H : MP_GROUND_H; }
 /* a heightfield vertex's height: the lowest of the tiles it touches (a bank runs down into the higher tile), rock
  * rough on top. i, j count samples from the margin's corner */
+/* the features at a point in tile units (tiles span [k, k + 1]): the outcrops' height there (the highest dome) and the
+ * pools' depth (0 .. 1, deepest) */
+static float bump(float t) { return t >= 1 ? 0 : 0.5f + 0.5f * cw_cos(3.14159265f * t); }
+static void feat_at(const tdmap *m, float x, float y, float *rock, float *water) {
+  *rock = 0, *water = 0;
+  for (int k = 0; k < m->nfeat; k++) {
+    const mp_feat *f = &m->feat[k];
+    float b = bump(sqrtf((x - f->x) * (x - f->x) + (y - f->y) * (y - f->y)) / f->r);
+    if (f->kind == FEAT_ROCK) *rock = CW_MAX(*rock, f->h * b);
+    else *water = CW_MAX(*water, b);
+  }
+}
 static float vert_h(const tdmap *m, int i, int j) {
   int tx0 = (i - 1) / RES - MB_MARGIN - ((i - 1) < 0), tx1 = i / RES - MB_MARGIN;
   int ty0 = (j - 1) / RES - MB_MARGIN - ((j - 1) < 0), ty1 = j / RES - MB_MARGIN;
   if (i % RES) tx0 = tx1;
   if (j % RES) ty0 = ty1;
   float h = 1e9f;
-  int rock = 0;
   for (int y = ty0; y <= ty1; y++)
-    for (int x = tx0; x <= tx1; x++) {
-      int t = tile_at(m, x, y);
-      h = CW_MIN(h, kind_h(t));
-      rock += t == T_ROCK;
-    }
+    for (int x = tx0; x <= tx1; x++) h = CW_MIN(h, kind_h(tile_at(m, x, y)));
+  if (h > 0.01f) { /* a notch in a curve of path (path beside the tile on two sides and across their corner): the corner cut on
+                    * the diagonal, so a curve drawn in tiles reads as a curve, not as steps */
+    float fx = (float)i / RES - MB_MARGIN, fy = (float)j / RES - MB_MARGIN;
+    for (int y = ty0; y <= ty1; y++)
+      for (int x = tx0; x <= tx1; x++) {
+        if (tile_at(m, x, y) != T_GROUND) continue;
+        for (int c = 0; c < 4; c++) {
+          int dx = c == 0 || c == 1 ? 1 : -1, dy = c == 1 || c == 2 ? 1 : -1;
+          if (tile_at(m, x + dx, y) != T_PATH || tile_at(m, x, y + dy) != T_PATH || tile_at(m, x + dx, y + dy) != T_PATH) continue;
+          float s = fabsf(fx - (float)x - (dx > 0 ? 1.0f : 0.0f)) + fabsf(fy - (float)y - (dy > 0 ? 1.0f : 0.0f));
+          h = CW_MIN(h, MP_GROUND_H * CW_CLAMP((s - 0.5f) / 1.41421356f / 0.25f, 0.0f, 1.0f));
+        }
+      }
+  }
   if (h >= MP_ROCK_H - 0.01f) h += 0.45f * fhash(i, j, 41) + 0.35f * vnoise((float)i * 0.4f, (float)j * 0.4f, 43);
+  float rock, water;
+  feat_at(m, (float)i / RES - MB_MARGIN, (float)j / RES - MB_MARGIN, &rock, &water);
+  if (h >= MP_GROUND_H - 0.01f) h += rock;
+  if (water > 0) h = CW_MIN(h, MP_GROUND_H - (MP_GROUND_H + 0.6f) * water);
   return h;
 }
 float mapbuild_height(const tdmap *m, float x, float z) {
@@ -249,8 +274,13 @@ static void build_terrain(mb_built *b, const tdmap *m) {
   const palette *pal = &PAL[b->theme];
   int nv = NI * NJ;
   float *hgt = malloc(sizeof(float) * (size_t)nv);
+  float *wet = malloc(sizeof(float) * (size_t)nv); /* how far into a pool each vertex is */
   for (int j = 0; j < NJ; j++)
-    for (int i = 0; i < NI; i++) hgt[j * NI + i] = vert_h(m, i, j);
+    for (int i = 0; i < NI; i++) {
+      hgt[j * NI + i] = vert_h(m, i, j);
+      float rk;
+      feat_at(m, (float)i / RES - MB_MARGIN, (float)j / RES - MB_MARGIN, &rk, &wet[j * NI + i]);
+    }
   for (int part = 0; part < 2; part++) { /* 0 the ground, 1 the path */
     float *pos = malloc(sizeof(float) * 3 * (size_t)nv), *nrm = malloc(sizeof(float) * 3 * (size_t)nv), *col = malloc(sizeof(float) * 3 * (size_t)nv),
           *uv = malloc(sizeof(float) * 2 * (size_t)nv);
@@ -271,7 +301,8 @@ static void build_terrain(mb_built *b, const tdmap *m) {
         float c[3];
         for (int q = 0; q < 3; q++) {
           float gq = pal->ground[q] + a * (pal->accent[q] - pal->ground[q]);
-          if (h < -0.05f) c[q] = pal->water[q] * 0.55f + pal->bank[q] * 0.45f;
+          if (wet[v] > 0.01f) c[q] = h < MP_GROUND_H - 0.1f ? pal->water[q] * 0.5f + pal->bank[q] * 0.5f : pal->bank[q] + (pal->ground[q] - pal->bank[q]) * 0.5f;
+          else if (h < -0.05f) c[q] = pal->water[q] * 0.55f + pal->bank[q] * 0.45f;
           else if (h < 0.02f) c[q] = pal->path[q] * (0.92f + 0.16f * (vnoise(x / 2.5f, z / 2.5f, 17) - 0.5f) * 2);
           else if (h > MP_GROUND_H + 0.05f) c[q] = pal->rock[q] * (0.8f + 0.4f * fhash(i / 2, j / 2, 7)) * (0.85f + 0.15f * CW_MIN(h - MP_GROUND_H, 1.0f));
           else if (slope > 0.3f) c[q] = pal->bank[q] + (gq - pal->bank[q]) * CW_CLAMP(h / MP_GROUND_H, 0.0f, 1.0f) * 0.35f;
@@ -285,7 +316,8 @@ static void build_terrain(mb_built *b, const tdmap *m) {
     for (int j = 0; j < NJ - 1; j++)
       for (int i = 0; i < NI - 1; i++) {
         int a = j * NI + i, bb = a + 1, c = a + NI, d = c + 1;
-        bool low = hgt[a] < 0.02f && hgt[bb] < 0.02f && hgt[c] < 0.02f && hgt[d] < 0.02f && hgt[a] > -0.05f && hgt[bb] > -0.05f && hgt[c] > -0.05f && hgt[d] > -0.05f;
+        bool dry = wet[a] < 0.005f && wet[bb] < 0.005f && wet[c] < 0.005f && wet[d] < 0.005f;
+        bool low = hgt[a] < 0.02f && hgt[bb] < 0.02f && hgt[c] < 0.02f && hgt[d] < 0.02f && hgt[a] > -0.05f && hgt[bb] > -0.05f && hgt[c] > -0.05f && hgt[d] > -0.05f && dry;
         if (low != (part == 1)) continue;
         uint32_t *q = idx + nq * 6;
         /* split along the diagonal that follows the shape (a bank's corner stays a corner) */
@@ -318,44 +350,59 @@ static void build_terrain(mb_built *b, const tdmap *m) {
     cw_node_set(n, "lightmap_uv", cw_val_enum("UV0"));
     t3_release(mesh), t3_release(g), t3_release(gm);
   }
-  free(hgt);
+  free(hgt), free(wet);
 }
 
+/* the water: a still sheet over every water tile and over every pool (a disc the banks rise through) */
 static void build_water(mb_built *b, const tdmap *m) {
-  int n = 0;
+  enum { SEG = 40 };
+  int nt = 0, nf = 0;
   for (int y = 0; y < m->h; y++)
-    for (int x = 0; x < m->w; x++) n += m->t[y][x] == T_WATER;
-  if (!n) return;
-  float *pos = malloc(sizeof(float) * 12 * (size_t)n), *nrm = malloc(sizeof(float) * 12 * (size_t)n);
-  uint32_t *idx = malloc(sizeof(uint32_t) * 6 * (size_t)n);
-  int q = 0;
+    for (int x = 0; x < m->w; x++) nt += m->t[y][x] == T_WATER;
+  for (int k = 0; k < m->nfeat; k++) nf += m->feat[k].kind == FEAT_WATER;
+  if (!nt && !nf) return;
+  int nv = nt * 4 + nf * (SEG + 1), ni = nt * 6 + nf * SEG * 3;
+  float *pos = malloc(sizeof(float) * 3 * (size_t)nv), *nrm = malloc(sizeof(float) * 3 * (size_t)nv);
+  uint32_t *idx = malloc(sizeof(uint32_t) * (size_t)ni);
+  int v = 0, i = 0;
+  const float LEVEL = -0.12f;
   for (int y = 0; y < m->h; y++)
     for (int x = 0; x < m->w; x++) {
       if (m->t[y][x] != T_WATER) continue;
       float cx = mp_wx(m, (float)x), cz = mp_wz(m, (float)y), hs = MP_TILE * 0.5f;
       static const float QX[4] = { -1, 1, 1, -1 }, QZ[4] = { -1, -1, 1, 1 };
-      for (int v = 0; v < 4; v++) {
-        float *p = pos + (q * 4 + v) * 3, *nn = nrm + (q * 4 + v) * 3;
-        p[0] = cx + QX[v] * hs, p[1] = -0.12f, p[2] = cz + QZ[v] * hs;
-        nn[0] = 0, nn[1] = 1, nn[2] = 0;
-      }
-      uint32_t *ii = idx + q * 6, o = (uint32_t)q * 4;
-      ii[0] = o, ii[1] = o + 2, ii[2] = o + 1, ii[3] = o, ii[4] = o + 3, ii[5] = o + 2;
-      q++;
+      uint32_t o = (uint32_t)v;
+      for (int c = 0; c < 4; c++, v++) pos[v * 3] = cx + QX[c] * hs, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz + QZ[c] * hs;
+      uint32_t q[6] = { o, o + 2, o + 1, o, o + 3, o + 2 };
+      memcpy(idx + i, q, sizeof q), i += 6;
     }
+  for (int k = 0; k < m->nfeat; k++) {
+    const mp_feat *f = &m->feat[k];
+    if (f->kind != FEAT_WATER) continue;
+    float cx = (f->x - (float)m->w * 0.5f) * MP_TILE, cz = (f->y - (float)m->h * 0.5f) * MP_TILE, r = f->r * MP_TILE;
+    uint32_t o = (uint32_t)v;
+    pos[v * 3] = cx, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz, v++;
+    for (int s = 0; s < SEG; s++, v++) {
+      float a = (float)s * 6.2831853f / SEG;
+      pos[v * 3] = cx + cw_cos(a) * r, pos[v * 3 + 1] = LEVEL, pos[v * 3 + 2] = cz + cw_sin(a) * r;
+    }
+    for (int s = 0; s < SEG; s++) idx[i++] = o, idx[i++] = o + 1 + (uint32_t)((s + 1) % SEG), idx[i++] = o + 1 + (uint32_t)s;
+  }
+  for (int c = 0; c < v; c++) nrm[c * 3] = 0, nrm[c * 3 + 1] = 1, nrm[c * 3 + 2] = 0;
   t3_geometry *g = t3_geometry_new();
-  t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, q * 4, 3));
-  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, nrm, q * 4, 3));
-  t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, idx, q * 6, 1));
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, v, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, nrm, v, 3));
+  t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, idx, i, 1));
   free(pos), free(nrm), free(idx);
   t3_material *mat = t3_mesh_standard_material_new(0xffffff);
   const float *wc = PAL[b->theme].water;
   mat->color = mb_lin(wc[0], wc[1], wc[2]);
-  mat->roughness = 0.15f;
+  mat->roughness = b->theme == MP_THEME_SNOW ? 0.35f : 0.12f;
   mat->metalness = 0.0f;
   mat->transparent = true;
-  mat->opacity = 0.72f;
-  if (b->theme == MP_THEME_VOLCANO) mat->emissive = (t3_color){ 1.4f, 0.35f, 0.05f };
+  mat->opacity = b->theme == MP_THEME_SNOW ? 0.88f : 0.75f;
+  if (b->theme == MP_THEME_VOLCANO) mat->emissive = (t3_color){ 0.75f, 0.2f, 0.03f }, mat->color = mb_lin(0.55f, 0.12f, 0.03f), mat->opacity = 0.95f; /* lava */
+  if (b->theme == MP_THEME_CRYSTAL) mat->emissive = (t3_color){ 0.15f, 0.55f, 0.6f };
   t3_mesh *mesh = t3_mesh_new(g, mat);
   mesh_node(b->node, "Water", mesh, false);
   t3_release(mesh), t3_release(g), t3_release(mat);
@@ -493,13 +540,13 @@ bool mapbuild_lightmap(cw_tree *t, mb_built *b, const char *bake_path, const cha
   if (b->lm) return true;
   if (bake_path && *bake_path) {
     cw_lightmap_settings s = cw_lightmap_settings_default();
-    s.texel_density = 4;
-    s.max_size = 512;
+    s.texel_density = 6.5f;
+    s.max_size = 1024;
     s.samples = 32;
     s.bounces = 1;
     s.probe_spacing = 4.0f;
     s.probe_samples = 48;
-    s.denoise = 2;
+    s.denoise = 1;
     s.direct_samples = 8;
     s.shadow_softness = 0.03f;
     s.reflection_size = 0;

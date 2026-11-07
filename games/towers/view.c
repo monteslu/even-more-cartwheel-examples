@@ -203,8 +203,13 @@ static const char *const MON_FILE[CK_KINDS] = { "models/skitter.cwchar", "models
 static const char *const MON_NAME[CK_KINDS] = { "Skitters", "Ghouls", "Hounds", "Imps", "Sporelings", "Bloaters", "Shades", "Ogres" };
 static const int MON_CAP[CK_KINDS] = { 3400, 2400, 2000, 1600, 1200, 900, 1600, 600 };
 /* each kind's identity colour: its edge (DESIGN.md, the look) */
-static const float KIND_RIM[CK_KINDS][3] = { { 0.1f, 1.0f, 0.85f }, { 1.0f, 0.9f, 0.5f }, { 1.0f, 0.45f, 0.05f }, { 1.0f, 0.3f, 0.08f },
-                                             { 0.35f, 1.0f, 0.45f }, { 0.55f, 1.0f, 0.15f }, { 0.55f, 0.95f, 1.0f }, { 1.0f, 0.12f, 0.1f } };
+static const float KIND_RIM[CK_KINDS][3] = { { 0.2f, 1.0f, 1.0f }, { 1.0f, 0.95f, 0.65f }, { 1.0f, 0.55f, 0.1f }, { 1.0f, 0.2f, 0.15f },
+                                             { 1.0f, 0.35f, 1.0f }, { 0.7f, 1.0f, 0.1f }, { 0.75f, 0.9f, 1.0f }, { 0.75f, 0.25f, 1.0f } };
+/* each kind's body: the modelled colours (a dark body, one accent) lifted and tinted in the kind's colour, so at 20 to 40
+ * pixels a kind reads by its colour and its size, not its edge alone: cyan skitters, bone ghouls, orange hounds, red imps,
+ * violet sporelings, lime bloaters, pale shades, purple ogres */
+static const float KIND_BODY[CK_KINDS][3] = { { 0.8f, 2.3f, 2.5f }, { 2.5f, 2.3f, 1.7f }, { 2.8f, 1.4f, 0.45f }, { 2.8f, 0.7f, 0.55f },
+                                             { 2.7f, 1.3f, 3.1f }, { 1.7f, 2.7f, 0.5f }, { 1.9f, 2.3f, 2.9f }, { 1.9f, 0.85f, 2.4f } };
 
 static t3_geometry *hull(t3_geometry *g, float d) {
   t3_attribute *pa = g->attributes[T3_ATTR_POSITION], *na = g->attributes[T3_ATTR_NORMAL];
@@ -483,7 +488,7 @@ static void sync_creeps(const sim *s, float time) {
   memset(cnt, 0, sizeof cnt);
   int drawn = 0;
   static const float RATE[CK_KINDS] = { 2.6f, 1.5f, 2.4f, 1.8f, 1.4f, 1.0f, 1.2f, 0.9f };
-  static const float SIZE[CK_KINDS] = { 0.95f, 1.15f, 1.1f, 1.1f, 1.15f, 1.2f, 1.2f, 1.25f };
+  static const float SIZE[CK_KINDS] = { 0.9f, 1.05f, 1.1f, 1.0f, 1.15f, 1.45f, 1.15f, 1.65f }; /* small swarms, fat bloaters, big ogres */
   for (int i = 0; i < MAXE; i++) {
     const creep *e = &s->e[i];
     if (!e->alive) continue;
@@ -496,20 +501,21 @@ static void sync_creeps(const sim *s, float time) {
     t3_instanced_mesh *im = kv->im[fr];
     if (!im || cnt[e->kind][fr] >= im->instance_matrix->count) continue;
     int n = cnt[e->kind][fr]++;
-    float sc = SIZE[e->kind] * (e->boss ? 2.6f : 1.0f) * (e->flash > 0 ? 1.08f : 1.0f);
+    float sc = SIZE[e->kind] * (e->boss ? 2.2f : 1.0f) * (e->flash > 0 ? 1.08f : 1.0f);
     float yaw = -e->face + 1.5708f;
     float y = e->kind == CK_SHADE ? 0.12f + 0.08f * cw_sin(time * 2.2f + (float)i) : 0;
     put_up(im, n, e->x, y, e->y, yaw, sc);
     t3_color gl = view_light_at(e->x, e->y);
     float lm = CW_MAX(gl.r, CW_MAX(gl.g, gl.b)), lk = lm > 1.4f ? 1.4f / lm : 1.0f;
-    t3_color c = { gl.r * lk, gl.g * lk, gl.b * lk };
+    const float *kb = KIND_BODY[e->kind];
+    t3_color c = { gl.r * lk * kb[0], gl.g * lk * kb[1], gl.b * lk * kb[2] };
     if (e->flash > 0) c = (t3_color){ 3.5f, 3.0f, 2.6f };
     else if (e->frozen > 0) c = (t3_color){ 1.4f, 1.9f, 2.6f };
     else if (e->slow_t > 0) c.r *= 0.6f, c.g *= 0.9f, c.b *= 1.7f;
     if (e->boss && e->flash <= 0) c.r *= 1.3f;
     t3_instanced_mesh_set_color_at(im, n, c);
-    if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.8f);
-    else if ((i & 1) == 0 || s->nenemies < 1200) shadow_at(e->x, e->y, 0.32f * sc, 0.7f);
+    if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.55f);
+    else if ((i & 1) == 0 || s->nenemies < 1200) shadow_at(e->x, e->y, 0.3f * sc, 0.4f);
     drawn++;
   }
   for (int k = 0; k < CK_KINDS; k++)

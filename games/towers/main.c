@@ -149,6 +149,21 @@ static bool map_go(int n) {
     fill_towers(w);
     for (int k = 1; k < w && G.S.wave < G.S.m.waves - 1; k++) G.S.wave++; /* (the waves before it: passed) */
     G.S.next_t = 1;
+    if (G.bench_crowd > 0) { /* the bench's crowd starts spread along the whole path (a late wave in full flow), not piled at the gates */
+      static const int MIX[8] = { CK_SKITTER, CK_GHOUL, CK_SKITTER, CK_HOUND, CK_IMP, CK_SKITTER, CK_OGRE, CK_SHADE };
+      int tiles = 0;
+      for (int y = 0; y < G.S.m.h; y++)
+        for (int x = 0; x < G.S.m.w; x++) tiles += G.S.m.t[y][x] == T_PATH;
+      int per = CW_MAX(1, (G.bench_crowd + tiles - 1) / CW_MAX(tiles, 1)), k = 0;
+      for (int y = 0; y < G.S.m.h && G.S.nenemies < G.bench_crowd; y++)
+        for (int x = 0; x < G.S.m.w && G.S.nenemies < G.bench_crowd; x++) {
+          if (G.S.m.t[y][x] != T_PATH) continue;
+          for (int q = 0; q < per && G.S.nenemies < G.bench_crowd; q++, k++) {
+            int kind = MIX[k % 8];
+            sim_spawn(&G.S, kind, kind == CK_OGRE ? 2500 : 300, mp_wx(&G.S.m, (float)x) + (float)(q & 1) * 0.9f - 0.45f, mp_wz(&G.S.m, (float)y) + (float)((q >> 1) & 1) * 0.9f - 0.45f);
+          }
+        }
+    }
   }
   view_map(&G.S);
   G.lm_frames = 0;

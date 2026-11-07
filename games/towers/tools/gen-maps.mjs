@@ -3,18 +3,20 @@
 //
 //   node tools/gen-maps.mjs [count (default 30)] [--only n,m]
 //
-// Every map is 36 x 20 tiles of 2 m (the whole map on one 16:9 screen) and made from a seed. Its paths run on a
-// lattice of nodes four tiles apart, two tiles wide with two tiles of ground between any two runs, so build slots sit
-// between the runs and reach both: the main path is a long self-avoiding walk from a gate on the map's edge to the
-// core (a 2 x 2 block inside the map), later maps add gates whose paths join it. Slots go on the ground beside the
+// Every map is 36 x 20 tiles of 2 m (the whole map on one 16:9 screen) and made from a seed. Its paths are smooth
+// curves through waypoints (Catmull-Rom), rasterised to the tiles, mostly two tiles wide with chokes and wide
+// stretches, in one of six families of layout taken in turn (FAMILIES: switchbacks, columns, a spiral, a loop past
+// the core, an open field, a wandering way); later maps add gates whose paths merge into the first. A layout whose runs
+// touch (a short cut) or whose gates are not two tiles on the edge is thrown away. Slots go on the ground beside the
 // paths where they reach the most path, not touching one another, and each is dealt to a player for two, three and
-// four players: bands across the map (four: quarters), balanced by reach. The theme's decor stands on the open
-// ground (big props only where nothing walks or builds round them),
-// lamps line the paths and light the bake.
+// four players: bands across the map (four: quarters), balanced by reach. Smooth rock outcrops and pools with banks
+// (feature records) take some of the open ground; the theme's decor stands on the rest (big props only where nothing
+// walks or builds round them), lamps line the paths and light the bake. The later maps' difficulty comes from
+// tools/map-diffs.json (tune-maps.mjs).
 //
 // The themes come in blocks of five: meadow, autumn woods, desert, snowfields, volcano, crystal vale. The waves, the
 // difficulty and the creeps' kinds climb with the map's number. tools/check-maps.mjs fails a broken map.
-import { mkdirSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -26,7 +28,7 @@ const COUNT = +(argv.find((a) => /^\d+$/.test(a)) || 30);
 const onlyArg = argv.indexOf('--only');
 const ONLY = onlyArg >= 0 ? new Set(argv[onlyArg + 1].split(',').map(Number)) : null;
 const W = 36, H = 20;
-const NX = 9, NY = 5; // the lattice: node (i, j) is the 2 x 2 block at tile (1 + 4i, 1 + 4j)
+const DIFFS = existsSync(join(HERE, 'map-diffs.json')) ? JSON.parse(readFileSync(join(HERE, 'map-diffs.json'), 'utf8')) : {};
 const THEMES = ['meadow', 'autumn', 'desert', 'snow', 'volcano', 'crystal'];
 
 // ── seeded random ───────────────────────────────────────────────────
@@ -59,122 +61,250 @@ const KINDS = [
 const LAMP = { meadow: [1, 0.78, 0.45], autumn: [1, 0.65, 0.35], desert: [1, 0.72, 0.4], snow: [1, 0.8, 0.55], volcano: [1, 0.5, 0.2], crystal: [0.5, 0.95, 1] };
 const GLOW = { volcano: [1, 0.45, 0.12], crystal: [0.45, 0.9, 1] }; // the glowing decor's bake light
 
-// ── the paths ───────────────────────────────────────────────────────
-const nodeTile = (i, j) => [1 + 4 * i, 1 + 4 * j];
-const onEdge = (i, j) => i === 0 || j === 0 || i === NX - 1 || j === NY - 1;
-const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-
-// a self-avoiding walk on the lattice from `from`, of length lo..hi nodes, avoiding `used`, ending where `goal` says
-function walk(R, from, lo, hi, used, goal, tries = 4000) {
-  let best = null;
-  for (let t = 0; t < tries; t++) {
-    const path = [from], seen = new Set([...used, `${from[0]},${from[1]}`]);
-    let straight = 0, dir = null;
-    while (path.length < hi) {
-      const [i, j] = path[path.length - 1];
-      if (path.length >= lo && goal(i, j, path)) break;
-      let opts = DIRS.filter(([dx, dy]) => {
-        const ni = i + dx, nj = j + dy;
-        return ni >= 0 && nj >= 0 && ni < NX && nj < NY && !seen.has(`${ni},${nj}`);
-      });
-      if (!opts.length) break;
-      // keep runs of 1 to 3 nodes, then turn: a winding path
-      if (dir && straight < 1 + R.int(3) && opts.some((d) => d[0] === dir[0] && d[1] === dir[1])) opts = [dir];
-      const d = R.pick(opts);
-      straight = dir && d[0] === dir[0] && d[1] === dir[1] ? straight + 1 : 0;
-      dir = d;
-      path.push([i + d[0], j + d[1]]);
-      seen.add(`${i + d[0]},${j + d[1]}`);
-    }
-    const [i, j] = path[path.length - 1];
-    if (path.length >= lo && goal(i, j, path)) {
-      if (!best || Math.abs(path.length - (lo + hi) / 2) < Math.abs(best.length - (lo + hi) / 2)) best = path;
-      if (t > 200) break;
+// ── the paths: smooth routes through waypoints, rasterised to the tiles ──
+// A route is a list of waypoints [x, y, width] in tile units (x, y a point on the tiles' grid, width in tiles); it is
+// drawn through them as a Catmull-Rom curve and every tile whose middle lies within half its width of the curve is
+// path. A route starts off the map's edge (its gate) and ends at the core's block, or on another route (a merge).
+function curve(wp, step = 0.2) {
+  const out = [];
+  const P = [wp[0], ...wp, wp[wp.length - 1]];
+  for (let i = 1; i < P.length - 2; i++) {
+    const [p0, p1, p2, p3] = [P[i - 1], P[i], P[i + 1], P[i + 2]];
+    const len = Math.hypot(p2[0] - p1[0], p2[1] - p1[1]), n = Math.max(1, Math.ceil(len / step));
+    for (let k = 0; k < n; k++) {
+      const t = k / n, t2 = t * t, t3 = t2 * t;
+      const c = (a, b, cc, d) => 0.5 * (2 * b + (-a + cc) * t + (2 * a - 5 * b + 4 * cc - d) * t2 + (-a + 3 * b - 3 * cc + d) * t3);
+      out.push([c(p0[0], p1[0], p2[0], p3[0]), c(p0[1], p1[1], p2[1], p3[1]), p1[2] + (p2[2] - p1[2]) * t]);
     }
   }
-  return best;
+  out.push(wp[wp.length - 1]);
+  return out;
 }
-
-function carve(g, path) {
-  for (let k = 0; k < path.length; k++) {
-    const [x, y] = nodeTile(...path[k]);
-    for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) g[y + b][x + a] = '.';
-    if (k) { // the two tiles between this node and the last
-      const [px, py] = nodeTile(...path[k - 1]);
-      const mx = (x + px) / 2, my = (y + py) / 2;
-      for (let a = 0; a < 2; a++) for (let b = 0; b < 2; b++) g[my + b][mx + a] = '.';
-    }
+const arcLen = (pts) => pts.reduce((s, p, i) => (i ? s + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+function raster(g, pts, own, id) {
+  for (const [px, py, w] of pts) {
+    const r = w / 2 + 0.04;
+    for (let y = Math.floor(py - r - 1); y <= Math.ceil(py + r); y++)
+      for (let x = Math.floor(px - r - 1); x <= Math.ceil(px + r); x++) {
+        if (x < 0 || y < 0 || x >= W || y >= H) continue;
+        if (Math.hypot(x + 0.5 - px, y + 0.5 - py) <= r) { g[y][x] = '.'; if (own[y][x] < 0) own[y][x] = id; }
+      }
   }
 }
-// the gate: the path from an edge node out to the map's edge; returns the gate record (its top-left edge tile)
-function gate(g, [i, j], R) {
-  const [x, y] = nodeTile(i, j);
-  const sides = [];
-  if (i === 0) sides.push('w');
-  if (i === NX - 1) sides.push('e');
-  if (j === 0) sides.push('n');
-  if (j === NY - 1) sides.push('s');
-  const s = R.pick(sides);
-  if (s === 'w') { g[y][0] = g[y + 1][0] = '.'; return [0, y]; }
-  if (s === 'e') { for (let xx = x + 2; xx < W; xx++) g[y][xx] = g[y + 1][xx] = '.'; return [W - 1, y]; }
-  if (s === 'n') { g[0][x] = g[0][x + 1] = '.'; return [x, 0]; }
-  for (let yy = y + 2; yy < H; yy++) g[yy][x] = g[yy][x + 1] = '.';
-  return [x, H - 1];
+const jit = (R, a) => (R() - 0.5) * 2 * a;
+// a width along the way: mostly two tiles, now and then a choke or a wide stretch
+const width = (R, wide = 0) => { const q = R(); return q < 0.14 ? 1.45 : q < 0.24 + wide ? 3.3 + R() * 0.6 : 2 + R() * 0.5; };
+
+// the families of layouts, each a function of the seed giving { routes, core, merges } (core: the block's top-left
+// tile; every route's first waypoint off the map's edge with width 2 on a tile boundary so its gate is two tiles)
+const FAMILIES = {
+  // switchbacks across the map, three or four runs, the core at the end of the last
+  switchback(R) {
+    const rows = 3 + R.int(2), gap = (H - 6) / (rows - 1);
+    const ys = Array.from({ length: rows }, (_, k) => Math.round(2.5 + k * gap));
+    const wp = [[-2, ys[0], 2], [2, ys[0], 2]];
+    for (let k = 0; k < rows; k++) {
+      const y = ys[k], right = k % 2 === 0, last = k === rows - 1;
+      const xe = right ? W - 4 - R.int(3) : 4 + R.int(3);
+      const xs = right ? 4 : W - 5;
+      for (let q = 1; q <= 3; q++) wp.push([xs + (xe - xs) * q / 4, y + jit(R, 0.8), width(R)]);
+      if (last) { const cx = Math.round(W / 2 + (right ? 6 : -6) + jit(R, 2)); wp.push([cx + 1, y, 2]); return { routes: [wp], core: [cx, y - 1] }; }
+      wp.push([xe, y, 2.2], [xe, (y + ys[k + 1]) / 2, width(R)]);
+    }
+  },
+  // the same turned: runs up and down the map
+  columns(R) {
+    const cols = 5 + R.int(2), gap = (W - 7) / (cols - 1);
+    const xs = Array.from({ length: cols }, (_, k) => Math.round(3.5 + k * gap));
+    const wp = [[xs[0], -2, 2], [xs[0], 2, 2]];
+    for (let k = 0; k < cols; k++) {
+      const x = xs[k], down = k % 2 === 0, last = k === cols - 1;
+      const ye = down ? H - 4 : 3, ys = down ? 3 : H - 4;
+      wp.push([x + jit(R, 0.6), (ys + ye) / 2, width(R)]);
+      if (last) { const cy = Math.round(H / 2 + jit(R, 2)); wp.push([x, cy + 1, 2]); return { routes: [wp], core: [x - 1, cy] }; }
+      wp.push([x, ye, 2.2], [(x + xs[k + 1]) / 2, ye + (down ? 0.6 : -0.6), width(R)]);
+    }
+  },
+  // a spiral in from the edge to the core in the middle
+  spiral(R) {
+    const a = 3, b = 8 + R.int(2);
+    const wp = [[-2, a, 2], [2, a, 2], [W / 2, a + jit(R, 0.6), width(R)], [W - a - 1, a, 2.2], [W - a - 1, H / 2, width(R)], [W - a - 1, H - a - 1, 2.2],
+      [W / 2, H - a - 1 + jit(R, 0.5), width(R, 0.2)], [b, H - a - 1, 2.2], [b, H / 2 - 1, width(R)], [b + 1, a + 5, 2.2], [W - b - 2, a + 5, width(R)]];
+    const cx = Math.round(W - b - 4), cy = H - a - 6;
+    wp.push([W - b - 1, cy + 1, 2.2], [cx + 3, cy + 1, 2], [cx + 1, cy + 1, 2]);
+    return { routes: [wp], core: [cx, cy] };
+  },
+  // past the core and round it: the path runs by the core's north, loops the map and comes in from the south
+  loop(R) {
+    const cx = Math.round(W / 2 - 1 + jit(R, 3)), cy = Math.round(H / 2 - 1 + jit(R, 1));
+    const top = 3 + R.int(2), bot = H - 4 - R.int(2), left = 4 + R.int(3), right = W - 5 - R.int(3);
+    const wp = [[-2, top, 2], [2, top, 2], [cx, top + jit(R, 0.7), width(R)], [right, top, 2.2], [right + jit(R, 1), (top + bot) / 2, width(R, 0.2)], [right, bot, 2.2],
+      [cx + 2, bot + jit(R, 0.6), width(R)], [left, bot, 2.2], [left + jit(R, 0.8), cy + 1, width(R)], [cx - 3, cy + 1, 2.2], [cx + 1, cy + 1, 2]];
+    return { routes: [wp], core: [cx, cy] };
+  },
+  // an open field the creeps spread over, then a choke into the core
+  field(R) {
+    const y0 = 3 + R.int(4), cx = W - 6 - R.int(3), cy = Math.round(H / 2 - 1 + jit(R, 3));
+    const fx = 10 + R.int(6), fy = Math.round(H / 2 + jit(R, 2));
+    const wp = [[-2, y0, 2], [2, y0, 2], [6, y0 + jit(R, 1), width(R)], [fx - 3, fy, 3], [fx + 2, fy + jit(R, 1.5), 6.5 + R()], [fx + 7, fy, 5.5],
+      [fx + 11, fy + jit(R, 2), 1.45], [cx - 3, cy + 1, 1.45], [cx + 1, cy + 1, 2]];
+    return { routes: [wp], core: [cx, cy] };
+  },
+  // a long wandering way: waypoints across the map, turning back and forth
+  wander(R) {
+    const wp = [[-2, 4 + R.int(12), 2]];
+    wp.push([2, wp[0][1], 2]);
+    let x = 6, up = R() < 0.5;
+    while (x < W - 8) {
+      wp.push([x, up ? 3 + R() * 3 : H - 4 - R() * 3, width(R, 0.1)]);
+      x += 4 + R() * 3, up = !up;
+    }
+    const cx = W - 6, cy = Math.round(H / 2 - 1 + jit(R, 3));
+    wp.push([W - 4, cy + 1 + jit(R, 2), width(R)], [cx + 1, cy + 1, 2]);
+    return { routes: [wp], core: [cx, cy] };
+  },
+};
+// two gates that merge: each family's main route, and a second from another edge joining it part way
+function mergeRoute(R, main, gates) {
+  const pts = curve(main);
+  const L = arcLen(pts);
+  let acc = 0, target = null;
+  const want = L * (0.25 + R() * 0.3);
+  for (let i = 1; i < pts.length; i++) {
+    acc += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    if (acc >= want) { target = pts[i]; break; }
+  }
+  // a start on an edge far from the gates there are
+  const starts = [];
+  for (let x = 4; x < W - 4; x += 2) starts.push([x, -2, 'n'], [x, H + 2, 's']);
+  for (let y = 3; y < H - 3; y += 2) starts.push([-2, y, 'w'], [W + 2, y, 'e']);
+  const far = starts.filter(([x, y]) => gates.every(([gx, gy]) => Math.hypot(gx - x, gy - y) > 14));
+  if (!far.length || !target) return null;
+  const [sx, sy, side] = R.pick(far);
+  const ix = side === 'w' ? 2 : side === 'e' ? W - 2 : sx, iy = side === 'n' ? 2 : side === 's' ? H - 2 : sy;
+  const mid = [(ix + target[0]) / 2 + jit(R, 3), (iy + target[1]) / 2 + jit(R, 2), width(R)];
+  return [[sx, sy, 2], [ix, iy, 2], mid, [target[0], target[1], 2]];
 }
+
+// the gate a route opens: its two edge tiles (the first of them, as the format names it), or null
+function gateOf(g, own, id, wp0) {
+  const [x0, y0] = wp0;
+  const cells = [];
+  if (x0 < 0 || x0 >= W) { const x = x0 < 0 ? 0 : W - 1; for (let y = 0; y < H; y++) if (g[y][x] === '.' && own[y][x] === id) cells.push([x, y]); }
+  else { const y = y0 < 0 ? 0 : H - 1; for (let x = 0; x < W; x++) if (g[y][x] === '.' && own[y][x] === id) cells.push([x, y]); }
+  if (cells.length !== 2) return null;
+  const side = x0 < 0 || x0 >= W;
+  if (side ? cells[1][1] !== cells[0][1] + 1 : cells[1][0] !== cells[0][0] + 1) return null;
+  return cells[0];
+}
+
+// the steps (4-way) from a tile to the core's block over path tiles; -1 when it cannot get there
+function stepsTo(g, from, core) {
+  const d = Array.from({ length: H }, () => Array(W).fill(-1));
+  const q = [];
+  for (let k = 0; k < 4; k++) { const x = core[0] + (k & 1), y = core[1] + (k >> 1); d[y][x] = 0; q.push([x, y]); }
+  while (q.length) {
+    const [x, y] = q.shift();
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H || g[ny][nx] !== '.' || d[ny][nx] >= 0) continue;
+      d[ny][nx] = d[y][x] + 1, q.push([nx, ny]);
+    }
+  }
+  return d[from[1]][from[0]];
+}
+
+// the order the families come in (map 1 the gentlest), and the gates by the map's number
+const ORDER = ['switchback', 'loop', 'field', 'columns', 'spiral', 'wander'];
 
 // ── one map ─────────────────────────────────────────────────────────
 function makeMap(n) {
   const theme = THEMES[Math.floor((n - 1) / 5) % THEMES.length];
   const seed = 1000 + n * 7919;
   const R = rng(seed);
-  const t = (n - 1) / Math.max(COUNT - 1, 1); // 0 .. 1 through the game
-  const nspawn = n <= 7 ? 1 : n <= 19 ? 2 : 2 + (n % 3 === 0 ? 1 : 0);
-  for (let attempt = 0; attempt < 400; attempt++) {
+  const t = (n - 1) / Math.max(COUNT - 1, 1);
+  const family = ORDER[(n - 1 + Math.floor((n - 1) / 6)) % ORDER.length];
+  const nspawn = n <= 6 ? 1 : n <= 18 ? 2 : 2 + (n % 3 === 0 ? 1 : 0);
+  for (let attempt = 0; attempt < 600; attempt++) {
     const g = Array.from({ length: H }, () => Array(W).fill('g'));
-    // the core: an inner node, away from the middle a little
-    const core = [1 + R.int(NX - 2), 1 + R.int(NY - 2)];
-    // the main path, walked from the core out to an edge (then turned round), long
-    const lo = n <= 2 ? 22 : 15 + R.int(6), hi = lo + 6;
-    const main = walk(R, core, lo, hi, [], (i, j) => onEdge(i, j));
-    if (!main) continue;
-    carve(g, main);
-    const used = new Set(main.map(([i, j]) => `${i},${j}`));
-    const gates = [gate(g, main[main.length - 1], R)];
+    const own = Array.from({ length: H }, () => Array(W).fill(-1));
+    const lay = FAMILIES[family](R);
+    if (!lay) continue;
+    const routes = [lay.routes[0]];
+    const gatePts = [[lay.routes[0][0][0], lay.routes[0][0][1]]];
     let ok = true;
     for (let s = 1; s < nspawn && ok; s++) {
-      // another gate: an edge node not on a path, walked to join the paths (not next to the core)
-      const starts = [];
-      for (let i = 0; i < NX; i++) for (let j = 0; j < NY; j++) if (onEdge(i, j) && !used.has(`${i},${j}`)) starts.push([i, j]);
-      let joined = null;
-      for (let k = 0; k < 40 && !joined; k++) {
-        const st = R.pick(starts);
-        const far = gates.every(([gx, gy]) => Math.abs(nodeTile(...st)[0] - gx) + Math.abs(nodeTile(...st)[1] - gy) > 14);
-        if (!far) continue;
-        const p = walk(R, st, 4, 12, used, (i, j, path) => {
-          const nb = DIRS.map(([dx, dy]) => `${i + dx},${j + dy}`).filter((q) => used.has(q));
-          if (!nb.length) return false;
-          const [ci, cj] = core;
-          return nb.every((q) => q !== `${ci},${cj}`) && path.length >= 4;
-        }, 600);
-        if (p) joined = p;
-      }
-      if (!joined) { ok = false; break; }
-      // join: carve its nodes and the link to the path node beside its end
-      const [ei, ej] = joined[joined.length - 1];
-      const link = DIRS.map(([dx, dy]) => [ei + dx, ej + dy]).find(([a, b]) => used.has(`${a},${b}`) && !(a === core[0] && b === core[1]));
-      carve(g, [...joined, link]);
-      for (const [i, j] of joined) used.add(`${i},${j}`);
-      gates.push(gate(g, joined[0], R));
+      const r = mergeRoute(R, routes[0], gatePts);
+      if (!r) ok = false;
+      else routes.push(r), gatePts.push([r[0][0], r[0][1]]);
     }
     if (!ok) continue;
-    // a gate's 2-tile mouth must not run along the edge into another path
-    const coreTile = nodeTile(...core);
-    const m = { n, theme, seed, g, gates, core: coreTile, slots: [], props: [], lights: [] };
+    routes.forEach((wp, id) => raster(g, curve(wp), own, id));
+    const [cx, cy] = lay.core;
+    if (cx < 2 || cy < 2 || cx > W - 4 || cy > H - 4) continue;
+    for (let k = 0; k < 4; k++) g[cy + (k >> 1)][cx + (k & 1)] = '.';
+    // the gates: two edge tiles each, and no other path on the edge
+    const gates = routes.map((wp, id) => gateOf(g, own, id, wp[0]));
+    if (gates.some((q) => !q)) continue;
+    let edgeOk = true;
+    for (let x = 0; x < W; x++) for (const y of [0, H - 1]) if (g[y][x] === '.' && !gates.some(([gx, gy]) => (gx === x || gx + 1 === x) && gy === y)) edgeOk = false;
+    for (let y = 0; y < H; y++) for (const x of [0, W - 1]) if (g[y][x] === '.' && !gates.some(([gx, gy]) => gx === x && (gy === y || gy + 1 === y))) edgeOk = false;
+    if (!edgeOk) continue;
+    // every gate reaches the core, and the way is the route's own length (no run touching another: no short cuts)
+    const mainLen = arcLen(curve(routes[0]));
+    const steps = gates.map((q) => stepsTo(g, q, lay.core));
+    if (steps.some((s) => s < 0)) continue;
+    if (steps[0] < mainLen * 0.8) continue;
+    if (steps.slice(1).some((s) => s < Math.max(34, steps[0] * 0.6))) continue; // a joining gate's way is long too
+    // the core with room round it: no path passing within a tile of its block but its own way in
+    const m = { n, theme, seed, family, g, gates, core: lay.core, slots: [], props: [], lights: [], feats: [] };
     if (!placeSlots(m, R, t)) continue;
+    placeFeatures(m, R);
     placeScenery(m, R);
     return m;
   }
-  throw new Error(`map ${n}: no layout after 400 attempts`);
+  throw new Error(`map ${n} (${family}): no layout after 600 attempts`);
+}
+
+// ── the terrain's features: smooth rock outcrops and pools with banks, on open ground away from paths and pads ──
+const FEAT = {
+  meadow: { water: 2, rock: 2 }, autumn: { water: 1, rock: 3 }, desert: { water: 1, rock: 4 }, snow: { water: 2, rock: 3 },
+  volcano: { water: 2, rock: 3 }, crystal: { water: 2, rock: 2 },
+};
+function placeFeatures(m, R) {
+  const g = m.g;
+  const clear = (x, y, r) => {
+    for (let ty = Math.floor(y - r - 2); ty <= Math.ceil(y + r + 2); ty++)
+      for (let tx = Math.floor(x - r - 2); tx <= Math.ceil(x + r + 2); tx++) {
+        if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+        if ((g[ty][tx] === '.' || g[ty][tx] === 'o') && Math.hypot(tx + 0.5 - x, ty + 0.5 - y) < r + 1.6) return false;
+      }
+    if (Math.hypot(m.core[0] + 1 - x, m.core[1] + 1 - y) < r + 3) return false;
+    return m.feats.every((f) => Math.hypot(f.x - x, f.y - y) > f.r + r + 0.5 || (f.kind === 'rock' && f.kind === kindNow));
+  };
+  let kindNow = '';
+  const want = FEAT[m.theme];
+  for (const [kind, count] of [['water', want.water], ['rock', want.rock]]) {
+    kindNow = kind;
+    for (let k = 0, tries = 0; k < count && tries < 300; tries++) {
+      const r = kind === 'water' ? 1.8 + R() * 1.8 : 1.4 + R() * 1.6;
+      const x = 1 + R() * (W - 2), y = 1 + R() * (H - 2);
+      if (!clear(x, y, r)) continue;
+      m.feats.push({ kind, x, y, r, h: kind === 'rock' ? 1.1 + R() * 1.1 : 0 });
+      if (kind === 'rock') { // an outcrop: two or three domes run together into a ridge
+        const n2 = 1 + R.int(2);
+        for (let j = 0; j < n2; j++) {
+          const a = R() * 6.283, d = r * (0.6 + R() * 0.5), r2 = r * (0.55 + R() * 0.3), x2 = x + Math.cos(a) * d, y2 = y + Math.sin(a) * d;
+          if (clear(x2, y2, r2)) m.feats.push({ kind, x: x2, y: y2, r: r2, h: 0.8 + R() * 1.4 });
+        }
+      }
+      k++;
+    }
+  }
+  // a pool's glow in the bake where the water glows (lava, crystal light)
+  for (const f of m.feats)
+    if (f.kind === 'water' && (m.theme === 'volcano' || m.theme === 'crystal'))
+      m.lights.push({ x: Math.min(W - 1, Math.max(0, Math.floor(f.x))), y: Math.min(H - 1, Math.max(0, Math.floor(f.y))), h: 0.8, c: m.theme === 'volcano' ? [1, 0.45, 0.12] : [0.4, 0.9, 1], e: 35, r: f.r * 2 + 4 });
 }
 
 // how many path cells (1 m) lie within r metres of a tile's middle
@@ -237,13 +367,16 @@ function placeSlots(m, R, t) {
 
 function placeScenery(m, R) {
   const g = m.g;
-  const blocked = (x, y) => near(g, x, y, '.', 1) || near(g, x, y, 'o', 1);
+  // a tile whose corner mapbuild.c cuts (path on two sides and across their corner): no lamp on its slope
+  const notched = (x, y) => [[1, -1], [1, 1], [-1, 1], [-1, -1]].some(([dx, dy]) => g[y]?.[x + dx] === '.' && g[y + dy]?.[x] === '.' && g[y + dy]?.[x + dx] === '.');
+  const feat = (x, y) => m.feats.some((q) => Math.hypot(x + 0.5 - q.x, y + 0.5 - q.y) < q.r + 1.0);
+  const blocked = (x, y) => near(g, x, y, '.', 1) || near(g, x, y, 'o', 1) || feat(x, y);
   // lamps along the paths: a ground tile beside the path every few tiles of it
   const lamp = LAMP[m.theme];
   let since = 3;
   for (let y = 0; y < H; y++)
     for (let x = 0; x < W; x++) {
-      if (g[y][x] !== 'g' || !near(g, x, y, '.', 1) || near(g, x, y, 'o', 1)) continue;
+      if (g[y][x] !== 'g' || !near(g, x, y, '.', 1) || near(g, x, y, 'o', 1) || feat(x, y) || notched(x, y)) continue;
       if (++since < 5 || R() < 0.4 || m.props.some((p) => p.kind === 'lamp' && Math.abs(p.x - x) + Math.abs(p.y - y) < 5)) continue;
       // turned so its first side toward the path is the one it leans out over
       const turn = [[0, -1], [1, 0], [0, 1], [-1, 0]].findIndex(([dx, dy]) => g[y + dy]?.[x + dx] === '.');
@@ -263,7 +396,7 @@ function placeScenery(m, R) {
         const frame = R.int(4);
         m.props.push({ x, y, kind: 'decor', frame, turn: R.int(4) });
         if (GLOW[m.theme] && R() < 0.25 && m.lights.length < 90) m.lights.push({ x, y, h: 1.2, c: GLOW[m.theme], e: 30, r: 5 });
-      } else if (!near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.3)
+      } else if (!feat(x, y) && !near(g, x, y, '.', 1) && !near(g, x, y, '#', 1) && !near(g, x, y, '~', 1) && !near(g, x, y, 'o', 0) && R() < 0.3)
         m.props.push({ x, y, kind: 'decor', frame: 4 + R.int(4), turn: R.int(4) });
     }
 }
@@ -274,14 +407,15 @@ function write(m) {
   const [a, b] = NAMES[m.theme];
   const name = `${R.pick(a)} ${R.pick(b)}`;
   const waves = Math.round(10 + 15 * t);
-  const diff = (0.75 + 0.75 * t).toFixed(2);
+  const diff = (DIFFS[n] ?? 0.85 + 1.3 * Math.pow(t, 1.2)).toFixed(3); // tools/map-diffs.json: the later maps tuned by tune-maps.mjs
   const kinds = KINDS[Math.min(KINDS.length - 1, Math.floor(t * KINDS.length))];
   const f = (v) => +v.toFixed(3);
-  const L = ['towers-map 1', `# written by tools/gen-maps.mjs (seed ${m.seed})`, `map ${n}`, `name ${name}`, `theme ${m.theme}`, `size ${W} ${H}`, `seed ${m.seed}`,
+  const L = ['towers-map 1', `# written by tools/gen-maps.mjs (seed ${m.seed}, a ${m.family} layout)`, `map ${n}`, `name ${name}`, `theme ${m.theme}`, `size ${W} ${H}`, `seed ${m.seed}`,
     `waves ${waves}`, `diff ${diff}`, `kinds ${kinds.join(' ')}`, 'grid', ...m.g.map((r) => r.join('')), 'end'];
   for (const [x, y] of m.gates) L.push(`spawn ${x} ${y}`);
   L.push(`core ${m.core[0]} ${m.core[1]}`);
   for (const s of m.slots) L.push(`slot ${s.x} ${s.y} ${s.o2} ${s.o3} ${s.o4}`);
+  for (const q of m.feats) L.push(`feature ${q.kind} ${q.x.toFixed(2)} ${q.y.toFixed(2)} ${q.r.toFixed(2)} ${q.h.toFixed(2)}`);
   for (const p of m.props) L.push(`prop ${p.x} ${p.y} ${p.kind} ${p.frame} ${p.turn}`);
   for (const l of m.lights) L.push(`light ${l.x} ${l.y} ${f(l.h)} ${f(l.c[0])} ${f(l.c[1])} ${f(l.c[2])} ${f(l.e)} ${f(l.r)}`);
   writeFileSync(join(OUT, `${String(n).padStart(3, '0')}.cwtd`), L.join('\n') + '\n');

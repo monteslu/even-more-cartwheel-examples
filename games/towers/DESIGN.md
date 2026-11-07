@@ -10,12 +10,16 @@ whole map on one screen, a fixed camera per map.
 - The camera is fixed for the map: the whole of it (36 x 20 tiles of 2 m) on one screen, tilted 15 degrees from
   straight down toward the south through a long lens (a 14 degree field of view, close to orthographic), with a little
   room over the top for the HUD's line. About 25 pixels to a metre at 1080p.
-- The path is low; the ground round it is raised half a metre with banks down to the path, rock (a format tile the generator leaves out) stands higher, ponds  sit lower. Build pads stand on the ground beside the paths; the core stands on a 2 x 2 block of path; the gates sit
-  where the paths leave the map's edge.
+- The path is low; the ground round it is raised half a metre with banks down to the path; smooth rock outcrops rise
+  out of the ground and pools sit in bowls with banks. Build pads stand on the ground beside the paths; the core
+  stands on a 2 x 2 block of path; the gates sit where the paths leave the map's edge.
 - Creeps lean 15 degrees back toward the camera from their feet (crawler's rule: they are seen down their own up axis,
   as from straight above); towers, pads and the scenery do not lean.
-- Each creep kind is a dark body with one saturated accent and an edge in its colour round its silhouette (crawler's
-  hull), so a carpet of thousands still reads as kinds. Towers wear their owner's colour on a trim band and glow in
+- A creep is 20 to 40 pixels across, so each kind reads by its colour and its size, not its edge alone: the modelled
+  body (crawler's dark body with one accent) is lifted and tinted in the kind's colour (cyan skitters, bone ghouls,
+  orange hounds, red imps, violet sporelings, lime bloaters, pale shades, purple ogres), sizes run from the small
+  skitters to bloaters half again as wide and ogres two thirds bigger, and an edge in the same hue (crawler's hull)
+  parts each body from its neighbours; blob shadows stay light so a crowd is not a field of dark circles. Towers wear their owner's colour on a trim band and glow in
   their kind's colour: bolt pale blue, frost ice, beam magenta, mortar orange.
 - Text is at least 2.4% of the screen's height; prompts are the engine's button prompts.
 
@@ -108,20 +112,28 @@ navmesh (the path tiles), steered by one flow field from the core; the crowd kee
 
 ## Maps
 
-- 30 maps (`assets/maps/<nnn>.cwtd`, format in `map.h`), 36 x 20 tiles, made by `tools/gen-maps.mjs` from a seed each:
-  paths on a lattice of nodes four tiles apart, two tiles wide with two tiles of ground between any two runs (so a pad
-  between two runs reaches both); the main path a long self-avoiding walk from the core to a gate on the edge; later
-  maps add gates whose paths join it (one gate on maps 1 to 7, two to 19, two or three after). Pads go where they reach
-  the most path, none touching. The theme's decor fills the open ground (big props only where
-  nothing walks or builds round them), lamps line the paths.
-- Waves climb from 10 (map 1) to 25 (map 30), difficulty from 0.75 to 1.5, the creeps' kinds widen from three to all
-  eight.
+- 30 maps (`assets/maps/<nnn>.cwtd`, format in `map.h`), 36 x 20 tiles, made by `tools/gen-maps.mjs` from a seed each.
+  Paths are smooth curves through waypoints, rasterised to the tiles, mostly two tiles wide with chokes a tile and a
+  half wide and wide stretches. Every layout is one of six families, in turn: switchbacks across the map, columns up
+  and down it, a spiral in to the core, a loop that passes the core and circles the map before coming in from the
+  other side, an open field the creeps spread over before a choke into the core, and a long wandering way. From map 7
+  a second gate's path merges into the first part way along (two gates to map 18, two or three after). The generator
+  rejects a layout whose runs touch (a gate's way to the core must be about as long as its route) or whose gates are
+  not two tiles on the edge. Pads go where they reach the most path, none touching.
+- Terrain features (`feature` records): smooth rock outcrops (domes run together into ridges) and pools with banks
+  (a bowl under a still sheet of water; lava on the volcano, glowing pools in the crystal vale), on open ground away
+  from the paths and pads. The theme's decor fills the rest (big props only where nothing walks or builds round
+  them), lamps line the paths.
+- Waves climb from 10 (map 1) to 25 (map 30) and the creeps' kinds widen from three to all eight. The first ten maps
+  keep a gentle difficulty curve; from map 11, `tools/tune-maps.mjs` bisects each map's difficulty on the soak build
+  so two bots hold it but lose some of the core: none on map 11, 14 of 20 on map 30 (`tools/map-diffs.json`).
 - `tools/mapview` (`towers_mapview`) builds a map exactly as the game does and bakes its lightmap (the sun, sky, lamps,
   glows and the props' shadows); the bake records the hash of what it baked.
 - `tools/check-maps.mjs` (CI) fails a broken map: every gate reaches the core, every pad beside the path and reaching
   enough of it, pads not touching, fair shares for two, three and four players, every prop on flat ground (its
-  model's footprint over the heightfield), the bake present and matching, and two bots hold the map in the soak build.
-  The maps in `tools/maps-broken/` are each broken on purpose in one way and must each fail their own check.
+  model's footprint over the heightfield), the features off the paths and pads, the bake present and matching, and
+  two bots hold the map in the soak build (CI builds `towers_soak` natively for it). The maps in `tools/maps-broken/`
+  (written by `tools/gen-broken.mjs`) are each broken on purpose in one way and must each fail their own check.
 
 ## Performance
 
