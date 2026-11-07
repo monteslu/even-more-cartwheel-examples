@@ -31,7 +31,9 @@ function run(gpu, extra) {
   const lines = (r.stderr || '').split('\n').filter((l) => l.startsWith('bench_passes')).slice(-2);
   const g = lines.map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
   if (!g.length) console.log(`  (no bench lines: exit ${r.status} ${r.signal || ''})\n  ${(r.stderr || '').split('\n').slice(-6).join('\n  ')}`);
-  return { gpu: g.length ? g.reduce((a, b) => a + b, 0) / g.length : NaN, passes: lines.at(-1) || '' };
+  const frame = (r.stderr || '').split('\n').filter((l) => l.startsWith('bench ')).at(-1) || '';
+  const terr = (r.stderr || '').split('\n').filter((l) => l.startsWith('bench_terrain')).at(-1) || '';
+  return { gpu: g.length ? g.reduce((a, b) => a + b, 0) / g.length : NaN, passes: (lines.at(-1) || '') + '\n  ' + frame + '\n  ' + terr };
 }
 const median = (a) => { const b = a.filter((x) => !Number.isNaN(x)).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 // each variant interleaved with the full picture --reps times (the shared GPU is noisy: the medians, not one run)

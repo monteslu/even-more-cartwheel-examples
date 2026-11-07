@@ -42,32 +42,45 @@ const LAYERS = {
     c = mul3(c, (0.78 + 0.32 * fine) * (0.94 + 0.08 * rip));
     return { c, h: 0.3 + 0.35 * drift + 0.1 * fine + 0.15 * rip, ro: 0.7 };
   },
-  // 2 the worn path: packed earth, fine grit and a few small stones half sunk in it, ruts along it
+  // 2 the worn path: packed earth with fine grit, ruts along it, and gravel: small angular grains (the corners of
+  // fine cells, a few in each patch), never round stones that read as coins
   dirt: (u, v) => {
     const g = fbm(u, v, 8, 5, 31), grit = fbm(u, v, 64, 2, 34), rut = fbm(u * 0.4, v * 6, 4, 3, 35);
-    const [f1, , id] = cells(u, v, 18, 32, 0.9);
-    const peb = smooth(0.2, 0.1, f1) * smooth(0.6, 0.85, hash2(Math.floor(id * 1000), 1, 33));
+    const [f1, f2, id] = cells(u, v, 110, 32, 1);
+    const patch = smooth(0.45, 0.7, fbm(u, v, 6, 3, 36));
+    const grain = smooth(0.02, 0.07, f2 - f1) * (id > 0.9 - 0.12 * patch ? 1 : 0); // a cell's polygon, inset from its edges
     let c = mix3([0.24, 0.16, 0.09], [0.56, 0.41, 0.26], clamp(g * 1.1 + rut * 0.4 - 0.25));
     c = mul3(c, 0.75 + 0.45 * grit);
-    c = mix3(c, mix3([0.42, 0.38, 0.33], [0.56, 0.5, 0.42], id), peb * 0.6);
-    return { c, h: 0.35 + 0.25 * g + 0.15 * grit + peb * 0.35 - rut * 0.15, ro: 0.95 - peb * 0.1 };
+    const stone = mul3(c, 0.62 + 0.5 * hash2(Math.floor(id * 9973), 3, 37)); // the earth's own colour, a little lighter or darker
+    c = mix3(c, mix3(stone, [0.45, 0.42, 0.38], 0.3), grain * 0.8);
+    return { c, h: 0.35 + 0.25 * g + 0.15 * grit + grain * 0.25 - rut * 0.15, ro: 0.95 - grain * 0.08 };
   },
-  // 3 sandstone: the canyon floor and its ramps, layered in bands of amber and rose
+  // 3 sandstone: the canyon floor and its ramps, layered in bands of amber and rose, crazed by thin wandering cracks
   sand: (u, v) => {
     const g = fbm(u, v, 6, 5, 41), band = Math.sin((v + fbm(u, v, 3, 3, 42) * 0.25) * Math.PI * 10) * 0.5 + 0.5;
     let c = mix3([0.28, 0.16, 0.1], [0.92, 0.72, 0.52], clamp((band * 0.6 + g * 0.4) * 1.3 - 0.15));
     c = mix3(c, [0.7, 0.3, 0.24], smooth(0.62, 0.8, fbm(u, v, 4, 3, 43)) * 0.5);
-    const [f1, f2] = cells(u, v, 9, 44, 1), crack = 1 - smooth(0.0, 0.05, f2 - f1), grit = fbm(u, v, 48, 2, 45);
-    c = mul3(c, (1 - crack * 0.7) * (0.7 + 0.5 * grit));
-    return { c, h: clamp(0.4 + 0.3 * g + 0.2 * band - crack * 0.4), ro: 0.88 };
+    const r = 1 - Math.abs(fbm(u, v, 9, 4, 44) * 2 - 1), crack = smooth(0.95, 0.99, r) * smooth(0.3, 0.55, fbm(u, v, 3, 2, 46));
+    const grit = fbm(u, v, 64, 2, 45), pit = fbm(u, v, 20, 3, 47);
+    c = mul3(c, (1 - crack * 0.65) * (0.6 + 0.55 * grit) * (0.85 + 0.3 * pit));
+    return { c, h: clamp(0.4 + 0.3 * g + 0.2 * band - crack * 0.35), ro: 0.88 };
   },
-  // 4 cliff rock: cool violet-grey slabs with dark cracks and lichen
+  // 4 cliff rock: strata of violet, grey and rust, each bed its own shade and grain, split by a few long joints and
+  // wandering cracks, lichen on the ledges
   rock: (u, v) => {
-    const g = fbm(u, v, 5, 6, 51), [f1, f2] = cells(u, v, 6, 52, 1), crack = 1 - smooth(0.0, 0.08, f2 - f1);
-    let c = mix3([0.2, 0.18, 0.26], [0.6, 0.55, 0.6], clamp(g * 1.3 - 0.15));
-    c = mix3(c, [0.55, 0.62, 0.3], smooth(0.65, 0.82, fbm(u, v, 9, 3, 53)) * 0.6);
-    c = mul3(c, 1 - crack * 0.75);
-    return { c, h: clamp(0.5 + 0.4 * g - crack * 0.5), ro: 0.85 };
+    const warp = fbm(u, v, 3, 3, 54) - 0.5, BEDS = 14;
+    const bv = (v + warp * 0.12) * BEDS, bed = ((Math.floor(bv) % BEDS) + BEDS) % BEDS, inBed = bv - Math.floor(bv);
+    const hue = hash2(bed, 1, 55), shade = 0.55 + 0.6 * hash2(bed, 2, 56);
+    let c = hue < 0.45 ? [0.42, 0.38, 0.48] : hue < 0.75 ? [0.5, 0.48, 0.46] : [0.56, 0.4, 0.32];
+    const g = fbm(u, v, 6, 5, 51), fine = fbm(u, v * 2, 24 + 8 * Math.floor(hash2(bed, 3, 57) * 3), 3, 59);
+    c = mul3(c, shade * (0.62 + 0.5 * g) * (0.8 + 0.35 * fine));
+    const lip = smooth(0.82, 0.97, inBed), seam = 1 - smooth(0.0, 0.06, Math.min(inBed, 1 - inBed));
+    c = mul3(c, 1 - seam * 0.55 + lip * 0.12);
+    const joint = smooth(0.985, 0.998, 1 - Math.abs(fbm(u, v, 4, 4, 58) * 2 - 1)) * (hash2(bed, 4, 60) < 0.5 ? 1 : 0); // joints in some beds
+    const r = 1 - Math.abs(fbm(u, v, 7, 5, 52) * 2 - 1), crack = smooth(0.975, 0.996, r);
+    c = mul3(c, 1 - Math.max(joint, crack) * 0.7);
+    c = mix3(c, [0.5, 0.58, 0.28], lip * smooth(0.6, 0.8, fbm(u, v, 9, 3, 53)) * 0.7);
+    return { c, h: clamp(0.45 + 0.3 * g - seam * 0.35 + lip * 0.1 - Math.max(joint, crack) * 0.45), ro: 0.85 };
   },
   // 5 marsh: dark teal moss and wet mud, glossy where it is wet
   mud: (u, v) => {
@@ -421,13 +434,18 @@ function writeSpecies(name, sp) {
   else crownOf(c, 'leaf', cr.mid, cr.rad, cr.n, cr.r, name.length * 7 + 3, cr.droop ?? 0);
   glb.sceneNodes.push(glb.node({ name: 'Trunk', mesh: glb.mesh(name + '_trunk', t.prims({ bark })) }));
   glb.sceneNodes.push(glb.node({ name: 'Crown', mesh: glb.mesh(name + '_crown', c.prims({ leaf })) }));
+  // the impostor crown for far tiles: the same silhouette from a few large clusters (a tenth of the cards)
+  const fc = new Mesher();
+  if (cr.tiers) [0, 2, 4].forEach((ti) => { const [y, rr] = cr.tiers[ti]; cards(fc, 'leaf', [0, y + 0.3, 0], cr.r * (rr / 1.6 + 0.4) * 1.9, [0, y - 0.6, 0], ti * 13, 0.2); });
+  else crownOf(fc, 'leaf', cr.mid, cr.rad, 2, cr.r * 1.9, name.length * 7 + 3, cr.droop ?? 0);
+  glb.sceneNodes.push(glb.node({ name: 'CrownFar', mesh: glb.mesh(name + '_crown_far', fc.prims({ leaf })) }));
   glb.write(join(MOD, 'flora_' + name + '.glb'));
   console.log('flora', name);
 }
 function glowcap() { // the wood's giant mushroom: a pale stem, a glowing cap (the crown)
   const glb = new Glb();
   const stem = glb.pbr('stem', TEX, null, { tint: [0.78, 0.7, 0.74], rough: 0.7, metal: 0 });
-  const cap = glb.pbr('cap', TEX, null, { tint: [0.34, 0.02, 0.52], rough: 0.5, metal: 0, emissive: [0.06, 0.0, 0.1] });
+  const cap = glb.pbr('cap', TEX, null, { tint: [0.3, 0.07, 0.42], rough: 0.55, metal: 0, emissive: [0.025, 0.0, 0.04] });
   const t = new Mesher(), c = new Mesher();
   lathe(t, 'stem', [[-0.2, 0.5], [0.3, 0.38], [3.2, 0.3], [3.6, 0.34]], { n: 12, uv: 1 });
   lathe(c, 'cap', [[3.4, 0.4], [3.5, 2.0], [3.75, 2.1], [4.2, 1.7], [4.7, 0.9], [4.95, 0.0]], { n: 18, uv: 1 });

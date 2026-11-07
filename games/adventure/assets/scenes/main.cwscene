@@ -24,6 +24,8 @@ bloom = true
 bloom_intensity = 0.07
 bloom_threshold = 1.2
 bloom_knee = 0.5
+; four levels: the soft glow of the hearts, crystals and fires at a third of six levels' cost
+bloom_levels = 4
 aa = FXAA
 ; a depth pass first: the leaf cards and the grass shade only what is in front (0.6 ms less in the wood)
 depth_prepass = true
@@ -68,9 +70,11 @@ vertex_spacing = 1
 min_height = -4
 max_height = 90
 grid_quads = 32
-far_distance = 140
+far_distance = 110
 ; the terrain receives the sun's shadows but casts none: the hills' own shade inside 40 m was a quarter of the frame on WebGPU
 cast_shadow = false
+; (side_detile: the cliffs carry their own strata; the engine's detiling cost 0.3 ms)
+side_detile = 0
 layer0_albedo = "textures/terrain/grass_ah.png"
 layer0_normal = "textures/terrain/grass_nr.png"
 layer0_uv_scale = 0.22
@@ -98,14 +102,14 @@ layer7_uv_scale = 0.18
 
 [node name="Grass" parent="Terrain" type="TerrainScatter3D"]
 shape = GRASS
-density = 1.1
+density = 2.2
 layers = 1
 min_slope = 30
-scale_min = 0.7
-scale_max = 1.25
-visible_range = 28
-fade = 10
-lod_distance = 16
+scale_min = 0.42
+scale_max = 0.72
+visible_range = 20
+fade = 8
+lod_distance = 10
 seed = 1
 
 [node name="Stones" parent="Terrain" type="TerrainScatter3D"]

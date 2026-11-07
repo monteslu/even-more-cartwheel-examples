@@ -580,7 +580,7 @@ clip('react_bliss', 0.85, false, (t) => {
 const WGUARD = {
   Hips: { p: [0, -0.07, 0], r: [0, 0.22, 0] }, Spine: { r: [0.12, -0.1, 0] }, Chest: { r: [0.05, -0.14, 0] }, Neck: { r: [-0.04, 0, 0] }, Head: { r: [-0.05, 0.1, 0] },
   UpperArmR: { r: [-0.5, 0.05, -0.28] }, LowerArmR: { r: [-1.15, 0, 0] }, HandR: { r: [0.35, 0, 0] },
-  UpperArmL: { r: [-0.45, -0.1, 0.32] }, LowerArmL: { r: [-1.55, 0, 0] }, HandL: { r: [0.2, 0, 0] },
+  UpperArmL: { r: [-0.3, -0.1, 0.3] }, LowerArmL: { r: [-0.85, 0, 0] }, HandL: { r: [0.1, 0, 0] }, // the free hand low and ready, not a boxer's guard
   UpperLegL: { r: [-0.38, -0.1, 0.1] }, LowerLegL: { r: [0.5, 0, 0] }, FootL: { r: [-0.1, 0.1, 0] },
   UpperLegR: { r: [0.22, -0.2, -0.12] }, LowerLegR: { r: [0.45, 0, 0] }, FootR: { r: [-0.25, 0.2, 0] },
 };
@@ -590,7 +590,7 @@ clip('idle_w', 2.4, true, (t) => {
   return WG({
     Hips: { p: [sh * 0.016, -0.07 + b * 0.008, 0], r: [0, 0.22, sh * 0.03] }, Spine: { r: [0.12 - b * 0.015, -0.1, -sh * 0.02] },
     Chest: { r: [0.05 - b * 0.03, -0.14, -sh * 0.015] }, Head: { r: [-0.05 + b * 0.02, 0.1 + S(w + 1) * 0.08, 0] },
-    UpperArmR: { r: [-0.5 - b * 0.04, 0.05, -0.28] }, LowerArmR: { r: [-1.15 + b * 0.05, 0, 0] }, UpperArmL: { r: [-0.45 + b * 0.04, -0.1, 0.32] },
+    UpperArmR: { r: [-0.5 - b * 0.04, 0.05, -0.28] }, LowerArmR: { r: [-1.15 + b * 0.05, 0, 0] }, UpperArmL: { r: [-0.3 + b * 0.04, -0.1, 0.3] },
   });
 });
 // the run with a blade: legs from the run, the sword arm carried low and back, the free arm pumping

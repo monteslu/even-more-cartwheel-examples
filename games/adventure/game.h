@@ -80,6 +80,8 @@ int world_props(const wprop **out);
 int world_ground_check(float *worst);
 int world_tree_check(float *worst);
 void world_wind(float t);
+void world_flora_lod(float x, float z);
+struct cw_terrain *world_terrain(void);
 void world_sky(t3_vec3 cam, float t);
 int world_box_count(void);
 

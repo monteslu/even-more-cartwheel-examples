@@ -1189,12 +1189,18 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
   if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
+  if (getenv("ADV_PROBE_TERRAINAWAY")) { t3_vec3 o = cw_terrain_get_def(W_terrain)->origin; o.y -= 5000; cw_terrain_set_origin(W_terrain, o); }
+  if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
+  if (getenv("ADV_PROBE_NODETILE")) cw_terrain_set_side_detile(W_terrain, 0);
   if (getenv("ADV_PROBE_TERRAINQ")) cw_terrain_set_quality(W_terrain, atoi(getenv("ADV_PROBE_TERRAINQ")));
   if (getenv("ADV_PROBE_NOBUILD")) for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOBLOOM")) cw_node_set(W_post, "bloom", cw_val_bool(false)), cw_node_set(W_post, "vignette", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOWATER")) cw_node_free(cw_node_get(W_root, "World/Water"));
   if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
+  if (getenv("ADV_PROBE_SHADOW1")) cw_node_set(W_sun, "shadow_cascades", cw_val_int(1)), cw_node_set(W_sun, "shadow_distance", cw_val_float(28));
   if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
   if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
   if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "energy", cw_val_float(0));
@@ -1226,7 +1232,9 @@ void world_page(float x, float z, int region) {
   if (want != water) { cw_node w = cw_node_get(W_root, "World/Water"); if (w.id) cw_node_set(w, "visible", cw_val_bool(want)), cw_node_set(w, "refraction", cw_val_bool(want)); water = want; }
   int live = NEAR[CW_CLAMP(region, 0, RG_COUNT - 1)];
   if (live == g_world_paged) return;
-  for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool((live >> r) & 1));
+  static int nobuild = -1;
+  if (nobuild < 0) nobuild = getenv("ADV_PROBE_NOBUILD") != NULL;
+  for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool(((live >> r) & 1) && !nobuild));
   g_world_paged = live;
 }
 
@@ -1234,11 +1242,11 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.25f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.4f, 1.66f },
+  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.18f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.5f, 1.7f },
   /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
   { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.36f },
   /* the marsh: teal and violet, a thicker cool mist */
-  { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.36f },
+  { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
   /* the keep: a crimson sunset, ember haze */
   { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 0.94f },
   /* the heights: cold bright air, blue shadows on the snow */
@@ -1246,7 +1254,7 @@ static const look LOOK[RG_COUNT] = {
   /* the underway: lantern light under the roof */
   { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 2.0f },
   /* the spire's downs: wind, a high clear sky */
-  { { 0.48f, 0.64f, 0.9f }, 0.0018f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.4f },
+  { { 0.48f, 0.64f, 0.9f }, 0.0018f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.47f },
   /* the glowcap wood: deep green under the canopy, teal glow */
   { { 0.22f, 0.42f, 0.36f }, 0.006f, { 0.7f, 0.75f, 1 }, 0.9f, { 0.6f, 0.7f, 0.85f }, { 0.25f, 0.22f, 0.3f }, 0.85f, { 1, 0.92f, 0.8f }, 3.0f, 1.72f },
 };
@@ -1343,8 +1351,15 @@ typedef struct tree { float x, y, z, yaw, s, phase; int sp, rg; } tree;
 #define MAXTREE 4096
 static tree TREE[MAXTREE];
 static int ntree;
-typedef struct fbatch { int sp, rg, first, n; t3_instanced_mesh *trunk, *crown; cw_node node; } fbatch;
-static fbatch FB[RG_COUNT * SP_COUNT];
+/* the trees are drawn in tiles (FLORA_TILE metres, one species of one region): a tile near the camera draws its full
+ * crowns (and they sway), a farther one a few large cards in their place (the impostor crown), and past FLORA_FAR none;
+ * each tile is one instanced draw per part, culled by its own bounds */
+#define FLORA_TILE 48.0f
+#define FLORA_NEAR 70.0f
+#define FLORA_FAR 190.0f
+typedef struct fbatch { int sp, rg, first, n; float cx, cz, r; t3_instanced_mesh *trunk, *crown, *far; cw_node node, crown_n, far_n; int lod; } fbatch;
+#define MAXFB 1024
+static fbatch FB[MAXFB];
 static int nfb;
 int world_trees(const float (**unused)[5]) { (void)unused; return ntree; }
 
@@ -1444,48 +1459,85 @@ static void crown_matrix(const tree *t, float sway_x, float sway_z, t3_mat4 *m) 
 }
 static void build_flora(void) {
   place_trees();
-  /* the trees in batch order (region, then species; placement order inside a batch) */
+  /* the trees in batch order (region, species, tile; placement order inside a batch) */
   static tree SORTED[MAXTREE];
+  const int NT = (int)(WORLD_N / FLORA_TILE) + 1;
   int k = 0;
   nfb = 0;
   for (int rg = 0; rg < RG_COUNT; rg++)
-    for (int sp = 0; sp < SP_COUNT; sp++) {
-      int first = k;
-      for (int i = 0; i < ntree; i++) if (TREE[i].rg == rg && TREE[i].sp == sp) SORTED[k++] = TREE[i];
-      if (k > first) FB[nfb++] = (fbatch){ sp, rg, first, k - first, NULL, NULL, { 0 } };
-    }
+    for (int sp = 0; sp < SP_COUNT; sp++)
+      for (int tz = 0; tz < NT; tz++)
+        for (int tx = 0; tx < NT; tx++) {
+          int first = k;
+          float cx = 0, cz = 0;
+          for (int i = 0; i < ntree; i++) {
+            const tree *t = &TREE[i];
+            if (t->rg == rg && t->sp == sp && (int)(t->x / FLORA_TILE) == tx && (int)(t->z / FLORA_TILE) == tz) SORTED[k++] = *t, cx += t->x, cz += t->z;
+          }
+          if (k > first && nfb < MAXFB) {
+            int n = k - first;
+            float r = 0;
+            cx /= (float)n, cz /= (float)n;
+            for (int i = first; i < k; i++) r = fmaxf(r, sqrtf(dist2(SORTED[i].x, SORTED[i].z, cx, cz)));
+            FB[nfb++] = (fbatch){ sp, rg, first, n, cx, cz, r, NULL, NULL, NULL, { 0 }, { 0 }, { 0 }, -1 };
+          }
+        }
   memcpy(TREE, SORTED, sizeof(tree) * (size_t)k);
+  bool nocrown = getenv("ADV_PROBE_NOCROWNSHADOW") != NULL;
   for (int f = 0; f < nfb; f++) {
     fbatch *b = &FB[f];
     t3_object *o = prop_obj(SP_FILE[b->sp]);
+    t3_object *fo = o ? t3_object_get_by_name(o, "CrownFar") : NULL;
     t3_mesh *tm = first_mesh(o ? t3_object_get_by_name(o, "Trunk") : NULL), *cm = first_mesh(o ? t3_object_get_by_name(o, "Crown") : NULL);
-    char nm[32];
-    snprintf(nm, sizeof nm, "Flora%d_%d", b->rg, b->sp);
+    t3_mesh *fm = fo ? first_mesh(fo) : cm;
+    char nm[40];
+    snprintf(nm, sizeof nm, "Flora%d_%d_%d", b->rg, b->sp, f);
     b->node = cw_node_new("Node3D", nm);
     cw_node_add_child(W_region_node[b->rg], b->node);
-    for (int part = 0; part < 2; part++) {
-      t3_mesh *src = part ? cm : tm;
+    for (int part = 0; part < 3; part++) {
+      t3_mesh *src = part == 0 ? tm : part == 1 ? cm : fm;
       if (!src) continue;
       t3_instanced_mesh *im = t3_instanced_mesh_new(src->geometry, src->materials[0], b->n);
-      im->mesh.base.cast_shadow = !(part && getenv("ADV_PROBE_NOCROWNSHADOW")), im->mesh.base.receive_shadow = true;
-      im->instance_matrix->usage = part ? T3_DYNAMIC_DRAW : T3_STATIC_DRAW;
+      /* far crowns are past the sun's shadow range (40 m): they cast nothing */
+      im->mesh.base.cast_shadow = part == 0 || (part == 1 && !nocrown), im->mesh.base.receive_shadow = true;
+      im->instance_matrix->usage = part == 1 ? T3_DYNAMIC_DRAW : T3_STATIC_DRAW;
       for (int i = 0; i < b->n; i++) {
         t3_mat4 m;
         crown_matrix(&TREE[b->first + i], 0, 0, &m);
         t3_instanced_mesh_set_matrix_at(im, i, &m);
       }
-      cw_node mn = cw_node_new("MeshInstance3D", part ? "Crowns" : "Trunks");
+      cw_node mn = cw_node_new("MeshInstance3D", part == 0 ? "Trunks" : part == 1 ? "Crowns" : "FarCrowns");
       cw_node_add_child(b->node, mn);
       cw_mesh3d_set_procedural(mn, &im->mesh);
-      if (part) b->crown = im; else b->trunk = im;
+      if (part == 0) b->trunk = im;
+      else if (part == 1) b->crown = im, b->crown_n = mn;
+      else b->far = im, b->far_n = mn;
       t3_release(im);
     }
     if (o) t3_release(o);
   }
   if (getenv("ADV_PROBE_NOTREES")) for (int f = 0; f < nfb; f++) cw_node_set(FB[f].node, "visible", cw_val_bool(false));
-  cw_info("adventure: %d trees in %d batches", ntree, nfb);
+  cw_info("adventure: %d trees in %d tiles", ntree, nfb);
 }
-/* the wind, every frame (render only): the crowns of the live regions turn about the tops of their trunks */
+/* the trees' level of detail from the camera, every frame (render only): full crowns near, impostor crowns farther,
+ * nothing past FLORA_FAR (the fog has them by then) */
+struct cw_terrain *world_terrain(void) { return W_terrain; }
+void world_flora_lod(float x, float z) {
+  static int off = -1;
+  if (off < 0) off = getenv("ADV_PROBE_NOTREES") != NULL;
+  if (off) return;
+  for (int f = 0; f < nfb; f++) {
+    fbatch *b = &FB[f];
+    float d = sqrtf(dist2(x, z, b->cx, b->cz)) - b->r;
+    int lod = d < FLORA_NEAR ? 0 : d < FLORA_FAR ? 1 : 2;
+    if (lod == b->lod) continue;
+    b->lod = lod;
+    cw_node_set(b->node, "visible", cw_val_bool(lod < 2));
+    if (b->crown_n.id) cw_node_set(b->crown_n, "visible", cw_val_bool(lod == 0));
+    if (b->far_n.id) cw_node_set(b->far_n, "visible", cw_val_bool(lod == 1));
+  }
+}
+/* the wind, every frame (render only): the full crowns of the live regions turn about the tops of their trunks */
 void world_wind(float t) {
   static float last = -1;
   static int still = -1;
@@ -1495,7 +1547,7 @@ void world_wind(float t) {
   last = t;
   for (int f = 0; f < nfb; f++) {
     fbatch *b = &FB[f];
-    if (!b->crown || !((g_world_paged >> b->rg) & 1)) continue;
+    if (!b->crown || b->lod != 0 || !((g_world_paged >> b->rg) & 1)) continue;
     float amp = SP_SWAY[b->sp];
     for (int i = 0; i < b->n; i++) {
       const tree *tr = &TREE[b->first + i];
