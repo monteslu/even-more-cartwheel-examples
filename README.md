@@ -55,14 +55,15 @@ swept against the park's triangles, so a quarter pipe gives back exactly the
 height its speed earns; every park is checked in CI: nothing floats and a bot
 skates every line.
 
-### explorer
+### Lanternfall
 
-![explorer: a hooded wanderer under great trees in the Lantern Gate, lanterns glowing beside a statue](docs/screenshots/explorer.jpg)
+![Lanternfall: the hooded lamplighter in the Lantern Gate, lantern posts glowing under a great hanging rock](docs/screenshots/lanternfall.jpg)
 
-A 2D exploration platformer for one player, with a drop-in second (working
-title): one great underground world of 13 regions and 356 rooms, where each of
-seven abilities (a second jump, a dash, a wall climb, swimming, a grapple and
-more) opens ways you could not take before. Six wardens, shrines that save and
+A 2D exploration platformer for one player, with a drop-in second: the
+lanterns of the old city have gone out, and the hooded lamplighter wakes its
+beacons again across one great underground world of 13 regions and 356 rooms,
+where each of seven abilities (a second jump, a dash, a wall climb, swimming, a
+grapple and more) opens ways you could not take before. Six wardens, shrines that save and
 carry you between them, and a map that fills in as you go. It is drawn with the
 engine's 2D renderer: lit sprites, soft shadows, bounced light, light shafts,
 bloom and a colour grade per region. A checker proves the world can be finished

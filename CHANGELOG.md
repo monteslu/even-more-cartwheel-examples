@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0
+
+- explorer is now **Lanternfall**: its apps, carts, tests and launcher art take the new name (lanternfall,
+  lanternfall_auto, lanternfall_bench, ...). Its look round: holes through floors fall away into a dusk with mist,
+  hanging roots, icicles, chains or weed instead of showing the background's bands; the undersides of hanging rock,
+  islands and wall bulges are shaped into sloping faces and rounded corners where the tiles made staircases; every
+  region has a rock of its own (sandstone strata in the Lantern Gate in place of brick courses, slate, basalt, ore,
+  earth, crystal, ice, coral, cloud) with no tile grid showing. The bench frame is faster on engine v0.38 with
+  global illumination's field back at an eighth of the canvas.
+
 ## 0.5.0
 
 - **demolition** (working title): a physics destruction game for one to four players taking turns, in co-op or
