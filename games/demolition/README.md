@@ -55,6 +55,16 @@ speed the break did not use and goes on through.
   at 90 m/s and up unless the shot is a `bullet`; more sub-steps do not help. Static walls always stop it (continuous
   collision; with it off the control goes through). The game's shot is a bullet.
 
+## Performance
+
+On the Radeon 890M at 1920x1080 on High, during Great Keep's collapse (1444 blocks broken, 2374 bodies awake, 2846
+blocks drawn): GPU 3.2 ms on GL and 2.9 ms on WebGPU (`tests/demolition-perf.mjs`). SSAO is off (0.9 ms, the edges
+of the block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA
+(WebGPU multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during
+the same collapse: 2.9 ms a step on average while more than 500 bodies are awake, against 2.4 ms natively; the
+worst single step is the blast itself (about 17 ms in the cart, 7 natively), when hundreds of pieces are made and a
+thousand bodies wake at once.
+
 ## Tests
 
 | Command | Checks |
