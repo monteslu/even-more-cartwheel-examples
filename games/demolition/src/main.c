@@ -61,7 +61,9 @@ static struct {
   int32_t phase_dbg, level, state, shots, tleft, blocks, awake, broken, frags, booms, stars_dbg, cur, tick;
   int32_t score[MAXP];
   uint32_t hash;
-  float yaw, pitch, power, step_ms;
+  float yaw, pitch, power, step_ms, step_max, step_busy;
+  double busy_sum;
+  int busy_n;
   int32_t instances;
 } G;
 
@@ -167,6 +169,8 @@ static void init(void *u) {
   cw_debug_f32("aim.pitch", &G.pitch);
   cw_debug_f32("aim.power", &G.power);
   cw_debug_f32("phys.step_ms", &G.step_ms);
+  cw_debug_f32("phys.step_max", &G.step_max);   /* the slowest step since the app started (host-dependent) */
+  cw_debug_f32("phys.step_busy", &G.step_busy); /* the mean step while more than 500 bodies were awake */
   cw_debug_i32("view.instances", &G.instances);
 #ifdef DEMOLITION_AUTOPILOT
   cw_shell_start(1);
@@ -301,6 +305,8 @@ static void fixed_update(void *u, double dt) {
   G.cur = g->cur, G.hash = g->hash;
   for (int i = 0; i < MAXP; i++) G.score[i] = g->P[i].score;
   G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.step_ms = g->step_ms;
+  if (g->step_ms > G.step_max) G.step_max = g->step_ms;
+  if (g->awake_now > 500) G.busy_sum += g->step_ms, G.busy_n++, G.step_busy = (float)(G.busy_sum / G.busy_n);
 }
 
 /* ── the HUD ─────────────────────────────────────────────────────────── */
