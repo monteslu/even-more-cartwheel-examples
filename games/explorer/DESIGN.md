@@ -28,7 +28,16 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
 - A **spine** of cells joins every doorway a region needs, branches grow off it, and the cells are cut into rooms of
   one to three cells, joined by doors in a spanning tree plus a few loops.
 - Each room is **carved**: walls, door openings, ledges under doors above the floor, ladders of one-way ledges up to
-  them, the floor's steps, thorn pits and pools, platforms, then lamps, props, enemies, each placed on what holds it.
+  them, the floor's steps, thorn pits and pools, then its **composition**: the ceiling's line rolls, rounded masses
+  hang from it, bulges grow from the side walls (shelves, overhangs and the alcoves between them), islands of rock
+  with tapered undersides and one-way ledges (some broken in two) float in the air, broken columns hang with their
+  stumps below. Each piece is laid only where the air round it is open, never over a door, a ladder or a kept
+  column. Then lamps, props and enemies, each placed on what holds it.
+- **Set pieces** per region stand on level floor: machines with turning gears, pistons and furnace mouths in the
+  Forge and the Clockwork Deep (pipes down from the ceiling, the thorn pits there are molten channels), trees in the
+  gardens (the Bloom Gardens, the Rootway, the Fen grow thick with flowers), crystal clusters in the crystal regions,
+  weed in the Tidal Halls, shelves in the Archive, lamplighter statues in the Lantern Gate and the Skyreach. Some
+  halls in Glasswater and the Tidal Halls are flooded: wading pools from wall to wall.
 
 The abilities come in this order: the spark (ranged, at the start), the second jump (behind the Moss Warden), the dash
 (behind the Glass Mantis), wall climbing, the plunge (behind the Brass Sentinel), the tide charm (behind the Tide
@@ -47,7 +56,8 @@ land on the same tile. It proves, stage by stage from the start with no abilitie
 - every gate room's far half cannot be reached with only the abilities that come before its own, and can with it;
 - every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says (nothing floats).
 
-It writes the bot's route (`assets/route.bin`): the moves from the start through every pickup, shrine and warden.
+It writes the bot's route (`assets/route.bin`): the moves from the start through every pickup, shrine and warden,
+the Heart of Thorns last of all.
 `tests/explorer-world.mjs` checks both shipped files are current, and runs five broken worlds that must each fail
 for their own reason.
 
@@ -95,28 +105,53 @@ player is brought back to the first when left in another room.
 
 ## The look
 
-Everything is drawn in code at start-up (`src/art.c`): tile sets with normal maps for six materials, the bright lips of
-walkable surfaces, ledges, thorns, back walls, the parallax silhouettes. The hero, enemies and wardens are skeletons of
-shapes animated every frame (`src/view.c`). Value steps: the parallax and back wall sit back, the rock face is mid,
-the walkable top is the brightest thing in the ground, the actors are saturated. The back wall fades out away from the
-rock, so big rooms open onto the deep parallax behind them. Lamps, the lantern, shots and pickups are 2D lights on
-the lit layers; glows and particles go on an additive layer over them.
+Everything is drawn in code at start-up (`src/art.c`, `src/art_par.h`): tile sets with normal maps for six materials
+(corners open on two sides are rounded, so rock masses read as boulders), the bright lips of walkable surfaces,
+ledges, thorns and molten channels, a rough cave rock for the back wall, and six parallax families: ragged ridges, a
+colonnade of arches, trees of every size, crystal spires, machinery (gears, pipes, stacks) and growth hanging from
+above, each feature placed by hash so no two are alike. The hero, enemies and wardens are skeletons of shapes animated
+every frame (`src/view.c`).
+
+**Value structure.** Every region keeps the same steps of luma whatever its palette (`toluma` in view.c): a bright
+hazy depth, three parallax depths each a step darker toward the viewer (far ridges, the region's family, a nearer
+one), a back wall only in a band round the rock, the rock's body dark, the walkable lip the brightest thing in the
+ground, the actors saturated. Rooms read as dark shapes against a bright distance. Framing silhouettes (columns,
+trunks, chains, shards, weed, hanging roots) stand nearer than the playfield at a room's walls and ceiling and slide
+past faster than the world.
+
+**Colour.** Each region keeps its key hue and has a complementary accent: cool steel and blue pilot lights against
+the warm regions (the Forge's machinery is steel blue, the far depth goes blue, glowing growth glows blue), warm
+lantern posts and an amber far depth in the cool ones (Glasswater, the Tidal Halls, the Frostvault, Starfall,
+the Skyreach, the Lantern Gate, the Archive, the Fen).
+
+`tests/explorer-look.mjs` measures frames of eight regions: mean luma 100 to 120 (the darker Tidal Halls and Starfall
+from 80), luma standard deviation 55 or more, a complementary accent in 3% or more of the saturated pixels, a floor
+of local contrast; frames flattened halfway to their mean must fail.
+
+Lamps, the lantern, shots and pickups are 2D lights on the lit layers; glows and particles go on an additive layer
+over them.
 
 ## The bot
 
 `src/bot.c` plays through the input struct the pad fills: it stands on each route step's tile and plays its move tick
-by tick; when knocked off it searches nearby with the same moves for a way back onto the route; it clears enemies
-first, cuts thrown things, mends when hurt, rests at shrines, and reads the wardens' tells in their arenas. It plays
-with the assist (every third hit costs a leaf).
+by tick; when knocked off it searches nearby with the same moves for a way back onto the route (never past a goal it
+has not reached); it clears enemies first (gets under the edge of a ledge to strike up at what sits on it, steps off
+the spot a moth's wings flared at and strikes it as it comes past), cuts thrown things, mends when hurt, rests at
+shrines, opens hidden and cracked floors the route drops through, and reads the wardens' tells in their arenas
+(charges jumped toward and over, tells as long as the warden's phase makes them, helpers struck first). A watchdog
+stops it minding enemies for a while when the route has not moved in twenty seconds. It plays with the assist
+(every third hit costs a leaf) and clears the game: `tests/explorer-soak.mjs` requires every pickup, all six
+wardens and the heart down, for one player and for two.
 
 ## The 2D renderer's new features (cartwheel-engine v0.37)
 
-Built against an engine whose `render2d.h` has the HDR post chain (cartwheel-engine branch engine-2d, the v0.37
-work), the game turns on (`EXPLORER_R2D_V2`, set by CMake when the header has it): an HDR pass with bloom, a soft
+Built against an engine whose `render2d.h` has the HDR post chain (cartwheel-engine v0.37.0), the game turns on
+(`EXPLORER_R2D_V2`, set by CMake when the header has it): an HDR pass with bloom, a soft
 tone curve that leaves ordinary art alone, a grade toward each region's accent and a vignette; emission and
 intensity on everything that glows (lamp windows, braziers, crystals, the lantern, eyes, pickups, shots), so it stays
 bright in a dim room and blooms; soft shadows from the rock (one occluder per run of solid tiles in a row, a distance
 field in the engine) with the light reaching a little way into the rock face; light shafts; bounce light (2D GI); real
 water pools drawn from the screen (refraction, the world mirrored on the surface, caustics, ripples where you splash
-and swim); shockwaves in a distortion layer (a plunge landing, a warden falling, a hidden wall breaking); fog on the
-parallax layers. Against the pinned v0.34.3 SDK the game draws as before (additive glows, flat water, no shadows).
+and swim); shockwaves in a distortion layer (a plunge landing, a warden falling, a hidden wall breaking). The sky and every
+parallax depth share one unlit layer with their haze baked into their colour (no fog pass, no extra full-screen
+layers); the framing silhouettes are their own unlit layer over the water. Against the pinned v0.34.3 SDK the game draws as before (additive glows, flat water, no shadows).

@@ -1,39 +1,50 @@
 # explorer: handoff (internal working notes for the next session on branch explorer)
 
-## State (2026-11-07)
+## State (2026-11-07, second round)
 - Branch `explorer`, worktree `worktrees/explorer`. Engine: `deps/cartwheel-engine` is a symlink to
-  `/home/monteslu/code/cliemu/cartwheel-engine-wt/explorer-pin` (a detached checkout of engine-2d at 24b12f5, its deps
-  symlinked to engine-2d's). The pinned SDK deps are parked untracked in `deps-sdk/` (hardlinks). The game picks the new
-  2D renderer by `CW_R2D_FEATURES >= 2` (src/view.h), else draws the old way (CI builds against the v0.34.3 SDK).
-- Builds: `TARGETS=native scripts/build.sh explorer explorer_auto explorer_bench explorer_soak explorer_check
-  explorer_feel explorer_worldgen`; binaries land in `build/native/project/games/explorer/` (engine-source layout).
-  Carts: `TARGETS=cart-wgpu scripts/build.sh explorer explorer_auto explorer_bench`.
-- Passing: tests/explorer-world.mjs (world current + proven, five controls), tests/explorer-feel.mjs (three controls),
-  tests/explorer-soak.mjs (60 min, floors 8 pickups 2 wardens), GPU gates explorer-auto / explorer-play on GL and
-  WebGPU incl. romdev, cart-smoke, cart-art, check-prompts.
-- Perf (tests/explorer-perf.mjs, 890M 1080p, bench arena): GL 3.62 ms, WebGPU 4.11 ms. Breakdown: lit HDR floor 1.5 ms,
-  post ~1.1, GI ~1.2 (now at 1/8 resolution), soft shadows ~0.45. `EXPLORER_PERF_OFF=shadows,vol,post,water,dist,occl,lights`
-  and `EXPLORER_NO_GI=1` switch parts off for a sweep.
-- Fast looks without the GPU lock: run explorer_auto on lavapipe (SDL offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,
-  CW_SCREENSHOT, EXPLORER_IDLE=1 EXPLORER_ROOM=n). `explorer_worldgen /dev/null --list` lists rooms (index region kind
-  size); `--room n` prints a room's tiles.
-- Bot debugging: `EXPLORER_SOAK_HURT=1 explorer_soak assets <min> 1` prints hurts, deaths and REGRESS lines;
-  `EXPLORER_SOAK_FROM=a EXPLORER_SOAK_TRACE=b` traces ticks a..b. A full soak minute takes about 0.05 s of CPU.
+  `/home/monteslu/code/cliemu/cartwheel-engine-wt/explorer-v037`, a detached worktree of cartwheel-engine at the
+  v0.37.0 tag (9280c42), its deps fetched at the engine's pins by `scripts/fetch-deps.sh` (CARTWHEEL_ENGINE set to that
+  path). The old `explorer-pin` worktree (24b12f5) is no longer used; removing it was refused by the permission
+  check, so it is still on disk: `git -C /home/monteslu/code/cliemu/cartwheel-engine worktree remove --force
+  /home/monteslu/code/cliemu/cartwheel-engine-wt/explorer-pin` when allowed. `scripts/deps.lock` is not ours to move
+  (the coordinator moves it once the v0.37.0 SDK assets are published). The pinned SDK deps are parked untracked in
+  `deps-sdk/`. The game picks the new 2D renderer by `CW_R2D_FEATURES >= 2` (src/view.h).
+- Builds: `CW_THREE_DIR=/home/monteslu/code/cliemu/cartwheel-engine-wt/explorer-v037/deps/three.c TARGETS=native
+  scripts/build.sh explorer explorer_auto explorer_bench explorer_soak explorer_check explorer_feel explorer_worldgen`
+  (the build tree had cached an older three.c; the variable forces the right one). Binaries land in
+  `build/native/project/games/explorer/`. Carts: the same with `TARGETS=cart-wgpu`; they land in `build/cart-wgpu/carts/`.
+  `out/b.sh <apps>` wraps this (development helper, not shipped).
+- World: rebuild with `explorer_worldgen games/explorer/assets/world.bin`, then `explorer_check
+  games/explorer/assets/world.bin --threads 24 --route games/explorer/assets/route.bin`. `CHECK_STUCK=1` on the
+  checker prints the doors a stage reached one side of and not the other (for finding where new terrain blocks the
+  way). `explorer_worldgen /dev/null --list` (rooms), `--room n` (tiles), `--pickups` (pickups, shrines, wardens).
 
-## The coordinator's next round (not done yet)
-1. Room composition: varied terrain (slopes need collision support in player.c; overhangs, rounded masses, pillars,
-   broken ledges, alcoves in worldgen carve_room), foreground framing silhouettes drawn in front (a layer after L_FX),
-   set pieces per region (forge machinery and molten channels, flooded hall, garden). Every terrain change must keep
-   explorer_check passing (rerun tests/explorer-world.mjs; regenerate world.bin and route.bin).
-2. Background: replace the uniform brick back wall (art.c make_wall, view.c draw_room_wall) with region shapes
-   (machinery, arches, trees, crystals) with depth haze; vary the parallax silhouettes (art.c make_misc par[]).
-3. Colour: keep each region's key hue, add a complementary accent (warm lamps in cool regions are started in
-   draw_lamp; cool steel and blue pilot lights for the Forge); keep the value step. Add a look check like towers':
-   mean luma 100..120 (except deliberately dark regions), sd >= 55, with a control.
-4. Bot must finish the game: the loop is at route step ~1963 (room 142, Glasswater: a moth swoop knocks it into thorns,
-   then it climbs back from the safe spot). Ideas: kill moths first (shoot up when under, jump-strike), wait out moth
-   tells before moves, prefer moves whose landing is away from thorns, retreat and re-approach. Then raise the soak's
-   floors to a full clear (won 1).
-5. Perf: merge parallax layers that share depth, draw the back wall only where it is not covered by rock (it already
-   fades by rock distance), keep full-screen quads out of lit layers; report GL and WebGPU.
-6. Push once at the end (the second push this session was refused by the permission check; do not work around it).
+## This round
+1. Composition (src/worldgen.c `compose`, the platform loop, the columns, `populate`): rolling ceiling line,
+   hanging masses, wall bulges, islands with tapered undersides, broken ledges, broken columns with stumps, flooded
+   halls, region set pieces (PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_PIPE in world.h),
+   pilot lights (lamp style 8) and lantern posts (style 9). No slopes (player.c untouched). Tile corners open on two
+   sides are rounded in the art. Framing silhouettes in their own layer (view.c `draw_framing`, `frame_at`: a
+   translation so a group sits at its world place when the camera is at its edge and slides 1.32x as fast).
+2. Background: parallax families in src/art_par.h (ridges, arches, trees, crystals, machinery, hanging growth),
+   three depths per region (view.c `draw_sky`, SET table), all in the sky layer with the haze baked in. The back wall
+   is a rough cave rock (no courses), only in a band round the rock, mapped across eight tiles.
+3. Colour: values by luma (`toluma`, the V_* steps, a per-region EXPO nudge), complementary accents
+   (`comp_accent`). tests/explorer-look.mjs captures eight regions on lavapipe and measures them (see DESIGN.md).
+4. Bot: full clear (see DESIGN.md, the bot). Route: the heart last (check.c write_route). Sim: a warden wakes only
+   once its player is clear of a door in the arena's ceiling (the lock had shut on a player still in the hole).
+5. Perf: parallax merged into the sky layer (four fewer layers), back wall skipped behind rock and kept to a band,
+   no full-screen quads in the lit layers.
+
+## Debugging switches
+- Fast looks without the GPU lock: `node tests/explorer-look.mjs` (lavapipe, out/look-explorer/r<region>.png), or
+  run explorer_auto on lavapipe by hand (SDL_VIDEODRIVER=offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,
+  CW_SCREENSHOT, EXPLORER_IDLE=1 EXPLORER_ROOM=n EXPLORER_NO_HUD=1).
+- Perf breakdown: `EXPLORER_PERF_OFF=shadows,vol,post,water,dist,occl,lights,frame` and `EXPLORER_NO_GI=1`.
+- Bot: `EXPLORER_SOAK_HURT=1 explorer_soak games/explorer/assets <min> 1` prints hurts, deaths, REGRESS lines;
+  `EXPLORER_SOAK_FROM=a EXPLORER_SOAK_TRACE=b` traces ticks a..b (with the warden's state when one is up). A full
+  clear takes about 140 game minutes, about 3 s of CPU.
+
+## Open
+- Local contrast of the frames is 5 to 10 (clean shapes in haze); the look check's floor is 4.5.
+- Push: done once at the end of each round; a refused push is not retried.

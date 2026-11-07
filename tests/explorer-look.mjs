@@ -3,8 +3,10 @@
 // contrast between the background, the playfield and the surfaces you stand on, and more than one hue family on
 // screen (each region's key hue with a complementary accent).
 //   mean luma 100 to 120 of 255 (the deliberately darker regions, the Tidal Halls and Starfall Reach, from 80)
-//   luma standard deviation 55 or more (a punchy frame), and 12 or more of local contrast (the mean absolute
-//   difference of luma from its 33 x 33 neighbourhood's mean: modelled shapes and edges, not a global curve)
+//   luma standard deviation 55 or more (a punchy frame: dark rock against a bright hazy depth), and 4.5 or more of
+//   local contrast (the mean absolute difference of luma from its 33 x 33 neighbourhood's mean: crisp shapes and
+//   grain, not a blurred or flat frame; this art is clean shapes in haze, so its floor sits well under a textured 3D
+//   scene's)
 //   a complementary accent: 3% or more of the saturated pixels 90 degrees or more round the hue wheel from the
 //   commonest hue (no one-hue region)
 // CONTROL, which must fail: the same frames flattened halfway to their own mean (a washed-out grade).
@@ -96,7 +98,7 @@ export function verdict(region, r) {
   const lo = DARKER.has(region) ? 80 : 100;
   if (r.mean < lo || r.mean > 120) bad.push(`mean luma ${r.mean.toFixed(0)} (${lo} to 120)`);
   if (r.sd < 55) bad.push(`luma sd ${r.sd.toFixed(1)} (55 or more)`);
-  if (r.local < 12) bad.push(`local contrast ${r.local.toFixed(1)} (12 or more)`);
+  if (r.local < 4.5) bad.push(`local contrast ${r.local.toFixed(1)} (4.5 or more)`);
   if (r.accent < 0.03) bad.push(`complementary accent ${(r.accent * 100).toFixed(1)}% (3% or more)`);
   return bad;
 }

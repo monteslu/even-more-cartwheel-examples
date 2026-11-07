@@ -271,7 +271,7 @@ static void make_wall(int m) {
       col[4 * i + 3] = 255;
     }
   normals(hf, S, S, 1.5f, true, nrm);
-  A.wall[m] = cw_texture_from_pixels(S, S, col, &(cw_texture_desc){ .repeat = true });
+  A.wall[m] = cw_texture_from_pixels(S, S, col, NULL); /* (an atlas texture: it keeps its normal map) */
   cw_texture_set_normal_map(A.wall[m], nrm);
 }
 

@@ -35,10 +35,12 @@ map that fills in as you go. A second player can drop in on a pad. `DESIGN.md` h
 TARGETS=native scripts/build.sh explorer_worldgen explorer_check explorer_feel explorer_soak
 node tests/explorer-world.mjs     # the world is current and proven; five broken worlds must each fail
 node tests/explorer-feel.mjs      # jump heights, coyote time, jump buffer, with controls
-node tests/explorer-soak.mjs      # the bot plays for a long while; a NaN put in on purpose must be caught
+node tests/explorer-soak.mjs      # the bot clears the game (every pickup, every warden), one player and two; a NaN must be caught
+node tests/explorer-look.mjs      # frames of eight regions: value, contrast, a complementary accent; a flattened grade must fail
 node tests/gate.mjs --gates-file explorer-gates.json   # GL and WebGPU, frames and state across hosts
 node tests/explorer-perf.mjs      # 1080p High on the test GPU
 ```
 
-Rebuilding the world: `build/native/games/explorer/explorer_worldgen games/explorer/assets/world.bin`, then
-`build/native/games/explorer/explorer_check games/explorer/assets/world.bin --route games/explorer/assets/route.bin`.
+Rebuilding the world: `build/native/project/games/explorer/explorer_worldgen games/explorer/assets/world.bin`, then
+`build/native/project/games/explorer/explorer_check games/explorer/assets/world.bin --route games/explorer/assets/route.bin`
+(in a build against the published SDK the tools sit in `build/native/games/explorer/`).

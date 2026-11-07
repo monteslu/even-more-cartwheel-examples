@@ -43,7 +43,7 @@ static cw_color toluma(cw_color c, float L) {
   return mixc(c, w, k > 1 ? 1 : k);
 }
 /* the value steps (luma): the hazy depth, the parallax depths far to near, the back wall, the rock's body */
-enum { V_HAZE = 212, V_TOP = 172, V_FAR = 190, V_MID = 164, V_NEAR = 128, V_WALL = 124, V_ROCK = 76 };
+enum { V_HAZE = 218, V_TOP = 178, V_FAR = 196, V_MID = 170, V_NEAR = 134, V_WALL = 126, V_ROCK = 76 };
 #define VAL(v) ((float)(v) / 255.0f)
 
 /* ── particles ── */
@@ -166,12 +166,15 @@ static cw_color comp_accent(int region) {
 }
 static void draw_sky(const sim *s, float t, int region) {
   const region_info *ri = &REGIONS[region];
+  /* a little more light behind the rock-heavy halls of the Forge, a little less in the snow (luma steps) */
+  static const int8_t EXPO[NREGIONS] = { [R_FORGE] = 22, [R_CLOCK] = 10, [R_ROOTWAY] = 4, [R_FROST] = -14, [R_SKY] = -8 };
+  int ex = EXPO[region];
   cw_vec2 cs = cw_r2d_canvas_size();
   cw_r2d_use_layer(L_SKY);
   /* a bright hazy depth behind everything: the playfield and the rock read as darker shapes against it */
-  cw_color haze = toluma(hexc(ri->sky, 1), VAL(V_HAZE));
+  cw_color haze = toluma(hexc(ri->sky, 1), VAL(V_HAZE + ex));
   cw_color comp = comp_accent(region);
-  cw_color top = toluma(hexc(ri->sky, 1), VAL(V_TOP)), bot = toluma(mixc(haze, comp, 0.35f), VAL(V_HAZE));
+  cw_color top = toluma(hexc(ri->sky, 1), VAL(V_TOP + ex)), bot = toluma(mixc(haze, comp, 0.35f), VAL(V_HAZE + ex));
   cw_vertex2d v[4] = { { { 0, 0 }, { 0, 0 }, top }, { { cs.x, 0 }, { 1, 0 }, top }, { { cs.x, cs.y }, { 1, 1 }, bot }, { { 0, cs.y }, { 0, 1 }, bot } };
   uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
   cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
@@ -179,8 +182,8 @@ static void draw_sky(const sim *s, float t, int region) {
   for (int k = 0; k < 3; k++) {
     float x = fmodf((float)k * 0.37f * cs.x - g_cam.position.x * zoom * 0.05f + cs.x * 2, cs.x * 1.2f) - cs.x * 0.1f;
     cw_vec2 q[4] = { { x, 0 }, { x + cs.x * 0.08f, 0 }, { x + cs.x * 0.22f, cs.y }, { x + cs.x * 0.1f, cs.y } };
-    cw_color sc = mixc(rgba(1, 1, 0.95f, 1), comp, 0.5f);
-    sc.a = 0.06f + 0.02f * sinf(t * 0.3f + (float)k);
+    cw_color sc = mixc(rgba(1, 1, 0.95f, 1), comp, 0.75f);
+    sc.a = 0.07f + 0.02f * sinf(t * 0.3f + (float)k);
     cw_r2d_polygon(q, 4, sc);
   }
   /* parallax: three depths of the region's own shapes (far ridges, then its family of arches, trees, crystals,
@@ -196,7 +199,7 @@ static void draw_sky(const sim *s, float t, int region) {
     [R_HEART] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
   };
   static const float PAR[3] = { 0.14f, 0.32f, 0.55f };
-  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, 0.85f), VAL(V_FAR)), toluma(mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.45f : 0.25f), VAL(V_MID)), toluma(hexc(ri->near, 1), VAL(V_NEAR)) };
+  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, 0.85f), VAL(V_FAR + ex)), toluma(region == R_FORGE || region == R_CLOCK ? mixc(comp, rgba(0.3f, 0.36f, 0.48f, 1), 0.35f) : mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.6f : 0.25f), VAL(V_MID + ex)), toluma(hexc(ri->near, 1), VAL(V_NEAR + ex)) };
   if (region == R_FORGE || region == R_CLOCK) cols[2] = mixc(cols[2], rgba(0.42f, 0.5f, 0.6f, 1), 0.45f); /* cool steel against the heat */
   for (int k = 0; k < 3; k++) {
     int tex = SET[region][k];
@@ -207,7 +210,7 @@ static void draw_sky(const sim *s, float t, int region) {
     if (tex == PAR_HANG) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
     cw_vec2 pos[4] = { { 0, y0 }, { cs.x, y0 }, { cs.x, y0 + h }, { 0, y0 + h } };
     float su = cs.x / w;
-    cw_vec2 uv[4] = { { u0, 0 }, { u0 + su, 0 }, { u0 + su, 1 }, { u0, 1 } };
+    cw_vec2 uv[4] = { { u0, 0.002f }, { u0 + su, 0.002f }, { u0 + su, 0.998f }, { u0, 0.998f } }; /* (inset: no bleed from the wrapped edge) */
     cw_r2d_quad(A.par[tex], pos, uv, cols[k]);
   }
 }
@@ -270,7 +273,8 @@ static void draw_room_wall(const sim *s, int ri, float x0, float y0, float x1, f
         cw_color cc = c;
         cc.a = a[k];
         float wx = (float)x + CX[k], wy = (float)y + CY[k];
-        v[nq * 4 + k] = (cw_vertex2d){ { wx, wy }, { wx / 7.0f, wy / 7.0f }, cc }; /* (one texture across seven tiles: no grid) */
+        float bx = (float)(x & ~7), by = (float)(y & ~7); /* (one texture across eight tiles, each 2 x 2 quad inside one copy: no grid) */
+        v[nq * 4 + k] = (cw_vertex2d){ { wx, wy }, { (wx - bx) / 8.0f, (wy - by) / 8.0f }, cc };
       }
       uint32_t b = (uint32_t)nq * 4;
       uint32_t q[6] = { b, b + 1, b + 2, b, b + 2, b + 3 };
@@ -505,7 +509,7 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
     break;
   }
   case PR_STATUE: { /* a hooded lamplighter of stone on a plinth, a lantern held out, still burning */
-    cw_color stone = rgba(0.66f, 0.66f, 0.64f, 1);
+    cw_color stone = rgba(0.5f, 0.5f, 0.5f, 1);
     float f = (e->arg & 1) ? 1.0f : -1.0f;
     cw_r2d_rect((cw_rect){ x - 0.8f, y - 0.7f, 1.6f, 0.7f }, scalec(stone, 0.8f));
     cw_vec2 robe[5] = { v2(x - 0.55f, y - 0.7f), v2(x + 0.55f, y - 0.7f), v2(x + 0.3f, y - 2.6f), v2(x, y - 3.1f), v2(x - 0.35f, y - 2.5f) };
@@ -536,6 +540,8 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
 static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_on) {
   cw_color acc = hexc(g->accent, 1);
   if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* warm lamps in cool regions */
+  /* glowing growth on the floor of a warm region glows its cool complement (bioluminescent blue) */
+  { cw_color k = hexc(g->sky, 1); if (e->hold == HOLD_FLOOR && (e->sub == 5 || e->sub == 6) && k.r > k.b + 0.05f) acc = rgba(0.42f, 0.7f, 1.0f, 1); }
   float x = e->x, y = e->y, flick = 0.9f + 0.1f * sinf(t * 7.3f + x) * sinf(t * 3.1f + y);
   cw_vec2 core;
   if (e->hold == HOLD_CEIL) { /* a lantern on a chain */
@@ -587,6 +593,7 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
   /* lamps lean warm against cool regions and cool against warm ones: colour contrast, not darkness */
   float warm = acc.r - acc.b;
   cw_color lc = warm > 0.2f ? mixc(acc, rgba(0.75f, 0.9f, 1, 1), 0.35f) : mixc(acc, rgba(1, 0.7f, 0.38f, 1), 0.8f);
+  if (acc.b > acc.r + 0.3f) lc = acc; /* (the blue growth lights blue) */
   if (lights_on) light(core.x, core.y, e->hold == HOLD_CEIL ? 9.0f : 6.0f, lc, (e->hold == HOLD_CEIL ? 0.8f : 0.5f) * flick, e->hold == HOLD_CEIL);
 }
 
@@ -1203,11 +1210,13 @@ void view_draw(const sim *s, float t) {
     cw_color acc = hexc(REGIONS[s->w->rooms[e->room].region].accent, 1);
     if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* (as the lamp) */
     if (e->sub == 8 && e->hold == HOLD_FLOOR) acc = rgba(0.45f, 0.75f, 1, 1); /* (a pilot light: blue) */
+    cw_color sk = hexc(REGIONS[s->w->rooms[e->room].region].sky, 1);
+    if (e->hold == HOLD_FLOOR && (e->sub == 5 || e->sub == 6) && sk.r > sk.b + 0.05f) acc = rgba(0.42f, 0.7f, 1, 1); /* (as the lamp) */
     if (e->sub == 9 && e->hold == HOLD_FLOOR) acc = rgba(1, 0.6f, 0.22f, 1);   /* (a lantern post: amber) */
     float cy = e->hold == HOLD_CEIL ? e->y + (float)e->arg * 0.45f + 0.35f : e->sub == 7 ? e->y - 1.1f : e->sub == 8 ? e->y - 0.75f : e->sub == 9 ? e->y - 1.79f : e->y - 0.55f;
     float fl = 0.85f + 0.15f * sinf(t * 7 + e->x);
-    bool tinted = e->hold == HOLD_FLOOR && (e->sub == 8 || e->sub == 9); /* (a coloured core: the accent stays its colour) */
-    glow(e->x, cy, 1.6f * fl, scalec(acc, tinted ? 0.6f : 0.45f));
+    bool tinted = e->hold == HOLD_FLOOR && (e->sub == 8 || e->sub == 9 || acc.b > acc.r + 0.3f); /* (a coloured core: the accent stays its colour) */
+    glow(e->x, cy, (tinted ? 2.6f : 1.6f) * fl, scalec(acc, tinted ? 0.6f : 0.45f));
     glow(e->x, cy, 0.5f, tinted ? scalec(acc, 0.7f) : rgba(1, 1, 0.9f, 0.8f));
   }
   for (int i = 0; i < s->players; i++) { /* the lantern's glow and the strike's arc */
