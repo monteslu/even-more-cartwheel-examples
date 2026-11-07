@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.0
+
+- **explorer** (working title): a 2D exploration platformer for one player with a drop-in second. One
+  underground world of 13 regions and 356 rooms; seven abilities (a second jump, a dash, a wall climb, a plunge,
+  swimming, a grapple and a spark) each open ways that were shut. Six wardens, shrines that save and carry you
+  between them, and a map that fills in as you explore. Drawn with the engine's 2D renderer: lit sprites, soft
+  shadows, bounced light, light shafts, bloom and a colour grade per region. CI checks that the world can be
+  finished in ability order with no dead ends, every pickup reached and nothing floating, and that the jump's
+  feel stays in its bounds; a bot plays it through to the end.
+
 ## 0.2.0
 
 - **skate** (working title): skateboarding for one to four players in split screen, in five original parks,
