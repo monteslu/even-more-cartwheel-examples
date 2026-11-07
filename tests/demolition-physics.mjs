@@ -58,4 +58,5 @@ for (const t of rows.filter((x) => x.m === 'tunnel')) {
   else if (t.tag === 'control') { if (t.target === 'wall6cm') control(t.through > 0, line); else console.log(`info ${line}`); }
   else console.log(`info ${line}`);
 }
+for (const w of rows.filter((x) => x.m === 'worlds')) console.log(`info worlds: 60 worlds made, stepped and destroyed: resident ${w.rss10_kb} kB after the 10th, ${w.rss60_kb} kB after the 60th (glibc's per-thread arenas; with MALLOC_ARENA_MAX=1 it stays flat)`);
 process.exit(bad ? 1 : 0);

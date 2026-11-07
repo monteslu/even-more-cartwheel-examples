@@ -65,6 +65,10 @@ the same collapse: 2.9 ms a step on average while more than 500 bodies are awake
 worst single step is the blast itself (about 17 ms in the cart, 7 natively), when hundreds of pieces are made and a
 thousand bodies wake at once.
 
+- **Memory.** Making, stepping and destroying worlds gives the memory back; natively the job threads' own glibc
+  malloc arenas hold fragments (a few MB over hundreds of worlds), which one arena (`MALLOC_ARENA_MAX=1`) removes.
+  The soak runs that way and checks the last lap of levels holds no more than the lap before.
+
 ## Tests
 
 | Command | Checks |

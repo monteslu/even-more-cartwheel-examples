@@ -314,6 +314,41 @@ static void tunnel(bool bullet, int substeps, bool continuous, const char *tag) 
   }
 }
 
+/* ── worlds: does making and destroying a world give its memory back? ── */
+
+static long rss_kb(void) {
+  FILE *f = fopen("/proc/self/status", "r");
+  if (!f) return 0;
+  char line[256];
+  long kb = 0;
+  while (fgets(line, sizeof line, f))
+    if (!strncmp(line, "VmRSS:", 6)) kb = atol(line + 6);
+  fclose(f);
+  return kb;
+}
+/* a pyramid and a tower made, stepped 2 s with bodies made and destroyed (as breaking does), the world destroyed;
+ * 60 times. The resident memory after the 10th and the 60th */
+static void worlds(void) {
+  static scene S;
+  long at10 = 0, at60 = 0;
+  int iters = getenv("PC_ITERS") ? atoi(getenv("PC_ITERS")) : 60;
+  for (int it = 0; it < iters; it++) {
+    scene_init(&S, game_setup());
+    build_pyramid(&S, 0, 0);
+    build_tower(&S, 8, 0);
+    int steps = getenv("PC_STEPS") ? atoi(getenv("PC_STEPS")) : 120;
+    for (int i = 0; i < steps; i++) {
+      cw_world3d_step(S.w, DT);
+      if (!getenv("PC_NOSWAP") && i % 10 == 0 && S.n > 50) { cw_body3d_destroy(S.b[S.n - 1]); S.n--; block(&S, (t3_vec3){ -6, 0.25f, (float)(i % 7) }, (t3_vec3){ 0.2f, 0.2f, 0.2f }, 0, 600); }
+    }
+    cw_world3d_destroy(S.w);
+    if (it == 9) at10 = rss_kb();
+    if (it == iters - 1) at60 = rss_kb();
+  }
+  printf("{\"m\":\"worlds\",\"rss10_kb\":%ld,\"rss60_kb\":%ld}\n", at10, at60);
+  fflush(stdout);
+}
+
 int main(int argc, char **argv) {
   cw_jobs_init(-1);
   bool all = argc < 2;
@@ -348,6 +383,7 @@ int main(int argc, char **argv) {
       printf("{\"m\":\"determ\",\"w1\":%u,\"w2\":%u,\"w4\":%u,\"wall\":%u,\"control\":%u}\n", h[0], h[1], h[2], h[3], h[4]);
       fflush(stdout);
     }
+    if (every || !strcmp(what, "worlds")) worlds();
     if (every || !strcmp(what, "tunnel")) {
       tunnel(false, 4, true, "plain");
       tunnel(true, 4, true, "bullet");
