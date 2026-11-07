@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.0
+
+- **skate** (working title): skateboarding for one to four players in split screen, in five original parks,
+  each with its own setting to the horizon and its own time of day, lightmapped. Flips, grabs, spins, grinds and
+  manuals with balance meters link into combos; a bail loses the combo and drops the rider as a ragdoll. Free
+  skate, a two-minute score attack with goals and a saved high score per park, and score battles. The board runs
+  on the game's own controller, substepped and swept against the park's triangles; every park is checked in CI
+  (nothing floats, the bakes are current, a bot skates every line).
+
 ## 0.1.1
 
 - Engine v0.38.0 (its 2D rendering releases v0.37.0 and v0.38.0: tiled 2D lights, soft shadows, a high-range
