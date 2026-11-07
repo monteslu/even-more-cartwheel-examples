@@ -302,7 +302,9 @@ static void draw_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, int cut, gem_
   cauchy(c, &A, &B);
   cw_pass_uniform4f(p, "u_ior", A, B, g->glow, 0);
   cw_pass_uniform4f(p, "u_q", (float)q.sub, (float)q.bounces, q.waves > 1 ? 1.0f : 0.0f, getenv("JEWELS_DEBUG_LEAK") ? 1.0f : 0.0f);
-  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], 0);
+  /* a little light scattered in the body of the coloured stones (none in the diamond): every stone reads as its
+   * colour at any tilt, even where its facets look out at the dark */
+  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.05f : (cut == 3 || cut == 4) ? 0.16f : 0.13f);
   cw_pass_uniform4f(p, "u_jit", ctx->jitter[0], ctx->jitter[1], 0, 0);
   gem_flashes(p, &x);
   cw_pass_draw(6);
@@ -407,8 +409,8 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
   common_uniforms(R.spark, ctx);
   for (int b = 0; b < f->nbursts; b++) {
     const jw_burst_draw *bu = &f->bursts[b];
-    int n = (int)(14 + 16 * bu->power);
-    if (n > 90) n = 90;
+    int n = (int)(10 + 8 * bu->power);
+    if (n > 50) n = 50;
     const jw_cut *c = &jw_cuts[bu->kind];
     cw_pass_uniform4f(R.spark, "u_burst", bu->x, bu->y, bu->t, bu->power);
     cw_pass_uniform4f(R.spark, "u_col", c->body[0], c->body[1], c->body[2], (float)(bu->seed & 0xffff));
@@ -466,7 +468,8 @@ static bool glint_active(const cw_pass_ctx *ctx, void *u) {
 static void glint_exec(cw_pass_ctx *ctx, void *u) {
   (void)u;
   if (!build() || !ctx->src || !ctx->dst) return;
-  int w = (ctx->width + 3) / 4, h = (ctx->height + 3) / 4;
+  /* a quarter of the canvas whatever the output's size: the spokes cost the same at 4K, and reach as far */
+  int w = 480, h = 270;
   const cw_rt *a = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false), *b = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false);
   if (!a || !b) return;
   /* the brightest light, at half size */
@@ -474,14 +477,14 @@ static void glint_exec(cw_pass_ctx *ctx, void *u) {
   cw_pass_use(R.glint_pre);
   cw_pass_bind_texture(0, ctx->src->tex);
   if (!R.wg) cw_pass_uniform1i(R.glint_pre, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_pre, "u_px", 1.0f / (float)ctx->src->w, 1.0f / (float)ctx->src->h, 2.2f, 0);
+  cw_pass_uniform4f(R.glint_pre, "u_px", 1.0f / (float)ctx->src->w, 1.0f / (float)ctx->src->h, 3.2f, 0);
   cw_pass_fullscreen();
   /* six spokes */
   cw_pass_bind_target(ctx, b);
   cw_pass_use(R.glint_streak);
   cw_pass_bind_texture(0, a->tex);
   if (!R.wg) cw_pass_uniform1i(R.glint_streak, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_streak, "u_px", 1.0f / (float)w, 1.0f / (float)h, 7.0f * (float)h / 1080.0f, 0.2f + 0.05f * sinf((float)R.f.time * 0.07f));
+  cw_pass_uniform4f(R.glint_streak, "u_px", 1.0f / (float)w, 1.0f / (float)h, 1.0f, 0.2f + 0.05f * sinf((float)R.f.time * 0.07f));
   cw_pass_fullscreen();
   /* over the picture */
   cw_pass_bind_target(ctx, ctx->dst);
@@ -489,7 +492,7 @@ static void glint_exec(cw_pass_ctx *ctx, void *u) {
   cw_pass_bind_texture(0, ctx->src->tex);
   cw_pass_bind_texture(1, b->tex);
   if (!R.wg) cw_pass_uniform1i(R.glint_add, "u_t0", 0), cw_pass_uniform1i(R.glint_add, "u_t1", 1);
-  cw_pass_uniform4f(R.glint_add, "u_px", 1.0f / (float)ctx->dst->w, 1.0f / (float)ctx->dst->h, 0.55f, 0);
+  cw_pass_uniform4f(R.glint_add, "u_px", 1.0f / (float)ctx->dst->w, 1.0f / (float)ctx->dst->h, 0.42f, 0);
   cw_pass_fullscreen();
   cw_pass_rt_release(ctx, a);
   cw_pass_rt_release(ctx, b);

@@ -253,7 +253,19 @@ static void fixed_update(void *u, double dt) {
   read_input(&in);
   G.g.nev = 0;
   jw_game_tick(&G.g, &in);
+  int rumbles_before = G.fx.rumbles;
   jw_fx_events(&G.fx, &G.g, (float)dt);
+  static int log_fx = -1;
+  if (log_fx < 0) log_fx = getenv("JEWELS_FX_LOG") != NULL; /* tests/jewels-effects.mjs reads these lines */
+  if (log_fx)
+    for (int i = 0; i < G.g.nev; i++) {
+      const jw_event *e = &G.g.ev[i];
+      if (e->kind != JW_EV_CLEAR) continue;
+      fprintf(stderr, "fx clear frame=%u step=%d cells=%d shape=%d power=%.3f sparks=%d shards=%d ring=%d trail=%d rumble=%.3f x=%.0f y=%.0f\n", (unsigned)cw_frame_index(),
+              e->b, e->a, e->d, G.fx.power_last, (int)(10 + 8 * G.fx.power_last > 50 ? 50 : 10 + 8 * G.fx.power_last),
+              (int)(4 + 3 * G.fx.power_last > 18 ? 18 : 4 + 3 * G.fx.power_last), e->a >= 4 || e->b >= 2, e->b >= 2,
+              G.fx.rumbles > rumbles_before ? G.fx.rumble_last : 0.0f, e->x, e->y);
+    }
   /* the strongest clear of each step, for the effects test (kept until the next move starts) */
   for (int i = 0; i < 6; i++)
     if (G.fx.step_power[i] > 0) G.fx_steps_x100[i] = (int32_t)lroundf(G.fx.step_power[i] * 100);
@@ -334,6 +346,13 @@ static float text(cw_font f, const char *s, float x, float y, float size, cw_col
   else if (al == CW_ALIGN_RIGHT) x -= m.width;
   return cw_r2d_text(f, s, cw_v2(x, y), &st).height;
 }
+/* text over the board: a dark outline and a soft shadow, so it reads over any stone */
+static void text_on_board(const char *s, float x, float y, float size, cw_color c) {
+  cw_text_style st = { .size = size, .color = c, .letter_spacing = size * 0.04f, .outline_width = size * 0.07f, .outline_color = rgba(0.05f, 0.03f, 0.01f, 0.9f * c.a),
+                       .shadow_color = rgba(0, 0, 0, 0.6f * c.a), .shadow_offset = cw_v2(0, size * 0.06f), .shadow_softness = size * 0.12f, .shadow_spread = size * 0.04f };
+  cw_text_metrics m = cw_font_measure(serif, s, &st);
+  cw_r2d_text(serif, s, cw_v2(x - m.width * 0.5f, y), &st);
+}
 static void fmt_num(int64_t v, char *out, size_t cap) {
   char raw[32];
   snprintf(raw, sizeof raw, "%lld", (long long)v);
@@ -396,22 +415,25 @@ static void hud(void) {
   /* a status line over the button */
   if (g->status == 1) text(sans, "Swap these two.", px, JW_HINT_Y - 44, 26, rgba(0.6f, 0.95f, 1, fminf(1, (float)g->status_t / 20.0f)), CW_ALIGN_CENTER, 0);
   if (g->status == 2) text(sans, "No moves left: reshuffled.", px, JW_HINT_Y - 44, 26, rgba(0.6f, 0.95f, 1, fminf(1, (float)g->status_t / 20.0f)), CW_ALIGN_CENTER, 0);
-  /* the gains, rising from where they cleared */
+  /* the gains, rising from where they cleared, outlined so they read over the stones */
   for (int i = 0; i < fx->npops; i++) {
     const jw_pop *p = &fx->pops[i];
     float k = p->t / 1.6f, a = k < 0.7f ? 1 : 1 - (k - 0.7f) / 0.3f;
     snprintf(b, sizeof b, "+");
     fmt_num(p->value, b + 1, sizeof b - 1);
     float sz = 40 + 8 * fminf(p->power, 5);
-    text(serif, b, p->x, p->y - 30 - 60 * k, sz, rgba(1, 0.92f, 0.7f, a), CW_ALIGN_CENTER, 0);
+    text_on_board(b, p->x, p->y - 30 - 60 * k - 26 * (float)(i % 2), sz, rgba(1, 0.92f, 0.7f, a));
   }
-  /* the finale */
+  /* the finale: a band of dark velvet across the board's middle, the word in gold, gone in under three seconds */
   if (fx->finale_steps) {
-    float k = fx->finale_t / 3.0f, a = k < 0.15f ? k / 0.15f : k > 0.75f ? (1 - k) / 0.25f : 1;
-    float sz = 120 * (1 + 0.08f * sinf(t * 3));
-    text(serif, fx->finale_steps >= 6 ? "MAGNIFICENT" : "BRILLIANT", 672, 420, sz, rgba(1, 0.86f, 0.5f, a), CW_ALIGN_CENTER, 10);
-    snprintf(b, sizeof b, "a cascade of %d", fx->finale_steps);
-    text(serif, b, 672, 560, 48, rgba(1, 0.95f, 0.85f, a), CW_ALIGN_CENTER, 2);
+    float k = fx->finale_t / 2.6f, a = k < 0.12f ? k / 0.12f : k > 0.7f ? fmaxf(0, (1 - k) / 0.3f) : 1;
+    cw_r2d_rect(cw_rect_make(JW_BX, 400, 10 * JW_CELL, 220), rgba(0.01f, 0.01f, 0.02f, 0.62f * a));
+    cw_r2d_rect(cw_rect_make(JW_BX, 400, 10 * JW_CELL, 3), rgba(0.95f, 0.76f, 0.4f, 0.9f * a));
+    cw_r2d_rect(cw_rect_make(JW_BX, 617, 10 * JW_CELL, 3), rgba(0.95f, 0.76f, 0.4f, 0.9f * a));
+    float sz = 112 * (1 + 0.04f * sinf(t * 3));
+    text_on_board(fx->finale_steps >= 6 ? "MAGNIFICENT" : "BRILLIANT", 672, 412, sz, rgba(1, 0.86f, 0.5f, a));
+    snprintf(b, sizeof b, "A CASCADE OF %d", fx->finale_steps);
+    text_on_board(b, 672, 548, 44, rgba(1, 0.95f, 0.85f, a));
   }
 }
 

@@ -98,6 +98,24 @@ readable wind-ups and three bosses; hearts, stamina charms, keys and a maul
 that breaks cracked stone open new routes. A bot plays the whole game in CI,
 nothing floats, and every region passes a look check.
 
+### jewels
+
+![jewels: cut stones on black velvet in a gold lattice, a hint showing two stones to swap](docs/screenshots/jewels.jpg)
+
+A calm, untimed match-three for one player, readable from a couch (working
+title): swap two neighbouring stones to line up three or more. The board never
+moves unless the player moves it; an illegal swap springs back and costs
+nothing, the hint is free, a board with no move left reshuffles itself, and
+cascades resolve slowly enough to follow. Six kinds of stone, each its own cut
+and silhouette as well as its own colour (a princess, a trillion, an emerald
+cut, a pear, a marquise and a round brilliant), ray traced per pixel through
+their facet planes with Fresnel at every face, total internal reflection,
+absorption through the body and spectral fire, in a studio of soft boxes and
+small hot lamps. Clears break the stones into traced shards, and the effects
+grow with the size of a clear and each step of a cascade. Pad, touch and mouse
+are equal paths. The rules are checked move for move against the original Lua
+game.
+
 More games are on the way.
 
 ## Building

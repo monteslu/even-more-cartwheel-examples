@@ -251,7 +251,7 @@ void jw_cuts_build(void) {
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.762f, 0.018f, 1.6f, 0.10f, 5.0f, 4.0f, 0.62f, 0.02f, 0.05f);
+  optics(c, 1.762f, 0.018f, 1.6f, 0.08f, 3.5f, 3.0f, 0.80f, 0.04f, 0.06f);
 
   /* 2 topaz: a trillion, point up, clipped corners */
   c = &jw_cuts[1];
@@ -272,7 +272,7 @@ void jw_cuts_build(void) {
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.62f, 0.014f, 1.5f, 0.04f, 0.45f, 3.0f, 0.95f, 0.45f, 0.04f);
+  optics(c, 1.62f, 0.014f, 1.5f, 0.03f, 0.35f, 2.6f, 1.0f, 0.55f, 0.06f);
 
   /* 3 emerald: the emerald cut, a tall rectangle with cut corners, three steps above and below: a hall of mirrors */
   c = &jw_cuts[2];
@@ -287,7 +287,7 @@ void jw_cuts_build(void) {
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.577f, 0.014f, 1.4f, 3.4f, 0.75f, 1.7f, 0.02f, 0.5f, 0.12f);
+  optics(c, 1.577f, 0.014f, 1.4f, 2.8f, 0.42f, 1.5f, 0.02f, 0.5f, 0.12f);
 
   /* 4 sapphire: a pear, point up, brilliant-cut */
   c = &jw_cuts[3];
@@ -297,7 +297,7 @@ void jw_cuts_build(void) {
                                        .lower_rise = 2.5f, .girdle_n = 24, .phase = 112.5f });
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.766f, 0.018f, 1.6f, 4.0f, 1.8f, 0.12f, 0.03f, 0.12f, 0.75f);
+  optics(c, 1.766f, 0.018f, 1.6f, 0.7f, 0.35f, 0.03f, 0.10f, 0.25f, 0.95f);
 
   /* 5 amethyst: a marquise, lying across */
   c = &jw_cuts[4];
@@ -307,7 +307,7 @@ void jw_cuts_build(void) {
                                        .lower_rise = 2.5f, .girdle_n = 24, .phase = 0 });
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.544f, 0.013f, 1.5f, 0.9f, 3.2f, 0.35f, 0.36f, 0.06f, 0.62f);
+  optics(c, 1.544f, 0.013f, 1.5f, 0.3f, 1.1f, 0.1f, 0.36f, 0.06f, 0.62f);
 
   /* 6 diamond: the round brilliant, Tolkowsky's proportions (crown 34.5, pavilion 40.75, table 53%) */
   c = &jw_cuts[5];
@@ -347,7 +347,7 @@ static float lobe(float x, float mu, float s1, float s2) {
   float t = (x - mu) / (x < mu ? s1 : s2);
   return expf(-0.5f * t * t);
 }
-/* Wyman, Sloan and Shirley's multi-lobe fit of the CIE 1931 2-degree observer, to linear sRGB, clamped, scaled so a
+/* an analytic multi-lobe fit of the CIE 1931 2-degree observer, to linear sRGB, clamped, scaled so a
  * flat spectrum over 400-700 nm is white */
 static void spectrum_raw(float nm, float out[3]) {
   float X = 1.056f * lobe(nm, 599.8f, 37.9f, 31.0f) + 0.362f * lobe(nm, 442.0f, 16.0f, 26.7f) - 0.065f * lobe(nm, 501.1f, 20.4f, 26.2f);

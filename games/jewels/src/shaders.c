@@ -212,7 +212,7 @@ static void gem_env_fns(sb *b, bool w) {
   put(b, w ? "  return c * u.u_tint.xyz;\n}\n" : "  return c * u_tint.xyz;\n}\n");
 }
 
-/* the CIE 1931 observer (Wyman, Sloan and Shirley's fit) to linear sRGB, scaled so 400-700 nm averages to white */
+/* the CIE 1931 observer (an analytic multi-lobe fit) to linear sRGB, scaled so 400-700 nm averages to white */
 static void spectrum_fn(sb *b, bool w) {
   float k[3] = { 0 };
   {
@@ -543,7 +543,7 @@ static const char *GEM_FS_GL =
     "uniform vec4 u_gf0; uniform vec4 u_gf1; uniform vec4 u_gc0; uniform vec4 u_gc1;\n"
     "out vec4 o;\n"
     "vec3 flashL(vec3 dw) {\n"
-    "  return u_gc0.xyz * (u_gf0.w * 9.0 * pow(max(dot(dw, u_gf0.xyz), 0.0), 5.0)) + u_gc1.xyz * (u_gf1.w * 9.0 * pow(max(dot(dw, u_gf1.xyz), 0.0), 5.0));\n"
+    "  return u_gc0.xyz * (u_gf0.w * 9.0 * pow(max(dot(dw, u_gf0.xyz), 0.0), 24.0)) + u_gc1.xyz * (u_gf1.w * 9.0 * pow(max(dot(dw, u_gf1.xyz), 0.0), 24.0));\n"
     "}\n"
     "vec3 toW(vec3 dl) { return drift(normalize(mat3(u_rot) * dl)); }\n"
     "vec3 envMono(vec3 dl) { vec3 dw = toW(dl); return studioG(dw) + pinsMono(dw) + flashL(dw); }\n"
@@ -610,8 +610,9 @@ static const char *GEM_FS_GL =
     "  }\n"
     "  if (cover <= 0.0) discard;\n"
     "  vec3 col = acc / cover;\n"
+    "  col += u_body.xyz * u_body.w;\n"
     "  float g = u_ior.z;\n"
-    "  col = col * (1.0 + 3.0 * g) + u_body.xyz * g * 0.4;\n"
+    "  col = col * (1.0 + 1.6 * g) + u_body.xyz * g * 0.3;\n"
     "  float a = cover / float(S) * u_abs.w;\n"
     "  o = vec4(col * a, a);\n"
     "}\n";
@@ -717,13 +718,13 @@ static const char *SPARK_VS_GL =
     "    float fi = float(i), r1 = hs(fi), r2 = hs(fi + 17.3), r3 = hs(fi + 41.9), r4 = hs(fi + 77.1);\n"
     "    float life = 0.45 + 0.75 * r3 + 0.15 * u_burst.w;\n"
     "    float t = u_burst.z, k = t / life;\n"
-    "    float a = 6.2831853 * r1, sp = (90.0 + 420.0 * r2 * r2) * (0.7 + 0.3 * u_burst.w);\n"
+    "    float a = 6.2831853 * r1, sp = (160.0 + 420.0 * r2) * (0.7 + 0.3 * u_burst.w);\n"
     "    float drag = (1.0 - exp(-3.2 * t)) / 3.2;\n"
-    "    p = u_burst.xy + vec2(cos(a), sin(a)) * sp * drag + vec2(0.0, 90.0 * t * t);\n"
-    "    sz = (5.0 + 11.0 * r4) * (1.0 + 0.15 * u_burst.w) * (1.0 - k * k);\n"
+    "    p = u_burst.xy + vec2(cos(a), sin(a)) * (sp * drag + 30.0 * r4) + vec2(0.0, 90.0 * t * t);\n"
+    "    sz = (5.0 + 11.0 * r4) * (0.7 + 0.3 * u_burst.w) * (1.0 - k * k);\n"
     "    float tw = 0.65 + 0.35 * sin(t * (18.0 + 20.0 * r4) + r1 * 6.0);\n" /* twinkle */
     "    vec3 hue = mix(u_col.xyz * 1.6 + 0.08, vec3(1.0), 0.25 + 0.5 * r3);\n"
-    "    col = vec4(hue * (2.4 + 1.8 * u_burst.w) * tw * (1.0 - k), k < 1.0 ? 1.0 : 0.0);\n"
+    "    col = vec4(hue * (0.8 + 0.6 * u_burst.w) * tw * (1.0 - k), k < 1.0 ? 1.0 : 0.0);\n"
     "    if (k >= 1.0) sz = 0.0;\n"
     "  } else if (u_kind.x < 1.5) {\n"
     "    float t = u_burst.z;\n"
@@ -891,21 +892,21 @@ static const char *GLINT_GL[3] = {
   "  for (int s = 0; s < 6; s++) {\n"
   "    float a = u_px.w + float(s) * 1.0471976;\n"
   "    vec2 dir = vec2(cos(a), sin(a)) * u_px.xy * u_px.z;\n"
-  "    for (int i = 1; i <= 10; i++) {\n"
+  "    for (int i = 1; i <= 16; i++) {\n"
   "      float fi = float(i);\n"
-  "      float w = exp(-fi * 0.3);\n"
-  "      float h = fi / 10.0;\n"
+  "      float w = exp(-fi * 0.2);\n"
+  "      float h = fi / 16.0;\n"
   "      vec3 tint = mix(vec3(1.0), 0.5 + 0.5 * cos(6.2831 * (h * 0.9 + vec3(0.0, 0.33, 0.67))), smoothstep(0.25, 1.0, h) * 0.65);\n"
   "      acc += texture(u_t0, v_uv + dir * fi).rgb * w * tint;\n"
   "    }\n"
   "  }\n"
   "  vec3 g = vec3(0.0);\n"
-  "  float sc = u_px.z / 1.75;\n"
+  "  float sc = 1.0;\n"
   "  for (int i = 0; i < 12; i++) {\n"
   "    float a = float(i) * 1.0471976 + (i >= 6 ? 0.5236 : 0.0), r = (i < 6 ? 2.5 : 6.0) * sc;\n"
   "    g += texture(u_t0, v_uv + vec2(cos(a), sin(a)) * u_px.xy * r).rgb * (i < 6 ? 1.0 : 0.45);\n"
   "  }\n"
-  "  o = vec4(acc * 0.075 + g * 0.05 + texture(u_t0, v_uv).rgb * 0.08, 1.0);\n"
+  "  o = vec4(acc * 0.05 + g * 0.05 + texture(u_t0, v_uv).rgb * 0.08, 1.0);\n"
   "}\n",
   /* over the picture */
   "uniform sampler2D u_t0;\n"

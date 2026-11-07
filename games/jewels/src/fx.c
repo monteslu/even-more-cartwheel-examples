@@ -67,10 +67,10 @@ void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
       if (step >= 1 && step <= 8 && p > f->step_power[step - 1]) f->step_power[step - 1] = p;
       /* the clear's light: it lights the stones round it */
       const float warm[3] = { 1.0f, 0.86f, 0.62f };
-      add_flash(f, e->x, e->y, 0.9f + 0.55f * p, warm);
+      add_flash(f, e->x, e->y, 0.25f + 0.45f * p * sqrtf(p), warm);
       if (e->a >= 4 || step >= 2) {
         float c[3] = { 1.0f, 0.82f, 0.5f };
-        if (f->nrings < JW_MAX_RINGS) f->rings[f->nrings++] = (jw_ring_draw){ e->x, e->y, 0, p, c[0] * 0.5f * p, c[1] * 0.5f * p, c[2] * 0.5f * p };
+        if (f->nrings < JW_MAX_RINGS) f->rings[f->nrings++] = (jw_ring_draw){ e->x, e->y, 0, p, c[0] * 0.12f * p, c[1] * 0.12f * p, c[2] * 0.12f * p };
       }
       if (step >= 2 && f->last_step == step - 1 && f->ntrails < JW_MAX_TRAILS)
         f->trails[f->ntrails++] = (jw_trail){ f->last_cx, f->last_cy, e->x, e->y, 0, 1.0f * p * 0.5f, 0.8f * p * 0.5f, 0.45f * p * 0.5f };
@@ -87,8 +87,8 @@ void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
       if (f->nbursts >= JW_FX_BURSTS) memmove(f->bursts, f->bursts + 1, sizeof(jw_burst_draw) * (JW_FX_BURSTS - 1)), f->nbursts--;
       f->seed = f->seed * 1664525u + 1013904223u;
       f->bursts[f->nbursts++] = (jw_burst_draw){ e->a - 1, e->x, e->y, 0, p, f->seed };
-      int sp = (int)(14 + 16 * p), sh = (int)(4 + 3 * p);
-      f->sparks_last = sp > 90 ? 90 : sp, f->shards_last = sh > 18 ? 18 : sh;
+      int sp = (int)(10 + 8 * p), sh = (int)(4 + 3 * p);
+      f->sparks_last = sp > 50 ? 50 : sp, f->shards_last = sh > 18 ? 18 : sh;
       break;
     }
     case JW_EV_SETTLE:
@@ -124,7 +124,7 @@ void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
   while (f->npops && f->pops[0].t > 1.6f) memmove(f->pops, f->pops + 1, sizeof(jw_pop) * (size_t)--f->npops);
   f->warmth += (f->warmth_target - f->warmth) * fminf(1, dt * (f->warmth_target > f->warmth ? 4.0f : 0.8f));
   if (f->sweep_t >= 0 && (f->sweep_t += dt / 1.3f) > 1) f->sweep_t = -1;
-  if (f->finale_steps && (f->finale_t += dt) > 3.0f) f->finale_steps = 0;
+  if (f->finale_steps && (f->finale_t += dt) > 2.6f) f->finale_steps = 0;
   if (f->combo_hold > 0) f->combo_hold -= dt;
   f->combo_t += dt;
   if (f->reshuffle > 0) f->reshuffle = fmaxf(0, f->reshuffle - dt * 0.9f);
