@@ -1,9 +1,0 @@
-{
-  "app": "adventure_auto",
-  "secondary": [],
-  "screens": [
-    { "name": "play", "frames": 300 },
-    { "name": "fight", "frames": 700, "env": { "ADV_FROM": "6" } },
-    { "name": "boss", "frames": 500, "env": { "ADV_FROM": "12" } }
-  ]
-}

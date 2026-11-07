@@ -1,0 +1,148 @@
+[scene format=1]
+
+; emberthrone's world: the sky and sun, the camera, one terrain under every region (its heights, paint and scatter are set
+; by world.c), and the marsh water. The regions' colour (fog, ambient, grade) is blended by world.c as the player moves.
+[node name="World" type="Node3D"]
+
+[node name="Lighting" parent="." type="LightingSettings"]
+mode = CLUSTERED
+
+[node name="Env" parent="." type="WorldEnvironment"]
+ambient_color = color(1, 0.95, 0.85, 1)
+ambient_energy = 0.35
+sky_color = color(0.62, 0.78, 1, 1)
+ground_color = color(0.42, 0.36, 0.24, 1)
+hemi_energy = 0.75
+fog_mode = EXP2
+fog_color = color(0.72, 0.8, 0.92, 1)
+fog_density = 0.0045
+
+[node name="Post" parent="." type="PostProcess"]
+tonemap = ACES_FILMIC
+exposure = 1.05
+bloom = true
+bloom_intensity = 0.07
+bloom_threshold = 1.2
+bloom_knee = 0.5
+; four levels: the soft glow of the hearts, crystals and fires at a third of six levels' cost
+bloom_levels = 4
+aa = FXAA
+; a depth pass first: the leaf cards and the grass shade only what is in front (0.6 ms less in the wood)
+depth_prepass = true
+vignette = true
+grade = true
+grade_intensity = 1
+lut = "grade/contrast.cube"
+vignette_intensity = 0.25
+vignette_smoothness = 0.6
+
+[node name="Sky" parent="." type="ProceduralSky"]
+sun = "../Sun"
+time_of_day = 9.0
+latitude = 38
+declination = 12
+north = 205
+sun_energy = 3.4
+sky_energy = 1.6
+rayleigh = 1.0
+mie = 0.8
+sun_disk_intensity = 0.35
+
+[node name="Sun" parent="." type="DirectionalLight3D"]
+color = color(1, 0.94, 0.82, 1)
+energy = 3.4
+shadow = true
+shadow_cascades = 2
+shadow_distance = 40
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(160, 20, 300)
+fov = 60
+near = 0.15
+far = 1400
+
+[node name="Terrain" parent="." type="Terrain3D"]
+position = vec3(320, 0, 320)
+size_x = 640
+size_z = 640
+region_size = 64
+vertex_spacing = 1
+min_height = -4
+max_height = 90
+grid_quads = 32
+far_distance = 85
+; the terrain receives the sun's shadows but casts none: the hills' own shade inside 40 m was a quarter of the frame on WebGPU
+cast_shadow = false
+; (side_detile: the cliffs carry their own strata; the engine's detiling cost 0.3 ms)
+side_detile = 0
+layer0_albedo = "textures/terrain/grass_ah.png"
+layer0_normal = "textures/terrain/grass_nr.png"
+layer0_uv_scale = 0.22
+layer1_albedo = "textures/terrain/snow_ah.png"
+layer1_normal = "textures/terrain/snow_nr.png"
+layer1_uv_scale = 0.2
+layer2_albedo = "textures/terrain/dirt_ah.png"
+layer2_normal = "textures/terrain/dirt_nr.png"
+layer2_uv_scale = 0.25
+layer3_albedo = "textures/terrain/sand_ah.png"
+layer3_normal = "textures/terrain/sand_nr.png"
+layer3_uv_scale = 0.12
+layer4_albedo = "textures/terrain/rock_ah.png"
+layer4_normal = "textures/terrain/rock_nr.png"
+layer4_uv_scale = 0.1
+layer5_albedo = "textures/terrain/mud_ah.png"
+layer5_normal = "textures/terrain/mud_nr.png"
+layer5_uv_scale = 0.18
+layer6_albedo = "textures/terrain/cobble_ah.png"
+layer6_normal = "textures/terrain/cobble_nr.png"
+layer6_uv_scale = 0.3
+layer7_albedo = "textures/terrain/ash_ah.png"
+layer7_normal = "textures/terrain/ash_nr.png"
+layer7_uv_scale = 0.18
+
+[node name="Grass" parent="Terrain" type="TerrainScatter3D"]
+shape = GRASS
+density = 2.2
+layers = 1
+min_slope = 30
+scale_min = 0.42
+scale_max = 0.72
+visible_range = 20
+fade = 8
+lod_distance = 10
+seed = 1
+
+[node name="Stones" parent="Terrain" type="TerrainScatter3D"]
+shape = ROCK
+density = 0.012
+layers = 24
+min_slope = 70
+scale_min = 0.3
+scale_max = 1.2
+sink = 0.15
+visible_range = 120
+fade = 25
+lod_distance = 40
+knob = SCATTER
+cast_shadow = true
+seed = 2
+
+[node name="Water" parent="." type="Water3D"]
+position = vec3(268, 8.3, 215)
+size = vec2(110, 190)
+subdivisions = 40
+wave0 = vec4(20, 6, 0.04, 0.5)
+wave1 = vec4(75, 3, 0.02, 0.5)
+wave_count = 2
+color = color(0.55, 0.9, 0.85, 1)
+deep_color = color(0.01, 0.06, 0.09, 1)
+shallow_color = color(0.12, 0.5, 0.46, 1)
+normal_scale = 0.32
+detail = 0.8
+glint = 1.6
+reflection = false
+refraction = true
+murk = 0.6
+clarity = 4
+shore_foam = 0.4
+crest_foam = 0.15
