@@ -1,0 +1,26 @@
+[
+  {
+    "name": "adventure-journey",
+    "note": "adventure_auto: the bot rests at the first shrine, walks the meadow road north and fights the raiders on it (lock on, combos, rolls, a heavy). Everything named is simulation (the bot reads only the rules' state), so every host agrees on it. The control is one frame short.",
+    "app": "adventure_auto",
+    "frames": 1800,
+    "maxGt16": 0.4,
+    "fields": ["game.state", "game.region", "game.kills", "game.route", "game.dodges", "game.hits_landed", "game.rests", "player.hp", "player.stamina", "player.x", "player.z", "game.hash"],
+    "hosts": ["native"],
+    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.4, "vsGl": 0.4 },
+    "expect": {}
+  },
+  {
+    "name": "adventure-controls",
+    "note": "adventure, one player on a pad: Start, Start, then up the road, lock on (right shoulder), three cuts (west), a roll to the right (south with the stick right), a heavy (north), a drink (left shoulder). The stamina spent, where the player stands and the rules' hash are pinned. The control does the same with no cut or heavy pressed: it must differ.",
+    "app": "adventure",
+    "frames": 540,
+    "input": "adventure-controls.json",
+    "controlInput": "adventure-controls-control.json",
+    "maxGt16": 0.4,
+    "fields": ["game.state", "player.x", "player.z", "player.stamina", "player.hp", "game.dodges", "game.hash"],
+    "hosts": ["native"],
+    "webgpu": { "hosts": ["native", "romdev"], "maxGt16": 0.4, "vsGl": 0.4 },
+    "expect": {}
+  }
+]

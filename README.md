@@ -18,6 +18,9 @@ player and in RetroArch, with GL and WebGPU in the same cart.
 
 In progress:
 
+- **adventure** (working title): a third-person action adventure through one connected world for one player, a
+  second dropping in: lock-on sword fights, rolls and stamina, three bosses, and keys, hearts and a maul that open
+  the way round.
 - **towers**: a tower defense game for one to four players: build along a
   winding route and hold off waves of thousands.
 - **pinball**: pinball tables with real ball physics, lit and rendered in 3D.
