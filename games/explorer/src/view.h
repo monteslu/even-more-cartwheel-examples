@@ -5,6 +5,12 @@
 #include "cartwheel/render2d.h"
 #include "sim.h"
 
+/* the 2D renderer of cartwheel-engine v0.37 (HDR post chain, emission, soft shadows, GI, water, distortion): used when
+ * the engine has it, else the game draws as before */
+#if defined(CW_R2D_FEATURES) && CW_R2D_FEATURES >= 2
+#define EXPLORER_R2D_V2 1
+#endif
+
 enum { L_SKY, L_WALL = 5, L_TILES, L_ACTORS, L_FX, L_WATER, L_FRONT, L_HUD };
 
 typedef struct view_stats { int sprites, lights, particles, enemies; float submit_ms, end_ms; } view_stats;
