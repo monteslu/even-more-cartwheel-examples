@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Sunnyside at golden hour in split screen: one skater pops off a manual pad by the blue bowl, the other rides the teal quarter pipe, palms and the beach town beyond the fence"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Big Sky: one skater on the mega ramp deck by a token, the other carving the wooden giant quarter pipe, the car park and grass hills behind"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Civic Plaza: a granite ledge grind throwing sparks, the fountain, street trees and brick blocks round the plaza"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Rooftops at sunset: a parapet grind high over the street, downtown towers all round"
+    }
+  ]
+}

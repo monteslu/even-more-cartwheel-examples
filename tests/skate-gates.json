@@ -1,0 +1,168 @@
+[
+  {
+    "name": "skate-auto",
+    "note": "skate_auto: two bots skate a score battle in Sunnyside for 1500 ticks: they push, carve, pop, flip, grab, grind the ledges and the bar, air out of the quarter pipes, link manuals, and press back to reach their lines' start points. Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "app": "skate_auto",
+    "frames": 1500,
+    "maxGt16": 0.5,
+    "fields": [
+      "game.phase",
+      "game.park",
+      "game.mode",
+      "game.tick",
+      "game.players",
+      "game.clock",
+      "skater.state",
+      "skater.score",
+      "skater.tricks",
+      "skater.bails",
+      "skater.grinds",
+      "skater.manuals",
+      "skater.tokens",
+      "skater.best_combo",
+      "bot.lines",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5,
+      "vsGl": 0.5
+    },
+    "expect": {
+      "game.phase": 1,
+      "game.park": 0,
+      "game.mode": 2,
+      "game.tick": 1500,
+      "game.players": 2,
+      "game.clock": 5700,
+      "skater.state": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "skater.score": [
+        2258,
+        760,
+        0,
+        0
+      ],
+      "skater.tricks": [
+        8,
+        6,
+        0,
+        0
+      ],
+      "skater.bails": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "skater.grinds": [
+        0,
+        2,
+        0,
+        0
+      ],
+      "skater.manuals": [
+        3,
+        0,
+        0,
+        0
+      ],
+      "skater.tokens": [
+        4,
+        0,
+        0,
+        0
+      ],
+      "skater.best_combo": [
+        792,
+        760,
+        0,
+        0
+      ],
+      "bot.lines": [
+        4,
+        3,
+        0,
+        0
+      ],
+      "game.hash": 1104525456
+    }
+  },
+  {
+    "name": "skate-play",
+    "note": "skate, one player on a pad: Start through the title and the join screen, South on the setup (free skate, Sunnyside), then twelve seconds of play: push with the stick, carve, an ollie, a flip, a manual held into the landing and let go, a U-turn carve, an ollie with a grab, an ollie with a flip picked by the stick. The tricks, the score and the skater's state are pinned. The control presses the last flip a fifth of a second before the landing: a bail, so it must differ.",
+    "app": "skate",
+    "frames": 720,
+    "input": "skate-feel.json",
+    "controlInput": "skate-feel-control.json",
+    "maxGt16": 0.5,
+    "fields": [
+      "game.phase",
+      "game.park",
+      "game.tick",
+      "skater.state",
+      "skater.score",
+      "skater.tricks",
+      "skater.bails",
+      "skater.manuals",
+      "game.hash"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5,
+      "vsGl": 0.5
+    },
+    "expect": {
+      "game.phase": 1,
+      "game.park": 0,
+      "game.tick": 650,
+      "skater.state": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "skater.score": [
+        1707,
+        0,
+        0,
+        0
+      ],
+      "skater.tricks": [
+        6,
+        0,
+        0,
+        0
+      ],
+      "skater.bails": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "skater.manuals": [
+        1,
+        0,
+        0,
+        0
+      ],
+      "game.hash": 3990733093
+    }
+  }
+]
