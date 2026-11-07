@@ -93,6 +93,7 @@ void rag_tick(int i, const skater *s, rig *r, cw_node model_node, const t3_mat4 
     def.joint_friction = 3.0f;
     def.angular_damping = 0.8f;
     RD[i] = cw_ragdoll_create(world, &def, &r->pose, m);
+    if (getenv("SKATE_BAIL_AT")) fprintf(stderr, "bench: ragdoll %s for seat %d\n", RD[i] ? "made" : "NOT made", i);
     if (RD[i]) {
       live++;
       /* the speed it bailed at carries the body; a tip forward over the nose */

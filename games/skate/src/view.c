@@ -331,7 +331,7 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_add_child(root, VW.post);
     cw_node_set(VW.post, "hdr", cw_val_bool(true));
     cw_node_set(VW.post, "msaa", cw_val_int(4));
-    cw_node_set(VW.post, "bloom", cw_val_bool(true));
+    cw_node_set(VW.post, "bloom", cw_val_bool(false)); /* a sunny afternoon has little to bloom: the 0.8 ms goes to the four views */
     cw_node_set(VW.post, "bloom_intensity", cw_val_float(0.05f));
     cw_node_set(VW.post, "bloom_threshold", cw_val_float(2.5f));
     cw_node_set(VW.post, "exposure_ev", cw_val_float(0.0f));
@@ -497,6 +497,10 @@ void view_rigs(const int skin[MAXP], int players) {
     }
   }
   VW.players = players;
+  /* the sun's map: 4096 texels for one or two views, 2048 when the screen is split three or four ways (each view is a
+     quarter of the screen: the finer map is not seen, its cost is) */
+  int ss = players > 2 ? 2048 : g_view_shadow_size;
+  cw_node_set(VW.sun, "shadow_size", cw_val_int(ss));
 }
 
 /* ── the frame ────────────────────────────────────────────────────────── */

@@ -288,7 +288,7 @@ static void run_update(void) {
   memcpy(G.prev, G.S.s, sizeof G.prev);
   double t0 = wall();
   sim_step(&G.S, in);
-  if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]);
+  if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]), fprintf(stderr, "bench: forced bail at tick %d frame %d\n", G.S.tick, (int)cw_frame_count());
   G.t_sim += (wall() - t0) * 1000;
   audio_events(&G.S, G.players);
   for (int i = 0; i < G.players; i++) {
@@ -393,8 +393,9 @@ static void render(void *u, double alpha) {
   if (getenv("SKATE_BENCH") && sc == CW_SHELL_PLAY && G.t_n >= 120) {
     cw_render3d_stats rs;
     cw_render3d_get_stats(cw_scene_app_tree(), &rs);
-    fprintf(stderr, "bench frame_ms=%.2f sim_ms=%.2f view_ms=%.2f tick=%d park=%d players=%d draws=%d tris=%d score=%d,%d,%d,%d rag=%d\n", G.t_frame / G.t_n, G.t_sim / G.t_n,
-            G.t_view / G.t_n, G.S.tick, G.S.park_id, G.players, rs.draw_calls, rs.triangles, G.S.s[0].score, G.S.s[1].score, G.S.s[2].score, G.S.s[3].score, rag_live());
+    fprintf(stderr, "bench frame_ms=%.2f sim_ms=%.2f view_ms=%.2f tick=%d park=%d players=%d draws=%d tris=%d score=%d,%d,%d,%d tricks=%d,%d,%d,%d rag=%d\n", G.t_frame / G.t_n, G.t_sim / G.t_n,
+            G.t_view / G.t_n, G.S.tick, G.S.park_id, G.players, rs.draw_calls, rs.triangles, G.S.s[0].score, G.S.s[1].score, G.S.s[2].score, G.S.s[3].score, G.S.s[0].tricks,
+            G.S.s[1].tricks, G.S.s[2].tricks, G.S.s[3].tricks, rag_live());
     const cw_pass_stat *pst;
     int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
     fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));

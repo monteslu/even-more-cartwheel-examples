@@ -2,7 +2,7 @@
 // every view, ragdolls when they bail) at 1920x1080, High, natively on the test GPU (the 890M), GL and WebGPU, with the
 // pipeline's GPU pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows) at
 // 4.5 ms. Then each other park the same way with two players (the split most runs have).
-// Every run must draw everything (no "not in any program table" line) and keep four skaters skating (points scored).
+// Every run must draw everything (no "not in any program table" line) and keep its skaters skating (tricks landed).
 // Controls, which must fail: GL at 3840x2160 (4 times the pixels), and WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/skate-perf.mjs [--quick]
 // (--quick: the bench park only, GL and WebGPU, and the controls)
@@ -35,16 +35,16 @@ function run(gpu, extra = {}) {
   else if (gl) gl.check('native', err);
   const win = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
   const last = err.split('\n').filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  const scores = ((/score=([\d,]+)/.exec(last) || [])[1] || '').split(',').map(Number);
+  const scores = ((/tricks=([\d,]+)/.exec(last) || [])[1] || '').split(',').map(Number);
   return { status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN, players: +((/players=(\d+)/.exec(last) || [])[1]),
     scores, skipped: /in none of the app's program tables|have no program/.test(err), passes: err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }
 
 let bad = 0;
 const check = (name, r, bound, want_players, mustFail = false) => {
-  const skating = r.scores.slice(0, want_players).filter((s) => s > 0).length;
+  const skating = r.scores.slice(0, want_players).filter((s) => s > 0).length; /* (tricks each skater has made) */
   const within = r.status === 0 && !r.skipped && r.players === want_players && skating === want_players && r.gpu > 0 && r.gpu <= bound;
-  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.players} players, ${skating} scoring, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.players} players, ${skating} skating, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);
