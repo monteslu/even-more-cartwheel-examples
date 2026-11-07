@@ -601,6 +601,9 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   }
   v3 at = vadd(p, V(0, 1.25f, 0));
   float back = (4.4f + clampf(sp * 0.08f, 0, 1.4f)) * g_cam_k, up = 1.7f * g_cam_k;
+  /* a bail: watch the body tumble from further back (it can fly back past where the board stopped) */
+  v3 hips;
+  if (k->st == SK_BAIL && rag_hips(i, &hips)) at = vadd(hips, V(0, 0.5f, 0)), back = fmaxf(back, 6.0f * g_cam_k), up = 2.4f * g_cam_k;
   v3 want = vadd(vadd(vsub(at, vmul(s->cam_h, back)), V(0, up, 0)), vmul(vcross(s->cam_h, V(0, 1, 0)), g_cam_side));
   /* keep a wall from coming between: pull in along the line to the rider */
   phit h;

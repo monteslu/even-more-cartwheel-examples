@@ -82,6 +82,8 @@ void rag_free(void);
 /* each tick: a bail starts a ragdoll from the rider's pose, a respawn ends it */
 void rag_tick(int i, const skater *s, rig *r, cw_node model_node, const t3_mat4 *model_to_world);
 bool rag_active(int i);
+/* where a live ragdoll's hips are (the camera follows the body, not the point the rules slide to a stop) */
+bool rag_hips(int i, v3 *out);
 int rag_live(void);
 
 /* the deck's top over the ground (the rider stands on it) */

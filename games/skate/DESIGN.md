@@ -106,7 +106,7 @@ picture) and pull in when a wall is in the way. No camera ever shakes.
 ## Performance
 
 The perf gate's scene (skate_bench): four bots on the mega ramp park in a four-way split, 1920x1080, High, on the
-890M: 2.6 ms of GPU a frame on GL, 3.5 ms on WebGPU (the bound is 4.5). What paid for it: no bloom (a sunny
+890M: 2.0 ms of GPU a frame on GL, 3.6 ms on WebGPU (the bound is 4.5; a two-player split on each other park, 1.5 to 1.8 ms on GL and 2.5 to 2.6 ms on WebGPU). What paid for it: no bloom (a sunny
 afternoon has little to bloom; 0.8 ms), the sun's map at 2048 texels when the screen is split three or four ways (a
 view is a quarter of the screen), one shadow map for every view (the pipeline draws it with the first view and the
 others reuse it), one mesh per surface kind for the whole park.
