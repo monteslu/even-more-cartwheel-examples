@@ -34,11 +34,11 @@
       "game.abilities": 0,
       "game.pickups": 0,
       "game.bosses": 0,
-      "player.hp": 5,
-      "player.x100": 91156,
+      "player.hp": 4,
+      "player.x100": 90987,
       "player.y100": 8800,
-      "bot.step": 79,
-      "game.hash": 2107556574
+      "bot.step": 59,
+      "game.hash": 1177849990
     }
   },
   {
