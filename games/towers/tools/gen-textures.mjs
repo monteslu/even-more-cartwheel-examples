@@ -76,7 +76,8 @@ function snow(u, v) {
   const d = fbm(u, v, 4, 5, 51);
   let c = [0.9 + 0.1 * d, 0.92 + 0.08 * d, 0.97];
   const hollow = smooth(0.58, 0.72, fbm(u, v, 6, 3, 53));
-  c = mix3(c, [0.8, 0.86, 0.98], hollow * 0.5);
+  c = mix3(c, [0.74, 0.82, 0.97], hollow * 0.75);
+  c = c.map((k) => k * (0.9 + 0.2 * fbm(u, v, 24, 3, 57))); // wind-packed crust
   if (hash(Math.floor(u * 512), Math.floor(v * 512), 55) > 0.994) c = [1, 1, 1];
   return c;
 }
