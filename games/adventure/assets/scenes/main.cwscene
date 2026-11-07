@@ -70,7 +70,7 @@ vertex_spacing = 1
 min_height = -4
 max_height = 90
 grid_quads = 32
-far_distance = 110
+far_distance = 85
 ; the terrain receives the sun's shadows but casts none: the hills' own shade inside 40 m was a quarter of the frame on WebGPU
 cast_shadow = false
 ; (side_detile: the cliffs carry their own strata; the engine's detiling cost 0.3 ms)

@@ -10,4 +10,4 @@ for f in "${@:-1 28}"; do
     CW_PROGRAMS_LOG_DIR="$d" CW_RENDER_SCALE=0.5 timeout 300 "$ROOT/games/adventure/tools/swshot.sh" adventure_bench 200 /dev/null ADV_QUALITY=3 ADV_BENCH=1 ADV_FROM=$f2 "ADV_PROBE_$P=1" >/dev/null 2>&1 || true
   done
 done
-cat "$ROOT"/out/proglogs/probe-"$P"/*/adventure_bench.log 2>/dev/null | sort -u | wc -l
+{ cat "$ROOT"/out/proglogs/probe-"$P"/*/adventure_bench.log 2>/dev/null || true; } | sort -u | wc -l

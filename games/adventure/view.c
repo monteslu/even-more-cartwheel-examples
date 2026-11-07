@@ -35,6 +35,7 @@ typedef struct rig {
   int rd_t;
   float rd_yaw;
   bool still;        /* the dead, settled: the pose is kept and nothing more runs */
+  int shadow;        /* casting the sun's shadow now (-1 unknown) */
 } rig;
 static rig RIG[MAXA];
 static cw_node V_world, V_ring[8], V_shock[4];
@@ -68,6 +69,10 @@ static const float GEN_SCALE[K_KINDS] = { 1.02f, 1.06f, 1.0f, 1.3f, 1.08f, 1.75f
 static void shadows(t3_object *o) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = !(o->name && !strncmp(o->name, "Hair", 4)), o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) shadows(o->children[i]);
+}
+static void cast_shadows(t3_object *o, bool on) {
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = on && !(o->name && !strncmp(o->name, "Hair", 4));
+  for (int i = 0; i < o->child_count; i++) cast_shadows(o->children[i], on);
 }
 static t3_object *weapon_obj(const char *name) {
   static const char *const W[] = { "sword", "maul", "cleaver", "spear", "bigaxe" };
@@ -152,7 +157,7 @@ static void rig_make(int i, int kind) {
     cw_node3d_set_position(r->light, (t3_vec3){ 0, 1.3f * GEN_SCALE[kind], 0.5f });
   }
   t3_release(inst);
-  r->made = true;
+  r->made = true, r->shadow = -1;
 }
 
 void view_reset(void) {
@@ -289,9 +294,14 @@ void view_fixed(void) {
     VST.rigs++;
     static int nochars = -1;
     if (nochars < 0) nochars = getenv("ADV_PROBE_NOCHARS") != NULL;
-    bool near = !nochars && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 55 * 55);
+    bool near = !nochars && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 45 * 45); /* farther than 45 m a foe is a few pixels in the haze */
     cw_node_set(r->root, "visible", cw_val_bool(near));
     VST.drawn += near;
+    { /* a foe casts the sun's shadow only near the camera (the cascades reach 40 m; a far caster redraws them for a
+       * shadow a few pixels long) */
+      int sh = i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 24 * 24;
+      if (r->inst && sh != r->shadow) cast_shadows(r->inst, sh), r->shadow = sh;
+    }
     bool newst = a->state != r->last_state || a->st_t < r->last_st_t || (a->state == ST_ATTACK && a->atk != r->last_atk);
     if (a->state != ST_DEAD && (r->rd || r->still)) { /* back up (a rest, a respawn) */
       if (r->rd) cw_ragdoll_destroy(r->rd), r->rd = NULL, rag_live--;

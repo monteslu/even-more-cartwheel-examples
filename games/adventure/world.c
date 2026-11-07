@@ -196,7 +196,7 @@ static float land_ex(float x, float z, int *paint, int *region, int *over, int *
     if (w <= 0) continue;
     h = h + (rh - h) * w;
     if (w > 0.7f) pt = RAMPS[i].paint, ob = 0;
-    else if (w > 0.1f && (w - 0.1f) / 0.6f > ob) ob = (w - 0.1f) / 0.6f, opt = RAMPS[i].paint; /* a soft edge into what is beside it */
+    else if (w > 0.45f && (w - 0.45f) / 0.25f > ob) ob = (w - 0.45f) / 0.25f, opt = RAMPS[i].paint; /* a soft edge into what is beside it (narrow: a blended texel reads two layers) */
   }
   if (paint) *paint = pt;
   if (region) *region = rg;
@@ -722,11 +722,16 @@ static void paint_and_shape(void) {
       int base = pt[i], over = base;
       int blend = 0;
       float n = fbm((float)x / 9, (float)z / 9, 501, 3);
-      if (base == 0) { over = 5, blend = (int)(cw_clampf((n - 0.62f) * 2.0f, 0, 1) * 150); }        /* darker moss in patches */
-      if (base == 1) { over = 4, blend = (int)(cw_clampf((n - 0.4f) * 3.0f, 0, 1) * 230); }        /* rock through the snow, in broad patches */
-      if (base == 5 && rgn[i] == RG_WOOD) { base = 0, over = 5, blend = (int)(cw_clampf((0.62f - n) * 2.5f, 0, 1) * 220); } /* the wood: grass, dark moss in the hollows */
-      else if (base == 5) { over = 0, blend = (int)(cw_clampf((h[i] + d->origin.y - 8.6f) * 1.2f, 0, 1) * 200); } /* grass on the marsh's dry humps */
-      if (base == 7) { over = 4, blend = (int)(cw_clampf((n - 0.5f) * 2.0f, 0, 1) * 160); }
+      /* patches of a second layer are whole texels of that layer with a narrow blended rim: the shader reads the
+       * second layer only where a texel blends, so a wide soft blend everywhere doubles the terrain's cost */
+#define PATCH(lo, hi, other) do { if (n >= (hi)) base = (other), over = (other), blend = 0; \
+    else if (n > (lo)) over = (other), blend = (int)(((n - (lo)) / ((hi) - (lo))) * 220); } while (0)
+      if (base == 0) PATCH(0.7f, 0.76f, 5);                                     /* darker moss in patches */
+      else if (base == 1) PATCH(0.6f, 0.65f, 4);                               /* rock through the snow, in broad patches */
+      else if (base == 5 && rgn[i] == RG_WOOD) { base = 0, over = 0; n = 1 - n; PATCH(0.58f, 0.64f, 5); } /* the wood: grass, moss in the hollows */
+      else if (base == 5) { float dry = (h[i] + d->origin.y - 8.6f) * 1.2f; if (dry >= 1) base = 0, over = 0; else if (dry > 0.6f) over = 0, blend = (int)((dry - 0.6f) / 0.4f * 220); } /* grass on the marsh's dry humps */
+      else if (base == 7) PATCH(0.6f, 0.66f, 4);
+#undef PATCH
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
       if (slope > 0.9f) base = 4, blend = 0;
@@ -1189,16 +1194,18 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
   if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
-  if (getenv("ADV_PROBE_TERRAINAWAY")) { t3_vec3 o = cw_terrain_get_def(W_terrain)->origin; o.y -= 5000; cw_terrain_set_origin(W_terrain, o); }
+  /* the terrain out of the picture: its node moved far down (the terrain follows its node every tick; Terrain3D ignores
+   * visible, so NOTERRAIN moves it too) */
+  if (getenv("ADV_PROBE_TERRAINAWAY") || getenv("ADV_PROBE_NOTERRAIN")) { cw_node tn = cw_node_get(W_root, "World/Terrain"); t3_vec3 p = cw_node3d_position(tn); p.y -= 5000; cw_node3d_set_position(tn, p); }
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
   if (getenv("ADV_PROBE_NODETILE")) cw_terrain_set_side_detile(W_terrain, 0);
+  if (getenv("ADV_PROBE_TERRAINMED")) cw_terrain_set_quality(W_terrain, 2);
   if (getenv("ADV_PROBE_TERRAINQ")) cw_terrain_set_quality(W_terrain, atoi(getenv("ADV_PROBE_TERRAINQ")));
   if (getenv("ADV_PROBE_NOBUILD")) for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOBLOOM")) cw_node_set(W_post, "bloom", cw_val_bool(false)), cw_node_set(W_post, "vignette", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOWATER")) cw_node_free(cw_node_get(W_root, "World/Water"));
-  if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
   if (getenv("ADV_PROBE_SHADOW1")) cw_node_set(W_sun, "shadow_cascades", cw_val_int(1)), cw_node_set(W_sun, "shadow_distance", cw_val_float(28));
   if (getenv("ADV_PROBE_SHADOWNEAR")) cw_node_set(W_sun, "shadow_distance", cw_val_float(26));
