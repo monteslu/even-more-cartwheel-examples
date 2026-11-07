@@ -52,7 +52,6 @@ void view_rigs(const int skin[MAXP], int players);        /* each seat's rider a
 void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players, float dt);
 void view_title_camera(const park *k, float t);           /* behind the menus: a slow orbit of the park */
 cw_node view_camera(int i);
-bool view_world_to_screen(int view, v3 p, float *sx, float *sy); /* 0..1 in that view's rect */
 typedef struct view_stats { int draws, tris; } view_stats;
 extern int g_view_shadow_size;
 /* what the frames show, measured (debug fields: the feel gate) */

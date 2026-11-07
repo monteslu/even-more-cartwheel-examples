@@ -279,7 +279,7 @@ static bool land(skater *s, const park *k, const phit *h) {
   else if (upc < 0.55f) why = "board not under feet";
   else if (vn > 13.5f) why = "came down too hard";
   else if (err > 0.85f) why = "landed sideways";
-  (void)why;
+  if (why) s->bail_why = why;
   s->p = h->p;
   s->tri = h->tri;
   s->u = n;
@@ -357,7 +357,7 @@ static bool try_grind(skater *s, const park *k, int dir, bool from_ground) {
   s->fakie = kind != 3 && vdot(s->f, s->v) < 0;
   /* a grind lands the air's tricks */
   add_spin(s);
-  if (s->flip >= 0 && s->flip_t < FLIPS[s->flip].len - 3) { bail(s); return true; }
+  if (s->flip >= 0 && s->flip_t < FLIPS[s->flip].len - 3) { s->bail_why = "grind mid flip"; bail(s); return true; }
   reset_air(s);
   char b[32];
   snprintf(b, sizeof b, "%s%s", e->kind == EDGE_COPING && kind == 0 ? "Lip " : "", GRIND_NAMES[kind]);
@@ -404,6 +404,7 @@ static void grind_step(skater *s, const park *k, const input *in, bool pop) {
   if (s->grind_item >= 0 && s->grind_item < s->cb.n && s->grind_t % 6 == 0) s->cb.it[s->grind_item].points += 10;
   if (fabsf(s->bal) >= 1.0f) {
     s->v = vadd(vmul(e->t, s->gv), V(0, -1, 0));
+    s->bail_why = "lost the grind's balance";
     bail(s);
     return;
   }
@@ -518,7 +519,9 @@ static void air_attitude(skater *s, float dt, float spin_in) {
   float al = vhl > 0.5f ? clampf(vdot(h, vmul(vh, 1.0f / vhl)), -1, 1) : 0;
   float flight = cw_atan2(s->v.y, vhl > 0.3f ? vhl : 0.3f);
   float want = clampf(flight * al, -0.9f, 0.9f);
-  s->pitch += clampf(want - s->pitch, -3.0f * dt, 3.0f * dt);
+  /* coming down onto something within a few tenths of a second: the board meets it (a transition, a slope, the flat) */
+  if (s->land_seen) want = clampf(s->land_pitch, -1.1f, 1.1f);
+  s->pitch += clampf(want - s->pitch, -3.5f * dt, 3.5f * dt);
   float sp, cp;
   cw_sincos(s->pitch, &sp, &cp);
   s->f = vnorm(vadd(vmul(h, cp), V(0, sp, 0)));
@@ -542,7 +545,7 @@ static bool air_sub(skater *s, const park *k, float dt) {
       float into = -vdot(s->v, h.fn);
       s->v = vsub(s->v, vmul(h.fn, 1.15f * vdot(s->v, h.fn)));
       s->ev |= EV_WALL;
-      if (into > 9.0f) { bail(s); return true; }
+      if (into > 9.0f) { s->bail_why = "flew into a wall"; bail(s); return true; }
       return false;
     }
     if (park_cast(k, s->p, step, mask, &h)) {
@@ -552,7 +555,7 @@ static bool air_sub(skater *s, const park *k, float dt) {
         s->p = vmad(h.p, h.fn, 0.02f);
         s->v = vsub(s->v, vmul(h.fn, 1.15f * vdot(s->v, h.fn)));
         s->ev |= EV_WALL;
-        if (into > 9.0f) { bail(s); return true; }
+        if (into > 9.0f) { s->bail_why = "flew into a wall"; bail(s); return true; }
         return false;
       }
       land(s, k, &h);
@@ -609,7 +612,7 @@ static bool roll_sub(skater *s, const park *k, const input *in, float dt) {
   if (!g_phys.no_sweep && park_cast(k, vadd(s->p, vmul(n, 0.3f)), step, (1u << SURF_WALL) | (1u << SURF_RIDE), &h) &&
       (k->t[h.tri].surf == SURF_WALL || vdot(h.fn, n) < 0.3f)) {
     float into = -vdot(s->v, h.fn);
-    if (into > 7.5f && into > 0.7f * vlen(s->v)) { bail(s); return false; }
+    if (into > 7.5f && into > 0.7f * vlen(s->v)) { s->bail_why = "rode into a wall"; bail(s); return false; }
     v3 wn = vnorm(vperp(h.fn, n));
     if (vlen(wn) < 0.1f) wn = h.fn;
     s->v = vsub(s->v, vmul(wn, 1.1f * vdot(s->v, wn)));
@@ -724,14 +727,15 @@ void sk_step(skater *s, const park *k, const input *in) {
     if (s->manual) {
       manual_tick(s, in);
       if (fabsf(s->mbal) >= 1.0f || sp < 0.6f) {
-        if (fabsf(s->mbal) >= 1.0f) { bail(s); return; }
+        if (fabsf(s->mbal) >= 1.0f) { s->bail_why = "lost the manual's balance"; bail(s); return; }
         s->manual = false;
         s->link_t = LINK_TICKS / 2;
-      } else if (manual_p && s->manual_t > 10) {
+      } else if (manual_p && s->manual_t > 10) { /* the press that ends it is spent */
+        s->buf_manual = 0;
         s->manual = false;
         s->link_t = LINK_TICKS / 2;
       }
-    } else if (s->buf_manual > 0 && sp > 1.0f && s->crouch < 0.5f) {
+    } else if (s->buf_manual > 0 && sp > 1.0f && s->crouch < 0.5f && n.y > 0.85f) { /* on two wheels: on the flat or a gentle slope, not up a wall */
       manual_start(s, in->sy < -0.4f ? 1 : 0);
       s->buf_manual = 0;
       s->link_t = 0;
@@ -795,6 +799,19 @@ void sk_step(skater *s, const park *k, const input *in) {
       s->buf_grind = 0;
       break;
     }
+    /* where it will come down: along the flight for 0.4 s (falling under gravity), the surface it meets; the board
+       pitches to meet it */
+    if (!s->vert) {
+      phit lh;
+      const float T = 0.4f;
+      v3 end = vadd(vmad(s->p, s->v, T), V(0, -0.5f * GRAV * T * T, 0));
+      s->land_seen = s->v.y < 0.5f && park_cast(k, s->p, vsub(end, s->p), 1u << SURF_RIDE, &lh);
+      if (s->land_seen) {
+        v3 h = vnorm(V(s->f.x, 0, s->f.z));
+        if (vlen(h) < 0.5f) h = vnorm(V(s->v.x, 0, s->v.z));
+        s->land_pitch = cw_atan2(-vdot(lh.n, h), lh.n.y);
+      }
+    } else s->land_seen = false;
     float spin_in = in->spin_l ? -1.0f : in->spin_r ? 1.0f : 0;
     if (spin_in == 0 && fabsf(in->sx) > 0.3f && !flipping) spin_in = in->sx;
     int ns = substeps(s);
@@ -804,7 +821,7 @@ void sk_step(skater *s, const park *k, const input *in) {
       if (air_sub(s, k, dt)) break;
       if (s->p.y > s->peak_y) s->peak_y = s->p.y;
     }
-    if (s->st == SK_ROLL && (s->buf_manual > 0 || in->manual)) { /* held (or pressed just before) into the landing: straight into a manual */
+    if (s->st == SK_ROLL && (s->buf_manual > 0 || in->manual) && s->u.y > 0.85f) { /* held (or pressed just before) into a landing on the flat: straight into a manual */
       manual_start(s, in->sy < -0.4f ? 1 : 0);
       s->buf_manual = 0;
       s->link_t = 0;

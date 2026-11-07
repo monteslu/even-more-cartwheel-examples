@@ -418,7 +418,7 @@ static int cmd_soak(int minutes, int players, int park0) {
   int parks_done = 0, lines_done = 0, lines_failed = 0, bails = 0, tricks = 0, grinds = 0, manuals = 0, lost = 0;
   long long score = 0;
   bool inject = getenv("SKATE_SOAK_INJECT") != NULL;
-  int per_park = TPS * 60 * 3, total = TPS * 60 * minutes;
+  int per_park = TPS * 60 * 2, total = TPS * 60 * minutes;
   int park_id = park0 >= 0 ? park0 : 0;
   memset(&S, 0, sizeof S);
   sim_init(&S, park_id, MODE_FREE, players);
@@ -427,8 +427,11 @@ static int cmd_soak(int minutes, int players, int park0) {
     input in[MAXP];
     memset(in, 0, sizeof in);
     for (int i = 0; i < S.players; i++) bot_tick(&B[i], &S, i, &in[i]);
+    int pv[MAXP], pf[MAXP];
+    for (int i = 0; i < MAXP; i++) pv[i] = S.s[i].vert, pf[i] = S.s[i].flip;
     sim_step(&S, in);
     if (inject && t == TPS * 30) S.s[0].v.x = NAN;
+    if (getenv("SKATE_BAILS")) for (int i = 0; i < S.players; i++) if (S.s[i].ev & EV_BAIL) printf("bail p%d park %d skill %d: %s (line %d phase %d, p %.1f %.1f %.1f, v %.1f %.1f %.1f, vert %d, flip %d)\n", i, S.park_id, B[i].skill, S.s[i].bail_why ? S.s[i].bail_why : "?", B[i].line, B[i].phase, (double)S.s[i].p.x, (double)S.s[i].p.y, (double)S.s[i].p.z, (double)S.s[i].bail_v.x, (double)S.s[i].bail_v.y, (double)S.s[i].bail_v.z, pv[i], pf[i]);
     for (int i = 0; i < S.players; i++) {
       const skater *s = &S.s[i];
       if (!finite3(s->p) || !finite3(s->v) || !finite3(s->f) || !finite3(s->u)) {
@@ -454,6 +457,7 @@ static int cmd_soak(int minutes, int players, int park0) {
         lines_done += B[i].lines_done, lines_failed += B[i].lines_failed;
         B[i].lines_done = B[i].lines_failed = 0;
       }
+      printf("park %d done (cycle %d): rss %ld kB\n", S.park_id, parks_done / PARK_COUNT, rss_kb());
       parks_done++;
       if (park0 < 0) park_id = (park_id + 1) % PARK_COUNT;
       sim_init(&S, park_id, MODE_FREE, players);

@@ -113,6 +113,63 @@ static float kicker(kit *b, float x, float z, float yaw, float w, float r, float
   kit_ramp(b, x, z, yaw, w, &p, &o);
   return utop_of(&p);
 }
+/* a palm: a leaning, tapering trunk and a crown of drooping fronds (drawn only; a short post at its foot blocks) */
+static void palm(kit *b, float x, float z, float h, float lean_dir) {
+  kit_piece(b);
+  static const float bark[3] = { 0.62f, 0.5f, 0.36f }, frond[3] = { 0.35f, 0.66f, 0.22f };
+  kit_box(b, x, z, 0, 0.45f, 0.45f, 0, 0.6f, MAT_WOOD, MAT_WOOD, bark, bark);
+  float s, c;
+  cw_sincos(lean_dir, &s, &c);
+  v3 top = V(x, 0, z);
+  const int SEG = 6;
+  for (int i = 0; i < SEG; i++) {
+    float t0 = (float)i / SEG, t1 = (float)(i + 1) / SEG;
+    v3 a = V(x + s * 1.2f * t0 * t0, h * t0, z + c * 1.2f * t0 * t0), e = V(x + s * 1.2f * t1 * t1, h * t1, z + c * 1.2f * t1 * t1);
+    float r0 = 0.22f - 0.08f * t0, r1 = 0.22f - 0.08f * t1;
+    for (int k = 0; k < 7; k++) {
+      float a0 = 2 * PI_F * (float)k / 7, a1 = 2 * PI_F * (float)(k + 1) / 7, s0, c0, s1, c1;
+      cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
+      v3 n0 = V(c0, 0, s0), n1 = V(c1, 0, s1);
+      kit_tri(b, vmad(a, n0, r0), vmad(a, n1, r0), vmad(e, n1, r1), n0, n1, n1, SURF_NONE, MAT_WOOD, bark);
+      kit_tri(b, vmad(a, n0, r0), vmad(e, n1, r1), vmad(e, n0, r1), n0, n1, n0, SURF_NONE, MAT_WOOD, bark);
+    }
+    top = e;
+  }
+  for (int f = 0; f < 9; f++) {
+    float a = 2 * PI_F * (float)f / 9 + 0.3f, sa, ca;
+    cw_sincos(a, &sa, &ca);
+    v3 d = V(ca, 0, sa), side = V(-sa, 0, ca);
+    v3 mid = vadd(top, vadd(vmul(d, 1.5f), V(0, 0.45f, 0))), tip = vadd(top, vadd(vmul(d, 3.0f), V(0, -0.7f, 0)));
+    v3 n = vnorm(vadd(V(0, 1, 0), vmul(d, 0.3f)));
+    kit_tri(b, top, vadd(mid, vmul(side, 0.55f)), mid, n, n, n, SURF_NONE, MAT_LEAF, frond);
+    kit_tri(b, top, mid, vadd(mid, vmul(side, -0.55f)), n, n, n, SURF_NONE, MAT_LEAF, frond);
+    kit_tri(b, mid, vadd(mid, vmul(side, 0.55f)), tip, n, n, n, SURF_NONE, MAT_LEAF, frond);
+    kit_tri(b, mid, tip, vadd(mid, vmul(side, -0.55f)), n, n, n, SURF_NONE, MAT_LEAF, frond);
+  }
+}
+/* a park bench (blocks) and a lamp post (its pole blocks) */
+static void bench(kit *b, float x, float z, float yaw) {
+  kit_piece(b);
+  static const float wood[3] = { 0.72f, 0.5f, 0.3f }, iron[3] = { 0.25f, 0.27f, 0.3f };
+  float s, c;
+  cw_sincos(yaw, &s, &c);
+  for (int sd = -1; sd <= 1; sd += 2) kit_box(b, x + c * 0.75f * (float)sd, z - s * 0.75f * (float)sd, yaw, 0.08f, 0.45f, 0, 0.42f, MAT_METAL, MAT_METAL, iron, iron);
+  kit_piece(b); /* the seat stands on the legs */
+  kit_box(b, x, z, yaw, 1.8f, 0.5f, 0.42f, 0.48f, MAT_WOOD, MAT_WOOD, wood, wood);
+  /* its footing is where the legs are, not its overhanging corners */
+  b->k->nrest -= 5;
+  for (int sd = -1; sd <= 1; sd += 2)
+    for (int e = -1; e <= 1; e += 2) kit_rest(b, V(x + c * 0.75f * (float)sd + s * 0.15f * (float)e, 0.42f, z - s * 0.75f * (float)sd + c * 0.15f * (float)e));
+}
+static void lamp(kit *b, float x, float z) {
+  kit_piece(b);
+  static const float pole[3] = { 0.3f, 0.32f, 0.36f }, glass[3] = { 1.0f, 0.95f, 0.8f };
+  kit_box(b, x, z, 0, 0.16f, 0.16f, 0, 4.6f, MAT_METAL, MAT_METAL, pole, pole);
+  kit_piece(b); /* the lamp stands on its pole: its footing is the pole's top */
+  kit_box(b, x, z, 0, 0.5f, 0.5f, 4.6f, 4.9f, MAT_METAL, MAT_GLASS, pole, glass);
+  b->k->nrest -= 5;
+  kit_rest(b, V(x, 4.6f, z));
+}
 static void tree(kit *b, float x, float z, float s) {
   kit_piece(b);
   /* a trunk (a box, it blocks) and a crown of leaves (drawn only) */
@@ -132,6 +189,20 @@ static void tree(kit *b, float x, float z, float s) {
   }
 }
 /* a building (scenery past the fence, or a roof to ride): walls block, the top rides */
+/* the land round the park, past its fence: drawn, never ridden (buildings and trees stand on it) */
+static void surround(kit *b, float x0, float z0, float x1, float z1, int mat, const float col[3]) {
+  kit_piece(b);
+  const float R = 260, y = -0.004f;
+  v3 up = V(0, 1, 0);
+  float xs[4] = { -R, x0, x1, R }, zs[4] = { -R, z0, z1, R };
+  for (int i = 0; i < 3; i++)
+    for (int j = 0; j < 3; j++) {
+      if (i == 1 && j == 1) continue;
+      v3 a = V(xs[i], y, zs[j]), c = V(xs[i + 1], y, zs[j]), d = V(xs[i + 1], y, zs[j + 1]), e = V(xs[i], y, zs[j + 1]);
+      kit_tri(b, a, c, d, up, up, up, SURF_NONE, mat, col);
+      kit_tri(b, a, d, e, up, up, up, SURF_NONE, mat, col);
+    }
+}
 static void building(kit *b, float x0, float z0, float x1, float z1, float h, const float wall[3]) {
   kit_piece(b);
   kit_box(b, (x0 + x1) * 0.5f, (z0 + z1) * 0.5f, 0, x1 - x0, z1 - z0, 0, h, MAT_ROOF, MAT_BRICK, C_ROOF, wall);
@@ -152,6 +223,7 @@ static void build_sunny(kit *b, int variant) {
   kit_bowl_deck(b, bx, bz, bhx, bhz, brc, box_, boz, MAT_CONCRETE, C_DECK);
   kit_piece(b);
   kit_fence(b, -42, -42, 42, 42, 1.1f, MAT_CONCRETE, C_CONC2);
+  surround(b, -42, -42, 42, 42, k->theme == 1 ? MAT_TILE : MAT_GRASS, k->theme == 1 ? C_TILE : C_GRASS);
   /* two long quarter pipes facing each other across the park's east half */
   quarter(b, 18, -30, 0, 34, 3.0f, 3.5f, 2.2f, MAT_CONCRETE, C_TEAL, C_TEAL);
   quarter(b, 18, 30, PI_F, 34, 3.0f, 3.5f, 2.2f, MAT_CONCRETE, C_ORANGE, C_ORANGE);
@@ -202,7 +274,10 @@ static void build_sunny(kit *b, int variant) {
     kit_box(b, 4, 24, 0, 1.2f, 4, 0.3f, 0.8f, MAT_CONCRETE, MAT_CONCRETE, C_RED, C_RED);
   }
   /* trees and buildings past the fence */
-  for (int i = 0; i < 10; i++) tree(b, -46 + (float)(i % 5) * 23 + (i & 1) * 4, i < 5 ? -48 : 48, 1.0f + 0.15f * (float)(i % 3));
+  for (int i = 0; i < 12; i++) palm(b, -50 + (float)(i % 6) * 20 + (float)(i & 1) * 3, i < 6 ? -47 : 47, 6.5f + 1.5f * (float)(i % 3), (float)i * 1.7f);
+  for (int i = 0; i < 4; i++) palm(b, -40.6f, -36 + (float)i * 22, 6 + (float)(i % 2) * 2, 1.6f + (float)i);
+  for (int i = 0; i < 3; i++) bench(b, -32 + (float)i * 11, 40.4f, 0);
+  lamp(b, -40.5f, -40.5f), lamp(b, 40.5f, -40.5f), lamp(b, -40.5f, 40.5f), lamp(b, 40.5f, 40.5f);
   building(b, -70, -60, -52, -20, 14, C_BRICK1);
   building(b, -70, -10, -50, 30, 9, C_BRICK2);
   building(b, 52, -50, 72, -10, 18, C_BRICK3);
@@ -240,6 +315,7 @@ static void build_plaza(kit *b, int variant) {
   kit_ground(b, -42, -42, 42, 42, NULL, 0, MAT_TILE, C_TILE);
   kit_piece(b);
   kit_fence(b, -42, -42, 42, 42, 1.1f, MAT_CONCRETE, C_CONC2);
+  surround(b, -42, -42, 42, 42, k->theme == 1 ? MAT_TILE : MAT_GRASS, k->theme == 1 ? C_TILE : C_GRASS);
   kit_piece(b);
   kit_box(b, 0, (tz0 + tz1) * 0.5f, 0, 70, tz1 - tz0, 0, th, MAT_TILE, MAT_CONCRETE, C_TILE, C_GRANITE);
   int run_lip = kit_run(b);
@@ -313,7 +389,9 @@ static void build_plaza(kit *b, int variant) {
   building(b, 40, -70, 70, -50, 16, C_BRICK1);
   building(b, 52, -30, 72, 30, 12, C_BRICK2);
   building(b, -72, -20, -52, 40, 18, C_BRICK1);
-  for (int i = 0; i < 6; i++) tree(b, -36 + (float)i * 14, 48, 1.1f);
+  for (int i = 0; i < 7; i++) palm(b, -39 + (float)i * 13, 47, 7 + (float)(i % 3), (float)i * 2.1f);
+  for (int i = 0; i < 3; i++) bench(b, 6 + (float)i * 9, 40.4f, 0);
+  lamp(b, -8, 30), lamp(b, 8, 26), lamp(b, -40.5f, 40.5f), lamp(b, 40.5f, 40.5f);
   spawn_add(k, V(0, 0, 0), 0, "Plaza");
   line_add(k, V(-14.55f, th, -31), PI_F, 7.0f, LINE_RAIL, V(-12, 1.2f, tz1 + 1), rail_l, -1, 1.6f, "Left Handrail");
   line_add(k, V(14.55f, th, -31), PI_F, 7.0f, LINE_RAIL, V(12, 1.2f, tz1 + 1), rail_r, -1, 1.6f, "Right Handrail");
@@ -346,6 +424,7 @@ static void build_mega(kit *b, int variant) {
   kit_ground(b, -30, -80, 40, 70, NULL, 0, MAT_ASPHALT, C_ASPH);
   kit_piece(b);
   kit_fence(b, -30, -80, 40, 70, 1.2f, MAT_CONCRETE, C_CONC2);
+  surround(b, -30, -80, 40, 70, MAT_GRASS, C_GRASS);
   /* the roll in: a bank down from the tower (the rider rides toward +z, so the ramp rises toward -z: yaw 0) */
   profile p;
   prof_bank(&p, 20, RH, 9);
@@ -433,6 +512,7 @@ static void build_roofs(kit *b, int variant) {
   kit_ground(b, -64, -34, 84, 34, NULL, 0, MAT_ASPHALT, C_ASPH);
   kit_piece(b);
   kit_fence(b, -64, -34, 84, 34, 1.2f, MAT_CONCRETE, C_CONC2);
+  surround(b, -64, -34, 84, 34, MAT_ASPHALT, C_ASPH);
   /* four roofs, x ranges and heights; their long sides at z -14 and 14 */
   const float X0[4] = { -52, -16, 19.5f, 50 }, X1[4] = { -20, 12, 44, 72 }, H[4] = { 10, 8, 6, 4 };
   const float *WALL[4] = { C_BRICK1, C_BRICK3, C_BRICK2, C_BRICK4 };
@@ -513,6 +593,7 @@ static void build_barn(kit *b, int variant) {
   kit_ground(b, -40, -40, 40, 40, NULL, 0, MAT_CONCRETE, C_CONC);
   kit_piece(b);
   kit_fence(b, -40, -40, 40, 40, 1.1f, MAT_WOOD, C_WOOD);
+  surround(b, -40, -40, 40, 40, MAT_GRASS, C_GRASS);
   /* the vert halfpipe: two quarters 8 m apart (flat bottom), facing each other along z */
   quarter(b, -14, -4, 0, 14, 3.2f, 4.0f, 2.0f, MAT_WOOD, C_WOOD, C_BLUE);
   quarter(b, -14, 4, PI_F, 14, 3.2f, 4.0f, 2.0f, MAT_WOOD, C_WOOD, C_BLUE);

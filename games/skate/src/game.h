@@ -269,6 +269,8 @@ typedef struct skater {
   float spin;         /* turned about the board's up so far this air (radians, signed) */
   float spin_v;       /* spin speed */
   float pitch;        /* the board's pitch to the flight (non vert air) */
+  bool land_seen;     /* a surface ahead it will come down on: the board pitches to meet it */
+  float land_pitch;
   v3 takeoff;
   float peak_y, takeoff_y;
   int air_from_surf;
@@ -294,6 +296,7 @@ typedef struct skater {
   int bail_t;
   v3 bail_v;          /* the velocity it bailed at (the ragdoll's push) */
   int bails;
+  const char *bail_why; /* the last bail's cause (tests, tuning) */
   /* the combo */
   combo cb;
   int link_t;         /* ticks left to link after landing */
@@ -377,7 +380,8 @@ typedef struct bot {
   int last_bails;
   int want_line; /* the park check: skate only this line (-1 any) */
   int skill;     /* 0 casual .. 2 sharp */
-  int popped, crouching;
+  int popped, crouching, link_pops, link_crouch;
+  bool mistake;
 } bot;
 void bot_init(bot *b, uint32_t seed, int skill);
 void bot_tick(bot *b, const sim *S, int i, input *in);

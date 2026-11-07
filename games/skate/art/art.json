@@ -1,0 +1,25 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    {
+      "path": "shot-1.jpg",
+      "label": "Sunnyside in split screen: two skaters work the concrete park, the deep blue bowl and the long teal quarter pipe behind them, a combo building up at the bottom"
+    },
+    {
+      "path": "shot-2.jpg",
+      "label": "Big Sky: the mega ramp's 14 metre roll in, the kicker and the landing slope, a skater flying the gap"
+    },
+    {
+      "path": "shot-3.jpg",
+      "label": "Civic Plaza: granite ledges, the terrace with its six-stair sets and handrails, planters and palms"
+    },
+    {
+      "path": "shot-4.jpg",
+      "label": "Rooftops: roofs stepping down over the street, parapets and rails to grind, a gap to ollie between the buildings"
+    }
+  ]
+}

@@ -44,7 +44,7 @@ typedef struct seat {
 } seat;
 
 static struct {
-  cw_node root, world, park, sun, sky, env, fog, post, light;
+  cw_node root, world, park, sun, sky, env, fog, post, light, dome;
   cw_node cam[MAXP];
   t3_material *mat[MAT_KINDS];
   cw_res skin_res[NSKINS];
@@ -190,7 +190,89 @@ static void set_shadows(t3_object *o) {
   for (int i = 0; i < o->child_count; i++) set_shadows(o->children[i]);
 }
 
+/* the sky behind everything: a dome of colour from a deep blue overhead to a pale blue at the horizon, and a few
+ * flat-bottomed clouds (the ProceduralSky still lights the park and fills the reflections; its own background is off:
+ * a physical sky at this exposure reads grey, and this game's sky is a postcard's) */
+static void sky_dome(cw_node parent) {
+  mesh_build b = { 0 };
+  const int AZ = 32, EL = 14;
+  const float R = 380;
+  for (int j = 0; j <= EL; j++) {
+    float e = -0.12f + (PI_F * 0.5f + 0.12f) * (float)j / EL, se, ce;
+    cw_sincos(e, &se, &ce);
+    float k = clampf(se, 0, 1);
+    /* horizon pale, zenith deep; a warm whisper at the very bottom */
+    float r = 0.72f + (0.13f - 0.72f) * cw_pow(k, 0.55f), g = 0.86f + (0.42f - 0.86f) * cw_pow(k, 0.6f), bl = 1.0f + (0.92f - 1.0f) * k;
+    if (se < 0) r = 0.78f, g = 0.86f, bl = 0.9f;
+    t3_color c = lin(r, g, bl);
+    for (int i = 0; i <= AZ; i++) {
+      float a = 2 * PI_F * (float)i / AZ, sa, ca;
+      cw_sincos(a, &sa, &ca);
+      v3 p = V(ca * ce * R, se * R, sa * ce * R);
+      int v = mb_vert(&b, p, vmul(vnorm(p), -1), (float)i / AZ, (float)j / EL);
+      mb_color(&b, v, c.r * 1.7f, c.g * 1.7f, c.b * 1.7f);
+    }
+  }
+  for (int j = 0; j < EL; j++)
+    for (int i = 0; i < AZ; i++) {
+      int a = j * (AZ + 1) + i;
+      mb_quad(&b, a, a + 1, a + AZ + 2, a + AZ + 1);
+    }
+  /* clouds: puffs of flat ellipses at 150 to 250 m, white tops, a grey-blue underside */
+  uint32_t h = 977;
+  for (int c = 0; c < 14; c++) {
+    h = h * 1664525u + 1013904223u;
+    float az = (float)(h >> 8) / 16777216.0f * 2 * PI_F;
+    h = h * 1664525u + 1013904223u;
+    float el = 0.12f + 0.32f * (float)(h >> 8) / 16777216.0f;
+    float sa, ca, se, ce;
+    cw_sincos(az, &sa, &ca), cw_sincos(el, &se, &ce);
+    v3 cen = V(ca * ce * 330, se * 330, sa * ce * 330);
+    v3 fw = vnorm(vmul(cen, -1)), right = vnorm(vcross(fw, V(0, 1, 0))), up = vcross(right, fw);
+    for (int p = 0; p < 6; p++) {
+      h = h * 1664525u + 1013904223u;
+      float ox = ((float)(h >> 8) / 16777216.0f - 0.5f) * 70, oy = ((float)((h >> 4) & 255) / 255.0f) * 10;
+      float rx = 14 + 10 * (float)((h >> 12) & 255) / 255.0f, ry = rx * 0.55f;
+      v3 m = vadd(cen, vadd(vmul(right, ox), vmul(up, oy)));
+      t3_color top = lin(1, 1, 1), bot = lin(0.78f, 0.84f, 0.95f);
+      int ci = mb_vert(&b, m, fw, 0.5f, 0.5f);
+      mb_color(&b, ci, top.r * 2.1f, top.g * 2.1f, top.b * 2.1f);
+      const int S = 16;
+      int first = -1, prev = -1;
+      for (int s = 0; s <= S; s++) {
+        float a = PI_F * (float)s / S, sn, cs;
+        cw_sincos(a, &sn, &cs);
+        float yy = sn * ry; /* the top half: a dome; the flat bottom closes it */
+        v3 q = vadd(m, vadd(vmul(right, cs * rx), vmul(up, yy)));
+        int v = mb_vert(&b, q, fw, 0, 0);
+        float t = clampf(yy / ry, 0, 1);
+        mb_color(&b, v, (bot.r + (top.r - bot.r) * t) * 2.0f, (bot.g + (top.g - bot.g) * t) * 2.0f, (bot.b + (top.b - bot.b) * t) * 2.0f);
+        if (prev >= 0) mb_tri(&b, ci, v, prev);
+        if (first < 0) first = v;
+        prev = v;
+      }
+      (void)first;
+    }
+  }
+  t3_material *m = t3_mesh_basic_material_new(0xffffff);
+  m->vertex_colors = true;
+  m->side = T3_DOUBLE_SIDE;
+  m->depth_write = false;
+  m->fog = false;
+  t3_geometry *g = mb_finish(&b);
+  t3_mesh *me = t3_mesh_new(g, m);
+  me->base.cast_shadow = false, me->base.receive_shadow = false;
+  me->base.frustum_culled = false;
+  me->base.render_order = -100;
+  cw_node n = cw_node_new("Node3D", "SkyDome");
+  cw_node_add_child(parent, n);
+  cw_node3d_set_object(n, &me->base);
+  t3_release(me), t3_release(g), t3_release(m);
+  VW.dome = n;
+}
 static void view_hook(int view, void *u) {
+  /* the sky dome around each view's own camera */
+  if (cw_node_valid(VW.dome) && view >= 0 && view < MAXP) { v3 c = cw_node3d_global_position(VW.cam[view]); cw_node3d_set_position(VW.dome, V(c.x, 0, c.z)); }
   (void)u;
   for (int t = 0; t < VW.ntoken; t++)
     if (cw_node_valid(VW.token[t])) cw_node_set(VW.token[t], "visible", cw_val_bool(view >= MAXP || !(VW.token_seen[view] & (1u << t))));
@@ -230,11 +312,15 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.sky, "mie", cw_val_float(0.3f));
     cw_node_set(VW.sky, "rayleigh", cw_val_float(1.25f));
     cw_node_set(VW.sky, "sun_energy", cw_val_float(4.2f));
+    cw_node_set(VW.sky, "background", cw_val_bool(false));
+    sky_dome(root);
     VW.fog = cw_node_new("HeightFog", "Haze");
     cw_node_add_child(root, VW.fog);
     cw_node_set(VW.fog, "density", cw_val_float(0.0009f));
     cw_node_set(VW.fog, "height_falloff", cw_val_float(0.06f));
     cw_node_set(VW.fog, "start_distance", cw_val_float(70));
+    cw_node_set(VW.fog, "use_sky_color", cw_val_bool(false));
+    cw_node_set(VW.fog, "color", cw_val_color(0.55f, 0.7f, 0.95f, 1));
     VW.post = cw_node_new("PostProcess", "Post");
     cw_node_add_child(root, VW.post);
     cw_node_set(VW.post, "hdr", cw_val_bool(true));
@@ -505,7 +591,9 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   /* keep a wall from coming between: pull in along the line to the rider */
   phit h;
   v3 d = vsub(want, at);
-  if (VW.k && park_cast(VW.k, at, d, (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, h.t - 0.08f));
+  if (VW.k && park_cast(VW.k, at, d, (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, h.t - 0.08f)), d = vsub(want, at);
+  /* and a wall seen from behind (the outside of a building the rider skates the roof of): cast back from the camera */
+  if (VW.k && park_cast(VW.k, want, vmul(d, -1), (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, 1 - h.t - 0.08f));
   if (!s->cam_init) s->cam_p = want, s->cam_at = at, s->cam_init = true;
   float kp = 1 - cw_exp(-dt * 7.0f), ka = 1 - cw_exp(-dt * 12.0f);
   s->cam_p = vlerp(s->cam_p, want, kp);
@@ -531,6 +619,18 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     const skater *k = &S->s[i];
     v3 p, f, u;
     interp(&prev[i], k, alpha, &p, &f, &u);
+    if (k->st == SK_AIR && k->vert) {
+      /* vert air, drawn: the board stays square to the wall as it leaves and comes back, and turns level over the
+         coping at the top (the rider upright there), about the line of the coping */
+      v3 ax = vcross(k->vert_n, V(0, 1, 0));
+      if (vlen(ax) > 0.5f) {
+        ax = vnorm(ax);
+        float w = clampf(1 - fabsf(k->v.y) / 5.5f, 0, 1), th = w * w * (3 - 2 * w) * 1.2f;
+        v3 c = vadd(p, vmul(u, 0.6f));
+        f = vrot(f, ax, th), u = vrot(u, ax, th);
+        p = vsub(c, vmul(u, 0.6f));
+      }
+    }
     place_board(s, k, p, f, u, t);
     /* the rider stands on the deck, turned with the board (not its flips) */
     v3 side = vcross(f, u);
@@ -559,6 +659,7 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
       VW.token_seen[i] = (uint32_t)k->tokens;
     }
   }
+  if (getenv("SKATE_SKY")) { static int once; cw_value e; if (!once++ && cw_node_get_prop(VW.sky, "sun_elevation", &e)) fprintf(stderr, "sun elevation %.1f\n", e.f); }
   /* the tokens spin and bob */
   for (int i = 0; i < VW.ntoken; i++) {
     if (!cw_node_valid(VW.token[i])) continue;
@@ -584,7 +685,3 @@ void view_title_camera(const park *k, float t) {
   cw_shell_split(NULL, cams);
 }
 
-bool view_world_to_screen(int view, v3 p, float *sx, float *sy) {
-  (void)view, (void)p, (void)sx, (void)sy;
-  return false;
-}

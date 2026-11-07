@@ -111,6 +111,7 @@ void bot_tick(bot *b, const sim *S, int i, input *in) {
     b->flip_pick = (int)(rnd(b) % (uint32_t)NFLIPS);
     b->grab_hold = 10 + (int)(rnd(b) % 18);
     b->spin_dir = rnd(b) & 1 ? 1 : -1;
+    b->mistake = b->skill == 0 && rnd(b) % 5 == 0; /* a casual skater gets one wrong now and then: a flip too late */
     return;
   }
   case PH_RESET: {
@@ -173,6 +174,15 @@ void bot_tick(bot *b, const sim *S, int i, input *in) {
         /* a trick: a grab, a flip, or a spin; let go before coming down */
         float fall_t = s->v.y < 0 ? (s->p.y - (s->vert ? s->takeoff_y : l->at.y)) / fmaxf(1.0f, -s->v.y) : 9;
         int plan = b->trick_plan;
+        /* the air left: up and down to the ground under it (or the takeoff's height, up a wall); no flip it cannot finish */
+        float below = s->takeoff_y;
+        phit gh;
+        if (!s->vert && park_ground(k, s->p, 0.2f, 30, &gh)) below = gh.p.y;
+        float drop = fmaxf(0, s->p.y - below), left = (s->v.y + sqrtf(s->v.y * s->v.y + 2 * GRAV * drop)) / GRAV;
+        bool flip_fits = left * TPS > 38;
+        if (!flip_fits && (plan == 0 || plan == 2 || plan == 3)) plan = left * TPS > 22 ? 1 : -1;
+        if (b->mistake && left * TPS < 14 && left * TPS > 4 && s->flip < 0) { in->flip = true; b->mistake = false; }
+        if (s->vert && plan == 1 && !flip_fits) plan = 0;
         if (s->vert) {
           /* half a turn to land forward, a grab at the top */
           float want = PI_F * (float)b->spin_dir;
@@ -186,7 +196,7 @@ void bot_tick(bot *b, const sim *S, int i, input *in) {
           if (plan == 3 && s->air_t > 2 && fabsf(s->spin) < PI_F - 0.3f) in->sx = (float)b->spin_dir;
         }
         /* into a manual on the way down */
-        if (s->v.y < -1.0f && fall_t < 0.15f && b->skill > 0) in->manual = (s->air_t & 1) == 0;
+        if (!s->vert && s->v.y < -1.0f && fall_t < 0.15f && b->skill > 0) in->manual = true;
       }
     } else if (s->st == SK_GRIND) {
       /* off near the end: a pop and maybe a flip */
@@ -198,11 +208,45 @@ void bot_tick(bot *b, const sim *S, int i, input *in) {
     return;
   }
   case PH_LINK: {
-    /* after the feature: hold a manual a moment to link, then let the combo bank and pick again */
-    if (s->st == SK_ROLL && !s->manual && b->t < 6 && b->skill > 0) in->manual = true;
-    if (s->manual && s->manual_t > 30 + (int)(rndf(b) * 4)) in->manual = (b->t & 1) == 0;
-    if (s->st == SK_AIR) { in->grab = false; }
-    if (b->t > 70 && s->st != SK_GRIND && s->st != SK_AIR) b->phase = PH_PICK;
+    /* after the feature: into a manual to link it; a sharp bot pops out of the manual with a flip and manuals again,
+       a link or two, before it lets the combo bank and picks again */
+    if (b->t == 1) b->link_pops = 0, b->link_crouch = 0;
+    bool flat = s->u.y > 0.9f;
+    /* an edge ahead (a roof's, a deck's): brake before it */
+    bool edge = false;
+    if (s->st == SK_ROLL) {
+      float sp = vlen(s->v);
+      v3 dv = sp > 0.3f ? vnorm(V(s->v.x, 0, s->v.z)) : V(0, 0, 0);
+      for (float x = 0.5f; x < sp * 0.9f + 2.0f && sp > 0.3f; x += 0.5f) {
+        phit h;
+        if (!park_ground(k, vmad(s->p, dv, x), 0.4f, 1.0f, &h)) { edge = true; break; }
+      }
+    }
+    if (edge && !s->manual) in->sy = -1;
+    if (edge && s->manual && s->manual_t > 10) { in->manual = (b->t & 1) == 0; return; } /* off two wheels to brake */
+    if (s->st == SK_ROLL && !s->manual && flat && !edge && b->t < 6 && b->skill > 0) in->manual = true;
+    if (s->manual && s->manual_t > 26) {
+      /* only where the flat runs on ahead at the same height (no edge to drop off, no wall to meet) */
+      bool clear = true;
+      v3 dv = vnorm(V(s->v.x, 0, s->v.z));
+      for (float x = 1.0f; x <= 5.0f && clear; x += 1.0f) {
+        phit h;
+        if (!park_ground(k, vmad(s->p, dv, x), 0.4f, 0.4f, &h) || h.n.y < 0.97f || fabsf(h.p.y - s->p.y) > 0.15f) clear = false;
+        else if (park_cast(k, vadd(s->p, V(0, 0.5f, 0)), vmul(dv, x), 1u << SURF_WALL, &h)) clear = false;
+      }
+      if (b->skill == 2 && b->link_pops < 2 && s->cb.n < 8 && (clear || b->link_crouch > 0)) {
+        b->link_crouch++;
+        in->ollie = b->link_crouch < 7; /* crouch, then let go: pop out of the manual */
+        if (b->link_crouch >= 7) b->link_pops++, b->link_crouch = 0, b->t = 6;
+      } else in->manual = (b->t & 1) == 0; /* a press: off two wheels */
+    }
+    if (s->st == SK_AIR) {
+      in->grab = false;
+      if (s->air_t == 2 && b->link_pops > 0) in->flip = true, in->sx = 0;
+      if (s->v.y < -0.5f && b->link_pops > 0) in->manual = true; /* held into the landing */
+    }
+    if (b->t > 70 && s->st != SK_GRIND && s->st != SK_AIR && !s->manual) b->phase = PH_PICK;
+    if (b->t > 400) b->phase = PH_PICK;
     return;
   }
   }
