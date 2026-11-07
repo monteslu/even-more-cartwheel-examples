@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0
+
+- **jewels** (working title): a calm, untimed match-three for one player, readable from across a room, played with a
+  pad, touch or a mouse. Nothing on the board moves unless the player moves it: an illegal swap springs back for
+  free, the hint is free and unlimited, and a deadlocked board reshuffles itself. The stones are cut gems traced per
+  pixel through their real facets (round brilliant, emerald cut, princess, pear, marquise and trillion), with Fresnel
+  reflection at every face, total internal reflection, colour that deepens with the stone's thickness, fire from
+  dispersion and the light they cast onto the velvet tray. Clears burst bigger with more stones, and cascades build
+  with each step.
+- skate: the bots skate from line to line through the parks instead of stepping back to a start, vert airs leave at
+  the ramp face's angle, the plaza has more contrast, the sunset sky no longer bands, and the camera swings back
+  behind the rider after a vert landing.
+
 ## 0.7.0
 
 - **Ember Throne**: a third-person action adventure for one player, with a drop-in second. The wanderer gathers the
