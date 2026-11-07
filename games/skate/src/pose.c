@@ -113,7 +113,7 @@ void rig_pose(rig *r, const skater *k, float dt, float t) {
 
   /* rest, then the body */
   for (int i = 0; i < p->count; i++) p->pos[i] = p->rest_pos[i], p->rot[i] = p->rest_rot[i];
-  float drop = 0.05f + 0.30f * s->crouch + 0.08f * s->tuck;
+  float drop = 0.05f + 0.30f * s->crouch + 0.08f * s->tuck + 0.13f * s->push_w; /* the standing knee bends to let the other foot reach the ground */
   float bob = 0.012f * cw_sin(t * 3.1f) * (1 - s->tuck);
   v3 hp = p->rest_pos[r->hips];
   /* model space: the hips over the deck's middle, a little toward the face; back for a wheelie, forward for a nose one */
@@ -157,10 +157,10 @@ void rig_pose(rig *r, const skater *k, float dt, float t) {
     v3 push;
     if (ph < 0.55f) {
       float u = ph / 0.55f;
-      push = V(0.02f - 0.55f * u, ground + 0.01f, 0.2f);
+      push = V(0.0f - 0.42f * u, ground + 0.01f, 0.16f);
     } else {
       float u = (ph - 0.55f) / 0.45f;
-      push = V(-0.53f + 0.55f * u, ground + 0.12f * cw_sin(u * PI_F), 0.2f);
+      push = V(-0.42f + 0.42f * u, ground + 0.12f * cw_sin(u * PI_F), 0.16f);
     }
     fr = vlerp(fr, push, s->push_w);
   }

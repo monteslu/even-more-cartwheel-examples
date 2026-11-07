@@ -227,6 +227,7 @@ static void init(void *u) {
   cw_debug_f32("view.cam_turn_max", &g_view_metrics.cam_turn_max); /* degrees a frame, the most the view turned */
   cw_debug_f32("view.cam_dist", &g_view_metrics.cam_dist);
   cw_debug_f32("view.foot_err_max", &g_view_metrics.foot_err_max); /* metres, the feet off the deck at worst */
+  cw_debug_i32("view.foot_err_state", &g_view_metrics.foot_err_state); /* what it was doing then: state * 10 + 1 pushing + 2 manual */
   cw_debug_u32("tex.hash", &tex_hash);
   cw_debug_command("run", "run <park> [mode] [players]: start a run now", cmd_run);
 #if AUTO

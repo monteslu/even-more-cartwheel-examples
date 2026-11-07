@@ -55,7 +55,7 @@ cw_node view_camera(int i);
 typedef struct view_stats { int draws, tris; } view_stats;
 extern int g_view_shadow_size;
 /* what the frames show, measured (debug fields: the feel gate) */
-typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max; } view_metrics;
+typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max; int32_t foot_err_state; } view_metrics;
 extern view_metrics g_view_metrics;
 extern float g_cam_k, g_cam_side;
 

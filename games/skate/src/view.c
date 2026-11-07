@@ -648,7 +648,7 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     cw_node3d_set_quaternion(s->rider, q);
     if (s->rig.bound) {
       rig_pose(&s->rig, k, dt, t);
-      if (i == 0 && (k->st == SK_ROLL || k->st == SK_GRIND) && s->rig.foot_err > g_view_metrics.foot_err_max) g_view_metrics.foot_err_max = s->rig.foot_err;
+      if (i == 0 && (k->st == SK_ROLL || k->st == SK_GRIND) && s->rig.foot_err > g_view_metrics.foot_err_max) g_view_metrics.foot_err_max = s->rig.foot_err, g_view_metrics.foot_err_state = k->st * 10 + (k->push_t > 0) + 2 * k->manual;
       t3_mat4 m;
       t3_mat4_compose(&m, rp, q, V(1, 1, 1));
       rag_tick(i, k, &s->rig, s->rider, &m);

@@ -161,6 +161,27 @@ static void bench(kit *b, float x, float z, float yaw) {
   for (int sd = -1; sd <= 1; sd += 2)
     for (int e = -1; e <= 1; e += 2) kit_rest(b, V(x + c * 0.75f * (float)sd + s * 0.15f * (float)e, 0.42f, z - s * 0.75f * (float)sd + c * 0.15f * (float)e));
 }
+/* paint on the ground (drawn only, a hair above it): stripes and rings in the park's colours */
+static void paint_rect(kit *b, float x0, float z0, float x1, float z1, float y, const float col[3]) {
+  kit_piece(b);
+  v3 up = V(0, 1, 0);
+  y += 0.006f;
+  kit_tri(b, V(x0, y, z0), V(x1, y, z0), V(x1, y, z1), up, up, up, SURF_NONE, MAT_PAINT, col);
+  kit_tri(b, V(x0, y, z0), V(x1, y, z1), V(x0, y, z1), up, up, up, SURF_NONE, MAT_PAINT, col);
+}
+static void paint_ring(kit *b, float cx, float cz, float r0, float r1, float y, const float col[3]) {
+  kit_piece(b);
+  v3 up = V(0, 1, 0);
+  y += 0.006f;
+  const int S = 40;
+  for (int i = 0; i < S; i++) {
+    float a0 = 2 * PI_F * (float)i / S, a1 = 2 * PI_F * (float)(i + 1) / S, s0, c0, s1, c1;
+    cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
+    v3 p0 = V(cx + c0 * r0, y, cz + s0 * r0), p1 = V(cx + c1 * r0, y, cz + s1 * r0), q0 = V(cx + c0 * r1, y, cz + s0 * r1), q1 = V(cx + c1 * r1, y, cz + s1 * r1);
+    kit_tri(b, p0, q0, q1, up, up, up, SURF_NONE, MAT_PAINT, col);
+    kit_tri(b, p0, q1, p1, up, up, up, SURF_NONE, MAT_PAINT, col);
+  }
+}
 static void lamp(kit *b, float x, float z) {
   kit_piece(b);
   static const float pole[3] = { 0.3f, 0.32f, 0.36f }, glass[3] = { 1.0f, 0.95f, 0.8f };
@@ -214,6 +235,9 @@ static void build_sunny(kit *b, int variant) {
   k->theme = 0;
   snprintf(k->blurb, sizeof k->blurb, "a sunny concrete park: bowl, quarters, funbox");
   spawn_add(k, V(4, 0, 4), PI_F * 0.5f, "Middle"); /* the first start point: the open middle of the park */
+  paint_ring(b, 4, 6, 3.6f, 4.1f, 0, C_ORANGE), paint_ring(b, 4, 6, 2.6f, 2.9f, 0, C_TEAL);
+  paint_rect(b, 1.5f, -26.9f, 34.5f, -26.5f, 0, C_YELLOW), paint_rect(b, 1.5f, 26.5f, 34.5f, 26.9f, 0, C_MAGENTA);
+  paint_rect(b, -30, 9.6f, -8, 10.0f, 0, C_BLUE);
   /* the bowl, sunk in the deck */
   const float bx = -18, bz = -14, bhx = 9, bhz = 6.5f, brc = 4, bd = 2.7f, br = 2.3f, box_ = 11.5f, boz = 9;
   float holes[4] = { bx - box_, bz - boz, bx + box_, bz + boz };
@@ -354,6 +378,7 @@ static void build_plaza(kit *b, int variant) {
     }
     k->e[prev].next = first, k->e[first].prev = prev;
     line_add(k, V(-16, 0, fz - hd + 0.3f), -PI_F * 0.5f, 6.5f, LINE_LEDGE, V(fx, fh, fz - hd), run, -1, 1.9f, "Fountain Rim");
+    paint_ring(b, fx, fz, 7.4f, 7.8f, 0, C_MAGENTA);
   }
   /* manual pads */
   kit_piece(b);
@@ -472,6 +497,7 @@ static void build_mega(kit *b, int variant) {
     kit_piece(b);
     kit_box(b, 13, 30, 0, 0.4f, 3, 0, 1.4f, MAT_CONCRETE, MAT_CONCRETE, C_RED, C_RED);
   }
+  paint_rect(b, -0.15f, foot + 1, 0.15f, kz - 0.5f, 0, C_YELLOW), paint_rect(b, -0.15f, kn + 22, 0.15f, qz - 1, 0, C_YELLOW);
   int mg = gap_add(k, V(-4, kh - 1.0f, lip - 2.5f), V(4, kh + 1.0f, lip + 0.3f), V(-4, -0.3f, kn + 2.5f), V(4, lh + 0.3f, kn + 22), "Mega Gap", 1500);
   for (int i = 0; i < 8; i++) tree(b, -38 + (float)(i % 2) * 86, -60 + (float)(i / 2) * 32, 1.2f);
   building(b, -60, -40, -42, 0, 10, C_BRICK2);
@@ -539,6 +565,7 @@ static void build_roofs(kit *b, int variant) {
   b->lift = H[2];
   kit_piece(b);
   kit_rail_on(b, V(22, 0.5f, 6), V(38, 0.5f, 6), 0, 0, C_STEEL);
+  paint_ring(b, 31, -4, 4.2f, 4.7f, 0, C_YELLOW);
   b->lift = 0;
   (void)ku;
   /* a bank from the street up to the lowest roof, its deck meeting the roof's edge */
