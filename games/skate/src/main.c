@@ -58,7 +58,7 @@ static struct {
   int last_tick_seen;
   /* debug fields */
   int32_t d_phase, d_park, d_mode, d_tick, d_players, d_state[MAXP], d_score[MAXP], d_tricks[MAXP], d_bails[MAXP], d_grinds[MAXP], d_manuals[MAXP], d_tokens[MAXP],
-    d_best_combo[MAXP], d_lines[MAXP], d_goals[MAXP], d_rag, d_clock;
+    d_best_combo[MAXP], d_lines[MAXP], d_rides[MAXP], d_hikes[MAXP], d_goals[MAXP], d_rag, d_clock;
   float d_pos[MAXP * 3], d_speed[MAXP], d_air[MAXP];
   uint32_t d_hash;
   double t_frame, t_last, t_sim, t_view;
@@ -104,6 +104,7 @@ static void begin_run(void) {
   park_go(G.ui.park, G.ui.mode, G.players);
   view_rigs(G.ui.skin, G.players);
   for (int i = 0; i < MAXP; i++) bot_init(&G.bots[i], 1000u + (uint32_t)i * 77u + (uint32_t)G.ui.park * 13u, AUTO ? 2 : 1);
+  if (getenv("SKATE_LINE")) for (int i = 0; i < MAXP; i++) G.bots[i].want_line = atoi(getenv("SKATE_LINE")); /* development: one line again and again */
   G.phase = PH_RUN;
   G.results_t = 0;
   save_data *sd = cw_shell_game_save();
@@ -223,6 +224,8 @@ static void init(void *u) {
   cw_debug_field("skater.speed", G.d_speed, CW_DBG_F32, MAXP);
   cw_debug_field("skater.max_air", G.d_air, CW_DBG_F32, MAXP);
   cw_debug_field("bot.lines", G.d_lines, CW_DBG_I32, MAXP);
+  cw_debug_field("bot.rides", G.d_rides, CW_DBG_I32, MAXP); /* line starts reached on the board */
+  cw_debug_field("bot.hikes", G.d_hikes, CW_DBG_I32, MAXP); /* line starts reached by back (none on wheels) */
   cw_debug_i32("rag.live", &G.d_rag);
   cw_debug_f32("view.cam_turn_max", &g_view_metrics.cam_turn_max); /* degrees a frame, the most the view turned */
   cw_debug_f32("view.cam_dist", &g_view_metrics.cam_dist);
@@ -242,6 +245,7 @@ static void read_input(input in[MAXP]) {
   memset(in, 0, sizeof(input) * MAXP);
   for (int i = 0; i < G.S.players; i++) {
 #if AUTO
+    if (i == 0 && getenv("SKATE_IDLE")) continue; /* development: the first skater coasts (the camera check) */
     bot_tick(&G.bots[i], &G.S, i, &in[i]);
 #else
     if (!cw_shell_seat_taken(i)) continue;
@@ -301,6 +305,11 @@ static void run_update(void) {
   double t0 = wall();
   sim_step(&G.S, in);
   if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]), fprintf(stderr, "bench: forced bail at tick %d\n", G.S.tick);
+  if (AUTO && getenv("SKATE_VERT_EVERY") && G.S.tick % atoi(getenv("SKATE_VERT_EVERY")) == 0) { /* development: skater 0 sent at a vert wall (x,z,yaw,speed) */
+    float x = -14, z = 0, yaw = 0, sp = 9.5f;
+    if (getenv("SKATE_VERT_AT")) sscanf(getenv("SKATE_VERT_AT"), "%f,%f,%f,%f", &x, &z, &yaw, &sp);
+    sk_place(&G.S.s[0], &G.S.k, V(x, 0, z), yaw, sp);
+  }
   G.t_sim += (wall() - t0) * 1000;
   audio_events(&G.S, G.players);
   for (int i = 0; i < G.players; i++) {
@@ -361,7 +370,7 @@ static void fixed_update(void *u, double dt) {
   for (int i = 0; i < MAXP; i++) {
     const skater *s = &G.S.s[i];
     G.d_state[i] = s->st, G.d_score[i] = s->score, G.d_tricks[i] = s->tricks, G.d_bails[i] = s->bails, G.d_grinds[i] = s->grinds, G.d_manuals[i] = s->manuals;
-    G.d_tokens[i] = s->tokens, G.d_best_combo[i] = s->best_combo, G.d_goals[i] = (int32_t)G.S.goals[i], G.d_lines[i] = G.bots[i].lines_done;
+    G.d_tokens[i] = s->tokens, G.d_best_combo[i] = s->best_combo, G.d_goals[i] = (int32_t)G.S.goals[i], G.d_lines[i] = G.bots[i].lines_done, G.d_rides[i] = G.bots[i].rides, G.d_hikes[i] = G.bots[i].hikes;
     G.d_pos[i * 3] = s->p.x, G.d_pos[i * 3 + 1] = s->p.y, G.d_pos[i * 3 + 2] = s->p.z, G.d_speed[i] = vlen(s->v), G.d_air[i] = s->max_air;
   }
   G.d_rag = rag_live();

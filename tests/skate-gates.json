@@ -1,7 +1,7 @@
 [
   {
     "name": "skate-auto",
-    "note": "skate_auto: two bots skate a score battle in Sunnyside for 1500 ticks: they push, carve, pop, flip, grab, grind the ledges and the bar, air out of the quarter pipes, link manuals, and press back to reach their lines' start points. Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "note": "skate_auto: two bots skate a score battle in Sunnyside for 1500 ticks: they push, carve, pop, flip, grab, grind, air out of the quarter pipes, link manuals, and skate from line to line on the route planner (the starts they reach on the board are bot.rides; bot.hikes, the starts reached by back, stays 0 here). Everything named is simulation, so every host agrees on it. The control is one frame short.",
     "app": "skate_auto",
     "frames": 1500,
     "maxGt16": 0.5,
@@ -21,6 +21,8 @@
       "skater.tokens",
       "skater.best_combo",
       "bot.lines",
+      "bot.rides",
+      "bot.hikes",
       "game.hash"
     ],
     "hosts": [
@@ -42,20 +44,20 @@
       "game.players": 2,
       "game.clock": 5700,
       "skater.state": [
-        0,
+        1,
         0,
         0,
         0
       ],
       "skater.score": [
-        2258,
-        760,
+        734,
+        1290,
         0,
         0
       ],
       "skater.tricks": [
         8,
-        6,
+        8,
         0,
         0
       ],
@@ -67,35 +69,47 @@
       ],
       "skater.grinds": [
         0,
-        2,
+        1,
         0,
         0
       ],
       "skater.manuals": [
-        3,
+        1,
         0,
         0,
         0
       ],
       "skater.tokens": [
-        4,
+        20,
         0,
         0,
         0
       ],
       "skater.best_combo": [
-        792,
+        584,
         760,
         0,
         0
       ],
       "bot.lines": [
-        4,
-        3,
+        1,
+        2,
         0,
         0
       ],
-      "game.hash": 1104525456
+      "game.hash": 672432686,
+      "bot.rides": [
+        2,
+        2,
+        0,
+        0
+      ],
+      "bot.hikes": [
+        0,
+        0,
+        0,
+        0
+      ]
     }
   },
   {

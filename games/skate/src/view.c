@@ -46,6 +46,7 @@ typedef struct seat {
   int last_st;
   bool blocked;
   float look_k;
+  float swing_side; /* which way the camera last swung round the rider (+1 or -1) */
   t3_object *wheel[4];
 } seat;
 
@@ -222,6 +223,7 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
   mesh_build b = { 0 };
   /* the dome is unlit: it holds its brightness whatever the park's exposure, a bright sky over a darker ground */
   float sk = 2.5f * cw_pow(2.0f, -md->exposure), ck = sk * 1.1f;
+  sk /= 1.0f - DITHER_K; /* (the dither's mean, given back) */
   const int AZ = 48, EL = 40;
   const float R = 380;
   for (int j = 0; j <= EL; j++) {
@@ -238,7 +240,7 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
       float a = 2 * PI_F * (float)i / AZ, sa, ca;
       cw_sincos(a, &sa, &ca);
       v3 p = V(ca * ce * R, se * R, sa * ce * R);
-      int v = mb_vert(&b, p, vmul(vnorm(p), -1), (float)i / AZ, (float)j / EL);
+      int v = mb_vert(&b, p, vmul(vnorm(p), -1), (float)i / AZ * 72, (e + 0.12f) / (PI_F * 0.5f + 0.12f) * 20); /* (the dither's texels: finer than a pixel) */
       mb_color(&b, v, c.r * sk, c.g * sk, c.b * sk);
     }
   }
@@ -273,11 +275,15 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
       mb_quad(&cb, v[0], v[1], v[2], v[3]);
     }
   }
+  /* dithered: a smooth gradient over a few levels of the screen's 8 bits bands (a sunset's most); noise finer than a
+     pixel, a level and a half deep, breaks the bands up. (Drawn with the transparent pass's program, the clouds' own:
+     first of the transparent things, behind everything the depth test keeps in front of it.) */
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
   m->vertex_colors = true;
   m->side = T3_DOUBLE_SIDE;
   m->depth_write = false;
   m->fog = false;
+  if (!getenv("SKATE_NO_DITHER")) m->transparent = true, t3_material_set_texture(m, T3_MAP, tex_dither());
   t3_geometry *g = mb_finish(&b);
   t3_mesh *me = t3_mesh_new(g, m);
   me->base.cast_shadow = false, me->base.receive_shadow = false;
@@ -618,7 +624,7 @@ void view_park(const park *k) {
   /* the tokens */
   t3_material *tm = t3_mesh_standard_material_new(0xffc020);
   tm->emissive = lin(1.0f, 0.62f, 0.1f);
-  tm->emissive_intensity = 2.2f;
+  tm->emissive_intensity = 2.2f * fminf(1.0f, cw_pow(2.0f, -md->exposure)); /* (a sunset's exposure would blow a gold gem to white) */
   tm->metalness = 0.7f, tm->roughness = 0.25f;
   t3_geometry *tg = token_geo();
   VW.ntoken = k->ntoken;
@@ -854,8 +860,17 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   if (!s->cam_init) s->cam_h = want_h;
   bool hold = (k->st == SK_AIR && k->vert) || (k->st == SK_ROLL && k->u.y < 0.5f) || k->st == SK_BAIL;
   if (!hold && vlen(want_h) > 0.5f) {
+    /* swing round toward the run about the rider, a share of the angle a frame and never faster than 2.2 radians a
+       second: a run that turned right about (down out of vert air, back from a wall) is swung round to, a side
+       picked, not lerped through the rider (a lerp between opposite headings never turns) */
     float rate = 1 - cw_exp(-dt * (s->blocked ? 7.0f : k->st == SK_GRIND ? 5.0f : 3.2f));
-    s->cam_h = vnorm(vlerp(s->cam_h, want_h, rate));
+    float ang = cw_atan2(vcross(s->cam_h, want_h).y, vdot(s->cam_h, want_h));
+    if (fabsf(ang) > 3.1f) ang = (s->swing_side < 0 ? -1.0f : 1.0f) * fabsf(ang); /* (a heading straight back: the side it last swung to) */
+    else if (fabsf(ang) > 0.05f) s->swing_side = ang < 0 ? -1.0f : 1.0f;
+    float step = clampf(ang * rate, -2.2f * dt, 2.2f * dt);
+    if (getenv("SKATE_CAM_LERP")) /* the camera check's control: the old lerp toward the run (stuck when the run turns about) */
+      s->cam_h = vnorm(vlerp(s->cam_h, want_h, rate)), step = 0;
+    s->cam_h = vnorm(vrot(s->cam_h, V(0, 1, 0), step));
   }
   /* low and close at a roll, further back and wider with speed (the ground rushes past under it) */
   float fast = clampf((sp - 3.0f) / 9.0f, 0, 1);
@@ -933,6 +948,21 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   if (i == 0) g_view_metrics.cam_dist = vlen(vsub(s->cam_p, p));
 }
 
+/* how far vert air turns the board out of the wall's plane, about the coping's line (radians toward level); *face is
+   the ramp face's own turn where it took off (0 for a vertical wall, more for a lip short of vertical). 0 when not in
+   vert air. The board turns from the face toward level with the air's rise: none at the coping, most at the top, and
+   the higher the air the further (a 2.5 m air or more: a little over half way, so a big air still reads steep). */
+static float vert_turn(const skater *k, float *face) {
+  *face = 0;
+  if (k->st != SK_AIR || !k->vert || !VW.k) return 0;
+  phit h;
+  v3 o = vadd(vmad(k->takeoff, k->vert_n, 0.3f), V(0, -0.15f, 0));
+  if (park_cast(VW.k, o, vmul(k->vert_n, -0.6f), 1u << SURF_RIDE, &h) && h.n.y > 0) *face = cw_asin(clampf(h.n.y, 0, 1));
+  float rise = k->p.y - k->takeoff_y, top = k->v.y > 0 ? rise + k->v.y * k->v.y / (2 * GRAV) : k->peak_y - k->takeoff_y;
+  float frac = clampf(rise / fmaxf(top, 0.05f), 0, 1), reach = 0.55f * clampf(top / 2.5f, 0, 1);
+  return *face + (PI_F * 0.5f - *face) * reach * frac * frac * (3 - 2 * frac);
+}
+
 void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players, float dt) {
   static float t;
   t += dt;
@@ -953,14 +983,20 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
       float spin = 2.5f * (1 - cw_exp(-(float)k->bail_t * 0.04f));
       bf = vrot(vnorm(ff), n, spin), bu = n;
     }
-    if (k->st == SK_AIR && k->vert) {
-      /* vert air, drawn: the board stays square to the wall as it leaves and comes back, and turns level over the
-         coping at the top (the rider upright there), about the line of the coping */
-      v3 ax = vcross(k->vert_n, V(0, 1, 0));
-      if (vlen(ax) > 0.5f) {
+    {
+      /* vert air, drawn with its real attitude (the simulation keeps the board square to the wall's plane): it leaves
+         at the angle of the ramp's face where it took off and turns toward level about the line of the coping only
+         as far as the air's height allows, most at the top, and is back at the face's angle by the time it comes
+         down to the coping, so it meets the wall square. Between ticks both ends' turns are blended (a takeoff and a
+         landing do not jump), about the rider's middle. */
+      const skater *a = &prev[i];
+      float al = vlen(vsub(a->p, k->p)) > 3.0f ? 1.0f : alpha, a0, b0, ta = vert_turn(a, &a0), tb = vert_turn(k, &b0);
+      const skater *vs = (k->st == SK_AIR && k->vert) ? k : (a->st == SK_AIR && a->vert) ? a : NULL;
+      v3 ax = vs ? vcross(vs->vert_n, V(0, 1, 0)) : V(0, 0, 0);
+      if (vs && vlen(ax) > 0.5f) {
         ax = vnorm(ax);
-        float w = clampf(1 - fabsf(k->v.y) / 5.5f, 0, 1), th = w * w * (3 - 2 * w) * 1.2f;
-        v3 c = vadd(p, vmul(u, 0.6f));
+        float th = ta + (tb - ta) * al, th0 = a0 + (b0 - a0) * al;
+        v3 c = vadd(p, vmul(vrot(u, ax, th0), 0.6f));
         f = vrot(f, ax, th), u = vrot(u, ax, th);
         p = vsub(c, vmul(u, 0.6f));
       }

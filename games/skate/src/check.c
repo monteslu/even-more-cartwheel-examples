@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #if defined(__linux__)
+#include <time.h>
 #include <unistd.h>
 #endif
 
@@ -348,8 +349,26 @@ static int line_ok(int park_id, int variant, int line, int tries, int *ticks) {
   return 0;
 }
 
+/* the bots' routes between lines: two sharp bots skate the park freely for three minutes (as the auto cart does); how
+   many line starts they reached on the board, walked to, and gave up on */
+static void routes(int park_id, int *rides, int *hikes, int *given_up, int *lines) {
+  static sim S;
+  memset(&S, 0, sizeof S);
+  sim_init(&S, park_id, MODE_FREE, 2);
+  bot B[2];
+  for (int i = 0; i < 2; i++) bot_init(&B[i], 4242u + (uint32_t)i * 77u + (uint32_t)park_id * 13u, 2);
+  for (int t = 0; t < TPS * 180; t++) {
+    input in[MAXP];
+    memset(in, 0, sizeof in);
+    for (int i = 0; i < 2; i++) bot_tick(&B[i], &S, i, &in[i]);
+    sim_step(&S, in);
+  }
+  *rides = B[0].rides + B[1].rides, *hikes = B[0].hikes + B[1].hikes, *given_up = B[0].route_fails + B[1].route_fails, *lines = B[0].lines_done + B[1].lines_done;
+  sim_free(&S);
+}
+
 static int cmd_parks(int only) {
-  int bad = 0;
+  int bad = 0, ctl_gu = 0, ctl_parks = 0;
   for (int p = 0; p < PARK_COUNT; p++) {
     if (only >= 0 && p != only) continue;
     park k;
@@ -388,8 +407,27 @@ static int cmd_parks(int only) {
       printf("  control short kicker (%s): %s\n", k.line[gl].name, ok ? "CONTROL PASSED (a failure)" : "fails as it must");
       if (ok) bad++;
     }
+    /* the routes: every one the bots set off on reached its start, on the board (the planner's grid true to the park);
+       the control plans blind to the park (a straight line through whatever is in the way): its routes must run into
+       things and be given up */
+    {
+      int rides, hikes, gu, lines;
+      routes(p, &rides, &hikes, &gu, &lines);
+      bool ok = gu == 0 && rides >= 4;
+      printf("  routes: %d starts reached on the board, %d walked to (none there on wheels), %d given up, %d lines skated: %s\n", rides, hikes, gu, lines, ok ? "ok" : "FAIL");
+      if (!ok) bad++;
+      g_nav_ignore_walls = true;
+      routes(p, &rides, &hikes, &gu, &lines);
+      g_nav_ignore_walls = false;
+      printf("  control blind routes: %d reached, %d given up\n", rides, gu);
+      ctl_gu += gu, ctl_parks += gu > 0;
+    }
     park_free(&k);
   }
+  /* (an open park can be crossed in a straight line: the control must fail on most of them, not each) */
+  int ran = only >= 0 ? 1 : PARK_COUNT;
+  if (ctl_parks * 2 > ran) printf("control blind routes: %d given up in %d of %d parks (fails as it must)\n", ctl_gu, ctl_parks, ran);
+  else printf("control blind routes: %d given up in %d of %d parks: CONTROL PASSED (a failure)\n", ctl_gu, ctl_parks, ran), bad++;
   printf(bad ? "parks FAIL: %d problems\n" : "parks ok\n", bad);
   return bad ? 1 : 0;
 }
@@ -415,7 +453,7 @@ static int cmd_soak(int minutes, int players, int park0) {
   static sim S;
   bot B[MAXP];
   long first = 0;
-  int parks_done = 0, lines_done = 0, lines_failed = 0, bails = 0, tricks = 0, grinds = 0, manuals = 0, lost = 0;
+  int parks_done = 0, lines_done = 0, lines_failed = 0, bails = 0, tricks = 0, grinds = 0, manuals = 0, lost = 0, rides = 0, hikes = 0, given_up = 0;
   long long score = 0;
   bool inject = getenv("SKATE_SOAK_INJECT") != NULL;
   int per_park = TPS * 60 * 2, total = TPS * 60 * minutes;
@@ -427,6 +465,7 @@ static int cmd_soak(int minutes, int players, int park0) {
     input in[MAXP];
     memset(in, 0, sizeof in);
     for (int i = 0; i < S.players; i++) bot_tick(&B[i], &S, i, &in[i]);
+    if (getenv("SKATE_TRACEP") && t > atoi(getenv("SKATE_TRACEP")) - 400 && t <= atoi(getenv("SKATE_TRACEP"))) { int ti = getenv("SKATE_TRACEI") ? atoi(getenv("SKATE_TRACEI")) : 0; const skater *s = &S.s[ti]; printf("  t%d ph%d line %d st %d p(%.2f %.2f %.2f) v(%.2f %.2f %.2f) u(%.2f %.2f %.2f) in(%.2f %.2f %c%c%c%c%c) ri %d/%d\n", t, B[ti].phase, B[ti].line, s->st, (double)s->p.x, (double)s->p.y, (double)s->p.z, (double)s->v.x, (double)s->v.y, (double)s->v.z, (double)s->u.x, (double)s->u.y, (double)s->u.z, (double)in[ti].sx, (double)in[ti].sy, in[ti].ollie ? 79 : 46, in[ti].flip ? 70 : 46, in[ti].grab ? 71 : 46, in[ti].grind ? 82 : 46, in[ti].manual ? 77 : 46, B[ti].route_i, B[ti].route_n); }
     int pv[MAXP], pf[MAXP];
     for (int i = 0; i < MAXP; i++) pv[i] = S.s[i].vert, pf[i] = S.s[i].flip;
     sim_step(&S, in);
@@ -454,8 +493,8 @@ static int cmd_soak(int minutes, int players, int park0) {
       for (int i = 0; i < S.players; i++) {
         const skater *s = &S.s[i];
         bails += s->bails, tricks += s->tricks, grinds += s->grinds, manuals += s->manuals, lost += s->lost, score += s->score;
-        lines_done += B[i].lines_done, lines_failed += B[i].lines_failed;
-        B[i].lines_done = B[i].lines_failed = 0;
+        lines_done += B[i].lines_done, lines_failed += B[i].lines_failed, rides += B[i].rides, hikes += B[i].hikes, given_up += B[i].route_fails;
+        B[i].lines_done = B[i].lines_failed = B[i].rides = B[i].hikes = B[i].route_fails = 0;
       }
       printf("park %d done (cycle %d): rss %ld kB\n", S.park_id, parks_done / PARK_COUNT, rss_kb());
       parks_done++;
@@ -472,6 +511,7 @@ static int cmd_soak(int minutes, int players, int park0) {
   }
   printf("soak stats: %d parks, %d lines skated, %d missed, %d tricks, %d grinds, %d manuals, %d bails, %lld points, %d lost\n", parks_done, lines_done, lines_failed, tricks,
          grinds, manuals, bails, score, lost);
+  printf("soak routes: %d starts reached on the board, %d walked to (no way there on wheels), %d routes given up\n", rides, hikes, given_up);
   if (lost) { printf("soak FAIL: %d falls out of the world\n", lost); return 1; }
   printf("soak ok: %d minutes, %d players\n", minutes, players);
   return 0;
@@ -512,7 +552,7 @@ static int cmd_script(int start) {
     if (s->ev) printf("f%d %-5s p(%.1f %.1f %.1f) v%.1f ev%x cb%d %s%s\n", f, sk_state_name(s->st), (double)s->p.x, (double)s->p.y, (double)s->p.z, (double)vlen(s->v), s->ev, s->cb.n,
                       s->ev & EV_BAIL ? "BAIL " : "", s->ev & EV_BAIL && s->bail_why ? s->bail_why : "");
   }
-  printf("tricks %d bails %d score %d\n", S.s[0].tricks, S.s[0].bails, S.s[0].score);
+  printf("tricks %d bails %d score %d tick %d hash %u\n", S.s[0].tricks, S.s[0].bails, S.s[0].score, S.tick, S.hash);
   return 0;
 }
 
@@ -524,9 +564,17 @@ static int cmd_auto(int park_id, int players, int ticks) {
   bot B[MAXP];
   for (int i = 0; i < MAXP; i++) bot_init(&B[i], 1000u + (uint32_t)i * 77u + (uint32_t)park_id * 13u, 2);
   for (int t = 0; t < ticks; t++) {
+    static int ph_was[MAXP] = { -1, -1, -1, -1 };
+    if (getenv("SKATE_ROUTES"))
+      for (int i = 0; i < S.players; i++)
+        if (B[i].phase != ph_was[i]) {
+          ph_was[i] = B[i].phase;
+          printf("t%d p%d phase %d line %d %s at (%.1f %.1f %.1f) v %.1f st %d rides %d hikes %d given up %d\n", t, i, B[i].phase, B[i].line, B[i].line >= 0 ? S.k.line[B[i].line].name : "-", (double)S.s[i].p.x, (double)S.s[i].p.y, (double)S.s[i].p.z, (double)vlen(S.s[i].v), S.s[i].st, B[i].rides, B[i].hikes, B[i].route_fails);
+        }
     input in[MAXP];
     memset(in, 0, sizeof in);
     for (int i = 0; i < S.players; i++) bot_tick(&B[i], &S, i, &in[i]);
+    if (getenv("SKATE_TRACEP") && t % 6 == 0) { int i = atoi(getenv("SKATE_TRACEP")); const skater *s = &S.s[i]; printf("  t%d ph%d p(%.2f %.2f %.2f) v(%.2f %.2f %.2f) u.y %.2f in(%.2f %.2f) ri %d/%d\n", t, B[i].phase, (double)s->p.x, (double)s->p.y, (double)s->p.z, (double)s->v.x, (double)s->v.y, (double)s->v.z, (double)s->u.y, (double)in[i].sx, (double)in[i].sy, B[i].route_i, B[i].route_n); }
     sim_step(&S, in);
     for (int i = 0; i < S.players; i++) {
       if (getenv("SKATE_SCAN")) {
@@ -545,10 +593,85 @@ static int cmd_auto(int park_id, int players, int ticks) {
          S.s[0].score, S.s[1].score, S.s[2].score, S.s[3].score, S.s[0].tricks, S.s[1].tricks, S.s[2].tricks, S.s[3].tricks, S.s[0].bails, S.s[1].bails, S.s[2].bails, S.s[3].bails,
          S.s[0].grinds, S.s[1].grinds, S.s[2].grinds, S.s[3].grinds, S.s[0].manuals, S.s[1].manuals, S.s[2].manuals, S.s[3].manuals, S.s[0].tokens, S.s[1].tokens, S.s[2].tokens, S.s[3].tokens,
          S.s[0].best_combo, S.s[1].best_combo, S.s[2].best_combo, S.s[3].best_combo, B[0].lines_done, B[1].lines_done, B[2].lines_done, B[3].lines_done, S.s[0].st, S.s[1].st, S.s[2].st, S.s[3].st);
+  printf("routes: rides [%d,%d,%d,%d] hikes [%d,%d,%d,%d] given up [%d,%d,%d,%d] lines missed [%d,%d,%d,%d]\n", B[0].rides, B[1].rides, B[2].rides, B[3].rides, B[0].hikes, B[1].hikes, B[2].hikes, B[3].hikes, B[0].route_fails, B[1].route_fails, B[2].route_fails, B[3].route_fails, B[0].lines_failed, B[1].lines_failed, B[2].lines_failed, B[3].lines_failed);
+  return 0;
+}
+
+/* ── the route planner's map: from each start point, which lines' starts it can skate to (tuning) ── */
+static int cmd_nav(void) {
+  if (getenv("SKATE_NAVROUTE")) { /* park,x,y,z,x,y,z: the route between two points, a cell a line */
+    int p;
+    v3 a, e;
+    if (sscanf(getenv("SKATE_NAVROUTE"), "%d,%f,%f,%f,%f,%f,%f", &p, &a.x, &a.y, &a.z, &e.x, &e.y, &e.z) != 7) return 2;
+    park k;
+    memset(&k, 0, sizeof k);
+    park_build(&k, p, PARKV_GAME);
+    nav_flood(&k, nav_cell(&k, a));
+    int r[2000], n = nav_route(&k, nav_cell(&k, e), r, 2000);
+    for (int i = 0; i < n; i++) {
+      v3 q = nav_point(&k, r[i]);
+      printf("%d (%.2f %.2f %.2f) cost %.2f\n", i, (double)q.x, (double)q.y, (double)q.z, (double)nav_dist(&k, r[i]));
+    }
+    return 0;
+  }
+  for (int p = 0; p < PARK_COUNT; p++) {
+    park k;
+    memset(&k, 0, sizeof k);
+    park_build(&k, p, PARKV_GAME);
+    struct timespec t0, t1;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+    int c0 = nav_cell(&k, k.spawn[0].p);
+    nav_flood(&k, c0);
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    printf("park %d %s: first flood %.1f ms\n", p, k.name, (double)(t1.tv_sec - t0.tv_sec) * 1e3 + (double)(t1.tv_nsec - t0.tv_nsec) * 1e-6);
+    for (int a = -1; a < k.nline; a++) {
+      v3 from = a < 0 ? k.spawn[0].p : k.line[a].start;
+      int c = nav_cell(&k, from);
+      clock_gettime(CLOCK_MONOTONIC, &t0);
+      nav_flood(&k, c);
+      clock_gettime(CLOCK_MONOTONIC, &t1);
+      printf("  %-16s cell %6d (%.1f ms):", a < 0 ? "spawn 0" : k.line[a].name, c, (double)(t1.tv_sec - t0.tv_sec) * 1e3 + (double)(t1.tv_nsec - t0.tv_nsec) * 1e-6);
+      for (int b = 0; b < k.nline; b++) {
+        float d = nav_dist(&k, nav_cell(&k, k.line[b].start));
+        if (d < 1e29f) printf(" %d:%.0f", b, (double)d);
+        else printf(" %d:-", b);
+      }
+      printf("\n");
+      int mp = -9, ml = -9;
+      if (getenv("SKATE_NAVMAP")) sscanf(getenv("SKATE_NAVMAP"), "%d,%d", &mp, &ml);
+      if (mp == p && ml == a) /* a metre a character: '.' reached, ':' a reached slope, 'o' skateable but not reached, ' ' not skateable */
+        for (float z = k.lo.z; z < k.hi.z; z += 1.0f) {
+          for (float x = k.lo.x; x < k.hi.x; x += 1.0f) {
+            phit h;
+            bool w = park_ground(&k, V(x, k.hi.y + 1, z), 0, k.hi.y - k.lo.y + 3, &h) && h.n.y >= 0.85f;
+            int c = nav_cell(&k, V(x, w ? h.p.y : 0, z));
+            float d = nav_dist(&k, c);
+            putchar(!w ? ' ' : d < 1e29f ? (h.n.y < 0.985f ? ':' : '.') : 'o');
+          }
+          putchar('\n');
+        }
+    }
+    park_free(&k);
+  }
   return 0;
 }
 
 int main(int argc, char **argv) {
+  if (argc >= 2 && !strcmp(argv[1], "nav")) return cmd_nav();
+  if (argc >= 6 && !strcmp(argv[1], "ground")) { /* skate_check ground <park> x y z: the ride surfaces under a point (development) */
+    park k;
+    memset(&k, 0, sizeof k);
+    park_build(&k, atoi(argv[2]), 0);
+    v3 p = V((float)atof(argv[3]), (float)atof(argv[4]), (float)atof(argv[5]));
+    for (float y = p.y + 0.5f; y > p.y - 1.0f; y -= 0.25f) {
+      phit h;
+      bool g = park_cast(&k, V(p.x, y, p.z), V(0, -0.3f, 0), 1u << SURF_RIDE, &h);
+      printf("from %.2f: %s", (double)y, g ? "hit" : "none");
+      if (g) printf(" y %.3f n %.2f %.2f %.2f tri %d piece %d", (double)h.p.y, (double)h.n.x, (double)h.n.y, (double)h.n.z, h.tri, k.t[h.tri].piece);
+      printf("\n");
+    }
+    return 0;
+  }
   if (argc >= 2 && !strcmp(argv[1], "phys")) return cmd_phys();
   if (argc >= 2 && !strcmp(argv[1], "auto")) return cmd_auto(argc > 2 ? atoi(argv[2]) : 0, argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 1500);
   if (argc >= 2 && !strcmp(argv[1], "script")) return cmd_script(argc > 2 ? atoi(argv[2]) : 71);
