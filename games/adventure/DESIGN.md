@@ -56,8 +56,10 @@ rings, the marsh basin, the keep hill, the heights plateau and its gorge, the un
 spire, the wood), ramps between them (stairs, switchbacks, a cliff path), highlands between the regions and mountains
 round the edge. Painted by zone and slope, with soft edges where a path meets the grass; grass and stones scattered by
 the engine. Trees are the game's own: nine species (oak, birch, aspen, willow, pine, fir, windswept, deepwood and the
-glowcap), a few per region, each a trunk and a crown of alpha-cut leaf cards, drawn as one instanced mesh per species
-and region; the crowns sway in the wind about the top of the trunk. A cloud layer drifts over the sky. Buildings are boxes
+glowcap), a few per region, each a trunk and a crown of alpha-cut leaf cards, drawn in 48 m tiles (one instanced mesh
+per species, region and tile): full crowns that sway in the wind within 70 m, an impostor crown of a few large clusters
+out to 190 m, nothing past that (the haze has them). The paths are packed earth with angular gravel; the cliffs are
+strata of violet, grey and rust beds split by joints and cracks; the grass is short and dense, fading out by 20 m. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
 regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
@@ -98,4 +100,8 @@ stairs (FootPlacement3D on the physics ground); the dead fall as ragdolls.
   GL and an impossible 1 ms bound must fail. `tests/adventure-perf-probe.mjs` takes parts out (ADV_PROBE_*) and compares
   medians of interleaved runs. What moved the frame: the terrain no longer casts the sun's shadow (about a quarter of the
   WebGPU frame), a depth pass first (the heights from 5.7 to 3.7 ms on WebGPU), the marsh water drawn only near the
-  marsh, lighter crowns and sparser groves.
+  marsh, lighter crowns and sparser groves, impostor crowns for far trees, bloom over four levels, the terrain's full
+  shading to 110 m. The meadow, the spire and the wood stay over the bound (about 4.7 to 5.9 ms): with every part the
+  probe can take out gone (terrain, trees, grass, stones, buildings, characters, water, clouds, sky background) the
+  wood's scene pass still costs 3.7 ms on GL against 2.6 ms at the heights, so the remaining cost is not in the
+  game's content; see the probe's `bench_terrain` and `bench` lines.

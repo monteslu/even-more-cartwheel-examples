@@ -471,7 +471,7 @@ static void render(void *u, double alpha) {
               G.t_view / G.t_n, (int)S.tick, S.region, G.foes_live, G.rigs, rs.draw_calls, rs.triangles, G.boss_hp);
       cw_terrain_stats ts;
       cw_terrain_get_stats(world_terrain(), &ts);
-      fprintf(stderr, "bench_terrain patches=%d far=%d culled=%d scatter_inst=%d scatter_draws=%d\n", ts.patches, ts.patches_far, ts.patches_culled, ts.scatter_instances, ts.scatter_draws);
+      fprintf(stderr, "bench_terrain patches=%d far=%d culled=%d scatter_inst=%d scatter_draws=%d select_ms=%.2f scatter_ms=%.2f upload_ms=%.2f\n", ts.patches, ts.patches_far, ts.patches_culled, ts.scatter_instances, ts.scatter_draws, ts.select_ms, ts.scatter_ms, ts.upload_ms);
       const cw_pass_stat *pst;
       int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
       fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));

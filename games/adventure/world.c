@@ -1201,9 +1201,11 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
   if (getenv("ADV_PROBE_SHADOW1")) cw_node_set(W_sun, "shadow_cascades", cw_val_int(1)), cw_node_set(W_sun, "shadow_distance", cw_val_float(28));
+  if (getenv("ADV_PROBE_SHADOWNEAR")) cw_node_set(W_sun, "shadow_distance", cw_val_float(26));
   if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
   if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
   if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "energy", cw_val_float(0));
+  if (getenv("ADV_PROBE_NOPREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(false));
   if (getenv("ADV_PROBE_PREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(true));
   if (getenv("ADV_PROBE_NOAA")) cw_node_set(W_post, "aa", cw_val_enum("NONE"));
   if (getenv("ADV_PROBE_FORWARD")) cw_node_set(cw_node_get(W_root, "World/Lighting"), "mode", cw_val_enum("FORWARD"));
@@ -1242,9 +1244,9 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.18f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 3.5f, 1.7f },
+  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.1f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 4.0f, 1.74f },
   /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
-  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.36f },
+  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.42f },
   /* the marsh: teal and violet, a thicker cool mist */
   { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
   /* the keep: a crimson sunset, ember haze */

@@ -478,14 +478,14 @@ if (want('clouds')) {
 // ── the grade: a contrast S-curve and a little saturation, as a 33^3 .cube the PostProcess applies after tone mapping
 if (want('luts')) {
   mkdirSync(join(ROOT, 'grade'), { recursive: true });
-  const N = 33, a = 9.5, mid = 0.4;
+  const N = 33, a = 10.5, mid = 0.4;
   const sig = (x) => 1 / (1 + Math.exp(-a * (x - mid)));
   const s0 = sig(0), s1 = sig(1), curve = (x) => (sig(x) - s0) / (s1 - s0);
   const lines = ['TITLE "adventure contrast"', `LUT_3D_SIZE ${N}`];
   for (let b = 0; b < N; b++) for (let g = 0; g < N; g++) for (let r = 0; r < N; r++) {
     let c = [r / (N - 1), g / (N - 1), b / (N - 1)].map((x) => Math.max(0, (x - 0.06) / 0.94)).map((x) => x * 0.1 + curve(x) * 0.9); // a black point under the fog and the sky fill, then the S-curve
     const l = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-    c = c.map((x) => Math.min(1, Math.max(0, l + (x - l) * 0.85)));
+    c = c.map((x) => Math.min(1, Math.max(0, l + (x - l) * 0.82)));
     lines.push(c.map((x) => x.toFixed(5)).join(' '));
   }
   writeFileSync(join(ROOT, 'grade', 'contrast.cube'), lines.join('\n') + '\n');
