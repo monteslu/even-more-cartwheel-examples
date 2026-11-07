@@ -251,7 +251,7 @@ static void camera_step(const input *in) {
   /* never through a wall: a sphere swept from the target out to the camera; the camera stops short of what it hits */
   cw_qshape3d sph = cw_qshape3d_sphere(tgt, 0.32f);
   cw_ray_hit3d hit;
-  cw_phys_filter f = cw_phys_filter_layers(1u);
+  cw_phys_filter f = cw_phys_filter_layers(1u | 8u); /* the world and the trees' crowns */
   float allowed = want;
   if (cw_world3d_shapecast(world_phys(), &sph, (t3_vec3){ dir.x * want, dir.y * want, dir.z * want }, &f, &hit, 1) > 0) allowed = fmaxf(0.6f, hit.fraction * want - 0.05f);
   if (allowed < S.cam_dist) S.cam_dist = allowed, S.cam_clip_t++;

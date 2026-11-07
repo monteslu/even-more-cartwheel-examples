@@ -120,7 +120,10 @@ static bool build_step(void) {
     float worst;
     int bad = world_ground_check(&worst);
     const wprop *pp;
-    fprintf(stderr, "adv-ground props=%d boxes=%d floating=%d worst_cm=%d\n", world_props(&pp), world_box_count(), bad, (int)(worst * 100));
+    extern int world_scatter(const float (**pos)[5], const int **layer);
+    const float (*sp)[5];
+    const int *sl;
+    fprintf(stderr, "adv-ground props=%d boxes=%d scatter=%d floating=%d worst_cm=%d\n", world_props(&pp), world_box_count(), world_scatter(&sp, &sl), bad, (int)(worst * 100));
   }
   G.camera = cw_node_get(root, "World/Camera");
   G.built = true;

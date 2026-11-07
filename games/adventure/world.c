@@ -380,12 +380,22 @@ static cw_node prop(int rg, const char *file, float x, float z, float yaw, float
   if (nprop < MAXPROP) PROP[nprop++] = (wprop){ x, y + sink, z, r, file, rg };
   return n;
 }
+/* a tree's crown as a box the camera stops at (layer 3: only the camera's sweep sees it; bodies walk under it) */
+static void crown(int rg, float x, float y, float z, float hr, float hy, float cy) {
+  if (!cw_body3d_valid(W_body[rg])) col_box(rg, x, -50, z, 0.1f, 0.1f, 0.1f, 0); /* (makes the region's body) */
+  cw_shape3d_def sd = cw_shape3d_default_def();
+  sd.layer = 3;
+  cw_shape3d_box(W_body[rg], &sd, (t3_vec3){ hr, hy, hr }, (cw_xform3){ .p = { x, y + cy, z }, .q = { 0, 0, 0, 1 } });
+}
 /* the props that also block (a tree trunk, a boulder, a pillar, a brazier): a box in the region's body */
 static void prop_solid(int rg, const char *file, float x, float z, float yaw, float scale, float r, float sink, float hr, float h) {
   cw_node n = prop(rg, file, x, z, yaw, scale, r, sink, true);
   if (!n.id) return;
   t3_vec3 p = cw_node3d_position(n);
   col_box(rg, x, p.y + h / 2, z, hr, h / 2, hr, yaw);
+  if (!strcmp(file, "tree")) crown(rg, x, p.y, z, 2.0f * scale, 1.4f * scale, 4.8f * scale);
+  if (!strcmp(file, "tree_gold")) crown(rg, x, p.y, z, 1.6f * scale, 1.2f * scale, 3.5f * scale);
+  if (!strcmp(file, "mangrove")) crown(rg, x, p.y, z, 2.0f * scale, 1.2f * scale, 3.8f * scale);
 }
 
 /* ── the objects the rules touch ───────────────────────────────────── */
@@ -799,6 +809,38 @@ static void build_keep(void) {
   foe(K_RAIDER, R, 16, 58, 136, 0.2f);
   foe(K_EMBER, R, 17, 55, 104, 0);
 }
+/* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, trees, pines, stilt trees, stones):
+ * its placement is a pure function of the cell, so the trees get trunks to bump into and crowns the camera stops at,
+ * and every instance joins the grounding check */
+#define MAXSCAT 2048
+static float SCAT[MAXSCAT][5];
+static int SCAT_LAYER[MAXSCAT], nscat;
+int world_scatter(const float (**pos)[5], const int **layer) { *pos = (const float (*)[5])SCAT; *layer = SCAT_LAYER; return nscat; }
+static void scatter_bodies(void) {
+  nscat = 0;
+  for (int layer = 1; layer <= 4; layer++)
+    for (int cz = -1; cz <= WORLD_N / 32 + 1; cz++)
+      for (int cx = -1; cx <= WORLD_N / 32 + 1; cx++) {
+        float buf[5 * 256];
+        int n = cw_terrain_scatter_cell(W_terrain, layer, cx, cz, buf, 256);
+        for (int i = 0; i < n && nscat < MAXSCAT; i++) {
+          const float *q = buf + 5 * i;
+          bool dup = false;
+          for (int k = nscat - 1; k >= 0 && k >= nscat - 512 && !dup; k--) dup = SCAT_LAYER[k] == layer && fabsf(SCAT[k][0] - q[0]) < 0.01f && fabsf(SCAT[k][2] - q[2]) < 0.01f;
+          if (dup) continue;
+          memcpy(SCAT[nscat], q, sizeof(float) * 5), SCAT_LAYER[nscat] = layer, nscat++;
+          int rg = world_region_at(q[0], q[2]);
+          float sc = q[3];
+          if (layer == 4) { col_box(rg, q[0], q[1] + 0.25f * sc, q[2], 0.35f * sc, 0.25f * sc, 0.35f * sc, q[4]); continue; } /* a stone */
+          col_box(rg, q[0], q[1] + 1.5f * sc, q[2], 0.3f * sc, 1.5f * sc, 0.3f * sc, 0); /* the trunk */
+          if (layer == 1) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.4f * sc, 4.8f * sc);
+          if (layer == 2) crown(rg, q[0], q[1], q[2], 1.3f * sc, 2.0f * sc, 3.4f * sc);
+          if (layer == 3) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.2f * sc, 3.8f * sc);
+        }
+      }
+  cw_info("adventure: %d scatter trees and stones given bodies", nscat);
+}
+
 static void build_route(void) {
   /* the autopilot's way through the game, in order: rest, the canyon, the maul, the Thornwarden, the passage, the
    * marsh, the Tidecaller, the lever, the meadow's cellar, the gate, the keep, the Ember King */
@@ -869,6 +911,7 @@ void world_build(cw_tree *tree) {
   build_marsh();
   build_keep();
   build_route();
+  scatter_bodies();
   /* the merged buildings: one mesh per region and material */
   for (int r = 0; r < RG_COUNT; r++)
     for (int m = 0; m < MT_COUNT; m++) {
@@ -996,6 +1039,11 @@ int world_ground_check(float *worst_out) {
     }
     float gap = bottom - hi;
     if (gap > 0.03f) { bad++; cw_warn("adventure: box %d floats %.3f m at (%.1f, %.1f)", i, gap, b->cx, b->cz); }
+    if (gap > worst) worst = gap;
+  }
+  for (int i = 0; i < nscat; i++) { /* the engine's scatter: each instance's base on the terrain under it */
+    float gap = SCAT[i][1] - world_height(SCAT[i][0], SCAT[i][2]);
+    if (gap > 0.03f) { bad++; cw_warn("adventure: scatter %d (layer %d) floats %.3f m at (%.1f, %.1f)", i, SCAT_LAYER[i], gap, SCAT[i][0], SCAT[i][2]); }
     if (gap > worst) worst = gap;
   }
   *worst_out = worst;
