@@ -61,7 +61,11 @@ int main(int argc, char **argv) {
     memset(in, 0, sizeof in);
     bot_input(&B, &S, 0, &in[0]);
     for (int i = 1; i < S.players; i++) bot_follow(&S, i, &in[i]);
+    static int prev_i;
+    int i_before = B.i;
     sim_step(&S, in);
+    if (getenv("EXPLORER_SOAK_HURT") && B.i < prev_i - 40) printf("t%ld REGRESS step %d -> %d at %.1f,%.1f room %d mode %d deaths %d\n", tick, prev_i, B.i, S.p[0].x, S.p[0].y, S.room, B.mode, S.deaths);
+    prev_i = i_before > B.i ? i_before : B.i;
     for (int k = 0; getenv("EXPLORER_SOAK_HURT") && k < S.nev; k++)
       if (S.ev[k].kind == EV_HURT || S.ev[k].kind == EV_DIE) {
         printf("t%ld %s hp %d at %.1f,%.1f room %d state %d:", tick, S.ev[k].kind == EV_DIE ? "DIE" : "hurt", S.p[0].hp, S.p[0].x, S.p[0].y, S.room, S.p[0].state);

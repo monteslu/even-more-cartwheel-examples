@@ -360,6 +360,7 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
 
 static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_on) {
   cw_color acc = hexc(g->accent, 1);
+  if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* warm lamps in cool regions */
   float x = e->x, y = e->y, flick = 0.9f + 0.1f * sinf(t * 7.3f + x) * sinf(t * 3.1f + y);
   cw_vec2 core;
   if (e->hold == HOLD_CEIL) { /* a lantern on a chain */
@@ -391,7 +392,7 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
   }
   /* lamps lean warm against cool regions and cool against warm ones: colour contrast, not darkness */
   float warm = acc.r - acc.b;
-  cw_color lc = warm > 0.2f ? mixc(acc, rgba(0.75f, 0.9f, 1, 1), 0.35f) : mixc(acc, rgba(1, 0.78f, 0.5f, 1), 0.55f);
+  cw_color lc = warm > 0.2f ? mixc(acc, rgba(0.75f, 0.9f, 1, 1), 0.35f) : mixc(acc, rgba(1, 0.7f, 0.38f, 1), 0.8f);
   if (lights_on) light(core.x, core.y, e->hold == HOLD_CEIL ? 9.0f : 6.0f, lc, (e->hold == HOLD_CEIL ? 0.8f : 0.5f) * flick, e->hold == HOLD_CEIL);
 }
 
@@ -609,7 +610,7 @@ static void draw_boss(const sim *s, float t) {
   glowing(tell ? 5.0f : 2.5f);
   cw_r2d_circle(eye, 0.16f + tk * 0.06f, 10, tell ? rgba(1, 1, 1, 1) : gl);
   glowing(1);
-  light(c.x, c.y, 10, gl, 0.6f + tk * 0.6f, false);
+  light(c.x + f * hw * 1.5f, c.y - hh, 8, gl, 0.3f + tk * 0.5f, false); /* (in front of it: the warden is lit, not blown out) */
 }
 
 /* tells the player reads: marks where rain or pillars will fall, the line a sweep will cut, the dive's aim */
@@ -896,6 +897,7 @@ void view_draw(const sim *s, float t) {
     const ent *e = &s->w->ents[i];
     if (e->kind != EK_LAMP || e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
     cw_color acc = hexc(REGIONS[s->w->rooms[e->room].region].accent, 1);
+    if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* (as the lamp) */
     float cy = e->hold == HOLD_CEIL ? e->y + (float)e->arg * 0.45f + 0.35f : e->sub == 7 ? e->y - 1.1f : e->y - 0.55f;
     float fl = 0.85f + 0.15f * sinf(t * 7 + e->x);
     glow(e->x, cy, 1.6f * fl, scalec(acc, 0.45f));

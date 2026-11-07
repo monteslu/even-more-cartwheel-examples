@@ -5,8 +5,9 @@
   "logo": "logo.png",
   "title": "title.jpg",
   "screenshots": [
-    { "path": "shot-1.jpg", "label": "The Hollow Gate: the hooded lamplighter leaps between mossy ledges as winged moths circle under a hanging lantern" },
-    { "path": "shot-2.jpg", "label": "Glasswater Caves: a cold blue cavern of frosted crystal, its name rising as the lamplighter steps in" },
-    { "path": "shot-3.jpg", "label": "Deep parallax spires behind a ruined hall, the back wall fading where the rock opens out" }
+    { "path": "shot-1.jpg", "label": "The Hollow Gate: the hooded lamplighter crosses a mossy hall under a hanging lantern, deep spires fading into the haze" },
+    { "path": "shot-2.jpg", "label": "The Ember Forge: crimson moths circle a ledge while the lanterns bloom in the heat" },
+    { "path": "shot-3.jpg", "label": "Mirelight Fen: green light falls through a hole in the roof onto glowing growths and a shielded knight" },
+    { "path": "shot-4.jpg", "label": "Two lamplighters face the Glass Mantis, a warden of glass, in its arena" }
   ]
 }

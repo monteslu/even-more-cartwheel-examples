@@ -160,7 +160,10 @@ static bool strike_near(const sim *s, const player *p, pinput *in) {
     if (fabsf(dx) < 2.5f && fabsf(dy) < 1.7f) {
       bool facing = (dx < 0) == (bool)p->facing_left;
       if (!facing) in->mx = (int8_t)(dx < 0 ? -1 : 1);
-      else if (p->atk_cd == 0) in->attack = true;
+      else if (e->kind == EN_KNIGHT && e->state != ES_ACT && ((p->x < e->x) == !e->facing_left) && p->en > 0 && (s->abilities & AB_BOLT)) {
+        if (p->shot_cd == 0) in->shoot = true; /* the shield turns strikes, not sparks */
+        return true;
+      } else if (p->atk_cd == 0) in->attack = true;
       /* a knight's shield faces you: get round it with a jump */
       if (e->kind == EN_KNIGHT && ((p->x < e->x) == !e->facing_left) && p->on_ground && fabsf(dx) < 2) in->jump = in->jump_held = true, in->mx = (int8_t)(dx < 0 ? -1 : 1);
       return true;
