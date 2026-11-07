@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
 import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
 import { writeSet } from './texlib.mjs';
+import { writeGarments } from './garments.mjs';
 import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
 import { faceParams, headModel, buildHead, shellGrid, hairCap, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
@@ -644,7 +645,7 @@ const folds = (y, a, list) => { let m = 0; for (const [fy, amp, w, side, sw] of 
 const noise1 = (x, s) => { const i = Math.floor(x), f = x - i, h = (n) => { let v = Math.imul(n ^ s, 0x27d4eb2d); v ^= v >>> 15; v = Math.imul(v, 0x85ebca6b); v ^= v >>> 13; return (v >>> 0) / 4294967296; }; const u = f * f * (3 - 2 * f); return lerp(h(i), h(i + 1), u); };
 
 function build(sp) {
-  const m = new SkinMesh(); m.lod = 0.5; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
+  const m = new SkinMesh(); m.lod = 0.75; // the fixed street camera: a body is at most about 400 pixels tall (B-PT19)
   const { world } = skeleton(sp);
   const B = (n) => world[n];
   const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
@@ -749,6 +750,9 @@ function build(sp) {
   const waist = yH + 0.06; // where trousers end and the top begins
   const shirtMat = sp.shirtMat ?? 'shirt', shirtTile = sp.shirtTile ?? 0.5; // a 1 m tile: a print or stains laid out once round the torso
   const tuck = sp.tuck ?? false;
+  // skaters' clothes hang loose: a roomy seat, a long boxy tee or hoodie (sp.fit metres of room), wide sleeves and legs
+  const cl01 = (x) => Math.max(0, Math.min(1, x)), dims = { shirt: {}, pants: {} };
+  const seatLoose = bottom === 'jeans' || bottom === 'cargo' || bottom === 'shorts' ? 0.015 : 0, fit = sp.fit ?? 0;
   // trousers over the pelvis
   const pantsFolds = [[waist - 0.03, 0.02, 0.012, FRONT, 1.0], [yHip - 0.02, 0.025, 0.015, FRONT, 0.6]];
   const briefs = bottom === 'briefs', bandTop = yHip + 0.085, sagBand = (a) => -0.012 * (0.5 + 0.5 * Math.sin(a)) - 0.006 * Math.cos(a * 2); // the waistband has given up
@@ -757,11 +761,13 @@ function build(sp) {
       ...[[-0.022, 1.045, 0.008], [-0.019, 1.055, 0.011], [-0.002, 1.055, 0.011], [0, 1.03, 0.005]].map(([d, k, ad]) => ({ ...ringAt(bandTop + d, k, k, ad), dy: sagBand }))], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
     m.loft('skin', [...ys(bandTop - 0.03, waist + 0.02, 0.016).map((y) => ringAt(y, 1, 1, 0, torsoMod(y)))], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
   } else
-  m.loft(bottom === 'none' ? 'skin' : 'pants', [...ys(PROF[0][0], waist).map((y) => ringAt(y, 1.04, 1.05, 0.006, torsoMod(y, 0, pantsFolds))), ...(gutHem ? [{ ...ringAt(gutFold, 1.0, 1.0, 0), c: [0, gutFold + 0.03, prof(gutFold)[3]] }] : [])], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+  // the seat: mapped once round (u) and from the waistband down (v 0.8..1 of the rider's trouser texture, garments.mjs)
+  m.loft(bottom === 'none' ? 'skin' : 'pants', [...ys(PROF[0][0], waist).map((y) => ringAt(y, 1.04 + seatLoose, 1.05 + seatLoose, 0.006, torsoMod(y, 0, pantsFolds))), ...(gutHem ? [{ ...ringAt(gutFold, 1.0, 1.0, 0), c: [0, gutFold + 0.03, prof(gutFold)[3]] }] : [])], { n: 32, weights: (k, P, a) => torsoW(P, a), ...(bottom === 'none' ? { tile: 0.5 } : { uvFn: (p, k, j, n) => [j / n, 0.8 + 0.2 * cl01((waist - p[1]) / (waist - PROF[0][0]))] }) });
+  { const r = ringAt(yHip, 1.04 + seatLoose, 1.05 + seatLoose, 0.006); dims.pants.PC = PI * Math.sqrt(2 * (r.ru * r.ru + r.rv * r.rv)); dims.pants.PH = waist - PROF[0][0]; }
   // the upper body: a shirt from the waist up (bare skin for none), with a hem that flares and waist folds
   const shirtTop = top === 'tank' ? ySh - 0.02 : yN + 0.0;
   const crew = cutoff || gutHem, dip = (y) => (a) => -0.02 * ss(yN - 0.05, yN, y) * gauss(wrapA(a - FRONT), 0.85); // a crew neck: it dips at the front of the throat
-  const hemY = tuck ? waist : waist - 0.06;
+  const hemY = tuck ? waist : waist - (fit ? sp.hemDrop ?? 0.1 : 0.06);
   const shirtFolds = [[hemY + 0.06, 0.018, 0.012, FRONT, 1.2], [hemY + 0.12, 0.014, 0.012, FRONT + 0.6, 0.6], [hemY + 0.1, 0.012, 0.012, FRONT - 0.7, 0.6], [yC - 0.02, 0.01, 0.015, null]];
   if (top === 'none') { m.loft('skin', ys(waist - 0.01, ySh - 0.03).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); skinUpper(ySh - 0.03); }
   else {
@@ -783,9 +789,20 @@ function build(sp) {
     } else {
     // a sleeveless man's top is a T-shirt with the sleeves cut off: it hangs loose from the chest, over the belt, to the hip
     const loose = (y) => (cutoff ? ss(yC + 0.03, yS - 0.02, y) : 0);
-    const rings = ys(hemY, shirtTop).map((y) => ({ ...ringAt(y, 1.05 + 0.09 * loose(y), 1.06 + 0.07 * loose(y), 0.01 + 0.017 * loose(y), torsoMod(y, 0, shirtFolds)), e: cutoff ? lerp(prof(y)[4], 2.1, loose(y)) : prof(y)[4], dy: cutoff ? dip(y) : undefined }));
-    rings.unshift({ ...ringAt(hemY, 1.06 + 0.09 * loose(hemY), 1.07 + 0.07 * loose(hemY), 0.008 + 0.017 * loose(hemY), torsoMod(hemY)), e: cutoff ? 2.1 : prof(hemY)[4], c: [0, hemY - 0.005, prof(hemY)[3]] });
-    m.loft(shirtMat, rings, { n: 32, weights: (k, P, a) => torsoW(P, a), tile: shirtTile });
+    // a loose fit hangs straight down from the chest (no waist), with room all round and soft ripples toward the hem
+    const chestR = ringAt(yC + 0.04, 1.05, 1.06, 0.01);
+    const hang = (r, y) => {
+      if (!fit) return r;
+      const u = ss(yC + 0.04, hemY, y), room = fit * lerp(0.35, 1, u);
+      const mod0 = r.mod;
+      return { ...r, ru: Math.max(r.ru, lerp(r.ru, chestR.ru * 0.97, u)) + room, rv: Math.max(r.rv, lerp(r.rv, chestR.rv * 0.96, u)) + room * 0.8,
+        mod: (a) => (mod0 ? mod0(a) : 1) + 0.03 * u * u * (Math.sin(a * 6 + 1.3) + 0.6 * Math.sin(a * 11 + 0.4)), dy: (a) => -0.016 * u * Math.max(0, -Math.sin(a)) };
+    };
+    const rings = ys(hemY, shirtTop).map((y) => hang({ ...ringAt(y, 1.05 + 0.09 * loose(y), 1.06 + 0.07 * loose(y), 0.01 + 0.017 * loose(y), torsoMod(y, 0, shirtFolds)), e: cutoff ? lerp(prof(y)[4], 2.1, loose(y)) : prof(y)[4], dy: cutoff ? dip(y) : undefined }, y));
+    rings.unshift({ ...hang({ ...ringAt(hemY, 1.06 + 0.09 * loose(hemY), 1.07 + 0.07 * loose(hemY), 0.008 + 0.017 * loose(hemY), torsoMod(hemY)), e: cutoff ? 2.1 : prof(hemY)[4] }, hemY), c: [0, hemY - 0.005, prof(hemY)[3]] });
+    const sH = shirtTop - (hemY - 0.01);
+    dims.shirt.H = sH; { const r = rings[Math.floor(rings.length * 0.6)]; dims.shirt.C = PI * Math.sqrt(2 * (r.ru * r.ru + r.rv * r.rv)); }
+    m.loft(shirtMat, rings, { n: 36, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n) => [j / n, 0.6 * cl01((shirtTop - p[1]) / sH)] });
     }
     if (top === 'tank') { // straps over the shoulders and skin above
       skinUpper(shirtTop - 0.02);
@@ -793,8 +810,8 @@ function build(sp) {
       for (const ac of [0.72, -0.72, PI - 0.72, -PI + 0.72]) // straps: front and back, left and right, an even width
         m.loft(shirtMat, ys(shirtTop - 0.03, yS1, 0.012).map((y) => { const r = ringAt(y, 1, 1, 0.006, torsoMod(y)), w = 0.016 / Math.max(0.05, r.ru); return { ...r, arc: [ac - w, ac + w] }; }), { n: 3, arc: [ac - 0.1, ac + 0.1], weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
       for (const [af, ab] of [[0.72, -0.72], [PI - 0.72, -PI + 0.72]]) m.capsule(shirtMat, strapP(af), strapP(ab), 0.0075, 0.0075, { weights: (t, P) => torsoW(P, FRONT), n: 5, caps: 1, rings: 2, ratio: 0.5 }); }
-    } else { // a collar
-      m.loft(shirtMat, [ringAt(yN - 0.02, 1.0, 1.0, 0.012), ringAt(yN + 0.002, 1.0, 1.0, 0.016), ringAt(yN + 0.012, 0.96, 0.96, 0.012)].map((r) => (crew ? { ...r, dy: dip(yN) } : r)), { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
+    } else if (sp.hood !== 'up') { // a collar (a rib from the plain patch of the shirt texture)
+      m.loft(shirtMat, [ringAt(yN - 0.02, 1.0, 1.0, 0.012), ringAt(yN + 0.002, 1.0, 1.0, 0.016), ringAt(yN + 0.012, 0.96, 0.96, 0.012)].map((r) => (crew ? { ...r, dy: dip(yN) } : r)), { n: 24, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n) => [j / n, 0.93 + 0.01 * k] });
     }
   }
   if (sp.tiedSleeves) { // the coverall's top half peeled down: its sleeves round the waist, knotted in front, the ends hanging
@@ -840,7 +857,7 @@ function build(sp) {
     m.loft('metal', rr, { n: 20, arc: [FRONT - 1.25, FRONT + 1.25], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
     m.loft('metal', rr, { n: 20, arc: [BACK - 1.1, BACK + 1.1], weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
   }
-  if (sp.hood) { // a hood lying on the upper back
+  if (sp.hood && sp.hood !== 'up') { // a hood lying on the upper back
     const hc = [0, yN - 0.03, -prof(yN)[2] * bd - 0.04];
     m.ellipsoid('shirt', hc, 0.15 * bw, 0.07, 0.075, { weights: (k, P, a) => torsoW(P, a), steps: 7, n: 16, mod: (a) => 1 + 0.06 * Math.sin(a * 5) });
     for (const sx of [0.035, -0.035]) { const on = (y) => { const p = prof(y); return [sx, y, p[3] + p[2] * bd * 1.12 + 0.016]; }; const y0 = ySh + 0.0, y1 = ySh - 0.06, y2 = yC - 0.01; m.capsule('band', on(y0), on(y1), 0.0035, 0.0035, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 1 }); m.capsule('band', on(y1), on(y2), 0.0035, 0.0045, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 2 }); }
@@ -853,7 +870,7 @@ function build(sp) {
   m.lod = 0.75;
   m.loft('skin', ys(yN - 0.02, yTop, 0.012).map((y) => { const u = ss(yN - 0.02, yTop, y); return { c: [0, y, lerp(-0.2, -0.13, u) * hyN], U: X, V: Z, ru: NECKR * (1 + 0.42 * ss(yN + 0.045, yN - 0.01, y)), rv: nd * (1 + 0.1 * ss(yN + 0.04, yN - 0.02, y)), e: 2.2,
     mod: (a) => 1 + 0.035 * (sp.adam === false ? 0 : 1) * gauss(wrapA(a - FRONT), 0.26) * gauss(y - (yN + 0.04), 0.018) + 0.05 * (gauss(wrapA(a - FRONT - 0.95), 0.35) + gauss(wrapA(a - FRONT + 0.95), 0.35)) * ss(yTop, yN, y) }; }), { n: 24, weights: (k, P) => (P[1] < yN + 0.01 ? torsoW(P, 0) : headW(P)), tile: 0.3 });
-  m.lod = 0.5;
+  m.lod = 0.75;
 
   // ── head: a sculpted face (sockets, eyes and lids, nose, lips and a mouth that opens, teeth, ears) on the head envelope ──
   const M = headOf(sp, world), { hc, R, RZ, HY } = M.H, headRing = M.H.ring, F = M.F;
@@ -964,7 +981,8 @@ function build(sp) {
       card(pts, (hairCut === 'crop' ? 0.034 : 0.044) * HS, 0.014 * HS, 0, onHead);
     }
   }
-  if (hairCut === 'long') { // a fall of hair down the back to the shoulder blades: a solid core and long cards over it
+  if (hairCut === 'long' || sp.longHair) { // a fall of hair down the back to the shoulder blades: a solid core and long cards over it
+    if (hairCut !== 'long') scalp(); // (under a hat: the scalp shows below its edge)
     const ya = hc[1] + 0.02, yb = yC + 0.06;
     const rr = ys(yb, ya, 0.03).reverse().map((y, i) => {
       const t = ss(ya, yb, y), hr = headRing(Math.max(-0.75, (y - hc[1]) / HY), 1.06, 0.006);
@@ -973,7 +991,7 @@ function build(sp) {
     });
     m.loft('hair', rr, { n: 26, arc: [BACK - 1.55, BACK + 1.55], weights: (k, P) => hairW(P), tile: 0.3 });
     for (let i = 0; i < 80; i++) {
-      const a = BACK + (rnd() * 2 - 1) * 1.45, [p] = scalpPt(lerp(0.35, 0.75, rnd()), a, 0.012);
+      const a = BACK + (rnd() * 2 - 1) * 1.45, [p] = hairCut === 'long' ? scalpPt(lerp(0.35, 0.75, rnd()), a, 0.012) : scalpPt(lerp(-0.12, 0.06, rnd()), a, 0.006); // under a hat they start below its edge
       const out = norm([Math.cos(a), 0, Math.sin(a)]);
       const pts = grow(p, [out[0] * 0.25, -1, out[2] * 0.25 - 0.15], (0.3 + 0.08 * rnd()) * HL, 8, (k, q, d) => add(d, [out[0] * 0.03, 0, out[2] * 0.06 - 0.02]));
       card(pts, 0.05 * HS, 0.025 * HS, 0, (sv, q) => hairW(q), { outAt: (k, q) => norm(add([q[0], 0, q[2] - hc[2]], [0, 0, -0.02])) });
@@ -1009,15 +1027,15 @@ function build(sp) {
       const pts = growS(p, to, L0 * 0.98, 6, (k, q, d) => add(d, mul(norm(sub(tie, q)), 0.35)), 0.002 + 0.003 * rnd());
       card(pts, 0.042 * HS, 0.036 * HS, 0, onHead);
     }
-    { const a = add(tie, [0, -0.004, -0.012]), b = add(a, [0, -0.12, -0.07]), c = add(b, [0, -0.15, -0.01]);
-      m.capsule('hair', a, b, 0.024 * HS, 0.036 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
-      m.capsule('hair', b, c, 0.036 * HS, 0.008 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
+    { const a = add(tie, [0, -0.004, -0.012]), b = add(a, [0, -0.13, -0.085]), c = add(b, [0, -0.2, -0.02]);
+      m.capsule('hair', a, b, 0.028 * HS, 0.042 * HS, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) });
+      m.capsule('hair', b, c, 0.042 * HS, 0.01 * HS, { weights: (t) => [[BI.HairA, 1 - t], [BI.HairB, t]], n: 12, caps: 3, ratio: 0.8, mod: (an) => 1 + 0.08 * Math.sin(an * 6) }); }
     const tw = (sv) => (sv < 0.4 ? [[BI.Head, 1 - sv / 0.4], [BI.HairA, sv / 0.4]] : [[BI.HairA, 1 - (sv - 0.4) / 0.6], [BI.HairB, (sv - 0.4) / 0.6]]);
     for (let i = 0; i < 44; i++) {
       const ang = rnd() * PI * 2, rr2 = 0.012 * Math.sqrt(rnd()), p = add(tie, [Math.cos(ang) * rr2, Math.sin(ang) * rr2 * 0.6, -0.008]);
-      const len = (0.22 + 0.14 * rnd()) * HL, spread = [Math.cos(ang) * 0.1, 0.1, Math.sin(ang) * 0.08 - 0.5];
+      const len = (0.28 + 0.14 * rnd()) * HL, spread = [Math.cos(ang) * 0.1, 0.1, Math.sin(ang) * 0.08 - 0.5];
       const pts = grow(p, add([0, 0.25, -1], spread), len, 9, (k, q, d) => add(d, [Math.cos(ang) * 0.04 * (k < 4 ? 1 : -1.2), -0.32, 0.02]));
-      card(pts, 0.036 * HS, 0.012 * HS, ang, (sv) => tw(sv), { outAt: () => norm([Math.cos(ang) * 0.3, 0.35, 0.9]) });
+      card(pts, 0.048 * HS, 0.014 * HS, ang, (sv) => tw(sv), { outAt: () => norm([Math.cos(ang) * 0.3, 0.35, 0.9]) });
     }
   }
   if (hairCut === 'bun') { // pulled tight up the head to a bun on the crown, wisps left at the nape
@@ -1089,8 +1107,13 @@ function build(sp) {
     if (facing.out <= 4 * facing.in) throw new Error(`${sp.name}: hair cards wound inward (${facing.out} triangles face out, ${facing.in} in): double-sided shading would light them from inside`);
   }
   if (hairCut === 'beanie') {
-    m.loft('hat', shell(0.34, 1.0, 1.04, 0.007, 12, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }), { n: 40, bone: BI.Head, tile: 0.25 });
-    m.loft('hat', [headRing(0.28, 1.03, 0.005), headRing(0.31, 1.05, 0.01), headRing(0.46, 1.05, 0.01), headRing(0.5, 1.04, 0.006)], { n: 40, bone: BI.Head, tile: 0.25 });
+    const sl = (r) => { const k = ss(0.4, 1.05, (r.c[1] - hc[1]) / HY) * (sp.slouch ?? 0), back = 0.07 * k * HS, tiny = r.ru < 0.002; return { ...r, c: [0, r.c[1] + 0.008 * k, r.c[2] - back], ru: tiny ? r.ru : r.ru * (1 + 0.05 * k), rv: tiny ? r.rv : r.rv + back }; }; // the front stays on the brow, the crown grows back
+    // a slouch beanie: the crown sags back off the head (sp.slouch), it is pulled down over the back of the head and sits
+    // on the forehead in front (its rings tilt back), a turned-up cuff
+    const tilt = sp.slouch ? 0.42 : 0, t0 = sp.slouch ? 0.22 : 0.34;
+    const tl = (r, t) => { const th = tilt * (1 - ss(0.45, 1.0, t)); return { ...r, V: [0, Math.sin(th), Math.cos(th)] }; };
+    m.loft('hat', shell(t0, 1.0, 1.04, 0.007, 14, { mod: (t) => (a) => 1 + 0.012 * Math.sin(a * 24) }).map((r, i, A) => tl(sl(r), t0 + (1 - t0) * Math.min(1, i / (A.length - 2)))), { n: 40, bone: BI.Head, tile: 0.25 });
+    m.loft('hat', [[t0 - 0.06, 1.03, 0.005], [t0 - 0.03, 1.05, 0.01], [t0 + 0.12, 1.05, 0.01], [t0 + 0.16, 1.04, 0.006]].map(([t, k, ad]) => tl(headRing(t, k, ad), t)), { n: 40, bone: BI.Head, tile: 0.25 });
   }
   if (hairCut === 'cap' || hairCut === 'capback') {
     scalp(1.05, 0.004, 5);
@@ -1154,6 +1177,28 @@ function build(sp) {
       for (const sd of [1, -1]) m.ellipsoid('helmet', [sd * R * 1.04, hc[1] - 0.05 * HS, hc[2] - 0.015], 0.025 * HS, 0.06 * HS, 0.06 * HS, { bone: BI.Head, steps: 5, n: 12 });
     }
   }
+  if (sp.hood === 'up') {
+    // the hood up: roomy over the head, peaked a little at the back, open round the face from the chin to the brow, its
+    // sides meeting in a V at the throat; it rides on the head and hands over to the neck and chest below the jaw.
+    // Drawn double sided (its inside shows round the face), mapped to the plain patch of the shirt texture.
+    const addH = 0.042 * HS, yB = yN - 0.012, yChin = hc[1] - HY * 0.92, tB = (yB - hc[1]) / HY;
+    const openW = curve([[tB, 0.42], [-1.0, 0.75], [-0.7, 0.98], [0.15, 1.02], [0.45, 0.8], [0.68, 0.0], [1.2, 0.0]]);
+    const lower = ys(yB, yChin - 0.01, 0.02).map((y) => {
+      const u = ss(yB, yChin, y), a = ringAt(yB, 1.08, 1.08, 0.026), b = headRing(-0.92, 1, addH);
+      return { c: [0, y, lerp(a.c[2], b.c[2] - 0.02, u)], U: X, V: Z, ru: Math.max(lerp(a.ru, b.ru, u), NECKR * 1.55 + 0.035), rv: Math.max(lerp(a.rv, b.rv + 0.02, u), NECKR * 1.35 + 0.035), e: 2.3 };
+    });
+    const upper = shell(-0.9, 1.0, 1.0, addH, 13).map((r) => {
+      const t = (r.c[1] - hc[1]) / HY, back = ss(0.2, 1.05, t);
+      return { ...r, c: [0, r.c[1], r.c[2] - 0.018 - 0.035 * back], rv: r.rv + 0.016, mod: (a) => 1 + 0.07 * Math.cos(a) ** 2 * (1 - back) };
+    });
+    const rr = [...lower, ...upper], yT = rr[rr.length - 1].c[1];
+    for (const r of rr) { const w = openW((r.c[1] - hc[1]) / HY); r.arc = [FRONT + w, FRONT - w + 2 * PI]; }
+    m.loft('hood', rr, { n: 34, arc: [FRONT, FRONT + 2 * PI], weights: (k, P) => { const t2 = ss(yN + 0.02, yChin + 0.04, P[1]); return t2 >= 1 ? [[BI.Head, 1]] : [[BI.Head, t2], [BI.Neck, (1 - t2) * 0.4], [BI.Chest, (1 - t2) * 0.6]]; },
+      uvFn: (p, k, j, n) => [j / n, 0.925 + 0.07 * cl01((p[1] - yB) / (yT - yB))] });
+    // the drawstrings out of the V
+    for (const sx of [0.03, -0.03]) { const on = (y) => { const p = prof(y); return [sx, y, p[3] + p[2] * bd * 1.12 + 0.02 + fit * 0.6]; }; const y0 = yN - 0.01, y1 = ySh - 0.07, y2 = yC - 0.03; m.capsule('band', on(y0), on(y1), 0.004, 0.004, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 1 }); m.capsule('band', on(y1), on(y2), 0.004, 0.0055, { weights: (t, P, a) => torsoW(P, a), n: 5, caps: 2 }); }
+  }
+  if (hairCut === 'buzz') scalp();
   if (sp.headband) m.loft('band', [-0.014, 0.014].map((dy) => headRing(0.66 + dy / HY, 1.04, 0.009)), { n: 32, bone: BI.Head, tile: 0.3 });
   if (sp.headband) { const a = add(hc, [0, HY * 0.66, -RZ * 0.95]); m.capsule('band', a, add(a, [0.03, -0.14, -0.05]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); m.capsule('band', a, add(a, [-0.04, -0.12, -0.04]), 0.012, 0.008, { weights: (t) => [[BI.Head, 1 - t], [BI.HairA, t]], n: 6, caps: 2, ratio: 0.4 }); }
 
@@ -1175,7 +1220,7 @@ function build(sp) {
     const ax = sx * sw; const sd = sx > 0 ? 'L' : 'R';
     const ringA = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = armRad(y); return { c: [ax + sx * 0.008 * gauss(y - ySh, 0.05), y, 0.004], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.15, mod: fl ? (a) => armMod(y)(a) + folds(y, a, fl) : armMod(y) }; };
     const yTop = ySh + (cutoff ? 0.0 : 0.02), yWristEnd = yWr - 0.005; // a cut-off shirt keeps the cloth over the top of the shoulder
-    const sleeveEnd = outerSleeve || sleeve === 'long' ? yWr + 0.03 : sleeve === 'short' ? ySh - 0.15 : yTop;
+    const sleeveEnd = outerSleeve || sleeve === 'long' ? yWr + 0.03 : sleeve === 'short' ? ySh - (sp.sleeveLen ?? 0.15) : yTop;
     const sFolds = [[yEl + 0.04, 0.05, 0.012, BACK, 0.9], [yEl - 0.0, 0.045, 0.012, FRONT, 0.6], [yEl - 0.035, 0.04, 0.012, BACK, 0.9], [yEl + 0.08, 0.03, 0.014, null], [yWr + 0.06, 0.035, 0.012, null]];
     const skinY = ys(yWristEnd, Math.min(yTop, sleeveEnd + 0.02), 0.02).reverse();
     const dome = (k, add) => [{ ...ringA(yTop + 0.02, 0.1, add * 0.3), mod: null, c: [ax - sx * 0.022, yTop + 0.02, 0.0] }, { ...ringA(yTop + 0.012, 0.8 * k, add * 0.7), mod: null, c: [ax - sx * 0.01, yTop + 0.012, 0.002] }];
@@ -1186,11 +1231,16 @@ function build(sp) {
       m.lod = l0;
     }
     if (sleeveEnd < yTop) {
-      const mat = outerSleeve ? 'outer' : shirtMat, th = outerSleeve ? 0.018 : 0.007;
+      const mat = outerSleeve ? 'outer' : shirtMat, th0 = outerSleeve ? 0.018 : 0.007;
+      // a loose sleeve: roomy down the arm; a short one flares a little at its opening, a long one gathers into a rib cuff
+      const th = (y) => (!fit || outerSleeve ? th0 : sleeve === 'long' ? lerp(0.006, fit * 0.85, ss(sleeveEnd + 0.02, sleeveEnd + 0.08, y)) : fit * 0.6 + 0.014 * ss(yTop - 0.04, sleeveEnd, y));
       const yy = ys(sleeveEnd, yTop, 0.018).reverse();
-      const rr = [...dome(1.03, th), ...yy.map((y) => ringA(y, 1.03, th, sFolds))];
-      rr.push({ ...ringA(sleeveEnd, 1.04, th + 0.003), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
-      m.loft(mat, rr, { n: 22, weights: (k, P) => armW(P, sd), tile: 0.4 });
+      const rr = [...dome(1.03, th(yTop)), ...yy.map((y) => ringA(y, 1.03, th(y), sFolds))];
+      rr.push({ ...ringA(sleeveEnd, 1.04, th(sleeveEnd) + 0.003), c: [ax, sleeveEnd - 0.005, 0.004] }); // the cuff
+      const sl = yTop - sleeveEnd;
+      if (sx > 0) Object.assign(dims.shirt, { SC: 2 * PI * (armRad(ySh - 0.1)[0] + th(ySh - 0.1)), SH: sl, elbow: (yTop - yEl) / sl, long: sleeve === 'long' });
+      // u once round the arm (mirrored on the right, so the inside of both arms is u 0.5), v 0.62..0.9 down the sleeve
+      m.loft(mat, rr, { n: 22, weights: (k, P) => armW(P, sd), ...(outerSleeve ? { tile: 0.4 } : { uvFn: (p, k, j, n) => [sx > 0 ? j / n : 0.5 - j / n, 0.62 + 0.28 * cl01((yTop - p[1]) / sl)] }) });
       if (outerSleeve && sleeve !== 'long') { /* the jacket hides the shirt sleeve */ }
     }
     if (sp.pads) m.ellipsoid(sp.padMat ?? 'pad', [ax + sx * 0.035, ySh + 0.04, 0], 0.085 * (0.8 + 0.2 * W), 0.05, 0.095 * (0.8 + 0.2 * W), { weights: () => [[BI.Chest, 0.4], [BI['UpperArm' + (sx > 0 ? 'L' : 'R')], 0.6]], steps: 6, n: 16, e: 2.4 });
@@ -1227,8 +1277,8 @@ function build(sp) {
     return [legR * k * thin, legR * k * 1.04 * thin];
   };
   const legMod = (y, sx) => (a) => 1 + 0.08 * gauss(y - (yHip - 0.16), 0.08) * gauss(wrapA(a - (FRONT - sx * 0.4)), 0.7) + 0.16 * gauss(y - (yKn - 0.13), 0.07) * gauss(wrapA(a - BACK), 0.8) + 0.08 * gauss(y - yKn, 0.03) * gauss(wrapA(a - FRONT), 0.5) + 0.04 * gauss(y - (yHip - 0.12), 0.1) * gauss(wrapA(a - (sx > 0 ? 0 : PI)), 0.6);
-  const pantsEnd = sp.cuffs ? yAn + 0.11 : bottom === 'briefs' ? yHip - 0.05 : bottom === 'shorts' ? yKn + 0.1 : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + 0.075;
-  const loose = bottom === 'cargo' ? 0.02 : bottom === 'tight' || bottom === 'briefs' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02;
+  const pantsEnd = sp.cuffs ? yAn + 0.11 : bottom === 'briefs' ? yHip - 0.05 : bottom === 'shorts' ? yKn + (sp.shortsEnd ?? 0.1) : bottom === 'none' ? yHip + 0.1 : sp.boots ? yAn + 0.2 : yAn + (sp.hemAt ?? 0.075);
+  const longPants = pantsEnd < yKn, loose = sp.legLoose ?? (bottom === 'cargo' ? 0.02 : bottom === 'tight' || bottom === 'briefs' ? 0.004 : bottom === 'jeans' ? 0.014 : 0.02);
   for (const sx of [1, -1]) {
     const lx = sx * hw; const sd = sx > 0 ? 'L' : 'R';
     const ringL = (y, k = 1, add = 0, fl = null) => { const [ru, rv] = legRad(y); return { c: [lx, y, 0.0], U: X, V: Z, ru: ru * k + add, rv: rv * k + add, e: 2.1, mod: fl ? (a) => legMod(y, sx)(a) + folds(y, a, fl) : legMod(y, sx) }; };
@@ -1238,8 +1288,13 @@ function build(sp) {
     if (bottom === 'cargo') pFolds.push([yHip - 0.25, 0.06, 0.045, sx > 0 ? 0 : PI, 0.45]); // side pockets
     if (pantsEnd > yAn + 0.03) m.loft(bottom === 'briefs' ? 'legs' : 'skin', ys(yAn + 0.02, pantsEnd + (bottom === 'briefs' ? 0.1 : 0.02), 0.025).reverse().map((y) => ringL(y)), { n: 20, weights: (k, P) => legW(P, sd), tile: 0.3 });
     const hangs = bottom === 'jeans' || bottom === 'cargo' || bottom === 'joggers', kneeR = legRad(yKn)[0];
-    const rr = ys(pantsEnd, yTop, 0.022).reverse().map((y) => { const r = ringL(y, 1.05, loose + 0.01 * ss(yKn, yAn, y) * (bottom === 'jeans' ? 1 : 0), bottom === 'none' ? null : pFolds); if (hangs && y < yKn) { r.ru = Math.max(r.ru, lerp(kneeR * 1.06 + loose, kneeR * 1.1 + loose, ss(yKn, yAn, y))); r.rv = Math.max(r.rv, lerp(kneeR * 1.08 + loose, kneeR * 1.16 + loose, ss(yKn, yAn, y))); } return r; });
-    rr.push({ ...ringL(pantsEnd, 1.08, loose + 0.006), c: [lx, pantsEnd - 0.006, 0] });
+    // a loose leg: shorts flare a little to a wide opening; long legs break over the shoe (the hem rides up over the instep and the cloth stacks above it)
+    const flare = (y) => (bottom === 'shorts' && fit ? 0.016 * ss(yTop - 0.12, pantsEnd, y) : 0), brk = (y) => (longPants && fit ? ss(pantsEnd + 0.13, pantsEnd, y) : 0);
+    const breakAt = (r, y) => { const b = brk(y); if (b <= 0) return r; const m0 = r.mod; return { ...r, mod: (a) => (m0 ? m0(a) : 1) + 0.03 * b * Math.sin(a * 5 + y * 90 + sx), dy: (a) => 0.032 * b * Math.max(0, Math.sin(a)) }; };
+    const rr = ys(pantsEnd, yTop, 0.022).reverse().map((y) => { const r = ringL(y, 1.05, loose + flare(y) + 0.01 * ss(yKn, yAn, y) * (bottom === 'jeans' ? 1 : 0), bottom === 'none' ? null : pFolds); if (hangs && y < yKn) { r.ru = Math.max(r.ru, lerp(kneeR * 1.06 + loose, kneeR * 1.1 + loose, ss(yKn, yAn, y))); r.rv = Math.max(r.rv, lerp(kneeR * 1.08 + loose, kneeR * 1.16 + loose, ss(yKn, yAn, y))); } return breakAt(r, y); });
+    rr.push(breakAt({ ...ringL(pantsEnd, 1.08, loose + flare(pantsEnd) + 0.006), c: [lx, pantsEnd - 0.006, 0] }, pantsEnd));
+    const LH = yTop - pantsEnd + 0.006;
+    if (sx > 0) Object.assign(dims.pants, { LC: 2 * PI * (legRad(yHip - 0.15)[0] * 1.05 + loose), LH, knee: (yTop - yKn) / LH, long: longPants });
     if (bottom === 'briefs') { // cut high on the hip: the leg opening climbs to the outside; a limp elastic edge
       const cut = (a) => 0.035 * Math.max(0, Math.cos(a) * sx) - 0.012 * Math.max(0, -Math.cos(a) * sx);
       rr.forEach((r, i) => { const t = i / (rr.length - 1); r.mod = null; r.dy = (a) => cut(a) * t * t; });
@@ -1247,7 +1302,13 @@ function build(sp) {
       // dark socks, pulled to mid shin and slipping
       m.loft('sole', [[yAn - 0.02, 1.1, 0.006], [yAn + 0.08, 1.09, 0.007], [yAn + 0.15, 1.1, 0.008], [yAn + 0.178, 1.11, 0.009], [yAn + 0.184, 1.0, 0.002]].reverse().map(([y, k, ad]) => ({ ...ringL(y, k, ad), mod: null, dy: (a) => 0.008 * Math.sin(a * 2 + sx) })), { n: 16, weights: (k, P) => legW(P, sd), tile: 0.3 });
     }
-    m.loft(bottom === 'none' ? 'skin' : 'pants', rr, { n: 24, weights: (k, P) => legW(P, sd), tile: 0.5 });
+    // u once round the leg (mirrored on the right: the outside of both legs is u 0, the inside 0.5), v 0..0.78 down it
+    m.loft(bottom === 'none' ? 'skin' : 'pants', rr, { n: 24, weights: (k, P) => legW(P, sd), ...(bottom === 'none' || bottom === 'briefs' ? { tile: 0.5 } : { uvFn: (p, k, j, n) => [sx > 0 ? j / n : 0.5 - j / n, 0.78 * cl01((yTop - p[1]) / LH)] }) });
+    if (sp.socks) { // crew socks: ribbed, a rolled top edge, two stripes (garments.mjs sockTex)
+      const y0 = yAn + 0.05, y1 = yAn + sp.socks;
+      m.loft('sock', [{ ...ringL(y1 + 0.003, 0.97, 0.001), mod: null }, ...ys(y0, y1, 0.02).reverse().map((y) => ({ ...ringL(y, 1.0, 0.0045), mod: (a) => legMod(y, sx)(a) * (1 + 0.02 * Math.max(0, Math.sin(a * 14))) }))],
+        { n: 20, weights: (k, P) => legW(P, sd), uvFn: (p, k, j, n) => [j / n, cl01((y1 - p[1]) / (y1 - y0))] });
+    }
     if (sp.cuffs) { // turned-up hems: a band of the lighter reverse of the denim, a rolled top edge and a stitched lower fold
       const cy = pantsEnd - 0.004, ch = 0.068, cl = loose + 0.016;
       m.loft('cuff', [[cy - 0.004, 1.06, cl - 0.002], [cy, 1.1, cl + 0.002], [cy + 0.01, 1.1, cl + 0.004], [cy + ch * 0.5, 1.1, cl + 0.002], [cy + ch - 0.008, 1.1, cl + 0.005], [cy + ch, 1.1, cl + 0.002], [cy + ch + 0.004, 1.05, cl - 0.006]].reverse().map(([y, k, a]) => ({ ...ringL(y, k, a), c: [lx, y, 0] })), { n: 24, weights: (k, P) => legW(P, sd), tile: 0.3 });
@@ -1256,12 +1317,20 @@ function build(sp) {
     if (sp.kneepads) m.ellipsoid('pad', [lx, yKn + 0.01, legR * 0.85], 0.05, 0.06, 0.03, { weights: () => [[BI['LowerLeg' + (sx > 0 ? 'L' : 'R')], 0.5], [BI['UpperLeg' + (sx > 0 ? 'L' : 'R')], 0.5]], steps: 5, n: 14 });
     // footwear: a loft heel to toe with a thick sole, boots with a shaft
     const f = B('Foot' + (sx > 0 ? 'L' : 'R')), F = BI['Foot' + (sx > 0 ? 'L' : 'R')], fs = sp.foot ?? 1.12, wsh = (0.82 + 0.18 * W) * fs;
-    const sh = [[-0.1, 0.034, 0.03], [-0.09, 0.05, 0.06], [-0.04, 0.055, 0.072], [0.03, 0.057, 0.062], [0.1, 0.058, 0.052], [0.16, 0.052, 0.042], [0.2, 0.038, 0.032], [0.225, 0.016, 0.018]];
-    m.loft('shoe', sh.map(([z, w, h]) => ({ c: [f[0], 0.022 + h * 0.5, f[2] + z * fs * 0.82], U: X, V: Y, ru: w * wsh, rv: h * 0.55 * fs, e: 2.6 })), { n: 18, weights: (k, P) => { const t = 0.4 * ss(yAn - 0.03, yAn + 0.03, P[1]); return [[F, 1 - t], [BI['LowerLeg' + sd], t]]; }, tile: 0.3 });
-    m.loft('sole', [[-0.104, 0.05], [-0.06, 0.06], [0.12, 0.064], [0.2, 0.046], [0.232, 0.02]].map(([z, w]) => ({ c: [f[0], 0.014, f[2] + z * fs * 0.82], U: X, V: Y, ru: w * wsh * 1.06, rv: 0.016 * fs, e: 3.2 })), { n: 14, bone: F, tile: 0.3 });
+    // skate shoes: a thick cupsole, a padded high collar round the ankle, a tongue, a roomy toe box; mapped heel to toe (v)
+    // and round (u) onto the rider's shoe texture (garments.mjs shoeTex: the upper over v 0..0.78, the sole's wall below)
+    const Zs = (z) => f[2] + z * fs * 0.82, wsk = wsh * 1.06, uz = (p) => cl01(((p[2] - f[2]) / (fs * 0.82) + 0.108) / 0.346);
+    const shoeW = (k, P) => { const t = 0.4 * ss(yAn - 0.03, yAn + 0.03, P[1]); return [[F, 1 - t], [BI['LowerLeg' + sd], t]]; };
+    const sh = [[-0.104, 0.03, 0.036], [-0.1, 0.046, 0.07], [-0.086, 0.054, 0.09], [-0.056, 0.058, 0.098], [-0.02, 0.06, 0.098], [0.02, 0.061, 0.09], [0.06, 0.062, 0.078], [0.1, 0.063, 0.066], [0.14, 0.061, 0.056], [0.175, 0.055, 0.048], [0.2, 0.045, 0.04], [0.218, 0.03, 0.032], [0.23, 0.01, 0.022]];
+    m.loft('shoe', sh.map(([z, w, h]) => ({ c: [f[0], 0.026 + h * 0.5 * fs, Zs(z)], U: X, V: Y, ru: w * wsk, rv: h * 0.5 * fs, e: 2.5 })), { n: 22, weights: shoeW, uvFn: (p, k, j, n) => [j / n, 0.78 * uz(p)] });
+    { const yc = 0.026 + 0.094 * fs, cz = Zs(-0.042); // the padded collar and the tongue
+      m.loft('shoe', [[-0.014, 0.96, 0.0], [-0.004, 1.06, 0.004], [0.006, 1.0, 0.004], [0.01, 0.88, 0.0]].map(([dy, k, ad]) => ({ c: [f[0], yc + dy, cz], U: X, V: Z, ru: 0.05 * wsk * k + ad, rv: 0.064 * fs * k + ad, e: 2.2 })), { n: 22, weights: shoeW, uvFn: (p, k, j, n) => [j / n, 0.78 * 0.12] });
+      m.ellipsoid('shoe', [f[0], yc - 0.004, Zs(0.045)], 0.032 * wsk, 0.03, 0.011, { weights: shoeW, steps: 5, n: 12, axis: norm([0, 1, 0.45]), U: X, V: norm([0, -0.45, 1]), uvFn: () => [0.25, 0.78 * 0.5] }); }
+    m.loft('sole', [[-0.108, 0.034], [-0.105, 0.05], [-0.088, 0.059], [-0.045, 0.063], [0.04, 0.064], [0.12, 0.068], [0.18, 0.062], [0.212, 0.05], [0.23, 0.032], [0.238, 0.012]].map(([z, w]) => ({ c: [f[0], 0.0145 + 0.009 * ss(0.17, 0.238, z), Zs(z)], U: X, V: Y, ru: w * wsk, rv: 0.0185, e: 3.4 })),
+      { n: 22, bone: F, uvFn: (p, k, j, n) => [j / n, 0.8 + 0.2 * uz(p)] });
     if (sp.boots) m.loft('shoe', ys(yAn - 0.01, sp.cuffs ? yAn + 0.1 : yAn + 0.22, 0.03).reverse().map((y) => ringL(y, 1.1, 0.016 + loose * 0.3)).concat([{ ...ringL(yAn - 0.02, 1.15, 0.02), c: [lx, yAn - 0.02, 0.01] }]), { n: 18, weights: (k, P) => legW(P, sd), tile: 0.3 });
   }
-  return { m, world };
+  return { m, world, dims };
 }
 
 /** skin tones lose a little saturation so they read as skin, not orange plastic, under a warm key */
@@ -1280,7 +1349,7 @@ function writeFace(sp) {
     frown: sp.frown, age: p.age ?? 0, freckles: p.freckles, ruddy: p.ruddy, lipstick: col(sp.lip), shadowCol: col(p.eyeShadow), shadowAmt: p.eyeShadowAmt,
     liner: p.liner, rouge: col(p.rouge), war: col(sp.war), scars: p.scars ?? (sp.scar ? [[0.3, 0.32, 0.5, -0.12, 0.012, true]] : []), tattoos: p.tattoos,
     mole: p.mole, scalp: p.scalp, browSparse: p.browSparse, browSlit: p.browSlit,
-    hairEdge: sp.hair === 'pompadour' ? pompEdge : ['crop', 'long', 'ponytail', 'bun', 'cap', 'capback', 'foamcap', 'hardhat', 'tophat', 'spiky'].includes(sp.hair) ? (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08) : undefined, hairFade: sp.hair === 'pompadour' ? 0.14 : 0.09,
+    hairEdge: sp.hair === 'pompadour' ? pompEdge : ['crop', 'long', 'ponytail', 'bun', 'cap', 'capback', 'foamcap', 'hardhat', 'tophat', 'spiky', 'buzz', 'beanie'].includes(sp.hair) ? (a) => hairlineEdge(a, sp.hairlineH ?? 0.56, sp.recede ?? 0.08) : undefined, hairFade: sp.hair === 'pompadour' ? 0.14 : 0.09,
   }, 512);
   writeSet(TEX, 'face_' + sp.name, t, 2.2);
   writeSet(TEX, 'eye_' + sp.name, paintEye(sp.eyes ? hexRaw(sp.eyes) : col(p.iris) ?? [0.3, 0.19, 0.1], 128, sp.name.length), 1.0);
@@ -1293,14 +1362,15 @@ function writeFace(sp) {
 function shading(cls, t, sp) {
   t = t ?? [1, 1, 1];
   const ext = {};
-  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.3 * (0.02 + 0.3 * x)), sheenRoughnessFactor: 0.85 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
+  if (cls === 'cloth') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.25 * (0.03 + 0.35 * x)), sheenRoughnessFactor: 0.9 }; ext.KHR_materials_specular = { specularFactor: 0.05 }; }
+  if (cls === 'rubber') ext.KHR_materials_specular = { specularFactor: 0.4 };
   if (cls === 'skin') {
     const sk = hexRaw(sp.colors.skin), dark = 1 - (sk[0] + sk[1] + sk[2]) / 3;
     ext.KHR_materials_sheen = { sheenColorFactor: [0.1 * (0.1 + 0.35 * t[0]), 0.1 * (0.05 + 0.2 * t[1]), 0.1 * (0.04 + 0.15 * t[2])], sheenRoughnessFactor: 0.7 };
     ext.KHR_materials_specular = { specularFactor: 0.2 }; ext.KHR_materials_ior = { ior: 1.4 };
     return { ext, extras: { skin_shading: { scatter: [lerp(0.62, 0.55, dark), lerp(0.38, 0.32, dark), lerp(0.3, 0.24, dark)], wrap: 0.28, translucency: lerp(0.12, 0.08, dark) } } };
   }
-  if (cls === 'hair') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.4 * (0.05 + 0.4 * x)), sheenRoughnessFactor: 0.5 }; ext.KHR_materials_specular = { specularFactor: 0.12 }; }
+  if (cls === 'hair') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.3 * (0.05 + 0.4 * x)), sheenRoughnessFactor: 0.6 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; }
   if (cls === 'card') { ext.KHR_materials_sheen = { sheenColorFactor: t.map((x) => 0.01 + 0.08 * x), sheenRoughnessFactor: 0.7 }; ext.KHR_materials_specular = { specularFactor: 0.08 }; ext.KHR_materials_anisotropy = { anisotropyStrength: 0.2, anisotropyRotation: PI / 2 }; }
   // pomade is one of the things that shines: a wet, slick highlight along the comb lines (the same extensions as hair, so the
   // same program states, with more specular and a tighter sheen)
@@ -1313,11 +1383,12 @@ function shading(cls, t, sp) {
   if (cls === 'enamel') ext.KHR_materials_specular = { specularFactor: 0.6 };
   return { ext };
 }
-function materials(glb, sp) {
+function materials(glb, sp, used) {
   const c = Object.fromEntries(Object.entries(sp.colors).map(([k, v]) => [k, hex(v)]));
   c.skin = skinOf(sp.colors.skin).map((x) => Math.pow(x, 2.2));
-  const d = TEX, P = (n, cls, set, o) => { const sh = shading(cls === 'gloss' && n === 'teeth' ? 'enamel' : cls === 'hair' && n === 'pomade' ? 'pomadecore' : cls, o.tint, sp); return [n, glb.pbr(cls + '_' + n, d, set, { ext: sh.ext, extras: sh.extras, ...o })]; };
+  const d = TEX, P = (n, cls, set, o) => [n, () => { const sh = shading(cls === 'gloss' && n === 'teeth' ? 'enamel' : cls === 'hair' && n === 'pomade' ? 'pomadecore' : cls, o.sheenTint ?? o.tint, sp); return glb.pbr(cls + '_' + n, d, set, { ext: sh.ext, extras: sh.extras, ...o }); }];
   const fab = (k) => (k === 'denim' ? 'fab_denim' : k === 'knit' ? 'fab_knit' : k === 'leather' ? 'fab_leather' : k === 'dirty' ? 'fab_dirty' : 'fab_cloth');
+  const garment = (n) => n + '_' + sp.name, W1 = [1, 1, 1];
   return Object.fromEntries([
     P('skin', 'skin', 'fab_skin', { tint: c.skin, rough: 1, normal: 0.7 }),
     ...(sp.bottom === 'briefs' ? [P('legs', 'skin', 'fab_hairyleg', { tint: c.skin, rough: 1, normal: 0.7 })] : []),
@@ -1326,10 +1397,14 @@ function materials(glb, sp) {
     P('eye', 'eye', 'eye_' + sp.name, { rough: 1, normal: 0.6 }), P('lash', 'fur', 'fab_hair', { tint: c.hair.map((x) => x * 0.35 + 0.004), rough: 1 }),
     P('teeth', 'gloss', 'fab_skin', { tint: [0.78, 0.74, 0.64], rough: 0.62, normal: 0.2 }), P('mouth', 'gloss', 'fab_skin', { tint: [0.2, 0.035, 0.035], rough: 0.75, normal: 0.3 }),
     P('nail', 'skin', 'fab_skin', { tint: c.skin.map((x, i) => x * [1.05, 0.92, 0.92][i] + 0.04), rough: 0.7, normal: 0.3 }),
-    P('shirt', sp.shirtFab === 'leather' ? 'leather' : 'cloth', fab(sp.shirtFab ?? 'cloth'), { tint: c.shirt, rough: 1, normal: 0.45 }),
-    P('pants', sp.pantsFab === 'leather' ? 'leather' : 'cloth', fab(sp.pantsFab ?? 'denim'), { tint: c.pants, rough: 1, normal: 0.5 }),
+    // the clothes: each rider's own painted sets (garments.mjs), colours baked, the sheen tinted by the cloth's colour
+    P('shirt', 'cloth', garment('shirt'), { tint: W1, sheenTint: c.shirt, rough: 1, normal: 1 }),
+    P('hood', 'cloth', garment('shirt'), { tint: W1, sheenTint: c.shirt, rough: 1, normal: 1, doubleSided: true }),
+    P('pants', 'cloth', garment('pants'), { tint: W1, sheenTint: c.pants, rough: 1, normal: 1 }),
+    P('sock', 'cloth', garment('sock'), { tint: W1, sheenTint: [0.8, 0.8, 0.8], rough: 1, normal: 0.8 }),
     P('outer', (sp.outerFab ?? 'leather') === 'leather' ? 'leather' : 'cloth', fab(sp.outerFab ?? 'leather'), { tint: c.outer ?? c.accent, rough: 1, normal: 0.6, doubleSided: true }),
-    P('shoe', 'leather', 'fab_leather', { tint: c.shoes, rough: 0.85 }), P('sole', 'cloth', 'fab_leather', { tint: [0.035, 0.035, 0.035], rough: 1 }),
+    // suede and canvas uppers (matte), a rubber cupsole (a little shinier), both from the rider's shoe set
+    P('shoe', 'cloth', garment('shoe'), { tint: W1, sheenTint: c.shoes, rough: 1, normal: 1 }), P('sole', 'rubber', garment('shoe'), { tint: W1, rough: 1, normal: 0.8 }),
     P('belt', 'leather', 'fab_leather', { tint: c.belt || [0.03, 0.025, 0.02], rough: 0.9 }), P('buckle', 'metal', 'paint_metal', { tint: [0.85, 0.75, 0.45], rough: 0.45 }),
     P('glove', 'leather', 'fab_leather', { tint: c.glove ?? c.accent, rough: 0.7 }),
     P('hair', 'hair', 'fab_hair', { tint: c.hair, rough: 1, normal: 1.2, doubleSided: true }),
@@ -1340,16 +1415,16 @@ function materials(glb, sp) {
     ...(sp.hair === 'pompadour' ? [P('pomadeShell', 'pomade', 'pomp_shell', { tint: c.hair, rough: 0.8, normal: 1.1, doubleSided: true, alphaMode: 'MASK', alphaCutoff: 0.32 })] : []),
     P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
     P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
-    P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
+    P('band', 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.band ?? c.accent, rough: 1 }), // (the hat's weave: one texture fewer in the file)
     // the wanker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
     // (only in the files that wear it: every listed material and its textures go into each glb)
     ...(sp.hair === 'foamcap' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
-    P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'leather', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.7 }),
+    P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'rubber', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.75 }),
     P('helmet', sp.hair === 'hardhat' ? 'gloss' : 'metal', 'paint_metal', { tint: c.helmet ?? c.hair, rough: sp.hair === 'hardhat' ? 0.35 : 0.5, metal: sp.hair === 'hardhat' ? 0 : 1 }), P('metal', 'metal', 'paint_metal', { tint: c.metal ?? [0.5, 0.52, 0.55], rough: 0.4 }),
     P('shades', 'gloss', 'fab_leather', { tint: [0.015, 0.015, 0.02], rough: 0.15, metal: 0 }),
     P('reflect', 'gloss', 'fab_cloth', { tint: [0.7, 0.72, 0.68], rough: 0.4, emissive: [0.22, 0.24, 0.2] }),
     P('glow', 'gloss', null, { tint: [0.1, 0.4, 0.5], rough: 0.2, emissive: c.glow ?? [0.2, 1.4, 1.8] }),
-  ]);
+  ].filter(([n]) => used.has(n)).map(([n, f]) => [n, f()]));
 }
 
 // ── faces and hands per clip: which expression (weights over time u 0..1 through the clip) and how each hand is held ──
@@ -1408,8 +1483,9 @@ function faceHands(name, u) {
 function emit(sp) {
   const glb = new Glb();
   writeFace(sp);
-  const mats = materials(glb, sp);
-  const { m: g, world } = build(sp);
+  const { m: g, world, dims } = build(sp);
+  writeGarments(TEX, sp, dims);
+  const mats = materials(glb, sp, new Set([...g.groups].filter(([, x]) => x.idx.length).map(([n]) => n)));
   const { T, M } = skeleton(sp);
   const FR = M.H.R; // expression offsets are in head units
   // two skinned mesh nodes: Face (the head surface with its lids and ears, the lash rims: the expression morph targets) and
@@ -1477,25 +1553,32 @@ function armsOut(sp, pose) {
   return o;
 }
 
-// the four skaters: proportions, outfit pieces and colours (bright and sunny; each reads by its silhouette: a cap worn
-// back to front, a ponytail and shorts, a beanie and hoodie, a bun and a headband)
+// the four skaters: proportions, outfit pieces and colours (bright and sunny; each reads from behind by its silhouette and
+// its top: a cap worn back to front and an orange tee, a high ponytail and a teal tee, the hood up on a yellow hoodie, a
+// slouch beanie over long hair and a purple long sleeve). Clothes hang loose (fit: metres of room in the shirt, legLoose
+// in the legs); every shirt has its own print on the back (garments.mjs PRINTS, inks its colours); the shoes are skate
+// shoes with a guard band, a heel panel, a plain straight side stripe and a cupsole (shoe: their colours).
 export const SPECS = [
   { name: 'kai', shoulders: 2.25, heads: 7.4, skull: { chinZ: 1.03, slope: 0.4, chin: 1.05 }, face: { noseW: 1.0, hook: 0.2, brow: 1.2, browThick: 0.06, jawAng: 1.3, chin: 1.15, cheek: 1.1, lidUp: 0.24 }, paint: { age: 0.05, hairline: true, iris: 0x5a3418, freckles: 0.3 },
     scale: 1.02, width: 1.1, chest: 1.0, sw: 0.21, arm: 1.12, leg: 1.05, head: 1.1, hand: 1.25, jaw: 1.2, neck: 1.05, hair: 'capback', wristband: true,
-    top: 'tee', sleeves: 'short', bottom: 'jeans', pantsFab: 'denim',
+    top: 'tee', sleeves: 'short', bottom: 'jeans', pantsFab: 'denim', fit: 0.035, hemDrop: 0.1, sleeveLen: 0.2, legLoose: 0.04, hemAt: 0.045,
+    print: 'sun', inks: [0x2a8ad0, 0xf4f0e6], shoe: { guard: 0xd8d4cc, heel: 0x2a8ad0, stripe: 0x2a8ad0, sole: 0xf0ece0, line: 0x2a8ad0 },
     colors: { skin: 0xc98e60, shirt: 0xf08c1e, pants: 0x3a5a90, shoes: 0xf2f2f2, hair: 0x2a1d14, accent: 0x2a8ad0, hat: 0x2a8ad0, band: 0x2a8ad0 } },
   { name: 'nova', fig: { waist: 0.78, hip: 1.08, bust: 0.72 }, neckShort: 0.012, hairlineH: 0.66, shoulders: 1.9, heads: 7.4, skull: { w: 0.96, h: 0.97, d: 0.97, slope: 0.25, chin: 0.88 }, adam: false, face: { eyeR: 0.168, noseLen: 0.88, noseW: 0.86, noseProj: 0.85, tipUp: 0.8, lipU: 1.15, lipL: 1.2, mw: 0.235, cheek: 1.2, jawAng: 0.7, chin: 0.85, chinW: 0.82, brow: 0.65, browThick: 0.042, browArch: 0.05, tilt: 0.06, socket: 0.9, naso: 0.4 }, paint: { freckles: 0.8, iris: [0.22, 0.4, 0.5], hairline: true },
     scale: 0.98, width: 0.92, chest: 0.95, sw: 0.188, hw: 0.096, arm: 0.96, leg: 1.0, head: 1.12, hand: 1.22, jaw: 0.78, nose: 0.82, hair: 'ponytail', hairRoot: [0, 0.203, -0.1], hairB: [0, -0.13, -0.06], headband: true, wristband: true, kneepads: true,
-    top: 'tee', sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth',
+    top: 'tee', sleeves: 'short', bottom: 'shorts', pantsFab: 'cloth', fit: 0.03, hemDrop: 0.09, sleeveLen: 0.19, shortsEnd: 0.07, legLoose: 0.03, socks: 0.17,
+    print: 'arcs', inks: [0xffd040, 0xf04050, 0xf4f0e6], shoe: { guard: 0xf4f0e6, heel: 0xffd040, stripe: 0xf4f0e6, sole: 0xf0ece0, line: 0xffd040 }, sock: { stripe: 0xf04050 },
     colors: { skin: 0xf0c4a0, shirt: 0x22b0a8, pants: 0x2a2a38, shoes: 0xf04050, hair: 0x6a2c16, accent: 0xffd040, band: 0xffd040, pad: 0x2a2a38 } },
   { name: 'dex', shoulders: 2.2, heads: 7.5, skull: { w: 0.98, d: 1.0, occ: 1.03, chinZ: 1.02 }, face: { noseW: 1.25, noseLen: 0.95, noseProj: 0.88, lipU: 1.25, lipL: 1.3, mw: 0.265, browThick: 0.05, cheek: 1.1, jawAng: 1.0 }, paint: { browSlit: 0, beardColor: [0.07, 0.05, 0.04], iris: [0.16, 0.09, 0.05] },
-    scale: 1.0, width: 1.05, sw: 0.205, arm: 1.1, leg: 1.05, head: 1.12, hand: 1.28, hair: 'beanie', hatFab: 'knit', hood: true,
-    top: 'hoodie', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
+    scale: 1.0, width: 1.05, sw: 0.205, arm: 1.1, leg: 1.05, head: 1.12, hand: 1.28, hair: 'buzz', hood: 'up',
+    top: 'hoodie', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth', fit: 0.045, hemDrop: 0.12, legLoose: 0.045, hemAt: 0.045,
+    print: 'chevrons', printY: 0.52, hoodie: true, inks: [0xd03070, 0xf4f0e6, 0x202020], shoe: { guard: 0x303030, heel: 0xd03070, stripe: 0xf0c030, sole: 0xf0ece0, line: 0xd03070 },
     colors: { skin: 0x8a5838, shirt: 0xf0c030, pants: 0x50583a, shoes: 0x202020, hair: 0x141010, accent: 0xd03070, hat: 0xd03070, band: 0xd03070 } },
   { name: 'marlo', fig: { waist: 0.84, hip: 1.04, bust: 0.7 }, neckShort: 0.008, hairlineH: 0.64, shoulders: 2.2, heads: 7.35, skull: { w: 1.0, slope: 0.3, chin: 0.98 }, adam: false, face: { jawAng: 1.05, chin: 1.0, brow: 0.95, browThick: 0.048, noseW: 1.05, cheek: 1.2, lipU: 1.0, lipL: 1.1, mw: 0.245, tilt: 0.03, lidUp: 0.23, naso: 0.6 }, paint: { age: 0.05, iris: [0.25, 0.18, 0.1], hairline: true, freckles: 0.2 },
-    scale: 1.04, width: 1.15, chest: 1.05, sw: 0.215, hw: 0.112, arm: 1.12, leg: 1.06, head: 1.06, hand: 1.25, jaw: 1.0, neck: 1.0, hair: 'bun', headband: true, wristband: true,
-    top: 'tank', shirtFab: 'cloth', bottom: 'shorts', pantsFab: 'cloth',
-    colors: { skin: 0x9a6440, shirt: 0x8a4ad0, pants: 0xd8c8a0, shoes: 0xf0f0f0, hair: 0x2a1a10, accent: 0x40d0ff, band: 0x40d0ff } },
+    scale: 1.04, width: 1.15, chest: 1.05, sw: 0.215, hw: 0.112, arm: 1.12, leg: 1.06, head: 1.06, hand: 1.25, jaw: 1.0, neck: 1.0, hair: 'beanie', hatFab: 'knit', slouch: 1, longHair: true, wristband: true,
+    top: 'longsleeve', shirtFab: 'cloth', bottom: 'shorts', pantsFab: 'cloth', fit: 0.035, hemDrop: 0.1, shortsEnd: -0.05, legLoose: 0.03, socks: 0.21,
+    print: 'waves', printY: 0.56, inks: [0x40d0ff, 0xf4f0e6], shoe: { guard: 0x6a3ab0, heel: 0x40d0ff, stripe: 0x6a3ab0, sole: 0xf0ece0, line: 0x40d0ff }, sock: { stripe: 0x8a4ad0 },
+    colors: { skin: 0x9a6440, shirt: 0x8a4ad0, pants: 0xd8c8a0, shoes: 0xf0f0f0, hair: 0x2a1a10, accent: 0x40d0ff, band: 0x40d0ff, hat: 0x40d0ff } },
 ];
 const only = process.argv.slice(2);
 for (const s of SPECS) if (!only.length || only.includes(s.name)) emit(s);
