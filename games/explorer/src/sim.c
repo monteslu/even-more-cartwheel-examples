@@ -693,7 +693,7 @@ void sim_step(sim *s, const pinput in[MAXP]) {
   if (!s->b.active && s->room >= 0 && s->w->rooms[s->room].kind == RK_BOSS) {
     const room *rm = &s->w->rooms[s->room];
     float x0 = (float)(rm->x * CELL_W + 7), x1 = (float)((rm->x + rm->w) * CELL_W - 7);
-    if (s->p[0].x > x0 && s->p[0].x < x1)
+    if (s->p[0].x > x0 && s->p[0].x < x1 && s->p[0].y > (float)(rm->y * CELL_H) + 5.5f) /* (clear of a door in the ceiling) */
       for (int i = 0; i < s->w->nents; i++)
         if (s->w->ents[i].kind == EK_BOSS && s->w->ents[i].room == s->room && !(s->bosses_down & (1 << s->w->ents[i].sub))) boss_start(s, s->room, i);
   }

@@ -64,10 +64,10 @@ static void normals(const float *h, int w, int hh, float k, bool wrap, uint8_t *
 /* the body of a material at pixel (x, y) of a tile-sized patch: height and lightness */
 static void material(int m, float x, float y, float *h, float *l) {
   switch (m) {
-  case MAT_STONE: { /* cut blocks: mortar lines, chipped faces */
-    int row = (int)floorf(y / 32), bx = (int)floorf((x + (row & 1) * 16) / 32);
-    float fx = fmodf(x + (float)(row & 1) * 16, 32), fy = fmodf(y, 32);
-    float e = fminf(fminf(fx, 31 - fx), fminf(fy, 31 - fy));
+  case MAT_STONE: { /* big worn blocks, one course a half tile: mortar lines, chipped faces */
+    int row = (int)floorf(y / 32), bx = (int)floorf((x + (float)(row & 1) * 29) / 64);
+    float fx = fmodf(x + (float)(row & 1) * 29, 64), fy = fmodf(y, 32);
+    float e = fminf(fminf(fx, 63 - fx), fminf(fy, 31 - fy)) + 1.5f * fbm(x * 0.2f, y * 0.2f, 4, 2, 0);
     float chip = fbm(x * 0.15f, y * 0.15f, 3, 3, 0);
     *h = sstep(0, 3.5f, e) * (0.7f + 0.3f * chip);
     *l = 0.62f + 0.22f * hash2(bx, row, 9) + 0.12f * (chip - 0.5f) - (e < 1.2f ? 0.25f : 0);
@@ -88,12 +88,12 @@ static void material(int m, float x, float y, float *h, float *l) {
     *l = 0.6f + 0.35f * facet;
     break;
   }
-  case MAT_BRASS: { /* riveted plates */
-    float fx = fmodf(x, 32), fy = fmodf(y, 32);
-    float e = fminf(fminf(fx, 31 - fx), fminf(fy, 31 - fy));
+  case MAT_BRASS: { /* riveted plates, one a tile, dented and scratched */
+    float fx = fmodf(x, 64), fy = fmodf(y, 64);
+    float e = fminf(fminf(fx, 63 - fx), fminf(fy, 63 - fy));
     float rv = 0;
     for (int k = 0; k < 4; k++) {
-      float cx = (k & 1) ? 26 : 5, cy = (k & 2) ? 26 : 5, d = sqrtf((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
+      float cx = (k & 1) ? 57 : 6, cy = (k & 2) ? 57 : 6, d = sqrtf((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy));
       rv = fmaxf(rv, sstep(2.6f, 0.5f, d));
     }
     float scratch = fbm(x * 0.4f, y * 0.04f, 31, 2, 0);
@@ -134,6 +134,18 @@ static void make_tiles(int m) {
         if (v & 2) d = fminf(d, (float)(TILE_PX - 1 - x));
         if (v & 4) d = fminf(d, (float)(TILE_PX - 1 - y));
         if (v & 8) d = fminf(d, (float)x);
+        /* a corner open on both sides is rounded: rock masses read as boulders, not boxes */
+        {
+          const float R = 30;
+          float fx = (float)x, fy = (float)y, E = (float)(TILE_PX - 1);
+          static const int CB[4][2] = { { 1, 8 }, { 1, 2 }, { 4, 2 }, { 4, 8 } };
+          for (int c = 0; c < 4; c++) {
+            if (!((v & CB[c][0]) && (v & CB[c][1]))) continue;
+            float cx = CB[c][1] == 8 ? R : E - R, cy = CB[c][0] == 1 ? R : E - R;
+            bool in = (CB[c][1] == 8 ? fx < cx : fx > cx) && (CB[c][0] == 1 ? fy < cy : fy > cy);
+            if (in) d = fminf(d, R - sqrtf((fx - cx) * (fx - cx) + (fy - cy) * (fy - cy)));
+          }
+        }
         float bev = sstep(0, 9, d);
         float rough = fbm((float)x * 0.3f, (float)y * 0.3f, 61 + v, 2, 0);
         float edge_alpha = 1;
@@ -242,21 +254,28 @@ static void make_wall(int m) {
   enum { S = 128 };
   static uint8_t col[S * S * 4], nrm[S * S * 4];
   static float hf[S * S];
+  /* rough cave rock, no courses or grid: tilted strata, a few cracks, lumps (each material its own grain) */
   for (int y = 0; y < S; y++)
     for (int x = 0; x < S; x++) {
-      float h, l;
-      material(m, (float)x * 1.5f, (float)y * 1.5f, &h, &l);
-      float n = fbm((float)x / 32, (float)y / 32, 91 + m, 3, 4);
+      float fx = (float)x, fy = (float)y;
+      float n = fbm(fx / 32, fy / 32, 91 + m, 3, 4), n2 = fbm(fx / 16, fy / 16, 97 + m, 2, 8);
+      float strata = 0.5f + 0.5f * sinf(6.2832f * (fy * 4 + fx) / (float)S + n * 5.0f); /* (whole cycles across: it tiles) */
+      float crack = sstep(0.06f, 0.0f, fabsf(fbm(fx / 25.6f, fy / 25.6f, 99 + m, 3, 5) - 0.5f));
+      float lump = sstep(0.45f, 0.75f, n);
+      float h = 0.35f * strata + 0.45f * lump + 0.2f * n2 - 0.35f * crack;
+      if (m == MAT_CRYSTAL) h = floorf((n * 0.7f + n2 * 0.3f) * 5) / 5;
       int i = y * S + x;
-      hf[i] = h * 0.6f + n * 0.4f;
-      float v = 0.5f + 0.5f * (l * 0.6f + n * 0.4f);
+      hf[i] = h;
+      float v = 0.66f + 0.2f * (0.6f * h + 0.4f * n2) - 0.1f * crack;
       col[4 * i] = col[4 * i + 1] = col[4 * i + 2] = u8(v);
       col[4 * i + 3] = 255;
     }
   normals(hf, S, S, 1.5f, true, nrm);
-  A.wall[m] = cw_texture_from_pixels(S, S, col, NULL);
+  A.wall[m] = cw_texture_from_pixels(S, S, col, &(cw_texture_desc){ .repeat = true });
   cw_texture_set_normal_map(A.wall[m], nrm);
 }
+
+#include "art_par.h"
 
 static void make_misc(void) {
   static uint8_t px[1024 * 512 * 4];
@@ -303,42 +322,18 @@ static void make_misc(void) {
       o[0] = o[1] = o[2] = u8(l), o[3] = u8(a);
     }
   A.thorns = cw_texture_from_pixels(64, 40, px, NULL);
-  /* parallax silhouettes: 0 far ridges, 1 pillars and arches, 2 hanging growth, 3 near spires; tileable across */
-  for (int k = 0; k < 4; k++) {
-    for (int y = 0; y < 512; y++)
-      for (int x = 0; x < 1024; x++) {
-        float fx = (float)x / 1024, fy = (float)y / 512, a = 0;
-        if (k == 0) { /* rolling far ridges with a lighter haze top */
-          float r = 0.45f + 0.25f * fbm(fx * 6, 0.5f, 101, 5, 6);
-          a = sstep(r - 0.01f, r + 0.01f, fy);
-        } else if (k == 1) { /* pillars and arches */
-          float col2 = fabsf(fmodf(fx * 5 + 0.5f, 1) - 0.5f);
-          float w = 0.08f + 0.05f * vnoise(fx * 5, 1, 102, 5);
-          float arch = fy > 0.25f && fy < 0.45f ? sstep(0.3f, 0.25f, fabsf(col2 - 0.5f + 0.5f) - (fy - 0.25f)) : 0;
-          a = fmaxf(sstep(w + 0.01f, w - 0.01f, col2) * sstep(0.12f, 0.2f, fy), arch * 0);
-          a = fmaxf(a, sstep(0.86f, 0.9f, fy + 0.05f * fbm(fx * 12, 2, 103, 3, 12)));
-        } else if (k == 2) { /* hanging growth from the top */
-          float len = 0.15f + 0.4f * fbm(fx * 18, 3, 104, 3, 18) * fbm(fx * 4, 7, 105, 2, 4) * 2;
-          float strand = 0.5f + 0.5f * sinf(fx * 220 + fbm(fx * 9, fy * 4, 106, 2, 9) * 4);
-          a = sstep(len + 0.02f, len - 0.02f, fy) * sstep(0.2f, 0.6f, strand + 0.4f * (1 - fy / (len + 0.01f)));
-          a = fmaxf(a, sstep(0.1f, 0.06f, fy));
-        } else { /* near spires from the bottom */
-          float sp = 0;
-          for (int s = 0; s < 7; s++) {
-            float cx = ((float)s + 0.3f + 0.4f * hash2(s, 4, 107)) / 7, h = 0.25f + 0.35f * hash2(s, 5, 108), w = 0.03f + 0.03f * hash2(s, 6, 109);
-            float dx = fabsf(fx - cx);
-            if (dx > 0.5f) dx = 1 - dx;
-            float top = 1 - h;
-            if (fy > top) sp = fmaxf(sp, sstep(w * (fy - top) / h + 0.003f, w * (fy - top) / h - 0.003f, dx));
-          }
-          a = sp;
-        }
-        uint8_t *o = px + 4 * (y * 1024 + x);
-        float shade = 0.85f + 0.15f * (1 - fy);
-        o[0] = o[1] = o[2] = u8(shade), o[3] = u8(a);
-      }
-    A.par[k] = cw_texture_from_pixels(1024, 512, px, &(cw_texture_desc){ .repeat = true });
-  }
+  /* a molten channel: dark slag crusting a bright flowing surface (tiles across) */
+  for (int y = 0; y < 40; y++)
+    for (int x = 0; x < 64; x++) {
+      float fx = (float)x, fy = (float)y;
+      float crust = sstep(0.55f, 0.63f, fbm(fx / 16, fy / 10, 131, 3, 4));
+      float a = fy > 18 ? 1 : sstep(12, 18, fy + 3 * vnoise(fx / 8, 0, 132, 8));
+      float l = 1.0f - 0.7f * crust - 0.2f * sstep(24, 40, fy);
+      uint8_t *o = px + 4 * (y * 64 + x);
+      o[0] = o[1] = o[2] = u8(l), o[3] = u8(a);
+    }
+  A.molten = cw_texture_from_pixels(64, 40, px, &(cw_texture_desc){ .repeat = true });
+  make_parallax(px);
 }
 
 void art_init(void) {

@@ -9,13 +9,13 @@
 //            (a soft lock), a lamp lifted off its ceiling (floating), a wall gate lowered to one jump (the gate leaks)
 // Run: node tests/explorer-world.mjs   (after TARGETS=native scripts/build.sh explorer_worldgen explorer_check)
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { availableParallelism } from 'node:os';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const BIN = join(ROOT, 'build/native/games/explorer');
+const BIN = [join(ROOT, 'build/native/project/games/explorer'), join(ROOT, 'build/native/games/explorer')].find((d) => existsSync(join(d, 'explorer_check')));
 const ASSETS = join(ROOT, 'games/explorer/assets');
 const OUT = join(ROOT, 'out/explorer-world');
 mkdirSync(OUT, { recursive: true });

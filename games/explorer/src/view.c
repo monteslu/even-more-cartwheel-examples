@@ -1,11 +1,12 @@
 /* explorer: drawing the world (view.h). Canvas layers, back to front:
- *   sky          a gradient in the region's sky colour (screen space)
- *   1..4         parallax silhouettes, far to near, each a value step lighter and warmer than the one behind
+ *   sky          a bright hazy gradient, then three parallax depths of the region's own shapes (screen space, unlit)
  *   wall         the room's back wall (lit: the lamps and the hero's lantern shade its relief)
  *   tiles        rock, its bright walkable lip, ledges, thorns, props, lamps (lit, normal-mapped)
  *   actors       the hero (a skeleton of shapes, animated in code), enemies, wardens (lit)
  *   fx           glows, particles, shots, the lantern's halo (additive, unlit)
  *   water        pools and flooded halls over everything they cover
+ *   frame        dark silhouettes nearer than the playfield at the room's sides and ceiling (unlit, sliding faster)
+ *   front        the distortion layer: shockwaves
  * Mood comes from colour: every region is mid-key under a bright ambient, the lamps add warmth or chill. */
 #include <math.h>
 #include <stdlib.h>
@@ -31,6 +32,19 @@ static cw_color hexc(uint32_t c, float a) { return (cw_color){ (float)((c >> 16)
 static cw_color mixc(cw_color a, cw_color b, float t) { return (cw_color){ a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t }; }
 static cw_color scalec(cw_color a, float k) { return (cw_color){ a.r * k, a.g * k, a.b * k, a.a }; }
 static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
+/* the value structure is set by luma, the same in every region whatever its palette: a colour moved to luma L (0..1),
+ * keeping its hue (scaled down, or mixed toward a white of its own tint) */
+static float luma(cw_color c) { return 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b; }
+static cw_color toluma(cw_color c, float L) {
+  float l = luma(c);
+  if (l >= L) return scalec(c, L / (l > 1e-4f ? l : 1e-4f));
+  cw_color w = mixc(rgba(1, 1, 1, c.a), c, 0.25f);
+  float lw = luma(w), k = (L - l) / (lw - l > 1e-4f ? lw - l : 1e-4f);
+  return mixc(c, w, k > 1 ? 1 : k);
+}
+/* the value steps (luma): the hazy depth, the parallax depths far to near, the back wall, the rock's body */
+enum { V_HAZE = 212, V_TOP = 172, V_FAR = 190, V_MID = 164, V_NEAR = 128, V_WALL = 124, V_ROCK = 76 };
+#define VAL(v) ((float)(v) / 255.0f)
 
 /* ── particles ── */
 #define MAXPART 2400
@@ -145,11 +159,19 @@ static void glowing(float intensity) {
 }
 
 /* ── background ── */
+/* each region's complementary accent: cool steel blue against the warm regions, lantern amber against the cool */
+static cw_color comp_accent(int region) {
+  cw_color k = hexc(REGIONS[region].sky, 1);
+  return k.r > k.b + 0.05f ? rgba(0.42f, 0.66f, 1.0f, 1) : rgba(1.0f, 0.68f, 0.32f, 1);
+}
 static void draw_sky(const sim *s, float t, int region) {
   const region_info *ri = &REGIONS[region];
   cw_vec2 cs = cw_r2d_canvas_size();
   cw_r2d_use_layer(L_SKY);
-  cw_color top = hexc(ri->sky, 1), bot = mixc(hexc(ri->sky, 1), hexc(ri->accent, 1), 0.25f);
+  /* a bright hazy depth behind everything: the playfield and the rock read as darker shapes against it */
+  cw_color haze = toluma(hexc(ri->sky, 1), VAL(V_HAZE));
+  cw_color comp = comp_accent(region);
+  cw_color top = toluma(hexc(ri->sky, 1), VAL(V_TOP)), bot = toluma(mixc(haze, comp, 0.35f), VAL(V_HAZE));
   cw_vertex2d v[4] = { { { 0, 0 }, { 0, 0 }, top }, { { cs.x, 0 }, { 1, 0 }, top }, { { cs.x, cs.y }, { 1, 1 }, bot }, { { 0, cs.y }, { 0, 1 }, bot } };
   uint32_t idx[6] = { 0, 1, 2, 0, 2, 3 };
   cw_r2d_triangles((cw_texture){ 0 }, v, 4, idx, 6);
@@ -157,21 +179,32 @@ static void draw_sky(const sim *s, float t, int region) {
   for (int k = 0; k < 3; k++) {
     float x = fmodf((float)k * 0.37f * cs.x - g_cam.position.x * zoom * 0.05f + cs.x * 2, cs.x * 1.2f) - cs.x * 0.1f;
     cw_vec2 q[4] = { { x, 0 }, { x + cs.x * 0.08f, 0 }, { x + cs.x * 0.22f, cs.y }, { x + cs.x * 0.1f, cs.y } };
-    cw_r2d_polygon(q, 4, rgba(1, 1, 0.95f, 0.035f + 0.015f * sinf(t * 0.3f + (float)k)));
+    cw_color sc = mixc(rgba(1, 1, 0.95f, 1), comp, 0.5f);
+    sc.a = 0.06f + 0.02f * sinf(t * 0.3f + (float)k);
+    cw_r2d_polygon(q, 4, sc);
   }
-  /* parallax: four silhouettes, far to near, each a value step lighter than the one behind and tinted by the region */
-  static const float PAR[4] = { 0.12f, 0.25f, 0.42f, 0.6f };
-  cw_color cols[4] = { mixc(hexc(ri->far, 1), hexc(ri->sky, 1), 0.35f), hexc(ri->far, 1), hexc(ri->mid, 1), hexc(ri->near, 1) };
-  for (int k = 0; k < 4; k++) {
-    cw_r2d_use_layer(1 + k);
-    /* each region its own skyline: which silhouette sits at which depth, and how wide it runs */
-    static const uint8_t SETS[4][4] = { { 0, 1, 2, 3 }, { 0, 3, 1, 2 }, { 1, 0, 3, 2 }, { 0, 2, 3, 1 } };
-    int tex = SETS[region % 4][k];
-    float w = cs.y * (1.6f + 0.3f * (float)((region * 3 + k) % 4)), h = cs.y * (0.9f + 0.1f * (float)k);
-    float u0 = g_cam.position.x * zoom * PAR[k] / w;
+  /* parallax: three depths of the region's own shapes (far ridges, then its family of arches, trees, crystals,
+   * machinery or hanging growth), each a value step darker than the one behind, the haze of its depth baked in.
+   * One unlit layer: no fog pass, no extra full-screen layers. */
+  static const uint8_t SET[NREGIONS][3] = {
+    [R_GATE] = { PAR_RIDGE, PAR_ARCH, PAR_TREES },      [R_ROOTWAY] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_GLASS] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_FEN] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_CLOCK] = { PAR_RIDGE, PAR_MACHINE, PAR_ARCH },   [R_TIDAL] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },
+    [R_STAR] = { PAR_RIDGE, PAR_CRYSTAL, PAR_ARCH },    [R_SKY] = { PAR_RIDGE, PAR_ARCH, PAR_CRYSTAL },
+    [R_ARCHIVE] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },    [R_FORGE] = { PAR_RIDGE, PAR_MACHINE, PAR_MACHINE },
+    [R_FROST] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_BLOOM] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_HEART] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+  };
+  static const float PAR[3] = { 0.14f, 0.32f, 0.55f };
+  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, 0.85f), VAL(V_FAR)), toluma(mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.45f : 0.25f), VAL(V_MID)), toluma(hexc(ri->near, 1), VAL(V_NEAR)) };
+  if (region == R_FORGE || region == R_CLOCK) cols[2] = mixc(cols[2], rgba(0.42f, 0.5f, 0.6f, 1), 0.45f); /* cool steel against the heat */
+  for (int k = 0; k < 3; k++) {
+    int tex = SET[region][k];
+    float w = cs.y * (1.7f + 0.35f * (float)((region * 3 + k) % 4)) * (k == 2 && SET[region][1] == SET[region][2] ? 1.45f : 1), h = cs.y * (0.85f - 0.06f * (float)k);
+    float u0 = g_cam.position.x * zoom * PAR[k] / w + (float)region * 0.37f + (float)k * 0.21f;
     float yoff = -(g_cam.position.y - (float)(s->room >= 0 ? s->w->rooms[s->room].y * CELL_H : 0)) * zoom * PAR[k] * 0.35f;
-    float y0 = cs.y - h + yoff + cs.y * 0.08f * (float)(3 - k);
-    if (tex == 2) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
+    float y0 = cs.y - h + yoff + cs.y * 0.1f * (float)(2 - k);
+    if (tex == PAR_HANG) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
     cw_vec2 pos[4] = { { 0, y0 }, { cs.x, y0 }, { cs.x, y0 + h }, { 0, y0 + h } };
     float su = cs.x / w;
     cw_vec2 uv[4] = { { u0, 0 }, { u0 + su, 0 }, { u0 + su, 1 }, { u0, 1 } };
@@ -209,15 +242,14 @@ static void build_rockdist(const sim *s) {
 static float wall_alpha(int x, int y) {
   x = x < 0 ? 0 : x >= TW ? TW - 1 : x, y = y < 0 ? 0 : y >= TH ? TH - 1 : y;
   float d = (float)rockdist[y][x];
-  return d <= 2 ? 1 : d >= 10 ? 0 : 1 - (d - 2) / 8.0f;
+  return 0.6f * (d <= 1 ? 1 : d >= 6 ? 0 : 1 - (d - 1) / 5.0f); /* (a band round the rock: the room opens onto the depth behind) */
 }
 
 static void draw_room_wall(const sim *s, int ri, float x0, float y0, float x1, float y1) {
   const room *r = &s->w->rooms[ri];
   const region_info *g = &REGIONS[r->region];
   int m = region_material(r->region);
-  cw_color c = mixc(hexc(g->mid, 1), hexc(g->ground, 1), 0.35f);
-  c = mixc(c, hexc(g->sky, 1), 0.2f);
+  cw_color c = toluma(mixc(hexc(g->mid, 1), hexc(g->sky, 1), 0.35f), VAL(V_WALL));
   int rx0 = r->x * CELL_W + 2, ry0 = r->y * CELL_H + 2, rx1 = (r->x + r->w) * CELL_W - 2, ry1 = (r->y + r->h) * CELL_H - 2;
   int ax = rx0 > (int)x0 - 2 ? rx0 : ((int)x0 - 2) & ~1, ay = ry0 > (int)y0 - 2 ? ry0 : ((int)y0 - 2) & ~1;
   /* 2 x 2 tile quads of the wall texture, each corner's alpha from its distance to the rock: a smooth fade */
@@ -228,11 +260,17 @@ static void draw_room_wall(const sim *s, int ri, float x0, float y0, float x1, f
     for (int x = ax; x < rx1 && x < x1 + 2; x += 2) {
       float a[4] = { wall_alpha(x, y), wall_alpha(x + 2, y), wall_alpha(x + 2, y + 2), wall_alpha(x, y + 2) };
       if (a[0] + a[1] + a[2] + a[3] < 0.02f || nq >= 1200) continue;
-      static const float CX[4] = { 0, 2, 2, 0 }, CY[4] = { 0, 0, 2, 2 }, U[4] = { 0, 1, 1, 0 }, V[4] = { 0, 0, 1, 1 };
+      /* hidden behind rock (the quad and the ring round it all solid): not drawn, the lit pass never pays for it */
+      bool covered = true;
+      for (int yy = y - 1; yy <= y + 2 && covered; yy++)
+        for (int xx = x - 1; xx <= x + 2 && covered; xx++) covered = w_in(xx, yy) && t_solid(s->t[yy][xx]);
+      if (covered) continue;
+      static const float CX[4] = { 0, 2, 2, 0 }, CY[4] = { 0, 0, 2, 2 };
       for (int k = 0; k < 4; k++) {
         cw_color cc = c;
         cc.a = a[k];
-        v[nq * 4 + k] = (cw_vertex2d){ { (float)x + CX[k], (float)y + CY[k] }, { U[k], V[k] }, cc };
+        float wx = (float)x + CX[k], wy = (float)y + CY[k];
+        v[nq * 4 + k] = (cw_vertex2d){ { wx, wy }, { wx / 7.0f, wy / 7.0f }, cc }; /* (one texture across seven tiles: no grid) */
       }
       uint32_t b = (uint32_t)nq * 4;
       uint32_t q[6] = { b, b + 1, b + 2, b, b + 2, b + 3 };
@@ -265,12 +303,13 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
           bool near = false;
           for (int dy = -2; dy <= 2 && !near; dy++)
             for (int dx = -2; dx <= 2 && !near; dx++) near = w_in(x + dx, y + dy) && open_tile(s->t[y + dy][x + dx]);
-          if (!near) {
-            cw_r2d_rect((cw_rect){ (float)x, (float)y, 1.02f, 1.02f }, scalec(hexc(g->ground, 1), 0.62f));
+          if (!near) { /* the rock's grain carries on into the mass, a step darker */
+            cw_r2d_sprite(&(cw_sprite){ .texture = A.tiles[m], .src = { 0, 0, TILE_PX, TILE_PX }, .pos = { (float)x, (float)y }, .size = { 1.02f, 1.02f },
+                                        .color = scalec(toluma(hexc(g->ground, 1), VAL(V_ROCK)), 0.8f) });
             continue;
           }
         }
-        cw_color body = hexc(g->ground, 1);
+        cw_color body = toluma(hexc(g->ground, 1), VAL(V_ROCK));
         if (tt == T_CRACKED) body = mixc(body, rgba(1, 0.85f, 0.6f, 1), 0.18f);
         if (tt == T_SECRET) body = scalec(body, 0.93f);
         if (tt == T_BOSSDOOR || tt == T_SEAL) continue; /* drawn in the effects layer */
@@ -285,8 +324,10 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
         }
         if (o_up && tt != T_CRACKED) { /* the walkable lip: the brightest value in the scene's ground */
           int v = (x * 7 + y * 3) & 3;
-          cw_r2d_sprite(&(cw_sprite){ .texture = A.lip[m], .src = { (float)(v * TILE_PX), 0, TILE_PX, 40 }, .pos = { (float)x, (float)y - 12.0f / 64.0f },
-                                      .size = { 1.0f, 40.0f / 64.0f }, .color = hexc(g->top, 1) });
+          /* over a rounded corner the lip starts in from the edge, following the curve */
+          float l0 = o_l ? 0.28f : 0, l1 = o_r ? 0.28f : 0;
+          cw_r2d_sprite(&(cw_sprite){ .texture = A.lip[m], .src = { (float)(v * TILE_PX) + l0 * TILE_PX, 0, (1 - l0 - l1) * TILE_PX, 40 },
+                                      .pos = { (float)x + l0, (float)y - 12.0f / 64.0f }, .size = { 1.0f - l0 - l1, 40.0f / 64.0f }, .color = hexc(g->top, 1) });
           VS.sprites++;
         }
       } else if (tt == T_ONEWAY) {
@@ -294,6 +335,14 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
         int piece = !l ? 0 : !r ? 2 : 1;
         cw_r2d_sprite(&(cw_sprite){ .texture = A.ledge[m], .src = { (float)(piece * TILE_PX), 0, TILE_PX, 28 }, .pos = { (float)x, (float)y },
                                     .size = { 1.0f, 28.0f / 64.0f }, .color = mixc(hexc(g->ground, 1), hexc(g->top, 1), 0.55f) });
+        VS.sprites++;
+      } else if (tt == T_SPIKE && (region == R_FORGE || region == R_CLOCK)) { /* a molten channel, flowing, glowing */
+        float fl = t * 0.35f;
+        if ((x % 4) == 0) light((float)x + 0.5f, (float)y + 0.2f, 4.5f, rgba(1, 0.55f, 0.2f, 1), 0.55f, false);
+        glowing(2.2f);
+        cw_r2d_sprite(&(cw_sprite){ .texture = A.molten, .src = { fl * 64.0f + (float)(x % 4) * 16.0f, 0, TILE_PX, 40 }, .pos = { (float)x, (float)y + 0.25f },
+                                    .size = { 1.0f, 0.75f }, .color = rgba(1, 0.62f, 0.22f, 1) });
+        glowing(1);
         VS.sprites++;
       } else if (tt == T_SPIKE) {
         cw_r2d_sprite(&(cw_sprite){ .texture = A.thorns, .pos = { (float)x, (float)y + 1 - 40.0f / 64.0f }, .size = { 1.0f, 40.0f / 64.0f },
@@ -358,6 +407,116 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
       cw_r2d_circle(v2(bx + sway * 3, y - h), 0.09f, 8, k == 1 ? acc : mixc(acc, rgba(1, 1, 1, 1), 0.5f));
     }
     break;
+  case PR_PIPE: { /* a steel pipe down from the ceiling: flanges, a valve, a spout breathing steam */
+    float len = (float)e->arg * 0.6f + 0.4f;
+    cw_color steel = rgba(0.42f, 0.5f, 0.6f, 1);
+    cw_r2d_rect((cw_rect){ x - 0.16f, y, 0.32f, len }, steel);
+    cw_r2d_rect((cw_rect){ x - 0.06f, y, 0.07f, len }, rgba(0.68f, 0.76f, 0.85f, 1)); /* its lit edge */
+    for (float k = 0.5f; k < len; k += 1.1f) cw_r2d_rect((cw_rect){ x - 0.24f, y + k, 0.48f, 0.12f }, scalec(steel, 0.75f));
+    cw_r2d_circle_lines(v2(x, y + len * 0.6f), 0.22f, 0.06f, 10, rgba(0.8f, 0.3f, 0.2f, 1));
+    limb(v2(x, y + len), v2(x + 0.35f, y + len + 0.3f), 0.15f, 0.13f, steel);
+    break;
+  }
+  case PR_MACHINE: { /* a machine: a riveted housing, a turning gear, a piston, a furnace mouth or a pilot light */
+    uint8_t v = e->arg;
+    float wd = 2.0f + (float)(v & 3) * 0.3f, ht = 1.1f + (float)((v >> 2) & 3) * 0.25f, spin = t * (0.6f + (float)(v & 1)) * ((v & 8) ? 1 : -1);
+    cw_color steel = rgba(0.4f, 0.47f, 0.56f, 1), brass = mixc(acc, rgba(0.8f, 0.62f, 0.3f, 1), 0.6f);
+    cw_vec2 gc = v2(x + ((v & 16) ? 0.6f : -0.6f), y - ht - 0.7f);
+    for (int k = 0; k < 10; k++) { /* the gear's teeth, then its body and hub */
+      float a = spin + (float)k * 0.6283f;
+      limb(gc, v2(gc.x + cosf(a) * 1.0f, gc.y + sinf(a) * 1.0f), 0.13f, 0.13f, scalec(brass, 0.8f));
+    }
+    cw_r2d_circle(gc, 0.85f, 20, brass);
+    cw_r2d_circle(gc, 0.55f, 16, scalec(brass, 0.7f));
+    cw_r2d_circle(gc, 0.2f, 10, rgba(0.9f, 0.85f, 0.7f, 1));
+    float pump = 0.25f * sinf(t * 2.4f + x);
+    cw_r2d_rect((cw_rect){ x - wd * 0.15f, y - ht - 1.5f + pump, 0.22f, 1.5f }, rgba(0.75f, 0.8f, 0.86f, 1)); /* the piston */
+    cw_r2d_round_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, ht }, 0.12f, 4, steel);
+    cw_r2d_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, 0.12f }, rgba(0.62f, 0.7f, 0.8f, 1));
+    for (int k = 0; k < 4; k++) cw_r2d_circle(v2(x - wd * 0.4f + (float)k * wd * 0.27f, y - ht + 0.3f), 0.05f, 6, rgba(0.75f, 0.8f, 0.85f, 1));
+    if (g->accent == REGIONS[R_FORGE].accent) { /* a furnace mouth, glowing */
+      glowing(2.4f);
+      cw_r2d_round_rect((cw_rect){ x - 0.4f, y - ht * 0.6f, 0.8f, ht * 0.45f }, 0.15f, 4, rgba(1, 0.6f, 0.2f, 1));
+      glowing(1);
+    }
+    glowing(2.6f); /* a pilot light: the cool accent */
+    cw_r2d_circle(v2(x + wd * 0.35f, y - ht + 0.32f), 0.09f, 8, rgba(0.45f, 0.75f, 1, 1));
+    glowing(1);
+    break;
+  }
+  case PR_TREE: { /* a tree of the gardens: a leaning trunk, branches, a crown of leaf masses and blossom */
+    uint8_t v = e->arg;
+    float h = 3.0f + (float)(v & 3) * 0.45f, lean = ((float)((v >> 2) & 3) - 1.5f) * 0.18f, sw = sinf(t * 0.9f + x) * 0.05f;
+    cw_color bark = mixc(dark, rgba(0.35f, 0.24f, 0.18f, 1), 0.5f), lf = mixc(leaf, rgba(0.35f, 0.62f, 0.3f, 1), 0.35f);
+    cw_vec2 top = v2(x + lean * h + sw, y - h);
+    limb(v2(x, y), top, 0.3f, 0.14f, bark);
+    limb(v2(x + lean * h * 0.5f, y - h * 0.55f), v2(x + lean * h * 0.5f + 1.1f, y - h * 0.8f), 0.1f, 0.05f, bark);
+    limb(v2(x + lean * h * 0.6f, y - h * 0.65f), v2(x + lean * h * 0.6f - 1.0f, y - h * 0.92f), 0.09f, 0.04f, bark);
+    for (int k = 0; k < 7; k++) {
+      float a = (float)k * 0.9f + (float)v, r = 0.6f + 0.25f * (float)((v + k) % 3);
+      cw_vec2 c = v2(top.x + cosf(a) * 1.0f, top.y + sinf(a) * 0.55f + 0.1f);
+      cw_r2d_circle(c, r, 14, scalec(lf, 0.82f + 0.06f * (float)(k % 3)));
+      cw_r2d_circle(v2(c.x - 0.15f, c.y - 0.2f), r * 0.6f, 12, scalec(lf, 1.08f)); /* the lit side */
+    }
+    for (int k = 0; k < 6; k++) cw_r2d_circle(v2(top.x + cosf((float)k * 2.1f + (float)v) * 1.3f, top.y + sinf((float)k * 1.7f) * 0.7f), 0.1f, 6, acc);
+    break;
+  }
+  case PR_CLUSTER: { /* a cluster of crystals taller than the hero, faceted, glowing a little from within */
+    uint8_t v = e->arg;
+    cw_color cc = mixc(acc, rgba(1, 1, 1, 1), 0.25f);
+    for (int k = 0; k < 5; k++) {
+      float bx = x - 1.0f + (float)k * 0.5f, hgt = 1.0f + (float)((v + k * 3) % 5) * 0.4f, lean = ((float)((v >> k) & 3) - 1.5f) * 0.25f, w = 0.22f + 0.05f * (float)(k & 1);
+      cw_vec2 l[3] = { v2(bx - w, y), v2(bx, y), v2(bx + lean, y - hgt) }, r[3] = { v2(bx, y), v2(bx + w, y), v2(bx + lean, y - hgt) };
+      glowing(1.25f);
+      cw_r2d_polygon(l, 3, cc);
+      cw_r2d_polygon(r, 3, scalec(cc, 0.6f));
+      glowing(1);
+    }
+    break;
+  }
+  case PR_KELP: { /* tall weed swaying in the current, bulbs along it */
+    for (int k = 0; k < 3; k++) {
+      float bx = x - 0.5f + (float)k * 0.5f, hgt = 2.2f + (float)((e->arg + k) % 3) * 0.6f;
+      cw_vec2 prev = v2(bx, y);
+      for (int j = 1; j <= 6; j++) {
+        float f = (float)j / 6;
+        cw_vec2 p = v2(bx + sinf(t * 1.1f + bx + f * 2.5f) * 0.35f * f, y - hgt * f);
+        limb(prev, p, 0.09f * (1.1f - f * 0.6f), 0.08f * (1.1f - f * 0.6f), scalec(leaf, 0.7f + 0.1f * (float)k));
+        if (j == 3 || j == 5) cw_r2d_circle(p, 0.13f, 8, acc);
+        prev = p;
+      }
+    }
+    break;
+  }
+  case PR_SHELF: { /* a shelf of old books */
+    float wd = 1.8f, ht = 2.6f;
+    cw_color wood = rgba(0.36f, 0.25f, 0.2f, 1);
+    cw_r2d_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, ht }, wood);
+    for (int r = 0; r < 3; r++) {
+      float ry = y - ht + 0.15f + (float)r * 0.85f;
+      for (int k = 0; k < 9; k++) {
+        uint32_t hsh = (uint32_t)(e->arg * 31 + r * 7 + k * 13);
+        static const uint32_t BOOK[5] = { 0x8a3a3a, 0x3a5a8a, 0x6a7a3a, 0xc0a060, 0x5a3a6a };
+        float bh = 0.5f + (float)(hsh % 3) * 0.08f;
+        cw_r2d_rect((cw_rect){ x - wd * 0.45f + (float)k * 0.19f, ry + 0.7f - bh, 0.16f, bh }, hexc(BOOK[hsh % 5], 1));
+      }
+      cw_r2d_rect((cw_rect){ x - wd * 0.5f, ry + 0.7f, wd, 0.1f }, scalec(wood, 1.3f));
+    }
+    break;
+  }
+  case PR_STATUE: { /* a hooded lamplighter of stone on a plinth, a lantern held out, still burning */
+    cw_color stone = rgba(0.66f, 0.66f, 0.64f, 1);
+    float f = (e->arg & 1) ? 1.0f : -1.0f;
+    cw_r2d_rect((cw_rect){ x - 0.8f, y - 0.7f, 1.6f, 0.7f }, scalec(stone, 0.8f));
+    cw_vec2 robe[5] = { v2(x - 0.55f, y - 0.7f), v2(x + 0.55f, y - 0.7f), v2(x + 0.3f, y - 2.6f), v2(x, y - 3.1f), v2(x - 0.35f, y - 2.5f) };
+    cw_r2d_polygon(robe, 5, stone);
+    cw_r2d_circle(v2(x, y - 3.0f), 0.32f, 12, stone);
+    limb(v2(x + f * 0.2f, y - 2.4f), v2(x + f * 0.9f, y - 2.6f), 0.1f, 0.08f, stone);
+    glowing(2.8f);
+    cw_r2d_circle(v2(x + f * 0.95f, y - 2.35f), 0.14f, 10, rgba(1, 0.85f, 0.5f, 1));
+    glowing(1);
+    break;
+  }
   default: { /* hanging vines / roots / chains from the ceiling: arg is the length */
     float len = (float)e->arg * 0.5f;
     cw_vec2 prev = v2(x, y);
@@ -390,6 +549,25 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
   } else if (e->sub == 7) { /* a shrine candle by an item */
     core = v2(x, y - 1.1f);
     cw_r2d_rect((cw_rect){ x - 0.12f, y - 1.0f, 0.24f, 1.0f }, rgba(0.85f, 0.8f, 0.7f, 1));
+  } else if (e->sub == 9) { /* a lantern post: an iron post, a lantern of warm glass */
+    core = v2(x, y - 1.75f);
+    cw_r2d_rect((cw_rect){ x - 0.07f, y - 1.6f, 0.14f, 1.6f }, rgba(0.2f, 0.18f, 0.18f, 1));
+    cw_r2d_rect((cw_rect){ x - 0.22f, y - 0.12f, 0.44f, 0.12f }, rgba(0.2f, 0.18f, 0.18f, 1));
+    cw_r2d_round_rect((cw_rect){ x - 0.24f, y - 2.1f, 0.48f, 0.62f }, 0.08f, 4, rgba(0.22f, 0.2f, 0.2f, 1));
+    glowing(2.4f);
+    cw_r2d_round_rect((cw_rect){ x - 0.16f, y - 2.02f, 0.32f, 0.46f }, 0.05f, 4, rgba(1, 0.62f, 0.24f, 1));
+    glowing(1);
+    if (lights_on) light(core.x, core.y, 6.5f, rgba(1, 0.66f, 0.32f, 1), 0.7f * flick, false);
+    return;
+  } else if (e->sub == 8) { /* a pilot light: a steel jet with a small blue flame */
+    core = v2(x, y - 0.75f);
+    cw_r2d_rect((cw_rect){ x - 0.08f, y - 0.5f, 0.16f, 0.5f }, rgba(0.45f, 0.52f, 0.6f, 1));
+    glowing(1.6f);
+    cw_vec2 fl[3] = { v2(x - 0.12f, y - 0.5f), v2(x + 0.12f, y - 0.5f), v2(x + sinf(t * 9 + x) * 0.04f, y - 0.95f - 0.08f * flick) };
+    cw_r2d_polygon(fl, 3, rgba(0.5f, 0.8f, 1, 1));
+    glowing(1);
+    if (lights_on) light(core.x, core.y, 4.5f, rgba(0.45f, 0.7f, 1, 1), 0.55f * flick, false);
+    return;
   } else { /* a glowing growth or brazier on the floor */
     core = v2(x, y - 0.55f);
     if (e->sub == 4) {
@@ -410,6 +588,121 @@ static void draw_lamp(const ent *e, const region_info *g, float t, bool lights_o
   float warm = acc.r - acc.b;
   cw_color lc = warm > 0.2f ? mixc(acc, rgba(0.75f, 0.9f, 1, 1), 0.35f) : mixc(acc, rgba(1, 0.7f, 0.38f, 1), 0.8f);
   if (lights_on) light(core.x, core.y, e->hold == HOLD_CEIL ? 9.0f : 6.0f, lc, (e->hold == HOLD_CEIL ? 0.8f : 0.5f) * flick, e->hold == HOLD_CEIL);
+}
+
+/* ── framing: dark silhouettes in front of everything, nearer than the playfield (their layer's camera is zoomed in,
+ * so they slide past faster), at the room's sides and hanging from its ceiling: columns, trunks, chains, shards ── */
+#define FRAME_PAR 1.32f
+/* a group drawn at its world place when the camera stands at e, and sliding FRAME_PAR times as fast as the world */
+static void frame_at(float ex, float ey) {
+  cw_xform2d m = cw_xform2d_identity();
+  m.tx = -(FRAME_PAR - 1) * (g_cam.position.x - ex), m.ty = -(FRAME_PAR - 1) * (g_cam.position.y - ey);
+  cw_r2d_set_transform(&m);
+}
+static uint32_t fhash(uint32_t a, uint32_t b) {
+  uint32_t h = a * 2654435761u ^ (b + 0x9e3779b9u) * 2246822519u;
+  h ^= h >> 15, h *= 2246822519u, h ^= h >> 13;
+  return h;
+}
+static void draw_framing(const sim *s, float t) {
+  if (s->room < 0) return;
+  const room *r = &s->w->rooms[s->room];
+  const region_info *g = &REGIONS[r->region];
+  cw_color ink = mixc(scalec(hexc(g->ground, 1), 0.32f), scalec(hexc(g->sky, 1), 0.2f), 0.35f), ink2 = scalec(ink, 1.35f);
+  float X0 = (float)(r->x * CELL_W), X1 = (float)((r->x + r->w) * CELL_W), Y0 = (float)(r->y * CELL_H), Y1 = (float)((r->y + r->h) * CELL_H);
+  cw_vec2 cs = cw_r2d_canvas_size();
+  float vw = cs.x / zoom, vh = cs.y / zoom;
+  float cxL = X0 + vw * 0.5f, cxR = X1 - vw * 0.5f, cyT = Y0 + vh * 0.5f;
+  if (cxR < cxL) cxL = cxR = (X0 + X1) * 0.5f;
+  int fam;
+  switch (r->region) {
+  case R_ROOTWAY: case R_FEN: case R_BLOOM: case R_HEART: fam = 1; break;
+  case R_CLOCK: case R_FORGE: fam = 2; break;
+  case R_GLASS: case R_FROST: case R_STAR: fam = 3; break;
+  case R_TIDAL: fam = 4; break;
+  default: fam = 0; break;
+  }
+  for (int side = 0; side < 2; side++) { /* the sides: something big standing at each wall */
+    uint32_t h = fhash((uint32_t)s->room, (uint32_t)side);
+    float x = side ? X1 - 1.2f - (float)(h % 3) * 0.6f : X0 + 1.2f + (float)(h % 3) * 0.6f, dir = side ? -1.0f : 1.0f;
+    frame_at(side ? cxR : cxL, g_cam.position.y);
+    switch (fam) {
+    case 0: { /* a column with its capital and base */
+      float w = 1.4f + (float)((h >> 4) % 3) * 0.3f;
+      cw_r2d_rect((cw_rect){ x - w * 0.5f, Y0, w, Y1 - Y0 }, ink);
+      cw_r2d_rect((cw_rect){ x - w * 0.75f, Y0 + 2.2f, w * 1.5f, 0.6f }, ink2);
+      cw_r2d_rect((cw_rect){ x - w * 0.75f, Y1 - 2.8f, w * 1.5f, 0.7f }, ink2);
+      cw_r2d_rect((cw_rect){ x - w * 0.12f + dir * w * 0.2f, Y0, w * 0.1f, Y1 - Y0 }, scalec(ink2, 1.15f)); /* a fluted edge */
+      break;
+    }
+    case 1: { /* a trunk with roots, leaves hanging off it */
+      float w = 1.2f + (float)((h >> 4) % 3) * 0.35f;
+      limb(v2(x, Y0), v2(x + dir * 0.4f, Y1), w * 0.45f, w * 0.6f, ink);
+      for (int k = 0; k < 3; k++) limb(v2(x + dir * 0.3f, Y1 - 2.2f), v2(x + dir * (1.2f + (float)k * 0.7f), Y1 - 1.6f + (float)k * 0.3f), 0.25f, 0.06f, ink);
+      for (int k = 0; k < 6; k++) {
+        float ly = Y0 + 2.5f + (float)k * 1.3f, sw = sinf(t * 1.2f + (float)k + x) * 0.1f;
+        cw_r2d_circle(v2(x + dir * (0.7f + (float)(k % 3) * 0.3f) + sw, ly), 0.32f + 0.08f * (float)(k % 2), 8, ink2);
+      }
+      break;
+    }
+    case 2: { /* a girder and a chain hanging beside it, a hook at its end */
+      float w = 1.0f;
+      cw_r2d_rect((cw_rect){ x - w * 0.5f, Y0, w, Y1 - Y0 }, ink);
+      for (float yy = Y0 + 0.5f; yy < Y1; yy += 1.6f) limb(v2(x - w * 0.5f, yy), v2(x + w * 0.5f, yy + 1.6f), 0.06f, 0.06f, ink2);
+      float cx = x + dir * 1.8f, len = 4.0f + (float)((h >> 8) % 4), sw = sinf(t * 0.7f + x) * 0.12f;
+      for (int k = 0; k < (int)(len * 2.5f); k++)
+        cw_r2d_circle_lines(v2(cx + sw * (float)k / (len * 2.5f), Y0 + 1.6f + (float)k * 0.4f), 0.16f, 0.06f, 8, ink2);
+      cw_r2d_arc(v2(cx + sw, Y0 + 1.6f + len + 0.3f), 0.2f, 0.32f, 0, 3.4f, 10, ink2);
+      break;
+    }
+    case 3: { /* shards of crystal leaning in from the corner */
+      for (int k = 0; k < 3; k++) {
+        float bx = x + dir * (float)k * 0.8f, hgt = 4.0f + (float)((h >> (k * 3)) % 4) * 1.2f, lean = dir * (0.6f + 0.3f * (float)k);
+        cw_vec2 p[3] = { v2(bx - 0.5f, Y1), v2(bx + 0.5f, Y1), v2(bx + lean, Y1 - hgt) };
+        cw_r2d_polygon(p, 3, k == 1 ? ink2 : ink);
+      }
+      cw_vec2 q[3] = { v2(x - 0.6f, Y0), v2(x + dir * 1.4f, Y0), v2(x + dir * 0.5f, Y0 + 3.0f + (float)(h % 3)) };
+      cw_r2d_polygon(q, 3, ink);
+      break;
+    }
+    default: { /* weed rising and swaying, a rock at its foot */
+      cw_r2d_circle(v2(x, Y1 - 0.4f), 1.4f, 16, ink);
+      for (int k = 0; k < 3; k++) {
+        cw_vec2 prev = v2(x + dir * (float)k * 0.5f, Y1 - 1.2f);
+        for (int j = 1; j <= 6; j++) {
+          float f = (float)j / 6;
+          cw_vec2 p = v2(prev.x + sinf(t * 0.9f + f * 3 + (float)k) * 0.18f, Y1 - 1.2f - f * (5.0f + (float)k));
+          limb(prev, p, 0.16f * (1.1f - f * 0.5f), 0.14f * (1.1f - f * 0.5f), k == 1 ? ink2 : ink);
+          prev = p;
+        }
+      }
+      break;
+    }
+    }
+  }
+  /* hanging from the ceiling, a few to a cell: roots, vines or chains, short, kept to the top of the frame */
+  for (int c = 0; c < r->w * 3; c++) {
+    uint32_t h = fhash((uint32_t)s->room * 7u + 3u, (uint32_t)c);
+    float x = X0 + 4 + (float)c * ((X1 - X0 - 8) / (float)(r->w * 3)) + (float)(h % 5), len = 1.0f + (float)((h >> 3) % 4) * 0.6f;
+    float sw = sinf(t * 0.8f + x) * 0.08f;
+    frame_at(x < cxL ? cxL : x > cxR ? cxR : x, cyT);
+    if (fam == 2) {
+      for (int k = 0; k < (int)(len * 2.5f); k++) cw_r2d_circle_lines(v2(x + sw * (float)k * 0.2f, Y0 + 1.4f + (float)k * 0.4f), 0.14f, 0.05f, 8, ink);
+    } else if (fam == 3) {
+      cw_vec2 p[3] = { v2(x - 0.35f, Y0 + 1.5f), v2(x + 0.35f, Y0 + 1.5f), v2(x + 0.1f, Y0 + 1.5f + len * 1.4f) };
+      cw_r2d_polygon(p, 3, ink);
+    } else {
+      cw_vec2 prev = v2(x, Y0 + 1.2f);
+      for (int k = 1; k <= 4; k++) {
+        float f = (float)k / 4;
+        cw_vec2 p = v2(x + sw * f * 3 + sinf(f * 4 + x) * 0.2f, Y0 + 1.2f + len * f * 1.4f);
+        limb(prev, p, 0.12f * (1.2f - f * 0.6f), 0.1f * (1.2f - f * 0.6f), ink);
+        prev = p;
+      }
+      if (fam == 1) cw_r2d_circle(prev, 0.22f, 8, ink2);
+    }
+  }
+  cw_r2d_set_transform(NULL);
 }
 
 /* ── the hero: a hooded lamplighter, drawn from a skeleton every frame ── */
@@ -840,22 +1133,16 @@ void view_draw(const sim *s, float t) {
   post = (cw_r2d_post){ .hud_layer = L_HUD, .bloom = true, .bloom_threshold = 1.0f, .bloom_intensity = 0.55f, .bloom_levels = 4, .tone_knee = 0.78f,
                         .saturation = 1.12f, .contrast = 1.06f, .gain = mixc(rgba(1, 1, 1, 1), accent, 0.06f), .vignette = 0.22f };
   static cw_r2d_gi gi = { .intensity = 0.8f, .resolution = 0.125f }; /* (an eighth of the canvas: about half the cost, still soft) */
-  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.78f), .time = t, .post = perf_off("post") ? NULL : &post,
+  cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.92f), .time = t, .post = perf_off("post") ? NULL : &post,
                                     .gi = g_gi ? &gi : NULL });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
   for (int l = L_WALL; l <= L_FRONT; l++)
     cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = l != L_WATER, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS,
                                               .occluder_depth = l == L_WALL ? 0.9f : 0, .screen_read = l == L_WATER, .distortion = l == L_FRONT ? 10 : 0 });
-  for (int l = 1; l <= 4; l++) {
-    cw_color fog = mixc(hexc(g->sky, 1), rgba(1, 1, 1, 1), 0.15f);
-    fog.a = 0.42f - 0.1f * (float)l; /* far layers sink into the haze */
-    cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .fog = fog });
-  }
 #else
   cw_r2d_begin(&(cw_r2d_pass_desc){ .clear = true, .clear_color = hexc(g->sky, 1), .ambient = scalec(amb, 0.97f), .time = t });
   cw_camera2d cam = { .position = g_cam.position, .zoom = zoom };
   for (int l = L_WALL; l <= L_FRONT; l++) cw_r2d_layer_set(l, &(cw_r2d_layer_desc){ .has_camera = true, .camera = cam, .lit = l >= L_WALL && l <= L_ACTORS });
-  for (int l = 1; l <= 4; l++) cw_r2d_layer_set(l, NULL);
 #endif
   cw_r2d_layer_set(L_SKY, NULL);
   cw_r2d_layer_set(L_HUD, NULL);
@@ -915,10 +1202,13 @@ void view_draw(const sim *s, float t) {
     if (e->kind != EK_LAMP || e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
     cw_color acc = hexc(REGIONS[s->w->rooms[e->room].region].accent, 1);
     if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* (as the lamp) */
-    float cy = e->hold == HOLD_CEIL ? e->y + (float)e->arg * 0.45f + 0.35f : e->sub == 7 ? e->y - 1.1f : e->y - 0.55f;
+    if (e->sub == 8 && e->hold == HOLD_FLOOR) acc = rgba(0.45f, 0.75f, 1, 1); /* (a pilot light: blue) */
+    if (e->sub == 9 && e->hold == HOLD_FLOOR) acc = rgba(1, 0.6f, 0.22f, 1);   /* (a lantern post: amber) */
+    float cy = e->hold == HOLD_CEIL ? e->y + (float)e->arg * 0.45f + 0.35f : e->sub == 7 ? e->y - 1.1f : e->sub == 8 ? e->y - 0.75f : e->sub == 9 ? e->y - 1.79f : e->y - 0.55f;
     float fl = 0.85f + 0.15f * sinf(t * 7 + e->x);
-    glow(e->x, cy, 1.6f * fl, scalec(acc, 0.45f));
-    glow(e->x, cy, 0.5f, rgba(1, 1, 0.9f, 0.8f));
+    bool tinted = e->hold == HOLD_FLOOR && (e->sub == 8 || e->sub == 9); /* (a coloured core: the accent stays its colour) */
+    glow(e->x, cy, 1.6f * fl, scalec(acc, tinted ? 0.6f : 0.45f));
+    glow(e->x, cy, 0.5f, tinted ? scalec(acc, 0.7f) : rgba(1, 1, 0.9f, 0.8f));
   }
   for (int i = 0; i < s->players; i++) { /* the lantern's glow and the strike's arc */
     const player *p = &s->p[i];
@@ -962,10 +1252,14 @@ void view_draw(const sim *s, float t) {
   cw_r2d_use_layer(L_WATER);
 #ifdef EXPLORER_R2D_V2
   if (!perf_off("water")) draw_water_v2(s, x0, y0, x1, y1, t);
+  cw_r2d_use_layer(L_FRAME);
+  if (!perf_off("frame")) draw_framing(s, t);
   cw_r2d_use_layer(L_FRONT); /* the distortion layer: shockwaves */
   if (!perf_off("dist")) draw_waves();
 #else
   draw_water(s, x0, y0, x1, y1, t);
+  cw_r2d_use_layer(L_FRAME);
+  draw_framing(s, t);
 #endif
   /* a warden's tell or a pickup: a brief wash of colour */
   if (flash_t > 0) {

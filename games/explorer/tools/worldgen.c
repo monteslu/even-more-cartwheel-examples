@@ -1,5 +1,6 @@
 /* explorer_worldgen: builds the world and writes it.
- *   explorer_worldgen <out.bin> [seed] [--map]      --map prints the cell map (one character per cell) */
+ *   explorer_worldgen <out.bin> [seed] [--map]      --map prints the cell map (one character per cell); --list the rooms,
+ *   --room n one room's tiles, --pickups the pickups, shrines and wardens */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +30,11 @@ int main(int argc, char **argv) {
   for (int i = 2; i < argc; i++)
     if (!strcmp(argv[i], "--list")) /* each room: index, region, kind, cells */
       for (int r = 0; r < W.nrooms; r++) printf("room %d region %d kind %d %dx%d\n", r, W.rooms[r].region, W.rooms[r].kind, W.rooms[r].w, W.rooms[r].h);
+  for (int i = 2; i < argc; i++)
+    if (!strcmp(argv[i], "--pickups")) /* each pickup, shrine and warden: id, kind, sub, arg, room, place */
+      for (int e = 0; e < W.nents; e++)
+        if (W.ents[e].kind == EK_PICKUP || W.ents[e].kind == EK_SAVE || W.ents[e].kind == EK_BOSS)
+          printf("ent %d kind %d id %d sub %d arg %d room %d at %.1f,%.1f\n", e, W.ents[e].kind, W.ents[e].id, W.ents[e].sub, W.ents[e].arg, W.ents[e].room, W.ents[e].x, W.ents[e].y);
   if (map) {
     for (int y = 0; y < GH; y++) {
       for (int x = 0; x < GW; x++) {

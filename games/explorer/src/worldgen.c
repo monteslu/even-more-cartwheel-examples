@@ -367,6 +367,75 @@ static int door_side(const room *rm, const door *d) {
   return d->y < Y0 + 2 ? 2 : 3;
 }
 
+/* ── composition: the rock that gives a room its shape ───────────────────
+ * Rounded masses hang from the ceiling, bulge from the walls (overhangs, shelves, the alcoves between them) and
+ * float as islands with tapered undersides; the ceiling's line rolls. Each is laid only where everything round it
+ * is open air (so no door, ledge, ladder or kept column is touched) and only over open tiles. */
+static bool area_open(int x0, int y0, int x1, int y1) {
+  for (int y = y0; y <= y1; y++)
+    for (int x = x0; x <= x1; x++)
+      if (tile(x, y) != T_EMPTY) return false;
+  return true;
+}
+static void mass(int cx, int cy, float rx, float ry, int bx0, int by0, int bx1, int by1) {
+  for (int y = by0; y <= by1; y++)
+    for (int x = bx0; x <= bx1; x++) {
+      float dx = ((float)x - (float)cx) / (rx + 0.5f), dy = ((float)y - (float)cy) / (ry + 0.5f);
+      if (dx * dx + dy * dy <= 1 && tile(x, y) == T_EMPTY) set(x, y, T_SOLID);
+    }
+}
+static bool kept(const uint8_t *keep, int X0, int Wd, int x0, int x1) {
+  for (int x = x0; x <= x1; x++)
+    if (x >= X0 && x < X0 + Wd && keep[x - X0]) return true;
+  return false;
+}
+/* no hole in the ceiling row within d columns of x0..x1 (a trapdoor up and its ladder) */
+static bool ceiling_whole(int y, int x0, int x1, int d) {
+  for (int x = x0 - d; x <= x1 + d; x++)
+    if (!t_solid(tile(x, y))) return false;
+  return true;
+}
+static void compose(int ri, const uint8_t *keep, bool light) {
+  room *rm = &W->rooms[ri];
+  int X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H, Wd = rm->w * CELL_W, Ht = rm->h * CELL_H;
+  int ix0 = X0 + 2, ix1 = X0 + Wd - 3, iy0 = Y0 + 2;
+  (void)keep;
+  /* the ceiling's line rolls: 0..3 rows of rock under it, away from the holes up */
+  float ph = (float)rint_(0, 628) * 0.01f, fq = 0.2f + 0.12f * (float)rint_(0, 4) / 4.0f;
+  for (int x = ix0 + 1; x <= ix1 - 1; x++) {
+    int k = (int)lroundf(1.3f + 1.2f * sinf((float)x * fq + ph) + 0.7f * sinf((float)x * fq * 2.7f + ph * 1.7f));
+    if (k <= 0 || !ceiling_whole(iy0 - 1, x, x, 4) || !area_open(x, iy0, x, iy0 + k + 5)) continue;
+    fill(x, iy0, x, iy0 + k - 1, T_SOLID);
+  }
+  /* masses hanging from the ceiling: rounded lumps, one to three a cell */
+  for (int c = 0; c < rm->w; c++)
+    for (int want = rint_(1, light ? 2 : 3), tries = 0; want > 0 && tries < 12; tries++) {
+      int rx = rint_(2, light ? 3 : 5), ry = rint_(2, light ? 3 : 4), cx = X0 + c * CELL_W + rint_(4, CELL_W - 5), cy = iy0 - 1;
+      if (cx - rx < ix0 + 1 || cx + rx > ix1 - 1 || !ceiling_whole(iy0 - 1, cx - rx, cx + rx, 4)) continue;
+      if (!area_open(cx - rx - 1, iy0 + 4, cx + rx + 1, cy + ry + 7)) continue;
+      mass(cx, cy, (float)rx, (float)ry, cx - rx, iy0, cx + rx, cy + ry);
+      if (!light && chance(50)) /* a drip of rock under it */
+        fill(cx - (rx > 3), cy + ry + 1, cx, cy + ry + 1 + rint_(0, 1), T_SOLID);
+      want--;
+    }
+  /* bulges from the side walls: shelves, overhangs, the alcoves between them; never in front of a door */
+  for (int cr = 0; cr < rm->h; cr++)
+    for (int side = 0; side < 2; side++) {
+      int wx = side ? ix1 + 1 : ix0 - 1, cy0 = Y0 + cr * CELL_H;
+      for (int want = rint_(1, light ? 1 : 2), tries = 0; want > 0 && tries < 14; tries++) {
+        int rx = rint_(2, light ? 3 : 5), ry = rint_(1, 3), cy = cy0 + rint_(3, CELL_H - 5);
+        int x0 = side ? wx - rx - 3 : wx + 1, x1 = side ? wx - 1 : wx + rx + 3;
+        int y0 = cy - ry - 3 < iy0 ? iy0 : cy - ry - 3, y1 = cy + ry + 3;
+        if (cy - ry < iy0 || y1 > Y0 + Ht - 3) continue;
+        bool wall = true; /* the wall beside it is whole (no door behind the bulge) */
+        for (int y = y0 - 1; y <= y1 + 1; y++) wall = wall && t_solid(tile(wx, y));
+        if (!wall || !area_open(x0, y0, x1, y1)) continue;
+        mass(wx, cy, (float)rx, (float)ry, side ? wx - rx : wx + 1, cy - ry, side ? wx - 1 : wx + rx, cy + ry);
+        want--;
+      }
+    }
+}
+
 static void carve_room(int ri) {
   room *rm = &W->rooms[ri];
   int X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H, Wd = rm->w * CELL_W, Ht = rm->h * CELL_H;
@@ -410,9 +479,11 @@ static void carve_room(int ri) {
         if (x >= X0 && x < X0 + Wd) keep[x - X0] = 1;
     }
   }
-  if (rm->kind == RK_GATE || rm->kind == RK_BOSS || rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START) return;
+  if (rm->kind == RK_GATE || rm->kind == RK_BOSS) return;
+  if (rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START) { compose(ri, keep, true); return; }
   /* the floor: steps of one to three, thorn pits and pools between kept columns */
   int region = rm->region;
+  bool flooded = (region == R_TIDAL || region == R_GLASS) && rm->w >= 2 && rm->h == 1 && rm->kind == RK_PLAIN && (ri % 3) == 0;
   int x = ix0 + 5;
   int level = 0; /* rows above the base floor */
   while (x < ix1 - 5) {
@@ -422,6 +493,11 @@ static void carve_room(int ri) {
       if (x + k >= X0 && x + k < X0 + Wd && keep[x + k - X0]) kept = true;
     if (kept) { level = 0; x += 2; continue; }
     int choice = (int)(rnd() % 100);
+    if (flooded && level == 0 && choice >= 20) { /* a flooded hall: wading pools from wall to wall */
+      if (run >= 4) fill(x + 1, floor_y, x + run - 2, floor_y, T_WATER);
+      x += run;
+      continue;
+    }
     if (choice < 30) { /* a step */
       int nl = level + rint_(-2, 3);
       nl = nl < 0 ? 0 : nl > 3 ? 3 : nl;
@@ -441,17 +517,31 @@ static void carve_room(int ri) {
     }
     x += run;
   }
-  /* platforms in the air: one-way ledges and a few solid blocks, never under a door ledge */
+  compose(ri, keep, false);
+  /* platforms in the air: one-way ledges (some broken in two), and islands of rock with tapered undersides, never
+   * under a door ledge */
   int n = rm->w * rm->h * 2 + rint_(0, 2);
   for (int k = 0; k < n; k++) {
-    int pw = rint_(3, 6), px = rint_(ix0 + 3, ix1 - 3 - pw), py = floor_y - rint_(4, 7) - 3 * rint_(0, rm->h - 1) * 3 / 2;
+    int pw = rint_(3, 7), px = rint_(ix0 + 3, ix1 - 3 - pw), py = floor_y - rint_(4, 7) - 3 * rint_(0, rm->h - 1) * 3 / 2;
     if (py < iy0 + 4) continue;
     bool clear = true;
     for (int yy = py - 3; yy <= py + 3 && clear; yy++)
       for (int xx = px - 1; xx <= px + pw; xx++)
         if (tile(xx, yy) != T_EMPTY) clear = false;
     if (!clear) continue;
-    fill(px, py, px + pw - 1, py, chance(70) ? T_ONEWAY : T_SOLID);
+    int kind = rint_(0, 9);
+    if (kind < 5) fill(px, py, px + pw - 1, py, T_ONEWAY);
+    else if (kind < 7 && pw >= 5) { /* a ledge broken in two */
+      int gap = px + rint_(2, pw - 3);
+      fill(px, py, gap - 1, py, T_ONEWAY);
+      fill(gap + 1, py, px + pw - 1, py, T_ONEWAY);
+    } else if (area_open(px - 1, py + 1, px + pw, py + 7)) { /* an island: flat top, the underside tapering to a point (room under it) */
+      fill(px, py, px + pw - 1, py, T_SOLID);
+      for (int r = 1, a = px, b = px + pw - 1; r <= 2 && b - a >= 2; r++) {
+        a += 1 + (r == 1 && chance(50)), b -= 1 + (r == 1 && chance(50));
+        if (b >= a) fill(a, py + r, b, py + r, T_SOLID);
+      }
+    }
   }
   /* columns down from the ceiling in tall rooms */
   if (rm->h == 1)
@@ -462,7 +552,15 @@ static void carve_room(int ri) {
         for (int xx = cx - 1; xx <= cx + cw; xx++)
           for (int yy = iy0; yy <= iy0 + len + 6; yy++)
             if (tile(xx, yy) != T_EMPTY) clear = false;
-        if (clear) fill(cx, iy0, cx + cw - 1, iy0 + len - 1, T_SOLID);
+        if (!clear) continue;
+        fill(cx, iy0, cx + cw - 1, iy0 + len - 1, T_SOLID);
+        if (cw >= 3) fill(cx + 1, iy0 + len, cx + cw - 2, iy0 + len, T_SOLID); /* a broken column's tapered end */
+        /* its stump below, two high, on a stretch of level floor nobody needs kept */
+        if (chance(45) && !kept(keep, X0, Wd, cx - 2, cx + cw + 1) && area_open(cx - 1, floor_y - 6, cx + cw, floor_y - 1)) {
+          bool level = true;
+          for (int xx = cx - 1; xx <= cx + cw; xx++) level = level && t_solid(tile(xx, floor_y));
+          if (level) fill(cx, floor_y - 2, cx + cw - 1, floor_y - 1, T_SOLID);
+        }
       }
 }
 
@@ -538,10 +636,44 @@ static void populate(int ri) {
       add_ent(EK_LAMP, 4 + (region + k) % 3, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
     }
   }
-  /* props on the floor and the ceiling */
+  /* the region's set piece: big things standing on level floor (machines, trees, crystal clusters, kelp, shelves,
+   * statues), three tiles of it or more, spaced out */
+  static const uint8_t BIG[NREGIONS] = { [R_GATE] = PR_STATUE, [R_ROOTWAY] = PR_TREE, [R_GLASS] = PR_CLUSTER, [R_FEN] = PR_TREE,
+                                         [R_CLOCK] = PR_MACHINE, [R_TIDAL] = PR_KELP, [R_STAR] = PR_CLUSTER, [R_SKY] = PR_STATUE,
+                                         [R_ARCHIVE] = PR_SHELF, [R_FORGE] = PR_MACHINE, [R_FROST] = PR_CLUSTER, [R_BLOOM] = PR_TREE,
+                                         [R_HEART] = PR_TREE };
+  int nbig = rm->kind == RK_PLAIN || rm->kind == RK_HALL || rm->kind == RK_SHAFT ? rm->w * (region == R_FORGE || region == R_BLOOM ? 3 : 2) : 1;
+  for (int k = 0, last = -99; k < nbig * 3 && nbig > 0; k++) {
+    int x = rint_(X0 + 4, X0 + Wd - 5), y = surface_at(ri, x);
+    if (y < 0 || abs(x - last) < 6 || !t_solid(tile(x, y))) continue;
+    bool level = true;
+    for (int dx = -1; dx <= 1; dx++) level = level && surface_at(ri, x + dx) == y && t_solid(tile(x + dx, y)) && tile(x + dx, y - 4) == T_EMPTY;
+    if (!level) continue;
+    add_ent(EK_PROP, BIG[region], (uint8_t)rint_(0, 255), HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    last = x, nbig--;
+  }
+  /* each region's complementary accent on the floor: small blue pilot flames among the Forge's machines, warm
+   * lantern posts in the cool regions */
+  bool warm = region == R_FORGE || region == R_CLOCK, cool = region == R_GLASS || region == R_TIDAL || region == R_FROST ||
+              region == R_STAR || region == R_SKY || region == R_GATE || region == R_ARCHIVE || region == R_FEN;
+  if (warm || cool)
+    for (int k = 0; k < rm->w * 2; k++) {
+      int x = rint_(X0 + 3, X0 + Wd - 4), y = surface_at(ri, x);
+      if (y > 0 && t_solid(tile(x, y)) && tile(x, y - 3) == T_EMPTY) add_ent(EK_LAMP, warm ? 8 : 9, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    }
+  /* pipes and chains along the ceiling in the Forge and the Clockwork Deep */
+  if (region == R_FORGE || region == R_CLOCK || region == R_ARCHIVE)
+    for (int x = X0 + 3; x < X0 + Wd - 3; x++)
+      for (int yy = Y0 + 2; yy < Y0 + Ht - 4; yy++)
+        if (tile(x, yy) == T_EMPTY && t_solid(tile(x, yy - 1))) {
+          if (chance(7)) add_ent(EK_PROP, PR_PIPE, (uint8_t)rint_(1, 4), HOLD_CEIL, ri, (float)x + 0.5f, (float)yy);
+          break;
+        }
+  /* props on the floor and the ceiling: gardens grow thick */
+  int dense = region == R_BLOOM || region == R_FEN || region == R_ROOTWAY ? 34 : 22;
   for (int x = X0 + 2; x < X0 + Wd - 2; x++) {
     int y = surface_at(ri, x);
-    if (y > 0 && t_solid(tile(x, y)) && chance(22)) add_ent(EK_PROP, (uint8_t)rint_(0, 5), 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    if (y > 0 && t_solid(tile(x, y)) && chance(dense)) add_ent(EK_PROP, (uint8_t)rint_(0, 5), 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
     for (int yy = Y0 + 2; yy < Y0 + Ht - 4; yy++)
       if (tile(x, yy) == T_EMPTY && t_solid(tile(x, yy - 1)) && chance(6)) {
         add_ent(EK_PROP, (uint8_t)(6 + rint_(0, 2)), (uint8_t)rint_(2, 6), HOLD_CEIL, ri, (float)x + 0.5f, (float)yy);

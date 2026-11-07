@@ -5,11 +5,12 @@
 // no jump buffer, no jump cut (letting go of jump no longer cuts the rise).
 // Run: node tests/explorer-feel.mjs   (after TARGETS=native scripts/build.sh explorer_feel)
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exe = join(ROOT, 'build/native/games/explorer/explorer_feel');
+const exe = [join(ROOT, 'build/native/project/games/explorer/explorer_feel'), join(ROOT, 'build/native/games/explorer/explorer_feel')].find(existsSync);
 let bad = 0;
 const r = spawnSync(exe, [], { encoding: 'utf8' });
 console.log((r.stdout || '').trim().split('\n').map((l) => `     ${l}`).join('\n'));

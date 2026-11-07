@@ -11,7 +11,9 @@
 #define EXPLORER_R2D_V2 1
 #endif
 
-enum { L_SKY, L_WALL = 5, L_TILES, L_ACTORS, L_FX, L_WATER, L_FRONT, L_HUD };
+/* canvas layers: the sky and every parallax depth in one unlit layer (their haze baked into their colour), the lit
+ * run (back wall, tiles, actors), effects, water, the framing silhouettes in front of everything, distortion */
+enum { L_SKY, L_WALL, L_TILES, L_ACTORS, L_FX, L_WATER, L_FRAME, L_FRONT, L_HUD };
 
 typedef struct view_stats { int sprites, lights, particles, enemies; float submit_ms, end_ms; } view_stats;
 

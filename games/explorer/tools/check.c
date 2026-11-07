@@ -481,17 +481,19 @@ static int write_route(const char *path, int start) {
   static route_step steps[60000];
   int n = 0;
   memset(goal, 0, sizeof goal);
-  int ngoals = 0;
+  int ngoals = 0, last = -1;
   for (int i = 0; i < W.nents; i++) {
     const ent *e = &W.ents[i];
     int t = -1;
     if (e->kind == EK_PICKUP) t = (int)roundf(e->y) * TW + (int)floorf(e->x);
     if (e->kind == EK_BOSS || e->kind == EK_SAVE) t = (int)roundf(e->y) * TW + (int)floorf(e->x);
-    if (t >= 0 && t < TW * TH && node_at[t] >= 0) goal[t] = 1, ngoals++;
-    else if (t >= 0) { /* the node beside it */
+    if (t >= 0 && t < TW * TH && node_at[t] < 0) /* the node beside it */
       for (int dx = -2; dx <= 2; dx++)
-        if (node_at[t + dx] >= 0) { goal[t + dx] = 1, ngoals++; break; }
-    }
+        if (node_at[t + dx] >= 0) { t += dx; break; }
+    if (t < 0 || t >= TW * TH || node_at[t] < 0) continue;
+    if (e->kind == EK_BOSS && e->sub == NBOSSES - 1) last = t; /* the heart: last of all, once everything else is found */
+    else goal[t] = 1;
+    ngoals++;
   }
   int cur = start, legs = 0;
   for (int st = 0; st < nstages; st++)
@@ -500,6 +502,11 @@ static int write_route(const char *path, int start) {
       if (g < 0) break;
       goal[g] = 0, cur = g, legs++;
     }
+  if (last >= 0) {
+    goal[last] = 1;
+    int g = plan_leg(nstages - 1, cur, goal, steps, &n, 60000);
+    if (g >= 0) goal[g] = 0, legs++;
+  }
   int left = 0;
   for (int i = 0; i < TW * TH; i++) left += goal[i];
   FILE *f = fopen(path, "wb");
@@ -567,6 +574,16 @@ int main(int argc, char **argv) {
     int ex;
     int locks = softlocks(start, &ex);
     if (getenv("CHECK_PROBE")) { int px = atoi(getenv("CHECK_PROBE")), py = atoi(strchr(getenv("CHECK_PROBE"), ',') + 1); printf("probe %d,%d node %d vis %d\n", px, py, node_at[py * TW + px], vis[py * TW + px]); }
+    if (getenv("CHECK_STUCK")) { /* (development) the doors the walk reached one side of and not the other */
+      static uint8_t rseen[MAXROOMS];
+      memset(rseen, 0, sizeof rseen);
+      for (int i = 0; i < TW * TH; i++)
+        if (vis[i]) { int r = w_room_at(&W, (float)(i % TW) + 0.5f, (float)(i / TW) - 0.5f); if (r >= 0) rseen[r] = 1; }
+      for (int i = 0; i < W.ndoors; i++)
+        if (rseen[W.doors[i].a] != rseen[W.doors[i].b])
+          printf("stuck: door %d at %d,%d (%s) between room %d (%s) and room %d (%s)\n", i, W.doors[i].x, W.doors[i].y, W.doors[i].vertical ? "floor" : "wall",
+                 W.doors[i].a, rseen[W.doors[i].a] ? "reached" : "not", W.doors[i].b, rseen[W.doors[i].b] ? "reached" : "not");
+    }
     int n = 0;
     for (int i = 0; i < TW * TH; i++) n += vis[i];
     printf("stage %d (abilities %02x): %d places reached, %d beacons, pickups +%02x\n", stage, AB, n, beacons, pending & ~AB);

@@ -55,6 +55,9 @@ static bool recover(bot *b, const sim *s, const player *p, int lo, int hi) {
   /* targets: the from-tiles of the next steps */
   if (lo < 0) lo = 0;
   if (hi > b->n) hi = b->n;
+  /* never past a goal not yet reached (a pickup, a shrine, a warden): the search would happily skip it */
+  for (int k = b->i; k < hi; k++)
+    if (b->steps[k].goal) { hi = k + 1; break; }
   int sx = start % TW, sy = start / TW;
   for (int h = 0; h < qn && qn < MAXN - 48; h++) {
     int u = q[h], ux = u % TW, uy = u / TW;
@@ -95,16 +98,26 @@ static bool recover(bot *b, const sim *s, const player *p, int lo, int hi) {
   return false;
 }
 
+/* a hidden wall or floor at hand (the route may run through it: the checker breaks every one it can strike) */
+static bool secret_near(const sim *s, const player *p) {
+  for (int dx = -2; dx <= 2; dx++)
+    for (int dy = 0; dy <= 2; dy++) { /* (the floor under the feet, the wall beside the body) */
+      int tx = (int)floorf(p->x) + dx, ty = (int)roundf(p->y) - dy;
+      if (w_in(tx, ty) && s->t[ty][tx] == T_SECRET) return true;
+    }
+  return false;
+}
+
 /* strike what is close in front, break a hidden wall the route leans on */
 static bool strike_near(const sim *s, const player *p, pinput *in) {
   /* a hidden wall at hand: strike it open (the route may run through it) */
   for (int dx = -2; dx <= 2; dx++)
-    for (int dy = -3; dy <= 2; dy++) {
+    for (int dy = 0; dy <= 2; dy++) { /* (the floor under the feet, the wall beside the body) */
       int tx = (int)floorf(p->x) + dx, ty = (int)roundf(p->y) - dy;
       if (!w_in(tx, ty) || s->t[ty][tx] != T_SECRET) continue;
       if (dy <= 0) { /* in the floor: jump, and strike down on the way back */
-        if (p->on_ground) in->jump = in->jump_held = true;
-        else if (p->atk_cd == 0 && p->vy > 0) in->my = 1, in->attack = true;
+        if (p->on_ground) in->jump = true; /* (a tapped hop) */
+        else if (p->atk_cd == 0 && p->vy > 0 && (float)ty - p->y < 1.4f) in->my = 1, in->attack = true;
         in->mx = (int8_t)(tx + 0.5f > p->x + 0.3f ? 1 : tx + 0.5f < p->x - 0.3f ? -1 : 0);
         return true;
       }
@@ -148,8 +161,20 @@ static bool strike_near(const sim *s, const player *p, pinput *in) {
     if (!e->alive || e->kind != EN_FLYER || (e->state != ES_TELL && e->state != ES_ACT)) continue;
     float dx = e->x - p->x, dy = (e->y - enemy_hh(e->kind)) - (p->y - 0.9f), d = sqrtf(dx * dx + dy * dy);
     if (d > 10) continue;
+    /* it swoops to the spot you stood on when its wings flared: off that spot (on firm ground), then strike it as it
+     * comes past or rests */
+    float aim = fabsf(e->vx - p->x);
+    if (p->on_ground && aim < 1.6f) {
+      int y = (int)roundf(p->y);
+      for (int k = 0; k < 2; k++) {
+        float dir = (k == 0) == (dx > 0) ? -1.0f : 1.0f, tx = e->vx + dir * 2.6f;
+        bool firm = true;
+        for (float x = p->x; dir > 0 ? x < tx : x > tx; x += dir * 0.4f) firm = firm && node_ok(s, (int)floorf(x), y);
+        if (firm && node_ok(s, (int)floorf(tx), y)) { in->mx = (int8_t)dir; return true; }
+      }
+    }
     if ((dx < 0) != (bool)p->facing_left && fabsf(dx) > 0.3f) in->mx = (int8_t)(dx < 0 ? -1 : 1);
-    else if (d < 2.6f && p->atk_cd == 0) { in->attack = true; if (dy < -1.4f) in->my = -1; }
+    else if (d < (e->state == ES_ACT ? 2.0f : 2.4f) && p->atk_cd == 0) { in->attack = true; if (dy < -1.4f) in->my = -1; }
     return true;
   }
   /* then strike what is close, or shoot what is in line further off */
@@ -179,6 +204,17 @@ static bool strike_near(const sim *s, const player *p, pinput *in) {
     if (fabsf(dx) < 1.7f && dy < -1.0f && dy > -3.6f) { /* above */
       if (p->atk_cd == 0) in->my = -1, in->attack = true;
       return true;
+    }
+    if (fabsf(dx) < 5.0f && dy < -1.0f && dy > -3.6f && e->kind != EN_FLYER && p->on_ground) { /* on a ledge just above: under its edge, strike up */
+      float tx = e->x - (dx > 0 ? 1.0f : -1.0f);
+      bool firm = true;
+      int y = (int)roundf(p->y);
+      for (float x = p->x; dx > 0 ? x < tx : x > tx; x += dx > 0 ? 0.4f : -0.4f) firm = firm && node_ok(s, (int)floorf(x), y);
+      if (firm && node_ok(s, (int)floorf(tx), y)) {
+        if (fabsf(p->x - tx) > 0.35f) in->mx = (int8_t)(tx > p->x ? 1 : -1);
+        else if (p->atk_cd == 0) in->my = -1, in->attack = true;
+        return true;
+      }
     }
     if (fabsf(dx) < 9 && fabsf(dy) < 0.9f && p->en > 0 && (s->abilities & AB_BOLT) && p->shot_cd == 0) {
       if ((dx < 0) == (bool)p->facing_left) in->shoot = true;
@@ -247,9 +283,10 @@ static void fight(bot *b, const sim *s, const player *p, pinput *in) {
     }
     if (h->kind == SH_SHARD && fabsf(sx) < 1.3f) want = p->x + (sx > 0 ? -2.5f : 2.5f), danger = true;
   }
-  if (w->state == ES_TELL && w->move != BM_SWEEP_HIGH) danger = true; /* never stand in reach while it winds up */
+  if (w->state == ES_TELL && w->move != BM_SWEEP_HIGH && w->move != BM_SUMMON) danger = true; /* never stand in reach while it winds up */
   if (w->state == ES_TELL || w->state == ES_ACT) {
     int tell = boss_tell_ticks(w->move);
+    if (w->hp * 2 < w->hp_max) tell = tell * 4 / 5 < 26 ? 26 : tell * 4 / 5; /* (the second phase tells faster, as the sim does) */
     switch (w->move) {
     case BM_SWEEP_LOW:
       if (w->state == ES_TELL && w->t >= tell - 3 && p->on_ground) in->jump = true;
@@ -257,29 +294,47 @@ static void fight(bot *b, const sim *s, const player *p, pinput *in) {
       if (w->state == ES_ACT && w->t > 12 && w->t < 16) in->jump = true; /* the second jump keeps it in the air */
       break;
     case BM_SWEEP_HIGH: danger = true; break; /* stay down */
-    case BM_CHARGE:
-      /* over it as it comes: a jump toward it while it is still a few tiles off */
-      if (w->state == ES_ACT && w->t < 30 && adx > 4.2f && adx < 11 && p->on_ground && ((dx > 0) == !w->facing_left) == false) in->jump = in->jump_held = true, in->mx = (int8_t)(dx > 0 ? 1 : -1);
+    case BM_CHARGE: {
+      /* over it as it comes: never run from it (it is faster), jump toward it a few tiles off and keep going over */
+      bool coming = (dx > 0) == (bool)w->facing_left;
       if (w->state == ES_TELL) { want = w->x + side * 7.5f; if (want < w->ax0 + 9) want = w->ax0 + 9; if (want > w->ax1 - 9) want = w->ax1 - 9; }
-      if (w->state == ES_TELL) danger = true;
-      if (w->state == ES_ACT && adx < 5.5f && p->on_ground) in->jump = in->jump_held = true;
-      if (w->state == ES_ACT) in->jump_held = true, danger = true;
-      if (w->state == ES_ACT && !p->on_ground && p->vy > -2 && adx < 3) in->jump = true;
+      danger = true;
+      if (w->state == ES_ACT && coming) {
+        /* the ticks a held jump takes to clear its top, and how far it closes in that time (running at it) */
+        static const float RISE[22] = { 0, 0.4f, 0.75f, 1.14f, 1.45f, 1.8f, 2.1f, 2.4f, 2.65f, 2.9f, 3.1f, 3.3f, 3.5f, 3.65f, 3.8f, 3.98f, 4.07f, 4.17f, 4.27f, 4.33f, 4.37f, 4.4f };
+        float top = 2 * boss_hh(w->idx) + 0.25f;
+        int k = 0;
+        while (k < 15 && RISE[k] < top) k++;
+        float lead = hw + 0.5f + (float)k * (13.0f + RUN) / 60.0f;
+        in->jump_held = true;
+        if (adx < lead + 1) in->mx = (int8_t)(dx > 0 ? 1 : -1);
+        if (adx < lead && p->on_ground) in->jump = true;
+        if (!p->on_ground && p->vy > -3 && adx < lead) in->jump = true; /* (the second jump, when it has one) */
+      } else if (w->state == ES_ACT) {
+        in->jump_held = !p->on_ground && p->vy < 0;
+        want = p->x, danger = false; /* gone past: let it go, and deal with the rest */
+      }
       break;
+    }
     case BM_LEAP: want = w->x + side * 7; danger = true; break;
     case BM_VOLLEY:
       if (w->idx != 0) break;
       /* (the moss warden lobs at marks: like rain) */
       // fall through
     case BM_RAIN: case BM_PILLARS: {
+      /* the clear spot furthest from every mark on this side of it (never through its body), unless already clear */
+      float here = 99;
+      for (int k = 0; k < w->nmarks; k++) here = fminf(here, fabsf(p->x - w->marks[k]));
       float best = want, bd = -1;
       for (float x = w->ax0 + 1.5f; x < w->ax1 - 1.5f; x += 1) {
+        if (fabsf(x - w->x) < hw + 1.4f || (x < w->x) != (p->x < w->x)) continue;
         float d = 99;
         for (int k = 0; k < w->nmarks; k++) d = fminf(d, fabsf(x - w->marks[k]));
         d -= fabsf(x - p->x) * 0.05f;
         if (d > bd) bd = d, best = x;
       }
-      want = best, danger = true;
+      want = best;
+      danger = here < 2.2f || w->state == ES_ACT;
       break;
     }
     case BM_DIVE:
@@ -292,6 +347,11 @@ static void fight(bot *b, const sim *s, const player *p, pinput *in) {
       break;
     default: break;
     }
+  }
+  if (!danger && p->on_ground) { /* the helpers it calls first: they crowd the floor and charge */
+    pinput t2;
+    memset(&t2, 0, sizeof t2);
+    if (strike_near(s, p, &t2) || hunt(s, p, &t2)) { *in = t2; b->mode = B_POS, b->np = 0; return; }
   }
   if (!danger) { /* in its rest: close in and strike, or shoot from range */
     bool flying = w->y < w->floor_y - 2;
@@ -336,6 +396,10 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
   if (fabsf(p->x - b->lx) < 0.05f && fabsf(p->y - b->ly) < 0.05f) b->still++;
   else b->still = 0, b->lx = p->x, b->ly = p->y;
   if (b->still > 240) b->ignore = 360, b->still = 0, b->mode = B_RECOVER, b->waited = 600;
+  /* and a slower one: twenty seconds with no step of the route gained (a fight that goes round in circles), it
+   * stops minding the enemies for a while and plays on */
+  if (b->i != b->prog_i) b->prog_i = b->i, b->prog_t = 0;
+  else if (++b->prog_t > 1200) b->ignore = 420, b->waited = 600, b->prog_t = 0;
   if (b->ignore > 0) b->ignore--;
   if (s->b.active) {
     fight(b, s, p, in);
@@ -378,12 +442,13 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
       return;
     }
   }
+  if (b->mode == B_MOVE && p->on_ground && p->state == PS_NORMAL && secret_near(s, p)) b->mode = B_POS; /* (break it first, then go again) */
   if (b->mode == B_MOVE) {
     const route_step *st = b->np ? &b->plan[b->pi] : &b->steps[b->i];
     if (!move_input(&MOVES[b->mv], b->t, p, &b->phase, in)) {
       int here = tile_of(p);
       b->mode = B_POS;
-      if (here == st->to) {
+      if (here == st->to || (here / TW == st->to / TW && abs(here - st->to) <= 1 && p->on_ground)) { /* (a tile off is on it: the narrow pedestals) */
         if (b->np) {
           if (++b->pi >= b->np) b->np = 0;
         } else b->i++;
@@ -392,13 +457,19 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
       memset(in, 0, sizeof *in);
       return;
     }
+    /* falling onto a hidden floor the route drops through (the checker broke it): strike it open on the way down */
+    if (!p->on_ground && p->vy > 0 && p->atk_cd == 0 && st->to / TW > (int)roundf(p->y) + 1)
+      for (int k = 0; k < 6; k++) {
+        int tx = fl(p->x) + k % 3 - 1, ty = (int)floorf(p->y) + 1 + k / 3;
+        if (w_in(tx, ty) && s->t[ty][tx] == T_SECRET && (float)ty - p->y < 1.4f) { in->my = 1, in->attack = true; break; }
+      }
     b->t++;
     return;
   }
   if (b->mode == B_RECOVER) {
     if (!standing(p)) return;
     /* the next few steps first, then further on, then back along the route (after a fall or a return to a shrine) */
-    if (recover(b, s, p, b->i, b->i + 12) || recover(b, s, p, b->i, b->i + 160) || recover(b, s, p, b->i - 600, b->i)) {
+    if (recover(b, s, p, b->i, b->i + 12) || recover(b, s, p, b->i, b->i + 160) || recover(b, s, p, b->i - 3000, b->i)) {
       b->mode = B_POS;
       b->recoveries++;
     } else { /* wander a little and try again */
@@ -422,7 +493,7 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     for (int dx = -1; dx <= 1; dx++)
       for (int dy = 0; dy <= 3; dy++) {
         int tx = (int)floorf(p->x) + dx, ty = (int)floorf(p->y) + dy;
-        if (w_in(tx, ty) && s->t[ty][tx] == T_SECRET && p->vy > 0 && p->atk_cd == 0) { in->my = 1, in->attack = true; return; }
+        if (w_in(tx, ty) && s->t[ty][tx] == T_SECRET && p->vy > 0 && p->atk_cd == 0 && (float)ty - p->y < 1.4f) { in->my = 1, in->attack = true; return; }
       }
     in->jump_held = p->vy < 0;
     for (int i = 0; i < s->nen; i++) {
@@ -431,6 +502,19 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
       if (e->alive && fabsf(dx) < 1.6f && dy < -0.5f && dy > -3.4f && p->atk_cd == 0) in->my = -1, in->attack = true;
     }
     return;
+  }
+  if (p->on_ground && p->state == PS_NORMAL && secret_near(s, p) && strike_near(s, p, in)) return;
+  { /* a cracked floor the route goes down through (the checker broke it with a plunge somewhere): plunge onto it */
+    const route_step *nx = &b->steps[b->i < b->n ? b->i : b->n - 1];
+    int fy = (int)roundf(p->y);
+    bool cracked = false;
+    for (int dx = -1; dx <= 1; dx++) cracked |= w_in(fl(p->x) + dx, fy) && s->t[fy][fl(p->x) + dx] == T_CRACKED;
+    if (cracked && (s->abilities & AB_POUND) && nx->to / TW > fy + 2 && p->on_ground && p->state == PS_NORMAL) {
+      b->mode = B_MOVE, b->mv = 80, b->t = 0, b->phase = 0, b->idle = 0; /* (the plunge straight down; the step after it recovers) */
+      move_input(&MOVES[b->mv], b->t, p, &b->phase, in);
+      b->t++;
+      return;
+    }
   }
   if (!b->ignore && p->on_ground && p->state == PS_NORMAL && (strike_near(s, p, in) || hunt(s, p, in))) return;
   const route_step *st = b->np ? &b->plan[b->pi] : &b->steps[b->i];

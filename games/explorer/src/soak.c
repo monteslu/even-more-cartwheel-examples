@@ -78,6 +78,7 @@ int main(int argc, char **argv) {
       for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 6) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
       const route_step *st = &B.steps[B.i < B.n ? B.i : B.n - 1];
       printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump);
+      if (S.b.active) printf("   boss st%d mv%d t%d x %.2f y %.2f\n", S.b.state, S.b.move, S.b.t, S.b.x, S.b.y);
     }
     if (inject && tick == 3600) S.p[0].vx = NAN;
     for (int i = 0; i < S.players; i++) {

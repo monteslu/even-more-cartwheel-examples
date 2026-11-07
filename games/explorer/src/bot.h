@@ -21,6 +21,7 @@ typedef struct bot {
   float lx, ly;
   int last_tile;
   int wiggle;
+  int prog_i, prog_t; /* the step it last gained and the ticks since */
   uint32_t seed;
 } bot;
 

@@ -18,7 +18,7 @@
 #define TW (GW * CELL_W)
 #define TH (GH * CELL_H)
 #define MAXROOMS 640
-#define MAXENTS 6000
+#define MAXENTS 8000
 #define MAXDOORS 1400
 #define NREGIONS 13
 
@@ -66,6 +66,9 @@ enum {
   EK_KINDS
 };
 enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC }; /* pickup kinds (sub), with ability in arg */
+/* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
+ * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
+enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE };
 enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_KINDS };
 #define NBOSSES 6
 /* how a prop or a lamp is held: standing on the tile below, hanging from the tile above, on a wall beside it */
