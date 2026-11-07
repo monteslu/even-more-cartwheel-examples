@@ -83,6 +83,21 @@ shards and the structures come down on the engine's Box3D. 30 levels, each
 checked to stand still for a minute, float nothing and fall to the bot within
 par.
 
+### Ember Throne
+
+![Ember Throne: the wayfarer and the warden at the keep's brazier, a raider coming at them](docs/screenshots/emberthrone.jpg)
+
+A third-person action adventure through one connected world for one player,
+with a second able to drop in. The wanderer gathers the Sun Key and the Moon Key
+to open the Ember Keep and face the Ember King on his throne. Eight regions on one 640 m
+terrain, from a green hollow and an amber canyon to snowy heights over a cliff
+path, a lantern-lit underway, a spire with a stair round it and a wood of giant
+glowing mushrooms, joined so that the way back is often a shortcut. Lock-on
+sword fights with light and heavy cuts, rolls and stamina; foe groups with
+readable wind-ups and three bosses; hearts, stamina charms, keys and a maul
+that breaks cracked stone open new routes. A bot plays the whole game in CI,
+nothing floats, and every region passes a look check.
+
 More games are on the way.
 
 ## Building
