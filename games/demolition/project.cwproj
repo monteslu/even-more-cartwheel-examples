@@ -1,0 +1,14 @@
+; demolition's release builds: node <host sdk>/tools/cwexport.mjs --project games/demolition --preset <preset>
+name = "Demolition"
+app = "demolition"
+version = "0.1.0"
+app_id = "org.cartwheel.demolition"
+export.linux-x64.platform = "linux-x64"
+export.linux-arm64.platform = "linux-arm64"
+export.windows-x64.platform = "windows-x64"
+export.macos-arm64.platform = "macos"
+export.android-arm64.platform = "android-arm64"
+# launcher art and credits, packed into the cart (art/art.json)
+art = art
+description = "Bring down towers, walls, bridges, castles and scaffolds of wood, stone, glass and steel with a launcher, shot and charges: thirty structures of up to thousands of blocks that break and fall for real, for one to four players taking turns."
+author = "Luis Montes"
