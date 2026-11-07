@@ -17,7 +17,7 @@ bool tex_warm(int kind); /* a band of rows of texture set `kind`; true when it i
 const tex_set *tex_get(int kind);
 void tex_apply(t3_material *m, int kind, float normal_scale, float ao_intensity);
 /* the scenery's own texture sets, after the park's (scenery.c) */
-enum { TEX_SAND = MAT_KINDS, TEX_FACADE, TEX_FACADE_LIT, TEX_CURTAIN, TEX_CORRUGATED, TEX_LUMBER, TEX_GROUND, TEX_WATER, TEX_SKYLINE, TEX_DECALS, TEX_KINDS };
+enum { TEX_SAND = MAT_KINDS, TEX_FACADE, TEX_FACADE_LIT, TEX_CURTAIN, TEX_CORRUGATED, TEX_LUMBER, TEX_GROUND, TEX_WATER, TEX_SKYLINE, TEX_DECALS, TEX_FOLIAGE, TEX_PINECARD, TEX_CLOUD, TEX_KINDS };
 extern const float MAT_TILE_M[TEX_KINDS];
 extern uint32_t tex_hash;
 t3_color lin(float r, float g, float b);

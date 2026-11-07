@@ -230,7 +230,7 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
     float k = clampf(se, 0, 1);
     /* horizon pale, zenith deep; a warm whisper at the very bottom */
     /* the mood's horizon up to its zenith, quickly: most of the sky is near the zenith's colour */
-    float kk = cw_pow(k, 0.5f);
+    float kk = cw_pow(k, 0.35f); /* a thin band of the horizon's colour, the rest the zenith's */
     float r = md->horizon[0] + (md->zenith[0] - md->horizon[0]) * kk, g = md->horizon[1] + (md->zenith[1] - md->horizon[1]) * kk, bl = md->horizon[2] + (md->zenith[2] - md->horizon[2]) * kk;
     if (se < 0) r = md->fog[0], g = md->fog[1], bl = md->fog[2];
     t3_color c = lin(r, g, bl);
@@ -247,40 +247,30 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
       int a = j * (AZ + 1) + i;
       mb_quad(&b, a, a + 1, a + AZ + 2, a + AZ + 1);
     }
-  /* clouds: puffs of flat ellipses at 150 to 250 m, white tops, a grey-blue underside */
+  /* clouds: cumulus cards (the cloud texture, soft edged, sunlit tops) at 300 m, a few overlapping in each bank */
+  mesh_build cb = { 0 };
   uint32_t h = 977;
-  for (int c = 0; c < 14; c++) {
+  t3_color tint = lin(md->cloud[0], md->cloud[1], md->cloud[2]);
+  for (int c = 0; c < 10; c++) {
     h = h * 1664525u + 1013904223u;
     float az = (float)(h >> 8) / 16777216.0f * 2 * PI_F;
     h = h * 1664525u + 1013904223u;
-    float el = 0.12f + 0.32f * (float)(h >> 8) / 16777216.0f;
-    float sa, ca, se, ce;
-    cw_sincos(az, &sa, &ca), cw_sincos(el, &se, &ce);
-    v3 cen = V(ca * ce * 330, se * 330, sa * ce * 330);
-    v3 fw = vnorm(vmul(cen, -1)), right = vnorm(vcross(fw, V(0, 1, 0))), up = vcross(right, fw);
-    for (int p = 0; p < 6; p++) {
+    float el = 0.07f + 0.3f * (float)(h >> 8) / 16777216.0f;
+    for (int p = 0; p < 2; p++) {
       h = h * 1664525u + 1013904223u;
-      float ox = ((float)(h >> 8) / 16777216.0f - 0.5f) * 70, oy = ((float)((h >> 4) & 255) / 255.0f) * 10;
-      float rx = 14 + 10 * (float)((h >> 12) & 255) / 255.0f, ry = rx * 0.55f;
-      v3 m = vadd(cen, vadd(vmul(right, ox), vmul(up, oy)));
-      t3_color top = lin(md->cloud[0], md->cloud[1], md->cloud[2]), bot = lin(md->cloud[0] * 0.75f, md->cloud[1] * 0.8f, md->cloud[2] * 0.92f);
-      int ci = mb_vert(&b, m, fw, 0.5f, 0.5f);
-      mb_color(&b, ci, top.r * ck, top.g * ck, top.b * ck);
-      const int S = 16;
-      int first = -1, prev = -1;
-      for (int s = 0; s <= S; s++) {
-        float a = PI_F * (float)s / S, sn, cs;
-        cw_sincos(a, &sn, &cs);
-        float yy = sn * ry; /* the top half: a dome; the flat bottom closes it */
-        v3 q = vadd(m, vadd(vmul(right, cs * rx), vmul(up, yy)));
-        int v = mb_vert(&b, q, fw, 0, 0);
-        float t = clampf(yy / ry, 0, 1);
-        mb_color(&b, v, (bot.r + (top.r - bot.r) * t) * ck, (bot.g + (top.g - bot.g) * t) * ck, (bot.b + (top.b - bot.b) * t) * ck);
-        if (prev >= 0) mb_tri(&b, ci, v, prev);
-        if (first < 0) first = v;
-        prev = v;
-      }
-      (void)first;
+      float da = ((float)(h >> 8) / 16777216.0f - 0.5f) * 0.22f, de = ((float)((h >> 4) & 255) / 255.0f) * 0.03f;
+      float sa, ca, se, ce;
+      cw_sincos(az + da, &sa, &ca), cw_sincos(el + de, &se, &ce);
+      float R = 300 - (float)p * 4;
+      v3 cen = V(ca * ce * R, se * R, sa * ce * R);
+      v3 fw = vnorm(vmul(cen, -1)), right = vnorm(vcross(fw, V(0, 1, 0))), up = vcross(right, fw);
+      float wx = 34 + 26 * (float)((h >> 12) & 255) / 255.0f, wy = wx * 0.42f;
+      v3 P[4] = { vsub(cen, vmul(right, wx)), vadd(cen, vmul(right, wx)), vadd(vadd(cen, vmul(right, wx)), vmul(up, wy * 2)), vadd(vsub(cen, vmul(right, wx)), vmul(up, wy * 2)) };
+      static const float UV[4][2] = { { 0, 0 }, { 1, 0 }, { 1, 1 }, { 0, 1 } };
+      int v[4];
+      float k = ck * (0.9f + 0.1f * (float)p);
+      for (int i = 0; i < 4; i++) v[i] = mb_vert(&cb, P[i], fw, (p & 1) ? 1 - UV[i][0] : UV[i][0], UV[i][1]), mb_color(&cb, v[i], tint.r * k, tint.g * k, tint.b * k);
+      mb_quad(&cb, v[0], v[1], v[2], v[3]);
     }
   }
   t3_material *m = t3_mesh_basic_material_new(0xffffff);
@@ -295,6 +285,16 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
   me->base.render_order = -100;
   cw_node n = cw_node_new("Node3D", "SkyDome");
   cw_node_add_child(parent, n);
+  {
+    t3_material *cm = t3_mesh_basic_material_new(0xffffff);
+    cm->vertex_colors = true, cm->side = T3_DOUBLE_SIDE, cm->transparent = true, cm->depth_write = false, cm->fog = false;
+    t3_material_set_texture(cm, T3_MAP, tex_get(TEX_CLOUD)->map);
+    t3_geometry *cg = mb_finish(&cb);
+    t3_mesh *cme = t3_mesh_new(cg, cm);
+    cme->base.cast_shadow = false, cme->base.receive_shadow = false, cme->base.frustum_culled = false, cme->base.render_order = -99;
+    t3_object_add(&me->base, &cme->base);
+    t3_release(cme), t3_release(cg), t3_release(cm);
+  }
   cw_node3d_set_object(n, &me->base);
   t3_release(me), t3_release(g), t3_release(m);
   VW.dome = n;
@@ -352,7 +352,8 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_add_child(root, VW.fog);
     cw_node_set(VW.fog, "density", cw_val_float(0.0009f));
     cw_node_set(VW.fog, "height_falloff", cw_val_float(0.06f));
-    cw_node_set(VW.fog, "start_distance", cw_val_float(70));
+    cw_node_set(VW.fog, "start_distance", cw_val_float(90));
+    cw_node_set(VW.fog, "sun_scatter", cw_val_float(0.2f));
     cw_node_set(VW.fog, "use_sky_color", cw_val_bool(false));
     cw_node_set(VW.fog, "sky_distance", cw_val_float(90)); /* the sky stays blue: the haze is on the ground's distance, not on it */
     cw_node_set(VW.fog, "color", cw_val_color(0.55f, 0.7f, 0.95f, 1));
@@ -368,6 +369,12 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.post, "vignette", cw_val_bool(true)); /* a light frame on each view: the eye goes to the middle */
     cw_node_set(VW.post, "vignette_intensity", cw_val_float(0.42f));
     cw_node_set(VW.post, "vignette_smoothness", cw_val_float(0.55f));
+    /* the grade (tools/make-lut.mjs): a gentle S-curve and a little saturation after the tone curve */
+    if (!getenv("SKATE_NO_GRADE")) {
+      cw_node_set(VW.post, "lut", cw_val_string("grade.cube"));
+      cw_node_set(VW.post, "grade", cw_val_bool(true));
+      cw_node_set(VW.post, "grade_intensity", cw_val_float(1.0f));
+    }
     cw_node_set(VW.sky, "sky_energy", cw_val_float(1.9f));
     if (getenv("SKATE_SKY")) { /* development: SKATE_SKY=sky_energy,mie,rayleigh,exposure_ev,time */
       float se = 1.9f, mi = 0.3f, ra = 1.25f, ev = 0, tod = 14.5f;
@@ -599,8 +606,8 @@ void view_park(const park *k) {
     cw_mesh3d_set_procedural(n, me);
     t3_release(me), t3_release(g);
   }
-  park_decals(k);
-  scenery_build(VW.park, k, k->theme);
+  if (!getenv("SKATE_NO_DECALS")) park_decals(k); /* (development switches: what each part costs) */
+  if (!getenv("SKATE_NO_SCENERY")) scenery_build(VW.park, k, k->theme);
   if (!getenv("SKATE_BAKE")) {
     char path[48];
     snprintf(path, sizeof path, "lightmaps/park%d.cwlm", k->theme);

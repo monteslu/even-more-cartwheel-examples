@@ -451,12 +451,58 @@ static void g_decals(float u, float v, texel *t) {
   }
 }
 
+/* foliage cards (a 256 texel card, alpha cut): a clump of leaves, lighter on top, darker and sparser to the edge */
+static void g_foliage(float u, float v, texel *t) {
+  float x = u * 2 - 1, y = v * 2 - 1;
+  float r = sqrtf(x * x + y * y) + 0.25f * (fbm(u, v, 4, 3, 221) - 0.5f);
+  float d1, d2;
+  uint32_t id;
+  cells(u, v, 14, 222, &d1, &d2, &id);
+  float leaf = clamp01((0.5f - d1) * 6) * clamp01((d2 - d1) * 10);
+  t->a = (r < 0.94f && (leaf > 0.12f || r < 0.55f)) ? 1 : 0;
+  float tone = (float)(id & 255) / 255.0f, top = clamp01(v * 0.8f + 0.2f);
+  float c = (0.55f + 0.3f * tone) * (0.65f + 0.35f * top) * (0.75f + 0.25f * leaf);
+  rgb(t, c * 0.78f, c, c * 0.62f);
+  t->h = leaf, t->rough = 0.8f, t->ao = 0.6f + 0.4f * (1 - r * 0.6f);
+}
+/* a pine branch card (alpha cut): the twig along u from the trunk (u 0) out to its tip, needles across it, drooping */
+static void g_pinecard(float u, float v, texel *t) {
+  float droop = 0.18f * u * u, w = 0.42f * (1 - u * 0.85f);
+  float dy = v - 0.5f + droop;
+  float needle = fractf(u * 70 + fabsf(dy) * 9) < 0.55f ? 1 : 0;
+  bool twig = fabsf(dy) < 0.02f;
+  /* a full silhouette with a ragged edge (thin cards lose their gaps to the mipmaps anyway): the needles are its shading */
+  float edge = w * (0.8f + 0.35f * fbm(u, v, 12, 3, 231)) - 0.04f * needle;
+  t->a = (twig || fabsf(dy) < edge) ? 1 : 0;
+  float c = 0.42f + 0.25f * (1 - fabsf(dy) / (w + 0.01f)) + 0.1f * (fbm(u, v, 6, 2, 232) - 0.5f) + 0.12f * needle;
+  if (twig) rgb(t, 0.35f, 0.25f, 0.18f);
+  else rgb(t, c * 0.55f, c * 0.85f, c * 0.55f);
+  t->h = 0.5f, t->rough = 0.85f, t->ao = 0.7f + 0.3f * (1 - fabsf(dy) / (w + 0.01f));
+}
+/* a cumulus cloud (a 512 texel card, soft alpha): billows in a dome over a flat base, sunlit on top, grey below */
+static void g_cloud(float u, float v, texel *t) {
+  float x = u * 2 - 1, y = v; /* y 0 the base, 1 the top */
+  float d = 9;
+  for (int i = 0; i < 7; i++) {
+    float cx = -0.62f + 0.21f * (float)i, cy = 0.18f + 0.42f * h01(i, 1, 241) * (1 - fabsf(cx) * 0.9f), cr = 0.2f + 0.16f * h01(i, 2, 241) * (1 - fabsf(cx) * 0.6f);
+    d = fminf(d, sqrtf((x - cx) * (x - cx) + (y - cy) * (y - cy) * 1.3f) - cr);
+  }
+  d += 0.07f * (fbm(u, v, 8, 4, 242) - 0.5f);
+  float base = clamp01((y - 0.12f) * 12);
+  float a = clamp01(-d * 9) * base;
+  t->a = a;
+  float lit = clamp01(0.45f + y * 0.9f + 0.25f * (fbm(u, v, 6, 3, 243) - 0.5f));
+  rgb(t, 0.62f + 0.38f * lit, 0.66f + 0.34f * lit, 0.74f + 0.26f * lit);
+  t->h = 0.5f, t->rough = 1, t->ao = 1;
+}
+
 typedef void (*gen_fn)(float u, float v, texel *t);
 static const gen_fn GEN[TEX_KINDS] = { g_concrete, g_asphalt, g_wood, g_paint, g_metal, g_grass, g_brick, g_roof, g_tile, g_dirt, g_leaf, g_glass,
-                                        g_sand, g_facade, g_facade_lit, g_curtain, g_corrugated, g_lumber, g_ground, g_water, g_skyline, g_decals };
-static const int SIZE[TEX_KINDS] = { 512, 512, 512, 256, 256, 256, 512, 256, 512, 256, 256, 256, 256, 512, 512, 256, 256, 256, 256, 256, 512, 512 };
-static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 4, 3, 2, 1.5f, 5, 4, 5, 4, 5, 6, 2, 3, 3, 0, 2, 4, 3, 5, 3, 1, 1 };
-const float MAT_TILE_M[TEX_KINDS] = { 4, 4, 2.4f, 2, 1, 3, 6, 3, 4.8f, 2, 2, 4, 4, 32, 32, 12, 2, 2.4f, 8, 8, 1, 1 };
+                                        g_sand, g_facade, g_facade_lit, g_curtain, g_corrugated, g_lumber, g_ground, g_water, g_skyline, g_decals,
+                                        g_foliage, g_pinecard, g_cloud };
+static const int SIZE[TEX_KINDS] = { 512, 512, 512, 256, 256, 256, 512, 256, 512, 256, 256, 256, 256, 512, 512, 256, 256, 256, 256, 256, 512, 512, 256, 256, 512 };
+static const float NORMAL_STRENGTH[TEX_KINDS] = { 3, 4, 3, 2, 1.5f, 5, 4, 5, 4, 5, 6, 2, 3, 3, 0, 2, 4, 3, 5, 3, 1, 1, 2, 2, 0 };
+const float MAT_TILE_M[TEX_KINDS] = { 4, 4, 2.4f, 2, 1, 3, 6, 3, 4.8f, 2, 2, 4, 4, 32, 32, 12, 2, 2.4f, 8, 8, 1, 1, 1, 1, 1 };
 
 static tex_set SETS[TEX_KINDS];
 uint32_t tex_hash = 2166136261u;
