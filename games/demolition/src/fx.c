@@ -292,3 +292,19 @@ void fx_update(float dt) {
 }
 
 fx_stats fx_get_stats(void) { return FX.st; }
+
+/* Every effect fired once where nothing shows it (under the ground below the structure, in the camera's view so it
+ * is drawn and hidden by depth): the GPU programs of the explosion kit and the bursts are compiled at load, not in
+ * the frame the first charge goes off (a dropped frame at the moment that matters most). */
+void fx_prime(t3_vec3 under) {
+  if (!FX.ready) return;
+  t3_vec3 up = { 0, 1, 0 };
+  cw_node b = FX.boom[FX.nboom++ % BOOMS];
+  cw_node3d_set_position(b, under);
+  cw_node3d_global_transform(b);
+  cw_explosion_fire(b);
+  cw_particles_burst(FX.dust_warm, under, up), cw_particles_burst(FX.dust_pale, under, up), cw_particles_burst(FX.dust_big, under, up);
+  for (int m = 0; m < M_COUNT; m++) if (cw_node_valid(FX.chips[m])) cw_particles_burst(FX.chips[m], under, up);
+  cw_particles_burst(FX.glass, under, up), cw_particles_burst(FX.sparks, under, up), cw_particles_burst(FX.sparkle, under, up);
+  cw_particles_burst(FX.muzzle, under, up), cw_particles_burst(FX.smoke, under, up);
+}

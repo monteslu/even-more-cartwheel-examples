@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { luma } from './lib-luma.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
@@ -30,8 +31,7 @@ function shot(level, file, extra = {}) {
   scrubDisplay(env);
   const r = spawnSync('timeout', ['-s', 'KILL', '300', exe], { env, encoding: 'utf8', maxBuffer: 1 << 26 });
   if (gl) gl.check('native', r.stderr || '');
-  const m = spawnSync('convert', [file, '-colorspace', 'Rec709Luma', '-format', '%[fx:mean*255] %[fx:standard_deviation*255]', 'info:'], { encoding: 'utf8' });
-  const [mean, sd] = (m.stdout || '').trim().split(' ').map(Number);
+  const { mean, sd } = r.status === 0 ? luma(file) : { mean: NaN, sd: NaN };
   return { status: r.status, mean, sd };
 }
 const ok = (r) => r.status === 0 && r.mean >= 95 && r.mean <= 125 && r.sd >= 55;

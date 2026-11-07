@@ -117,7 +117,7 @@ static void load_level_as(int level, bool settle) {
   if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
-  if (G.built) view_level(&G.g);
+  if (G.built) view_level(&G.g), fx_prime((t3_vec3){ 0, -25, 0 });
   G.last_cur = 0, G.turn_banner = 0;
   G.result_sound = false;
 }
@@ -164,6 +164,7 @@ static bool warmup(void *u) {
   if (!G.have_game) G.players = 1, preview_level(start_level()); /* a structure behind the title */
   G.built = true;
   view_level(&G.g);
+  fx_prime((t3_vec3){ 0, -25, 0 });
   return true;
 }
 

@@ -11,7 +11,7 @@
 // Holds the GPU suite lock for its own runs only.
 // Run: node tests/demolition-hitch.mjs
 import { spawnSync } from 'node:child_process';
-import { readFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,7 @@ function run(host, app) {
   const state = join(OUT, `${app}-${host}.json`);
   const r = spawnSync('node', [join(ENGINE, 'tools/run-cart.mjs'), '--host', host, '--app', app, '--frames', '760', '--state', state],
     { encoding: 'utf8', timeout: 900000, env: { ...process.env, CW_PROJECT_ROOT: ROOT }, maxBuffer: 1 << 26 });
+  writeFileSync(join(OUT, `${app}-${host}.log`), (r.stdout || '') + (r.stderr || ''));
   let s = {};
   try { s = JSON.parse(readFileSync(state, 'utf8')); } catch { /* no state: the run failed */ }
   return { status: r.status, frame: +s['perf.blast_frame_max'], work: +s['perf.blast_work_max'], tick: +s['perf.blast_tick_max'], booms: +s['game.booms'], broken: +s['game.broken'] };

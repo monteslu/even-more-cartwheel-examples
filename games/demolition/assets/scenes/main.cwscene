@@ -12,7 +12,8 @@ declination = 14
 north = 200
 sun_energy = 3.4
 sky_energy = 1.25
-rayleigh = 1.2
+rayleigh = 0.8
+mie = 3
 environment = true
 
 ; the sun's shadow covers the structure and the yard round it (the light sits over the structure)
@@ -45,7 +46,7 @@ cluster_far = 120
 [node name="Post" parent="." type="PostProcess"]
 msaa = 0
 aa = SMAA
-tonemap = AGX
+tonemap = ACES_FILMIC
 exposure = 1.25
 bloom = true
 bloom_intensity = 0.09
@@ -53,5 +54,5 @@ bloom_threshold = 1.2
 bloom_knee = 0.5
 ssao = false
 vignette = true
-vignette_intensity = 0.3
+vignette_intensity = 0.5
 vignette_smoothness = 0.6

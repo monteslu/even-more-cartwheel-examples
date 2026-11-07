@@ -344,32 +344,32 @@ typedef struct setting {
 
 static const setting SETTINGS[K_COUNT] = {
   /* tower: a highland valley under grey-blue mountains, green trees */
-  [K_TOWER] = { 15.7f, 55, 4.2f, 0.9f, 1.05f, { 0.30f, 0.52f, 0.14f }, { 0.52f, 0.40f, 0.26f }, { 0.55f, 0.65f, 0.8f }, 0.0030f,
-                BD_MOUNTAINS, { 0.26f, 0.3f, 0.34f }, { 0.95f, 0.97f, 1.0f }, TR_ROUND,
+  [K_TOWER] = { 15.7f, 55, 4.6f, 1.6f, 1.38f, { 0.17f, 0.36f, 0.07f }, { 0.42f, 0.30f, 0.18f }, { 0.55f, 0.65f, 0.8f }, 0.0016f,
+                BD_MOUNTAINS, { 0.1f, 0.16f, 0.12f }, { 1.0f, 1.0f, 1.0f }, TR_ROUND,
                 { { 0.80f, 0.48f, 0.24f }, { 0.78f, 0.74f, 0.66f }, { 1.0f, 0.82f, 0.5f }, { 0.88f, 0.2f, 0.12f } } },
   /* wall: a golden meadow, low hills, autumn woods */
-  [K_WALL] = { 16.7f, 35, 4.0f, 0.85f, 1.05f, { 0.40f, 0.55f, 0.14f }, { 0.56f, 0.42f, 0.25f }, { 0.75f, 0.65f, 0.5f }, 0.0028f,
+  [K_WALL] = { 16.7f, 35, 4.6f, 1.6f, 1.38f, { 0.30f, 0.42f, 0.08f }, { 0.46f, 0.32f, 0.17f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
                BD_HILLS, { 0.25f, 0.42f, 0.14f }, { 0.45f, 0.5f, 0.2f }, TR_AUTUMN,
                { { 0.82f, 0.5f, 0.25f }, { 0.92f, 0.78f, 0.55f }, { 1.0f, 0.8f, 0.45f }, { 0.2f, 0.4f, 0.9f } } },
   /* bridge: a river gorge between steep rock walls, pines */
-  [K_BRIDGE] = { 15.2f, 70, 4.2f, 0.9f, 1.05f, { 0.24f, 0.46f, 0.16f }, { 0.48f, 0.42f, 0.34f }, { 0.55f, 0.68f, 0.75f }, 0.0035f,
+  [K_BRIDGE] = { 15.2f, 70, 4.6f, 1.6f, 1.38f, { 0.15f, 0.34f, 0.10f }, { 0.40f, 0.33f, 0.25f }, { 0.55f, 0.68f, 0.75f }, 0.0018f,
                  BD_GORGE, { 0.42f, 0.34f, 0.28f }, { 0.62f, 0.55f, 0.46f }, TR_PINES,
                  { { 0.75f, 0.45f, 0.22f }, { 0.8f, 0.72f, 0.62f }, { 1.0f, 0.8f, 0.45f }, { 0.25f, 0.28f, 0.33f } } },
   /* castle: a headland over the sea, the cliffs falling away behind */
-  [K_CASTLE] = { 15.9f, 50, 4.4f, 0.95f, 1.05f, { 0.33f, 0.55f, 0.18f }, { 0.6f, 0.52f, 0.38f }, { 0.65f, 0.78f, 0.92f }, 0.0022f,
+  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.38f, { 0.2f, 0.42f, 0.1f }, { 0.5f, 0.42f, 0.3f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f }, TR_ROUND,
                  { { 0.78f, 0.46f, 0.22f }, { 0.9f, 0.86f, 0.78f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } } },
   /* scaffold: a quarry's floor among terraced orange walls */
-  [K_SCAFFOLD] = { 15.4f, 65, 4.3f, 0.85f, 1.0f, { 0.55f, 0.5f, 0.44f }, { 0.48f, 0.42f, 0.36f }, { 0.75f, 0.68f, 0.6f }, 0.0035f,
-                   BD_QUARRY, { 0.62f, 0.42f, 0.28f }, { 0.85f, 0.66f, 0.45f }, TR_NONE,
+  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.38f, { 0.38f, 0.34f, 0.3f }, { 0.3f, 0.26f, 0.22f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
+                   BD_QUARRY, { 0.42f, 0.26f, 0.16f }, { 0.85f, 0.6f, 0.38f }, TR_NONE,
                    { { 0.82f, 0.55f, 0.28f }, { 0.75f, 0.72f, 0.68f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } } },
   /* pyramid: desert sand under red mesas, a hot haze */
-  [K_PYRAMID] = { 16.6f, 40, 4.6f, 0.8f, 1.0f, { 0.86f, 0.66f, 0.42f }, { 0.78f, 0.58f, 0.36f }, { 0.95f, 0.75f, 0.55f }, 0.0030f,
-                  BD_MESAS, { 0.66f, 0.3f, 0.16f }, { 0.85f, 0.5f, 0.28f }, TR_NONE,
+  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.3f, { 0.82f, 0.56f, 0.32f }, { 0.6f, 0.4f, 0.24f }, { 0.95f, 0.75f, 0.55f }, 0.0016f,
+                  BD_MESAS, { 0.5f, 0.2f, 0.1f }, { 0.85f, 0.45f, 0.24f }, TR_NONE,
                   { { 0.75f, 0.45f, 0.2f }, { 0.95f, 0.8f, 0.55f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } } },
   /* keep: a snowy pass between white peaks, dark pines, a cold light */
-  [K_KEEP] = { 14.2f, 75, 4.0f, 1.0f, 0.95f, { 0.9f, 0.93f, 0.98f }, { 0.55f, 0.5f, 0.48f }, { 0.75f, 0.82f, 0.95f }, 0.0040f,
-               BD_MOUNTAINS, { 0.3f, 0.32f, 0.38f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
+  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 1.0f, { 0.82f, 0.86f, 0.92f }, { 0.4f, 0.36f, 0.34f }, { 0.75f, 0.82f, 0.95f }, 0.0022f,
+               BD_MOUNTAINS, { 0.16f, 0.19f, 0.24f }, { 1.0f, 1.0f, 1.0f }, TR_PINES,
                { { 0.72f, 0.42f, 0.2f }, { 0.55f, 0.56f, 0.6f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } } },
 };
 static const setting *SET;
@@ -388,7 +388,8 @@ static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8
 static float terrace(float h, float step) { float k = floorf(h / step); float f = h / step - k; return (k + cw_smoothstep(0.7f, 0.95f, f)) * step; }
 static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
   enum { NA = 160, NR = 16 };
-  float r_in = S->backdrop == BD_QUARRY ? 60 : S->backdrop == BD_GORGE ? 70 : 110, r_out = S->backdrop == BD_QUARRY ? 130 : 320;
+  float r_in = S->backdrop == BD_QUARRY ? 60 : S->backdrop == BD_GORGE ? 70 : S->backdrop == BD_MOUNTAINS ? 150 : 110;
+  float r_out = S->backdrop == BD_QUARRY ? 130 : S->backdrop == BD_MOUNTAINS ? 440 : 320;
   float *pos = malloc(sizeof(float) * 3 * NA * NR), *col = malloc(sizeof(float) * 3 * NA * NR), *uv = malloc(sizeof(float) * 2 * NA * NR);
   unsigned *idx = malloc(sizeof(unsigned) * 6 * NA * (NR - 1));
   for (int r = 0; r < NR; r++)
@@ -400,19 +401,20 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
       float rise = cw_smoothstep(0, 0.35f, t);
       float h = 0, top = 1;
       switch (S->backdrop) {
-      case BD_MOUNTAINS: h = (powf(n, 1.6f) * 140 + 15) * rise * (0.6f + 0.4f * t); top = 75; break;
+      case BD_MOUNTAINS: h = (powf(n, 1.5f) * 95 + 8) * rise * (0.3f + 0.7f * t); top = 70; break; /* low enough to leave the sky its share of the picture */
       case BD_MESAS: h = terrace(fmaxf(0, n - 0.42f) * 160, 14) * rise; top = 40; break;
-      case BD_QUARRY: h = terrace(rise * (30 + n * 25), 7); top = 45; break;
+      case BD_QUARRY: h = terrace(rise * (22 + n * 30), 6); top = 45; break;
       case BD_GORGE: h = (40 + n * 50) * cw_smoothstep(0.0f, 0.3f, t) * cw_smoothstep(30, 80, fabsf(x)); top = 80; break;
       case BD_SEA: h = z > -40 ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
       default: h = (n * 30 + 6) * rise * (1 - 0.3f * t); top = 35; break;
       }
       int i = r * NA + a;
       pos[i * 3] = x, pos[i * 3 + 1] = h - 1.5f, pos[i * 3 + 2] = z;
-      uv[i * 2] = ang * 24, uv[i * 2 + 1] = rad * 0.06f;
+      uv[i * 2] = ang * 24, uv[i * 2 + 1] = rad * 0.04f + h * 0.05f; /* steep faces stretch the texture less */
       float k = cw_clampf(h / top, 0, 1);
-      if (S->backdrop == BD_MOUNTAINS) k = cw_smoothstep(0.55f, 0.8f, k); /* snow above the tree line */
-      for (int c = 0; c < 3; c++) col[i * 3 + c] = S->back_low[c] + (S->back_high[c] - S->back_low[c]) * k;
+      if (S->backdrop == BD_MOUNTAINS) k = cw_smoothstep(0.62f, 0.8f, k); /* snow on the peaks alone */
+      float band = (S->backdrop == BD_QUARRY || S->backdrop == BD_MESAS) ? 0.82f + 0.18f * sinf(h * 0.9f) : 1; /* strata */
+      for (int c = 0; c < 3; c++) col[i * 3 + c] = (S->back_low[c] + (S->back_high[c] - S->back_low[c]) * k) * band;
     }
   int n = 0;
   for (int r = 0; r < NR - 1; r++)
@@ -461,25 +463,28 @@ void view_level(const game *g) {
     if (getenv("DEMOLITION_NORTH")) n = (float)atof(getenv("DEMOLITION_NORTH"));
     cw_node_set(V.sky, "time_of_day", cw_val_float(t));
     cw_node_set(V.sky, "north", cw_val_float(n));
-    cw_node_set(V.sky, "sun_energy", cw_val_float(S->sun_energy));
-    cw_node_set(V.sky, "sky_energy", cw_val_float(S->sky_energy));
+    if (getenv("DEMOLITION_MIE")) cw_node_set(V.sky, "mie", cw_val_float((float)atof(getenv("DEMOLITION_MIE"))));
+    if (getenv("DEMOLITION_RAYLEIGH")) cw_node_set(V.sky, "rayleigh", cw_val_float((float)atof(getenv("DEMOLITION_RAYLEIGH"))));
+    cw_node_set(V.sky, "sun_energy", cw_val_float(getenv("DEMOLITION_SUN") ? (float)atof(getenv("DEMOLITION_SUN")) : S->sun_energy));
+    cw_node_set(V.sky, "sky_energy", cw_val_float(getenv("DEMOLITION_SKY") ? (float)atof(getenv("DEMOLITION_SKY")) : S->sky_energy));
   }
   if (cw_node_valid(V.post)) {
-    float e = S->exposure;
+    float e = getenv("DEMOLITION_EXPOSURE") ? (float)atof(getenv("DEMOLITION_EXPOSURE")) : S->exposure;
     if (getenv("DEMOLITION_LOOK_CONTROL")) e *= 3.0f; /* the look gate's control: a washed-out picture */
     cw_node_set(V.post, "exposure", cw_val_float(e));
+    if (getenv("DEMOLITION_TONEMAP")) cw_node_set(V.post, "tonemap", cw_val_enum(getenv("DEMOLITION_TONEMAP")));
   }
   /* distance: height fog the colour of the setting's air (the structure stays clear: it starts 45 m out) */
   {
     cw_node f = cw_node_new("HeightFog", "Haze");
     cw_node_add_child(V.field, f);
-    cw_node_set(f, "density", cw_val_float(S->fog_density));
+    cw_node_set(f, "density", cw_val_float(getenv("DEMOLITION_NOFOG") ? 0.0f : S->fog_density));
     cw_node_set(f, "height_falloff", cw_val_float(0.035f));
     cw_node_set(f, "use_sky_color", cw_val_bool(false));
     cw_node_set(f, "color", cw_val_color(S->fog[0], S->fog[1], S->fog[2], 1));
-    cw_node_set(f, "start_distance", cw_val_float(45));
+    cw_node_set(f, "start_distance", cw_val_float(70));
     cw_node_set(f, "sky_distance", cw_val_float(0));
-    cw_node_set(f, "max_opacity", cw_val_float(0.75f));
+    cw_node_set(f, "max_opacity", cw_val_float(0.55f));
   }
   /* the ground */
   bool sea = S->backdrop == BD_SEA;
@@ -769,7 +774,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
-  float want_fov = g->state == GS_AIM && !overview ? 36.0f : 50.0f; /* aiming looks long down the field */
+  float want_fov = g->state == GS_AIM && !overview ? 32.0f : 50.0f; /* aiming looks long down the field */
   V.fov += (want_fov - V.fov) * t;
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   cw_node_set(camera, "near", cw_val_float(0.2f));
