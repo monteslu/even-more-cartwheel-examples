@@ -11,7 +11,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 
 #include "cartwheel/audio.h"
 #include "cartwheel/core.h"
@@ -88,8 +87,11 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 
+static uint32_t ticks_run; /* fixed ticks since the app started */
+
 static void begin_game(void) {
-  game_new(&G.g, G.sel_table, G.sel_players, G.rng = G.rng * 1664525u + 1013904223u);
+  G.rng = G.rng * 1664525u + 1013904223u + ticks_run * 2654435761u;
+  game_new(&G.g, G.sel_table, G.sel_players, G.rng);
   G.phase = PH_PLAY, G.phase_t = 0;
   memset(G.spin_last, 0, sizeof G.spin_last);
   music_start(G.g.T.th.music_style, G.g.T.th.music_root);
@@ -140,7 +142,8 @@ static void init(void *u) {
   cw_quality_keep_msaa(true);
   if (getenv("PINBALL_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("PINBALL_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
   sound_init();
-  G.rng = (uint32_t)time(NULL) | 1u;
+  G.rng = 1u; /* mixed with the ticks a person takes to start a game (begin_game): every game differs, and a replayed
+               * input gives the same game on every host */
   G.sel_players = 1;
   G.dmd_px = calloc(DMD_W * DMD_S * DMD_H * DMD_S, 4);
   G.dmd_tex = cw_texture_from_pixels(DMD_W * DMD_S, DMD_H * DMD_S, G.dmd_px, NULL);
@@ -247,6 +250,7 @@ static void game_finished(void) {
 
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
+  ticks_run++;
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();

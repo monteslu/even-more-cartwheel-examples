@@ -36,4 +36,5 @@ substep (flipper turning included) and passes them all.
 | `pinball_physcheck` | the solver comparison (`tests/pinball-physics.mjs`) |
 | `pinball_soak` | the rules and the bot headless, game after game (`tests/pinball-soak.mjs`: traps, NaN, memory) |
 | `pinball_tablemap` | a top-down picture of a table's physics and the bot's ball, for laying tables out |
-| `tests/pinball-perf.mjs` | GPU time at 1080p High on the test GPU, GL and WebGPU, every table |
+| `tests/pinball-perf.mjs` | GPU time at 1080p High on the test GPU, GL and WebGPU, every table, three balls in play: 1.6 ms GL and 1.9 to 2.0 ms WebGPU on the Radeon 890M (bound 4.1) |
+| `tests/pinball-gates.json` | `pinball-play`: a person's start (title, join, table, plunger, flippers) gives the same game bit for bit natively and in the dual cart on romdev |
