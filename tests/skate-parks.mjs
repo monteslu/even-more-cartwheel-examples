@@ -6,6 +6,9 @@
 //                    off a quarter pipe or a kicker landed, the manual held. Up to four goes, each a different trick.
 //   the controls     each must fail: a piece lifted 30 cm (floats), a wall across a rail's approach (that line is not
 //                    skated), a kicker cut to a quarter of its height (its gap is not cleared)
+//   the routes       two bots skate each park freely for three minutes, going from line to line on the board (the
+//                    route planner's grid, src/nav.c): no route given up, at least four starts reached on wheels. The
+//                    control plans straight through the park: its routes run into things, given up in most parks
 //   the bakes        each park's lightmap (assets/lightmaps/park<n>.cwlm) was baked for the shape the park has now: its
 //                    .hash matches the drawn geometry's; the control, a park with a piece lifted, must not match
 // Run: node tests/skate-parks.mjs
@@ -24,7 +27,7 @@ const fails = lines.filter((l) => /FAIL|CONTROL PASSED/.test(l) && !/^parks FAIL
 const parks = lines.filter((l) => /^park \d/.test(l)).length;
 const ok = lines.filter((l) => /^\s+line .* ok /.test(l)).length;
 const ctl = lines.filter((l) => /fails as it must/.test(l)).length;
-if (r.status !== 0 || fails.length || parks !== 5 || ctl < 13) {
+if (r.status !== 0 || fails.length || parks !== 5 || ctl < 14) {
   console.log(`FAIL parks: status ${r.status}, ${parks} parks, ${ok} lines skated, ${ctl} controls failed as they must, ${fails.length} problems`);
   process.exit(1);
 }

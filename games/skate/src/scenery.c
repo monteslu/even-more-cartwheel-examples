@@ -942,7 +942,7 @@ static void shrub(float x, float y, float z, float r) {
 /* the plaza dressed: granite bands across its paving, and on the sidewalk round it planters, benches, bins and
  * bollards (outside the fence: nothing a line runs through) */
 static void plaza_dress(void) {
-  static const float granite[3] = { 0.56f, 0.55f, 0.56f }, soil[3] = { 0.3f, 0.22f, 0.16f }, slat[3] = { 0.62f, 0.44f, 0.28f }, iron[3] = { 0.16f, 0.17f, 0.2f };
+  static const float granite[3] = { 0.28f, 0.27f, 0.29f }, soil[3] = { 0.3f, 0.22f, 0.16f }, slat[3] = { 0.62f, 0.44f, 0.28f }, iron[3] = { 0.16f, 0.17f, 0.2f };
   for (float x = -36; x <= 36; x += 12) flat(SB_TILE, x - 0.2f, -19.5f, x + 0.2f, 41.5f, 0.008f, granite);
   for (float z = -12; z <= 40; z += 12) flat(SB_TILE, -41.5f, z - 0.2f, 41.5f, z + 0.2f, 0.009f, granite);
   for (int side = 0; side < 4; side++)
@@ -1108,8 +1108,8 @@ static const scenery_mood MOODS[PARK_COUNT] = {
     .ground_near = { 0.42f, 0.66f, 0.28f }, .ground_far = { 0.36f, 0.56f, 0.26f }, .rock = { 0.66f, 0.56f, 0.46f }, .water = { 0.04f, 0.42f, 0.55f },
     .shadow_soft = 0.0f, .glow = 1.4f },
   /* Civic Plaza: a bright hazy morning */
-  { .time = 9.0f, .north = 140, .sun_energy = 5.0f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = 0.2f, .hemi = 0.08f, .lm_gain = 0.6f,
-    .zenith = { 0.1f, 0.32f, 0.86f }, .horizon = { 0.82f, 0.9f, 1.0f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.58f, 0.7f, 0.9f }, .fog_density = 0.0012f,
+  { .time = 9.0f, .north = 140, .sun_energy = 6.6f, .sky_energy = 2.0f, .mie = 0.6f, .rayleigh = 1.2f, .exposure = -0.05f, .hemi = 0.05f, .lm_gain = 0.36f,
+    .zenith = { 0.22f, 0.46f, 0.92f }, .horizon = { 0.86f, 0.92f, 1.0f }, .cloud = { 1.0f, 1.0f, 1.0f }, .fog = { 0.58f, 0.7f, 0.9f }, .fog_density = 0.0012f,
     .ground_near = { 0.45f, 0.62f, 0.32f }, .ground_far = { 0.5f, 0.58f, 0.42f }, .rock = { 0.6f, 0.58f, 0.55f }, .water = { 0.1f, 0.3f, 0.4f },
     .shadow_soft = 1.0f, .glow = 1.2f },
   /* Big Sky: clear noon, a deep blue */

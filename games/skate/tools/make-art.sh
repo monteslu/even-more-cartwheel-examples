@@ -14,8 +14,8 @@ node "$ROOT/tests/skate-shot.mjs" \
   skate_auto 662 "$OUT/play-2.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=1 -- \
   skate_auto 800 "$OUT/play-3.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=3 -- \
   skate_auto 900 "$OUT/readme.png" gl CW_RENDER_SCALE=1.5 SKATE_PARK=4 SKATE_PLAYERS=4 -- \
-  skate_auto 173 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 SKATE_PARK=0 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
-  skate_auto 293 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 SKATE_PARK=4 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
+  skate_auto 220 "$OUT/key-0.png" gl CW_RENDER_SCALE=3 SKATE_PARK=0 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
+  skate_auto 500 "$OUT/key-1.png" gl CW_RENDER_SCALE=3 SKATE_PARK=4 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1 SKATE_CAM=0.7,1.4 -- \
   skate_auto 752 "$OUT/key-2.png" gl CW_RENDER_SCALE=3 SKATE_PARK=2 SKATE_PLAYERS=1 SKATE_MODE=0 SKATE_NO_HUD=1
 # the logo: the working title, sunny orange on a dark outline, a little italic lean
 convert -size 1600x500 xc:none -font "$FONT" -pointsize 360 -gravity center \
