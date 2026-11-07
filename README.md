@@ -16,11 +16,29 @@ player and in RetroArch, with GL and WebGPU in the same cart.
 
 ## The games
 
-In progress:
+### towers
 
-- **towers**: a tower defense game for one to four players: build along a
-  winding route and hold off waves of thousands.
-- **pinball**: pinball tables with real ball physics, lit and rendered in 3D.
+![towers: two players hold a desert map against a swarm](docs/screenshots/towers.jpg)
+
+A tower defense game for one to four players on one screen (working title).
+Each player's cursor hops between the build pads in their own share of the
+map, and the face buttons build four towers laid out as a diamond round it:
+chain lightning, frost, a ramping beam and a mortar, each upgradable to level
+3. Waves of eight creep kinds grow into the thousands, with a boss every tenth
+wave. 30 maps in six themes, each checked in CI: the path, the pads, fair
+shares, grounding, the baked light and a clear by two bots.
+
+### pinball
+
+![pinball: the Coral Deep table with its two ramps](docs/screenshots/pinball.jpg)
+
+Pinball for one to four players taking turns (working title), on three
+original tables: Coral Deep, Star Foundry and Neon Fair. Ramps, pop bumpers,
+drop targets, four modes per table, a three-ball multiball, nudge and tilt, and
+a saved top five per table. The ball runs on the game's own solver, swept and
+substepped so it never passes through a wall or a flipper at any speed.
+
+More games are on the way.
 
 ## Building
 

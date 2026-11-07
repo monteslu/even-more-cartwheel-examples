@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
 
 env:
-  # every game in the repo (the release ships one cart each); empty until the first game lands
+  # every game in the repo (the release ships one cart each)
   GAMES: "pinball towers"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
   AUTO_GAMES: "pinball towers"
