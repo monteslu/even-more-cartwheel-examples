@@ -1,0 +1,24 @@
+; explorer project settings
+name = Explorer
+app = explorer
+main_scene = scenes/main.cwscene
+version = 0.1.0
+app_id = org.cartwheel.explorer
+; gameplay actions: the d-pad (or the left stick) moves and aims; the four face buttons jump (south), strike
+; (west), dash (east) and loose a spark (north); a shoulder throws the grapple line; Back opens the map. On the
+; keyboard: arrows or WASD, K jump, J strike, L dash, I spark, U line, M map. Up beside a shrine rests there.
+; The menus' actions (ui_*, pause) come from the engine's shell.
+input.move_left = key:a, key:left, pad:left, axis:lx-
+input.move_right = key:d, key:right, pad:right, axis:lx+
+input.move_up = key:w, key:up, pad:up, axis:ly-
+input.move_down = key:s, key:down, pad:down, axis:ly+
+input.jump = key:k, key:space, pad:south
+input.attack = key:j, pad:west
+input.dash = key:l, key:lshift, pad:east
+input.shoot = key:i, pad:north
+input.grapple = key:u, pad:rshoulder, pad:lshoulder
+input.map = key:m, key:tab, pad:back
+render.width = 1280
+render.height = 720
+render.msaa = 1
+render.vsync = true

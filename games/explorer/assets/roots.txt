@@ -1,0 +1,5 @@
+# explorer: what its carts pack
+project.cwproj
+scenes/main.cwscene
+world.bin
+route.bin
