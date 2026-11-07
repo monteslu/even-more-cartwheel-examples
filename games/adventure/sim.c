@@ -43,9 +43,9 @@ const kind_def KIND[K_KINDS] = {
   [K_RAIDER] = { "raider", "cleaver", 1.0f, 60, 20, 3.6f, 0.36f, 1.8f, 1, 12, "Hollow raider" },
   [K_BRUTE] = { "brute", "maul", 1.0f, 170, 120, 2.4f, 0.5f, 2.3f, 1, 12, "Stone brute" },
   [K_LANCER] = { "lancer", "spear", 1.0f, 80, 30, 3.2f, 0.36f, 1.9f, 1, 13, "Tide lancer" },
-  [K_THORN] = { "thornwarden", "bigaxe", 1.0f, 760, 400, 3.0f, 0.8f, 3.1f, 1, 16, "THE THORNWARDEN" },
-  [K_TIDE] = { "tidecaller", "spear", 1.0f, 820, 350, 3.4f, 0.65f, 2.8f, 1, 16, "THE TIDECALLER" },
-  [K_EMBER] = { "emberking", "bigaxe", 1.0f, 1150, 500, 3.0f, 0.9f, 3.5f, 1, 18, "THE EMBER KING" },
+  [K_THORN] = { "thornwarden", "bigaxe", 1.0f, 620, 400, 3.0f, 0.8f, 3.1f, 1, 16, "THE THORNWARDEN" },
+  [K_TIDE] = { "tidecaller", "spear", 1.0f, 700, 350, 3.4f, 0.65f, 2.8f, 1, 16, "THE TIDECALLER" },
+  [K_EMBER] = { "emberking", "bigaxe", 1.0f, 950, 500, 3.0f, 0.9f, 3.5f, 1, 18, "THE EMBER KING" },
 };
 
 static void ev(int kind, int a, int b, float x, float y, float z, float v) {
@@ -389,7 +389,6 @@ static void resolve_swing(actor *a) {
     a->hit_mask[i >> 5] |= 1u << (i & 31);
     int dmg = d->dmg;
     if (a->idx >= MAXP) dmg = dmg * KIND[a->kind].dmg_k;
-    if (a->idx < MAXP && v->boss) dmg = dmg * 3 / 4;
     hurt(v, a, a->atk, dmg, d->poise, d->knock && (a->idx >= MAXP || !v->boss));
   }
   /* the maul breaks cracked walls */
@@ -747,7 +746,9 @@ static void foe_step(actor *e) {
     move_actor(e, vx, vz);
     return;
   }
-  if (best < 0 || home_d > leash || (bd > 30 && !e->boss)) { /* lost them: back home */
+  /* a boss holds its ground while anyone is near its ring; others give up when they are drawn too far from home */
+  bool lost = best < 0 || (e->boss ? sqrtf(dist2(pos(&S.a[best]).x, pos(&S.a[best]).z, e->home_x, e->home_z)) > 34 : home_d > leash || bd > 30);
+  if (lost) { /* lost them: back home */
     e->aggro = false, e->target = -1, e->token = 0;
     if (e->state == ST_MOVE) set_state(e, ST_IDLE_HOME, 0);
     if (e->boss && S.boss == e->idx) S.boss = -1, e->hp = e->hp_max, e->phase = 0;

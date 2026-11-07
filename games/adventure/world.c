@@ -784,6 +784,11 @@ static void build_keep(void) {
   static const float BAN[][3] = { { 42, 108, 0 }, { 68, 108, CW_PI }, { 48, 196, 0.5f }, { 76, 196, 2.6f } };
   for (int i = 0; i < 4; i++) prop_solid(R, "banner", BAN[i][0], BAN[i][1], BAN[i][2], 1.0f, 0.1f, 0.05f, 0.1f, 4);
   wall(R, MT_STONE_RED, 39, 92, 71, 92, 2.8f, 1.0f);
+  /* parapets round the throne top (a fight there must not spill over its edge), open where the ramp arrives */
+  wall(R, MT_STONE_RED, 39, 92, 39, 124, 1.3f, 0.8f);
+  wall(R, MT_STONE_RED, 71, 92, 71, 124, 1.3f, 0.8f);
+  wall(R, MT_STONE_RED, 39, 124, 53.5f, 124, 1.3f, 0.8f);
+  wall(R, MT_STONE_RED, 63.5f, 124, 71, 124, 1.3f, 0.8f);
   /* foes */
   foe(K_RAIDER, R, 13, 92, 228, 2.2f);
   foe(K_RAIDER, R, 13, 88, 222, 2.0f);
@@ -887,6 +892,13 @@ void world_build(cw_tree *tree) {
     }
   for (int i = 0; i < g_nobj; i++) world_obj_state(i, false);
   g_world_paged = (1 << RG_COUNT) - 1;
+  /* perf probes (development, native): what each part of the picture costs */
+  if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
+  if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
+  if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
+  if (getenv("ADV_PROBE_TERRAINQ")) cw_terrain_set_quality(W_terrain, atoi(getenv("ADV_PROBE_TERRAINQ")));
+  if (getenv("ADV_PROBE_NOBUILD")) for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOWATER")) cw_node_free(cw_node_get(W_root, "World/Water"));
   cw_info("adventure: probe land %.2f terrain %.2f ground %.2f", land(160, 281, NULL, NULL), world_height(160, 281), world_ground(160, 281, 100));
   cw_info("adventure: world built: %d boxes, %d props, %d objects, %d foes, %d route points, hash %08x", nbox, nprop, g_nobj, g_nfoe, g_nroute, W_hash);
 }
@@ -895,7 +907,11 @@ void world_build(cw_tree *tree) {
 static const int NEAR[RG_COUNT] = { (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH) | (1 << RG_KEEP), (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH),
                                     (1 << RG_MEADOW) | (1 << RG_CANYON) | (1 << RG_MARSH), (1 << RG_MEADOW) | (1 << RG_KEEP) };
 void world_page(float x, float z, int region) {
-  (void)x, (void)z;
+  (void)z;
+  /* the marsh water only where it can be seen: from the marsh and the ways into it (its refraction copies the frame) */
+  static int water = -1;
+  int want = x > 196 || region == RG_MARSH;
+  if (want != water) { cw_node w = cw_node_get(W_root, "World/Water"); if (w.id) cw_node_set(w, "visible", cw_val_bool(want)); water = want; }
   int live = NEAR[CW_CLAMP(region, 0, RG_COUNT - 1)];
   if (live == g_world_paged) return;
   for (int r = 0; r < RG_COUNT; r++) cw_node_set(W_region_node[r], "visible", cw_val_bool((live >> r) & 1));

@@ -44,8 +44,8 @@ mie = 1.2
 color = color(1, 0.94, 0.82, 1)
 energy = 3.4
 shadow = true
-shadow_cascades = 3
-shadow_distance = 45
+shadow_cascades = 2
+shadow_distance = 40
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(160, 20, 300)
@@ -62,7 +62,7 @@ vertex_spacing = 1
 min_height = -4
 max_height = 60
 grid_quads = 32
-far_distance = 260
+far_distance = 180
 layer0_albedo = "textures/terrain/grass_ah.png"
 layer0_normal = "textures/terrain/grass_nr.png"
 layer0_uv_scale = 0.22

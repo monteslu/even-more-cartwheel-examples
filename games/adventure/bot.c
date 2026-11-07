@@ -12,7 +12,7 @@
 #include "game.h"
 
 int g_bot_stuck;
-static int R_i, R_t, R_wait, R_stuck_t, R_side, R_rest_t, R_press;
+static int R_i, R_t, R_wait, R_stuck_t, R_side, R_rest_t, R_press, R_stuck_n, R_step_seen = -1;
 static float R_lx, R_lz;
 int bot_route_index(void) { return R_i; }
 void bot_jump(int i) { R_i = i; }
@@ -112,25 +112,53 @@ void bot_input(int seat, input *in) {
     if (d > 2.6f) to_stick(dx, dz, cw_clampf((d - 2) / 3, 0.3f, 1), in);
     return;
   }
+  /* woke at a shrine after a fall: walk the route again from that shrine (the ways between are walked, not flown) */
+  static int deaths_seen;
+  if (S.deaths != deaths_seen) {
+    deaths_seen = S.deaths;
+    int so = world_shrine_obj(S.sv.shrine);
+    for (int k = 0; k < g_nroute; k++) if (g_route[k].act == RA_REST && g_route[k].obj == so) { R_i = k + 1, R_t = 0; break; }
+  }
   /* skip what is already done (a continued game) */
   while (R_i < g_nroute && done_step(&g_route[R_i])) R_i++, R_t = 0;
   if (R_i >= g_nroute) return;
   const wroute *r = &g_route[R_i];
-  R_t++;
+  if (R_i != R_step_seen) R_step_seen = R_i, R_stuck_n = 0;
   if (p->state == ST_REST) { /* rested: get up after a moment */
     if (++R_rest_t > 70) { to_stick(0, 1, 1, in); if (r->act == RA_REST) R_i++, R_t = 0; }
     return;
   }
   R_rest_t = 0;
+  /* worn down with the flask empty: back to the last shrine to rest, then on again */
+  static bool retreat;
+  if (p->hp < p->hp_max * 3 / 10 && p->tonics == 0 && S.boss < 0) retreat = true;
+  if (retreat) {
+    int so = world_shrine_obj(S.sv.shrine);
+    if (so < 0 || p->hp == p->hp_max) retreat = false;
+    else {
+      float sx = g_obj[so].x - p->mv.position.x, sz = g_obj[so].z - p->mv.position.z;
+      if (sx * sx + sz * sz > 2.2f * 2.2f) { to_stick(sx, sz, 1, in); return; }
+      if (p->state == ST_MOVE && S.interact >= 0 && (S.tick % 20) == 0) in->use = true;
+      return;
+    }
+  }
   bool fighting_boss = r->act == RA_FIGHT;
   int ti = threat(p, fighting_boss ? 30 : 11);
   if (ti >= 0 && (r->act != RA_HIT || S.a[ti].aggro)) { fight(p, ti, in, 0); return; }
+  R_t++; /* (counts only the time spent on the step itself, not the fights on the way) */
   if (p->target >= 0 && (S.tick % 30) == 0) in->lock = true; /* nothing to fight: let go */
   float dx = r->x - p->mv.position.x, dz = r->z - p->mv.position.z, d = sqrtf(dx * dx + dz * dz);
   /* stuck: no progress for two seconds, sidestep round it for a while */
   if ((S.tick % 60) == 0) {
     float moved = sqrtf(dist2(p->mv.position.x, p->mv.position.z, R_lx, R_lz));
-    if (moved < 0.6f && d > 1.5f && p->state == ST_MOVE) R_stuck_t = 50, R_side = -R_side, g_bot_stuck++;
+    if (moved < 0.6f && d > 1.5f && p->state == ST_MOVE) {
+      R_stuck_t = 50, R_side = -R_side, g_bot_stuck++;
+      /* stuck again and again on one step (fallen below it, a wall between): walk back to the point before it */
+      if (++R_stuck_n >= 5 && R_i > 0) {
+        R_i--, R_stuck_n = 0, R_t = 0;
+        while (R_i > 0 && (done_step(&g_route[R_i]) || g_route[R_i].act != RA_GO)) R_i--;
+      }
+    }
     R_lx = p->mv.position.x, R_lz = p->mv.position.z;
   }
   if (R_stuck_t > 0) {

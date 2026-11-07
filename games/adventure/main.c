@@ -269,9 +269,9 @@ static void status_line(void) {
     if (p.x != p.x || p.y != p.y || p.z != p.z) nan++;
     live += i >= MAXP && a->active && a->state != ST_DEAD;
   }
-  fprintf(stderr, "adv-status tick=%u route=%d state=%d region=%d kills=%d deaths=%d rests=%d hp=%d keys=%d maul=%d hearts=%d stuck=%d camblock=%d nan=%d live=%d x=%d z=%d boss=%d pst=%d bst=%d bx=%d bz=%d by=%d py=%d\n", S.tick, bot_route_index(), S.state,
+  fprintf(stderr, "adv-status tick=%u route=%d state=%d region=%d kills=%d deaths=%d rests=%d hp=%d keys=%d maul=%d hearts=%d stuck=%d camblock=%d nan=%d live=%d x=%d z=%d boss=%d pst=%d bst=%d bx=%d bz=%d by=%d py=%d shrine=%d\n", S.tick, bot_route_index(), S.state,
           S.region, S.kills, S.deaths, S.sv.rests, S.a[0].hp, S.sv.keys, S.sv.maul, S.sv.hearts, g_bot_stuck, S.cam_blocked, nan, live, (int)S.a[0].mv.position.x, (int)S.a[0].mv.position.z, S.boss >= 0 ? S.a[S.boss].hp : -1, S.a[0].state, S.boss >= 0 ? S.a[S.boss].state : -1,
-          S.boss >= 0 ? (int)S.a[S.boss].mv.position.x : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.z : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.y : 0, (int)S.a[0].mv.position.y);
+          S.boss >= 0 ? (int)S.a[S.boss].mv.position.x : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.z : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.y : 0, (int)S.a[0].mv.position.y, S.sv.shrine);
   fflush(stderr);
 }
 
@@ -289,7 +289,7 @@ static void fixed_update(void *u, double dt) {
   for (int k = 0; k < turbo; k++) {
     if (k) read_input(in);
     sim_step(in);
-    if (getenv("ADV_LOG") && S.tick % 3600 == 0) status_line();
+    if (getenv("ADV_LOG") && S.tick % (getenv("ADV_LOG_EVERY") ? atoi(getenv("ADV_LOG_EVERY")) : 3600) == 0) status_line();
     if (getenv("ADV_LOG") && S.state == GS_WON && S.state_t == 1) { fprintf(stderr, "adv-won tick=%u kills=%d deaths=%d\n", S.tick, S.kills, S.deaths); status_line(); }
   }
   view_fixed();

@@ -7,6 +7,7 @@
  * there; that is presentation only, the rules never read it. Rings on the ground warn of area blows and shockwaves. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/anim.h"
@@ -286,7 +287,9 @@ void view_fixed(void) {
       if (!r->made) continue;
     }
     VST.rigs++;
-    bool near = i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 55 * 55;
+    static int nochars = -1;
+    if (nochars < 0) nochars = getenv("ADV_PROBE_NOCHARS") != NULL;
+    bool near = !nochars && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 55 * 55);
     cw_node_set(r->root, "visible", cw_val_bool(near));
     VST.drawn += near;
     bool newst = a->state != r->last_state || a->st_t < r->last_st_t || (a->state == ST_ATTACK && a->atk != r->last_atk);
