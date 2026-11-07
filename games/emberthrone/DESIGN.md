@@ -101,7 +101,8 @@ stairs (FootPlacement3D on the physics ground); the dead fall as ragdolls.
   medians of interleaved runs. What moved the frame: the terrain no longer casts the sun's shadow (about a quarter of the
   WebGPU frame), a depth pass first (the heights from 5.7 to 3.7 ms on WebGPU), the marsh water drawn only near the
   marsh, lighter crowns and sparser groves, impostor crowns for far trees, bloom over four levels, the terrain's full
-  shading to 110 m. The meadow, the spire and the wood stay over the bound (about 4.7 to 5.9 ms): with every part the
-  probe can take out gone (terrain, trees, grass, stones, buildings, characters, water, clouds, sky background) the
-  wood's scene pass still costs 3.7 ms on GL against 2.6 ms at the heights, so the remaining cost is not in the
-  game's content; see the probe's `bench_terrain` and `bench` lines.
+  shading to 85 m. The terrain is most of the frame: a texel that blends two layers reads both, so second layers are
+  patches with a narrow blended rim (the wood's moss alone was 1.2 ms on GL, 2.2 on WebGPU as a wide soft blend) and
+  path edges are narrow; foes are drawn within 45 m and cast the sun's shadow within 24 m. The meadow (about 4.8 ms,
+  the most open view of the most painted ground) and, by a hair, the wood and the spire on WebGPU are still over the
+  bound. The probe moves the terrain node to take the terrain out (Terrain3D ignores `visible`).
