@@ -607,7 +607,7 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   /* and a wall seen from behind (the outside of a building the rider skates the roof of): cast back from the camera */
   if (VW.k && park_cast(VW.k, want, vmul(d, -1), (1u << SURF_RIDE) | (1u << SURF_WALL), &h)) want = vmad(at, d, fmaxf(0.15f, 1 - h.t - 0.08f));
   if (!s->cam_init) s->cam_p = want, s->cam_at = at, s->cam_init = true;
-  float kp = 1 - cw_exp(-dt * 7.0f), ka = 1 - cw_exp(-dt * 12.0f);
+  float kp = 1 - cw_exp(-dt * 7.0f), ka = 1 - cw_exp(-dt * 9.0f);
   s->cam_p = vlerp(s->cam_p, want, kp);
   s->cam_at = vlerp(s->cam_at, at, ka);
   /* the camera's own floor: never under the ground it looks across */

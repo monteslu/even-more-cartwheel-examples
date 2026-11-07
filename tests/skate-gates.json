@@ -33,6 +33,24 @@
       ],
       "maxGt16": 0.5,
       "vsGl": 0.5
+    },
+    "expect": {
+      "game.phase": -1,
+      "game.park": -1,
+      "game.mode": -1,
+      "game.tick": -1,
+      "game.players": -1,
+      "game.clock": -1,
+      "skater.state": -1,
+      "skater.score": -1,
+      "skater.tricks": -1,
+      "skater.bails": -1,
+      "skater.grinds": -1,
+      "skater.manuals": -1,
+      "skater.tokens": -1,
+      "skater.best_combo": -1,
+      "bot.lines": -1,
+      "game.hash": -1
     }
   },
   {
@@ -64,6 +82,17 @@
       ],
       "maxGt16": 0.5,
       "vsGl": 0.5
+    },
+    "expect": {
+      "game.phase": -1,
+      "game.park": -1,
+      "game.tick": -1,
+      "skater.state": -1,
+      "skater.score": -1,
+      "skater.tricks": -1,
+      "skater.bails": -1,
+      "skater.manuals": -1,
+      "game.hash": -1
     }
   }
 ]

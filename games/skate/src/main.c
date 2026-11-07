@@ -288,7 +288,7 @@ static void run_update(void) {
   memcpy(G.prev, G.S.s, sizeof G.prev);
   double t0 = wall();
   sim_step(&G.S, in);
-  if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]), fprintf(stderr, "bench: forced bail at tick %d frame %d\n", G.S.tick, (int)cw_frame_count());
+  if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]), fprintf(stderr, "bench: forced bail at tick %d\n", G.S.tick);
   G.t_sim += (wall() - t0) * 1000;
   audio_events(&G.S, G.players);
   for (int i = 0; i < G.players; i++) {
