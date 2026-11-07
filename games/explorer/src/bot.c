@@ -350,7 +350,20 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     b->mode = B_RECOVER;
     return;
   }
-  /* mend when hurt and nothing is near */
+  /* deaths: remember where on the route */
+  if (s->deaths != b->last_deaths) {
+    if (b->death_step / 50 < 128 && b->died_at[b->death_step / 50] < 255) b->died_at[b->death_step / 50]++;
+    b->last_deaths = s->deaths;
+  }
+  b->death_step = b->i > b->death_step ? b->i : b->death_step;
+  if (s->deaths != b->last_deaths) b->death_step = b->i;
+  bool careful = b->i / 50 < 128 && (b->died_at[b->i / 50] >= 2 || (b->i / 50 + 1 < 128 && b->died_at[b->i / 50 + 1] >= 2));
+  /* mend when hurt and nothing is near (all the way up where it died before) */
+  if (careful && standing(p) && p->hp < p->hp_max && p->en >= 2) {
+    bool near = false;
+    for (int i = 0; i < s->nen; i++) near |= s->en[i].alive && fabsf(s->en[i].x - p->x) < 11 && fabsf(s->en[i].y - p->y) < 8;
+    if (!near) { in->my = 1, in->shoot = true; return; }
+  }
   if (p->mend_t > 0) return;
   if (standing(p) && p->hp <= p->hp_max - 2 && p->en >= 2) {
     bool near = false;
@@ -445,7 +458,8 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     for (int i = 0; i < s->nen; i++) {
       const enemy *e = &s->en[i];
       bool spit_soon = e->kind == EN_SPITTER && (e->state == ES_TELL || e->t > 45) && fabsf(e->x - p->x) < 13 && fabsf(e->y - p->y) < 13;
-      if (e->alive && (spit_soon || (e->kind != EN_SPITTER && fabsf(e->x - p->x) < 7 && fabsf(e->y - p->y) < 6))) {
+      bool fly_near = careful && e->kind == EN_FLYER && fabsf(e->x - p->x) < 10 && fabsf(e->y - p->y) < 14 && e->state != ES_REST;
+      if (e->alive && (spit_soon || fly_near || (e->kind != EN_SPITTER && fabsf(e->x - p->x) < 7 && fabsf(e->y - p->y) < 6))) {
         b->waited++;
         if ((e->kind == EN_FLYER || e->kind == EN_SPITTER) && (e->x < p->x) != (bool)p->facing_left) in->mx = (int8_t)(e->x < p->x ? -1 : 1);
         return;

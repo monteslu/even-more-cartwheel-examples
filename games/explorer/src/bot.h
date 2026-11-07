@@ -16,6 +16,8 @@ typedef struct bot {
   route_step plan[96];
   int np, pi;
   int stuck, idle, recoveries, fails, waited, still, ignore;
+  uint8_t died_at[128];  /* deaths per 50 steps of the route: where it died twice it goes carefully */
+  int last_deaths, death_step;
   float lx, ly;
   int last_tile;
   int wiggle;
