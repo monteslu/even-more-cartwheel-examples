@@ -398,8 +398,8 @@ static void grind_step(skater *s, const park *k, const input *in, bool pop) {
   s->gv += a * TICK_DT;
   s->es += s->gv * TICK_DT;
   /* balance: unstable, a wobble that grows, the stick against it */
-  if ((s->grind_t % 18) == 1) s->wob = (rng_f(&s->rng) - 0.5f) * (1.2f + 0.02f * (float)s->grind_t);
-  s->bal_v += (s->bal * 2.4f + s->wob - in->sx * 6.0f) * TICK_DT;
+  if ((s->grind_t % 18) == 1) s->wob = (rng_f(&s->rng) - 0.5f) * (1.0f + 0.015f * (float)s->grind_t);
+  s->bal_v += (s->bal * 1.8f + s->wob - in->sx * 6.0f) * TICK_DT;
   s->bal_v *= 0.97f;
   s->bal += s->bal_v * TICK_DT;
   /* points as it goes */
@@ -460,8 +460,8 @@ static void manual_start(skater *s, int kind) {
 }
 static void manual_tick(skater *s, const input *in) {
   s->manual_t++;
-  if ((s->manual_t % 20) == 1) s->mwob = (rng_f(&s->rng) - 0.5f) * (1.0f + 0.018f * (float)s->manual_t);
-  s->mbal_v += (s->mbal * 2.2f + s->mwob - in->sy * 6.0f) * TICK_DT;
+  if ((s->manual_t % 20) == 1) s->mwob = (rng_f(&s->rng) - 0.5f) * (0.9f + 0.014f * (float)s->manual_t);
+  s->mbal_v += (s->mbal * 1.7f + s->mwob - in->sy * 6.0f) * TICK_DT;
   s->mbal_v *= 0.97f;
   s->mbal += s->mbal_v * TICK_DT;
   if (s->manual_item >= 0 && s->manual_item < s->cb.n && s->manual_t % 6 == 0) s->cb.it[s->manual_item].points += 8;
