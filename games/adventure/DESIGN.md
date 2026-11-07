@@ -66,7 +66,18 @@ stairs (FootPlacement3D on the physics ground); the dead fall as ragdolls.
 
 ## Tests
 
-- `tests/adventure-gates.json`: the bot's first 30 seconds, and a scripted pad run with its control.
-- `tests/adventure-soak.mjs`: the whole game played by the bot on software GL; it must win.
-- `tests/adventure-grounding.mjs`: no floating prop or building.
-- `tests/adventure-perf.mjs`: 1080p High on the 890M, GL and WebGPU.
+- `tests/adventure-gates.json`: the bot's first 30 seconds (it rests, crosses the hollow, fights the raiders on the road
+  and reaches the canyon shrine) and a scripted pad run (Start, Start, the road, the lock, three cuts, a roll, a heavy, a
+  drink) with its control. Both agree to the bit across native GL, native WebGPU and the cart on romdev's WebGPU host.
+- `tests/adventure-soak.mjs`: the whole game played by the bot on software GL, 40 rule ticks a frame: it wins (about 16
+  minutes of game time: 41 foes, all three bosses, both keys, the maul, every shrine), positions stay finite, the camera
+  never has a wall between it and the player, the route never stalls 6 minutes, memory holds. Control: an empty maul
+  chest (the cracked wall never breaks) must fail.
+- `tests/adventure-grounding.mjs`: 80 props, 161 building boxes and 910 scattered trees and stones on the ground (worst
+  0 cm). Control: one tree lifted half a metre must be caught.
+- `tests/adventure-text.json` (the engine's tools/check-text.mjs): the HUD at the readable floor on three screens.
+- `tests/adventure-perf.mjs`: 1080p High on the 890M, GL and WebGPU, four places (the boss fight in the marsh, the
+  meadow, the Thornwarden, the Ember King). Controls: 4K GL and an impossible 1 ms bound must fail. Last run (frame GPU
+  time, GL / WebGPU): the marsh boss 3.8 / 3.6 ms, the meadow 4.5 / 5.7, the Thornwarden 4.6 / 4.6, the Ember King 4.5 /
+  4.8 against a bound of 4.5. Two shadow cascades over 40 m took these from 5 to 8.6 ms; the rest of the frame is the
+  terrain under the sun's shadows, the grass (0.6 ms on WebGPU) and the post passes (about 0.8).
