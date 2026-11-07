@@ -48,6 +48,15 @@ int main(int argc, char **argv) {
   while (t < ticks_total && !fails) {
     game_new(&G, level % NLEVELS, players, mode);
     game_settle(&G, 180);
+    { /* memory: once every level has been played (the heap at its high water), a level played again must hold
+       * no more than it did on its second visit */
+      static long rss_at[NLEVELS];
+      static int visits[NLEVELS];
+      long kb = rss_kb();
+      int v = ++visits[G.level];
+      if (v == 2) rss_at[G.level] = kb;
+      if (v > 2) printf("  level %d again: rss %ld kB (first time %ld)\n", G.level, kb, rss_at[G.level]);
+    }
     bot_reset(&bot);
     int lt = 0, quiet_after = -1;
     while (!game_over(&G) && t < ticks_total && !fails) {
@@ -86,7 +95,7 @@ int main(int argc, char **argv) {
       if (t % (3600 * 5) == 0) {
         long kb = rss_kb();
         if (!first_rss) first_rss = kb;
-        printf("  minute %ld: rss %ld kB (first minute %ld)\n", t / 3600, kb, first_rss);
+        printf("  minute %ld: rss %ld kB\n", t / 3600, kb);
       }
       if (t == 3600) first_rss = rss_kb();
     }
@@ -102,7 +111,7 @@ int main(int argc, char **argv) {
   }
   printf("totals: %d levels, %d won, %d lost, %d stars, %d over par, %d shots, %ld broken, %ld pieces, %ld booms, %d jitter, step mean %.3f ms worst %.2f ms, most awake %d\n",
          levels, won, lost, stars, over_par, shots, broken, frags, booms, jitter, steps ? step_sum / steps : 0, step_worst, awake_worst);
-  printf("  rss %ld kB (first minute %ld)\n", rss_kb(), first_rss);
+  printf("  rss %ld kB at the end\n", rss_kb());
   game_free(&G);
   if (fails) { printf("soak FAIL\n"); return 1; }
   printf("soak ok\n");

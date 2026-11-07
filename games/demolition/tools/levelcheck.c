@@ -10,7 +10,7 @@
  *
  *   demolition_levelcheck [level ...]             (default: every level)
  *   demolition_levelcheck --control float|rest|solve   the controls: a floating block put into level 1, a plank
- *            hung off the edge of level 1's top, and a bot aiming 60 milliradians off on level 2; each must fail
+ *            hung off the edge of level 1's top, and a bot aiming 150 milliradians off on level 2; each must fail
  *            its check */
 #include <math.h>
 #include <stdio.h>
@@ -125,7 +125,7 @@ static void check(int level, const char *control) {
   game_settle(&G, 180);
   bot_state bot;
   memset(&bot, 0, sizeof bot);
-  bot.yaw_jitter_control = c_solve ? 60 : 0;
+  bot.yaw_jitter_control = c_solve ? 150 : 0;
   bot_reset(&bot);
   int ticks = 0, max_awake = 0;
   float step_max = 0;

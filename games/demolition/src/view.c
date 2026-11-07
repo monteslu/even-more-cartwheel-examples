@@ -354,7 +354,7 @@ void view_level(const game *g) {
   int theme = g->L->theme;
   palette(theme);
   /* the sky: morning, golden afternoon, a clear high day */
-  static const float tod[3] = { 13.2f, 15.6f, 11.4f }, north[3] = { 150, 120, 200 };
+  static const float tod[3] = { 15.5f, 16.7f, 14.6f }, north[3] = { 60, 35, 85 }; /* the sun behind the launcher, the structure lit */
   if (cw_node_valid(V.sky)) {
     float t = tod[theme % 3], n = north[theme % 3];
     if (getenv("DEMOLITION_TOD")) t = (float)atof(getenv("DEMOLITION_TOD")); /* development: trying the light */
@@ -595,6 +595,8 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
+  float want_fov = g->state == GS_AIM && !overview ? 36.0f : 50.0f; /* aiming looks long down the field */
+  V.fov += (want_fov - V.fov) * t;
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   cw_node_set(camera, "near", cw_val_float(0.2f));
   cw_node_set(camera, "far", cw_val_float(600));
