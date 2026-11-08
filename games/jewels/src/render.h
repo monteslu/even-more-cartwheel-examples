@@ -2,8 +2,10 @@
  * (linear HDR; the engine's bloom, tone curve and grade follow), on GL and WebGPU alike.
  *
  *   "jw_tray"   OPAQUE 0   the backdrop, the walnut and gold frames, the velvet cushions, the panel and its button
+ *                          (cached), with the lights of the moment (added up at a quarter of the canvas) over it
  *   "jw_gems"   OPAQUE 10  each stone's shadow and caustic on the velvet, then the stones, ray traced per pixel
- *                          through their facet planes, then the shards and sparks of the bursts, the rings, the
+ *                          through their facet planes (the lights of the moment among their lamps), then the shards
+ *                          of the bursts, the shockwaves, the trails, sparks, dust, glows, rings, rays and links, the
  *                          cursor, the held jewel and the hint, then the star glints where facets flash a hot lamp
  *
  * The world: the tray is the plane z = 0, x right and y up, in canvas pixels about the canvas centre (a 1920 x 1080
@@ -18,7 +20,8 @@
 #define JW_MAX_GEMS 128
 #define JW_MAX_BURSTS 96
 #define JW_MAX_RINGS 24
-#define JW_MAX_FLASHES 4
+#define JW_MAX_LIGHTS 48
+#define JW_MAX_RAYS 8
 #define JW_MAX_TRAILS 16
 
 typedef struct jw_gem_draw {
@@ -37,7 +40,13 @@ typedef struct jw_burst_draw {
 } jw_burst_draw;
 
 typedef struct jw_ring_draw { float x, y, t, power, r, g, b; } jw_ring_draw;
-typedef struct jw_flash { float x, y, z, r, g, b; } jw_flash;          /* a light over the tray, in canvas pixels */
+/* a light of the moment over the tray: a burst's, an afterglow's, the climax's. x, y canvas pixels, z its height
+ * over the velvet; r, g, b its strength now (the envelope applied); reach the distance its light halves over; core the
+ * radius of its hot centre (what the stones see as a small lamp: fire); stones 1 when the stones see it too (an
+ * afterglow lies on the velvet and lights only the velvet: 0), 2 the stones only (the climax's sweep) */
+typedef struct jw_light { float x, y, z, r, g, b, reach, core, stones; } jw_light;
+/* a fan of light rays from a big clear: where, seconds since, power, colour */
+typedef struct jw_rays { float x, y, t, power, r, g, b; uint32_t seed; } jw_rays;
 typedef struct jw_trail { float x0, y0, x1, y1, t, r, g, b; } jw_trail; /* a streak of light linking two groups */
 
 typedef struct jw_frame {
@@ -48,8 +57,10 @@ typedef struct jw_frame {
   jw_burst_draw bursts[JW_MAX_BURSTS];
   int nrings;
   jw_ring_draw rings[JW_MAX_RINGS];
-  int nflashes;
-  jw_flash flashes[JW_MAX_FLASHES];
+  int nlights;
+  jw_light lights[JW_MAX_LIGHTS];
+  int nrays;
+  jw_rays rays[JW_MAX_RAYS];
   int ntrails;
   jw_trail trails[JW_MAX_TRAILS];
   bool cursor_on, sel_on, hint_on;
@@ -57,6 +68,7 @@ typedef struct jw_frame {
   int hint_x, hint_y, hint_dx, hint_dy;
   float hint_t;           /* seconds the hint has shown */
   float warmth;           /* 0..1: the room warms as a cascade goes on */
+  float room;             /* 1: the room's light; it brightens a little with each step of a cascade */
   float sweep;            /* -1: none; else 0..1 across the board (the finale of a long cascade) */
   float button_glow, button_press; /* the on-screen hint button */
   float reshuffle;        /* 1 just after a reshuffle, fading */
@@ -70,6 +82,7 @@ typedef struct jw_render_stats {
   int quality;            /* the effects detail the stones are drawn at (cw_quality) */
   int subsamples, bounces, wavelengths;
   int gems_drawn, shards_drawn, sparks_drawn, tray_draws;
+  int lights, gem_lights, shocks; /* this frame: lights over the tray, light picks the stones took, rings that bend the picture */
   float gpu_tray, gpu_gems, gpu_glint; /* ms, -1 unknown */
 } jw_render_stats;
 
