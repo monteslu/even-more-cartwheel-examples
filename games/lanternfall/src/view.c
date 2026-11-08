@@ -686,8 +686,16 @@ static void draw_barriers(const sim *s, float x0, float y0, float x1, float y1, 
 }
 
 /* ── props and lamps ── */
+/* LANTERNFALL_PROPS_FLAT=1 (development): the props as the old drawn shapes */
+static bool flat_props(void) {
+  static int f = -1;
+  if (f < 0) f = getenv("LANTERNFALL_PROPS_FLAT") != NULL;
+  return f;
+}
 static void draw_prop(const ent *e, const region_info *g, float t) {
   float x = e->x, y = e->y;
+  bool painted = !flat_props() && scenery_prop(e->sub, e->arg, x, y, (int)(g - REGIONS), t); /* (scenery.c) */
+  if (painted && e->sub != PR_MACHINE) return;
   cw_color leaf = mixc(hexc(g->top, 1), hexc(g->accent, 1), 0.3f), dark = hexc(g->ground, 1), acc = hexc(g->accent, 1);
   float sway = sinf(t * 1.3f + x * 0.7f) * 0.06f;
   switch (e->sub) {
@@ -740,18 +748,20 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
     float wd = 2.0f + (float)(v & 3) * 0.3f, ht = 1.1f + (float)((v >> 2) & 3) * 0.25f, spin = t * (0.6f + (float)(v & 1)) * ((v & 8) ? 1 : -1);
     cw_color steel = rgba(0.4f, 0.47f, 0.56f, 1), brass = mixc(acc, rgba(0.8f, 0.62f, 0.3f, 1), 0.6f);
     cw_vec2 gc = v2(x + ((v & 16) ? 0.6f : -0.6f), y - ht - 0.7f);
-    for (int k = 0; k < 10; k++) { /* the gear's teeth, then its body and hub */
+    for (int k = 0; k < 10 && !painted; k++) { /* the gear's teeth, then its body and hub */
       float a = spin + (float)k * 0.6283f;
       limb(gc, v2(gc.x + cosf(a) * 1.0f, gc.y + sinf(a) * 1.0f), 0.13f, 0.13f, scalec(brass, 0.8f));
     }
-    cw_r2d_circle(gc, 0.85f, 20, brass);
-    cw_r2d_circle(gc, 0.55f, 16, scalec(brass, 0.7f));
-    cw_r2d_circle(gc, 0.2f, 10, rgba(0.9f, 0.85f, 0.7f, 1));
-    float pump = 0.25f * sinf(t * 2.4f + x);
-    cw_r2d_rect((cw_rect){ x - wd * 0.15f, y - ht - 1.5f + pump, 0.22f, 1.5f }, rgba(0.75f, 0.8f, 0.86f, 1)); /* the piston */
-    cw_r2d_round_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, ht }, 0.12f, 4, steel);
-    cw_r2d_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, 0.12f }, rgba(0.62f, 0.7f, 0.8f, 1));
-    for (int k = 0; k < 4; k++) cw_r2d_circle(v2(x - wd * 0.4f + (float)k * wd * 0.27f, y - ht + 0.3f), 0.05f, 6, rgba(0.75f, 0.8f, 0.85f, 1));
+    if (!painted) {
+      cw_r2d_circle(gc, 0.85f, 20, brass);
+      cw_r2d_circle(gc, 0.55f, 16, scalec(brass, 0.7f));
+      cw_r2d_circle(gc, 0.2f, 10, rgba(0.9f, 0.85f, 0.7f, 1));
+      float pump = 0.25f * sinf(t * 2.4f + x);
+      cw_r2d_rect((cw_rect){ x - wd * 0.15f, y - ht - 1.5f + pump, 0.22f, 1.5f }, rgba(0.75f, 0.8f, 0.86f, 1)); /* the piston */
+      cw_r2d_round_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, ht }, 0.12f, 4, steel);
+      cw_r2d_rect((cw_rect){ x - wd * 0.5f, y - ht, wd, 0.12f }, rgba(0.62f, 0.7f, 0.8f, 1));
+      for (int k = 0; k < 4; k++) cw_r2d_circle(v2(x - wd * 0.4f + (float)k * wd * 0.27f, y - ht + 0.3f), 0.05f, 6, rgba(0.75f, 0.8f, 0.85f, 1));
+    }
     if (g->accent == REGIONS[R_FORGE].accent) { /* a furnace mouth, glowing */
       glowing(2.4f);
       cw_r2d_round_rect((cw_rect){ x - 0.4f, y - ht * 0.6f, 0.8f, ht * 0.45f }, 0.15f, 4, rgba(1, 0.6f, 0.2f, 1));
