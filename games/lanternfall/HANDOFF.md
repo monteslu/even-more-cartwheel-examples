@@ -67,6 +67,26 @@
   the trace's enemy list. The soak's FAIL line names the trial and lists the enemies left.
 - `g_rules_off` (sim.h RULE_*) turns one rule off for tools/rules.c's controls.
 
+## World round (2026-11-07, branch lanternfall-world)
+- Set pieces: `src/pieces.h` (text rooms, entry on the left, mirrored by worldgen `stamp_piece` when the only door is
+  on the right), placed per region by `PIECE_PLAN` and `place_set_pieces` (worldgen.c); room kind RK_PIECE, `room.piece`
+  and `room.intent`. Hidden alcoves and mounds: `secret_pocket`, `secret_mound` (tablets, PK_LORE; cracked-lid boxes).
+  Shortcut gates: LINKS entries with the same region on both sides.
+- Abilities now: spark, second jump, dash, grapple line (Fen), wall climb (Clockwork Deep), plunge (Forge), tide
+  charm (Tidal Halls). The AB_* bits follow that order (the checker relies on it).
+- Fixed in the generator: the floor's kept columns were cleared at the wrong offset (every room after the first few
+  had a flat floor). In the checker: node_at was never set in the top rows; headroom read the made tiles, not the live
+  ones (nothing could stand under a broken hidden wall).
+- Checker: `CHECK_ALL=1` prints every blind drop; `CHECK_GATE_DEBUG=1` the move that crosses a leaking gate.
+- Soak: `LANTERNFALL_SOAK_TIMELINE=1` (gaps between meaningful events, empty minutes, when each ability came;
+  `LANTERNFALL_SOAK_TIMELINE_ALL=1` every event), `LANTERNFALL_SOAK_GOALS=1` (route goals passed, finds not taken).
+- Painted since (integration round): the landmarks (scenery.c `paint_landmarks`, one beacon tower per material), the
+  map stones and tablets (`paint_tablets`), the map's chart (`paint_map`, hud.c `draw_map`), and the ledge supports drawn
+  from the world's PR_SUPPORT props (`scenery_support`). `LANTERNFALL_PROPS_FLAT=1` still shows the old shapes.
+- Relics past the eleventh are keepsakes (sim.c, `KEEPSAKE_LINE`): a story line and every third a scarf dye.
+- Bench: `LANTERNFALL_BENCH_DUMP=<file>` with `CW_R2D_TIMERS=1` writes each render part's GPU time; `bench_r2d` prints
+  the world pass's draws and batches. The tiles layer draws in z bands (view.c `Z_*`) so each atlas array batches once.
+
 ## Debugging switches
 - Fast looks without the GPU lock: `node tests/lanternfall-look.mjs` (lavapipe, out/look-lanternfall/r<region>.png), or
   run lanternfall_auto on lavapipe by hand (SDL_VIDEODRIVER=offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,

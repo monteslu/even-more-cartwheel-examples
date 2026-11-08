@@ -28,8 +28,8 @@ int main(int argc, char **argv) {
     }
   for (int i = 2; i < argc; i++) map |= strcmp(argv[i], "--map") == 0;
   for (int i = 2; i < argc; i++)
-    if (!strcmp(argv[i], "--list")) /* each room: index, region, kind, cells */
-      for (int r = 0; r < W.nrooms; r++) printf("room %d region %d kind %d %dx%d\n", r, W.rooms[r].region, W.rooms[r].kind, W.rooms[r].w, W.rooms[r].h);
+    if (!strcmp(argv[i], "--list")) /* each room: index, region, kind, cells, set piece */
+      for (int r = 0; r < W.nrooms; r++) printf("room %d region %d kind %d %dx%d piece %d\n", r, W.rooms[r].region, W.rooms[r].kind, W.rooms[r].w, W.rooms[r].h, W.rooms[r].piece);
   for (int i = 2; i < argc; i++)
     if (!strcmp(argv[i], "--pickups")) /* each pickup, shrine and warden: id, kind, sub, arg, room, place */
       for (int e = 0; e < W.nents; e++)

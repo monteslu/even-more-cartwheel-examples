@@ -5,7 +5,8 @@
  *   lanternfall_bench  the perf gate's scene: a warden fight in a lamp-lit arena with both players (carts read no
  *                   environment, so the scene is chosen at build time)
  * Environment (development, native): LANTERNFALL_ROOM=n starts in room n; LANTERNFALL_ABILITIES=hex grants abilities;
- * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art). */
+ * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art);
+ * LANTERNFALL_MAP_AT=n opens the map at play frame n. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
+#include "cartwheel/render2d.h"
 #include "cartwheel/prompt.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/scene_file.h"
@@ -231,8 +233,9 @@ static void react(void) {
     case EV_PARRY: sfx_pitch(SFX_HIT, 0.5f, 1.8f), rumble(e->a, 0.1f, 0.6f, 50); break;
     case EV_BOUNCE: sfx_pitch(SFX_DJUMP, 0.45f, 1.25f), rumble(e->a, 0.15f, 0.3f, 50); break;
     case EV_ECHO: sfx_pitch(SFX_SAVE, 0.6f, e->a ? 1.2f : 0.7f); if (e->a) rumble_all(0.3f, 0.3f, 200); break;
+    case EV_KEEPSAKE: H.card_kind = CARD_KEEPSAKE, H.card_arg = e->a, H.card_dye = e->b, H.card_t = 6; break;
     case EV_CHARM:
-      if (e->b == 0) H.card_kind = 4, H.card_arg = e->a, H.card_t = 6;
+      if (e->b == 0) H.card_kind = CARD_CHARM, H.card_arg = e->a, H.card_t = 6;
       else sfx(SFX_SAVE, 0.7f), rumble_all(0.6f, 0.2f, 300); /* (the second wind) */
       break;
     case EV_TRIAL: H.trial_msg = 0, H.trial_t = 2.5f, sfx(SFX_DOOR, 0.8f), rumble_all(0.6f, 0.1f, 250), music_play(MOOD_BOSS); break;
@@ -282,11 +285,16 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
-  if (H.banner_t > 0) H.banner_t -= (float)DT;
+  if (H.banner_t > 0 && H.intro_t <= 0) H.banner_t -= (float)DT; /* (the region's name waits for the opening lines to close: never text over text) */
   if (H.card_t > 0) H.card_t -= (float)DT;
   if (H.intro_t > 0) H.intro_t -= (float)DT;
   if (H.trial_t > 0) H.trial_t -= (float)DT;
   if (S.won) H.won_t += (float)DT;
+  { /* LANTERNFALL_MAP_AT=n (development, stills of the map): the map opens at play frame n */
+    static int map_at = -1, frames;
+    if (map_at < 0) map_at = getenv("LANTERNFALL_MAP_AT") ? atoi(getenv("LANTERNFALL_MAP_AT")) : 0;
+    if (map_at && ++frames == map_at) H.map_open = true;
+  }
 #ifndef LANTERNFALL_AUTOPILOT
   /* the map and the shrine's menu hold the game still */
   if (cw_action_just_pressed(0, G.map) && !H.menu_open) { H.map_open = !H.map_open; sfx(SFX_MAP, 0.5f); return; }
@@ -321,7 +329,7 @@ static void fixed_update(void *u, double dt) {
   view_events(&S);
   G.tick = (int32_t)S.tick, G.room = S.room, G.region = S.room >= 0 ? W.rooms[S.room].region : -1, G.abilities = (int32_t)S.abilities;
   G.pickups = 0;
-  for (int k = 0; k < 4; k++) G.pickups += sim_pickups_got(&S, k);
+  for (int k = 0; k < PK_KINDS; k++) G.pickups += sim_pickups_got(&S, k);
   G.bosses = __builtin_popcount(S.bosses_down), G.hp = S.p[0].hp, G.deaths = S.deaths, G.relics = S.relics, G.won = S.won;
   G.px = (int32_t)lroundf(S.p[0].x * 100), G.py = (int32_t)lroundf(S.p[0].y * 100), G.step = B.i, G.hash = S.hash;
 }
@@ -340,6 +348,8 @@ static void render(void *u, double alpha) {
   G.snap = false;
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE || !G.in_match) view_tick(&S, sc == CW_SHELL_PLAY ? 1.0f / 60.0f : 0);
   view_draw(&S, t);
+  static cw_r2d_stats world_stats; /* (the bench: the world pass alone, before the HUD pass) */
+  world_stats = *cw_r2d_get_stats();
   bool show_hud = G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE);
 #ifdef LANTERNFALL_AUTOPILOT
   if (getenv("LANTERNFALL_NO_HUD")) show_hud = false;
@@ -361,6 +371,10 @@ static void render(void *u, double alpha) {
     for (int k = 0; k < np; k++)
       if (pst[k].ran) fprintf(stderr, " %s=%.3f/%.3f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
     fprintf(stderr, "\n");
+    const cw_r2d_stats *rs = &world_stats; /* (the stream: what the world pass asked of the renderer) */
+    fprintf(stderr, "bench_r2d draws=%u batches=%u vertices=%u commands=%u gpu_calls=%u lights=%u\n", rs->draw_calls, rs->batches, rs->vertices, rs->commands,
+            rs->gpu_calls, rs->lights);
+    if (getenv("LANTERNFALL_BENCH_DUMP")) cw_debug_dump_json(getenv("LANTERNFALL_BENCH_DUMP")); /* (with CW_R2D_TIMERS=1: each part's GPU time) */
     G.t_frame = 0, G.t_n = 0, G.t_gpu = 0;
   }
   cw_shell_draw();

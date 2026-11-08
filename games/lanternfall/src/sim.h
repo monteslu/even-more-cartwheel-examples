@@ -157,7 +157,7 @@ typedef struct boss {
 enum { /* game events, for sound and effects */
   EV_STRIKE, EV_HIT, EV_KILL, EV_BOLT, EV_HURT, EV_DIE, EV_PICKUP, EV_SAVE, EV_ROOM, EV_BREAK, EV_SECRET, EV_BOSS_START,
   EV_BOSS_TELL, EV_BOSS_ACT, EV_BOSS_HIT, EV_BOSS_DOWN, EV_SHOT, EV_SHOT_HIT, EV_DOOR, EV_SEAL, EV_ENEMY_TELL, EV_BOUNCE,
-  EV_MEND, EV_ECHO, EV_CHARM, EV_TRIAL, EV_TRIAL_WAVE, EV_TRIAL_DONE, EV_BOSS_PHASE, EV_PARRY, EV_KINDS
+  EV_MEND, EV_ECHO, EV_CHARM, EV_TRIAL, EV_TRIAL_WAVE, EV_TRIAL_DONE, EV_BOSS_PHASE, EV_PARRY, EV_KEEPSAKE, EV_KINDS
 };
 typedef struct event { uint8_t kind, a, b, c; float x, y; } event;
 
@@ -195,10 +195,13 @@ typedef struct sim {
   bool echo;                  /* a fall leaves your lantern's flame where you fell: a measure of energy stays with it */
   float echo_x, echo_y;       /* (until you go back and touch it; a second fall moves it to the new place) */ /* the world's enemies struck down: they stay down until you rest at a shrine (or fall) */
   bool held_jump[MAXP], held_attack[MAXP], held_dash[MAXP], held_shoot[MAXP], held_grapple[MAXP]; /* presses during a hold */
+  uint16_t maps;              /* regions whose map stone was found (PK_MAPSTONE): their rooms show on the map */
+  uint8_t lore[NLORE / 8];    /* tablets of the story found (PK_LORE, by tale) */
+  uint8_t pk_seen[MAXENTS / 8]; /* pickups that have been on screen (by pickup id): the map marks those not yet reached */
 } sim;
 
 /* rules tools/rules.c can turn off, one at a time, for its controls (0 in the game) */
-enum { RULE_HITSTOP = 1, RULE_KNOCKBACK = 2, RULE_RECOIL = 4, RULE_PUFF = 8, RULE_SLAIN = 16, RULE_TRIAL = 32, RULE_PHASE = 64, RULE_CHARMS = 128, RULE_ECHO = 256 };
+enum { RULE_HITSTOP = 1, RULE_KNOCKBACK = 2, RULE_RECOIL = 4, RULE_PUFF = 8, RULE_SLAIN = 16, RULE_TRIAL = 32, RULE_PHASE = 64, RULE_CHARMS = 128, RULE_ECHO = 256, RULE_KEEPSAKE = 512 };
 extern int g_rules_off;
 
 void sim_init(sim *s, const world *w, int players);
@@ -210,6 +213,12 @@ void sim_enter_room(sim *s, int room);       /* spawns the room's enemies, start
 uint32_t sim_hash(const sim *s);
 int sim_pickups_total(const world *w, int pk);
 int sim_pickups_got(const sim *s, int pk);
+bool sim_pk_seen(const sim *s, int pickup_id);
+int sim_finds(const sim *s); /* pickups taken, of every kind */
+int sim_lore_found(const sim *s);
+/* the camera's rule: the point is on screen for a player with feet at (fx, fy) in that room (32 x 18 tiles round the
+ * player, inside the room's walls) */
+bool sim_in_view(const world *w, int room, float fx, float fy, float px, float py);
 
 /* the save: what persists */
 typedef struct save_state {
@@ -226,6 +235,9 @@ typedef struct save_state {
   uint8_t trials_done[MAXROOMS / 8];
   uint8_t echo;
   float echo_x, echo_y;
+  uint16_t maps;
+  uint8_t lore[NLORE / 8];
+  uint8_t pk_seen[MAXENTS / 8 > 760 ? 760 : MAXENTS / 8];
 } save_state;
 void sim_save(const sim *s, save_state *out);
 void sim_restore(sim *s, const save_state *in);
@@ -239,6 +251,15 @@ extern const char *const ABILITY_NAME[NABILITIES];
 extern const char *const BOSS_NAME[NBOSSES];
 extern const char *const CHARM_NAME[CH_KINDS];
 extern const char *const CHARM_LINE[CH_KINDS];
+/* keepsakes: a relic past the last charm is a keepsake of the lamplighters: a line of their story on its card, and every
+ * KEEP_PER_DYE of them dye the lamplighter's scarf a new colour (looks only: nothing in the rules changes) */
+#define NKEEPSAKE 27
+#define KEEP_PER_DYE 3
+#define NDYES 10
+extern const char *const KEEPSAKE_LINE[NKEEPSAKE];
+extern const char *const DYE_NAME[NDYES];
+int sim_keepsakes(const sim *s); /* relics found past the last charm */
+int sim_scarf_dye(const sim *s); /* 0 the first scarf .. NDYES - 1 */
 int enemy_tell_ticks(int kind);
 bool sim_trial_room(const sim *s, int room); /* a room whose guardians must fall before its upgrade can be taken */
 
