@@ -8,6 +8,10 @@
 #include "cuts.h"
 
 #define JW_CAUSTIC_SPAN 2.6f
+#define JW_STUDIO_N 1024 /* the studio map: N x N texels of sky, then two rows of lamps */
+
+/* rows of the studio map (RGBA float, JW_STUDIO_N wide, JW_STUDIO_N + 2 rows): the stones' environment */
+void jw_studio_rows(float *rgba, int row0, int nrows);
 
 char *jw_shader_tray(bool wgsl);
 char *jw_shader_present(bool wgsl); /* the cached tray, with its light laid over it */
