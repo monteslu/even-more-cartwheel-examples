@@ -36,7 +36,7 @@
   {
     "name": "destructo-seat",
     "app": "destructo",
-    "frames": 660,
+    "frames": 800,
     "input": "destructo-seat.json",
     "controlEnv": {
       "DESTRUCTO_SEAT_CONTROL": "1"

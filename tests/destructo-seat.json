@@ -6,4 +6,4 @@
  {"frame": 130, "buttons": ["right"], "pad2": {}}, {"frame": 200, "pad2": {}},
  {"frame": 210, "buttons": ["south"], "pad2": {}}, {"frame": 213, "pad2": {}},
  {"frame": 560, "buttons": ["south"], "pad2": {}}, {"frame": 563, "pad2": {}},
- {"frame": 660, "pad2": {}}]
+ {"frame": 800, "pad2": {}}]
