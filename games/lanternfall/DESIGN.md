@@ -142,8 +142,46 @@ with ore in the Clockwork Deep, porous coral, billowing cloudstone), its body re
 neighbours always join (corners open on two sides are rounded, so rock masses read as boulders); the bright lips of
 walkable surfaces, ledges, thorns and molten channels, a rough cave rock for the back wall, and six parallax families: ragged ridges, a
 colonnade of arches, trees of every size, crystal spires, machinery (gears, pipes, stacks) and growth hanging from
-above, each feature placed by hash so no two are alike. The hero, enemies and wardens are skeletons of shapes animated
-every frame (`src/view.c`).
+above, each feature placed by hash so no two are alike (the trees with bark, forking branches and crowns of leaf
+clusters; the arches of coursed masonry, chipped, with ivy over their tops).
+
+**Creatures.** The hero, every enemy and every warden are skeletons of painted parts (`src/creatures.c`), posed every
+frame from the simulation. The parts are painted in code at start-up by a small painter (`src/paint.c`): signed
+distance shapes, each shaded as a rounded form (a value ramp from a cool edge to a lit middle, a soft key light from
+above), carrying a material (fur, chitin, scales, warts, veins, feathers, brass, cloth, glass, bark, skin, moss,
+membrane, stone), casting a soft contact shadow on what is under it, with a normal map from its height and a material
+map (emission for eyes, glands and cores; specular for chitin, glass and brass). Painted at 128 pixels a tile (4K draws
+a tile at 120) and mipmapped; each part is painted for both facings, since the lights do not turn a mirrored sprite's
+normals. Every creature has a rim of its region's light along its top edges (so it reads against the dark rock), a
+tint of its region, and a growth of the region's material on the backs of the crawler and the hopper.
+
+| | |
+|---|---|
+| the hero | a hooded lamplighter: long coat and cape in the player's colour, a deep hood with two bright eyes, scarf, satchel, boots, a lamplighter's pole with the lantern swinging on its hook (steady through the run; dimmer as a strike sweeps it) |
+| crawler | an ember-seamed husk beetle: five armour plates over a furnace-hot body; it rears, the seams brightening, and charges with its antennae swept back |
+| spitter | a lantern pod: a rooted gourd with glowing veins and a sac inside; it leans away and swells, the lip-petals peeling back, then recoils as it spits |
+| moth | a dusk moth: a furred body, patterned wings whose eyespots brighten as it holds them up before the swoop |
+| hopper | a lamp toad: warty, with amber eyes; its throat glows as it crouches, and it leaps with its legs thrown out behind |
+| knight | a hollow sentinel: old city-watch armour walked by a wisp behind its visor, a tower shield with the lantern emblem, a spear with a pennant |
+| puff | a thistle puff: a ball of tinted down round a dark seed; the thorns push out through the down as it swells |
+| dropper | a drip bulb: a glassy sac of glowing sap on a silk thread, a ring of little legs at its top |
+| burrower | a heave of earth and pebbles; out, a head of stone plates and teeth |
+| eye | a lantern eye: a great glassy eye on a fleshy stalk between bark lids |
+| the wardens | a hunched beast of bark and moss with root antlers and glowing fungi; a mantis of glass with lit scythe edges; a clockwork giant with a furnace grille and turning gears; a frilled eel with glowing lateral lights; a great pale bird with a lantern crest and tail streamers; a heart-shaped seed of flesh in writhing thorn vines |
+
+Every tell is the attack's anticipation exaggerated (the rear, the swell, the raised spear, the scythes overhead, the
+coil) with a glow that grows as the attack nears, never a longer wait. A warden's stagger at half health slumps it, eased
+in and out, with motes circling over it; its second phase leans its rim and tint toward its own glow and sends embers of
+it up, steady. A death: the parts fly apart, turn and fall as they burn out to embers. `tests/lanternfall-creatures.mjs`
+measures each creature's own pixels at game scale (from the same frame drawn as flat silhouettes): 120 colours or more
+and 4 levels of fine detail (2.5 while hurt); the old flat shapes must fail.
+
+**Scenery.** Features are set into the rock's body (`src/scenery.c`): embedded boulders, crack networks, lenses of
+strata, fossil shells, pebbles, moss, roots, crystals, glowing ore, old gears, shells and barnacles, cloud wisps, each
+material its own set, placed by hash two tiles deep in the rock or more, so no stretch of rock is one repeating pattern.
+The props are painted too: the lamplighter statues on their plinths, garden trees, crystal clusters, machines with a
+turning gear and a pumping piston, shelves of books, boulders, mushrooms, ferns, grass and flowers (these sway in the
+wind). Every one-way ledge shows what holds it: a bracket from a wall beside it, chains from the ceiling, else roots.
 
 **Rock.** The rock is drawn as one mass: each tile corner is shaded by how deep in the rock it sits and by a slow grain
 across the world (no tile grid shows), and in the warm regions the deep rock leans toward the cool accent. Under every
@@ -175,12 +213,15 @@ of local contrast; frames flattened halfway to their mean must fail.
 Lamps, the lantern, shots and pickups are 2D lights on the lit layers; glows and particles go on an additive layer
 over them.
 
-**Nothing strobes.** No wash of colour ever covers the screen; a struck creature takes a pale tint that eases off over
+**Nothing strobes.** No wash of colour ever covers the screen; a strike's sweep is a soft ribbon, the dash a faint smear; a struck creature takes a pale tint that eases off over
 its flash ticks, a hurt hero a soft shimmer that swells and fades about twice a second, a tell's eye one swell per
 tell, the marks of a warden's rain a slow swell; impact stars are small and fade. `tests/lanternfall-flash.mjs` draws a
 warden fight frame by frame and follows every ninth of the screen through time against the photosensitive flash
 thresholds (general and red): no block may flash at all, none past three a second; a quarter of the screen blinking at
-5 Hz must fail.
+5 Hz must fail. `tests/lanternfall-flashes.mjs` follows every creature closer: a second of every enemy and every warden
+struck every ten ticks with their tells and attacks running, and both heroes hurt, striking and mending, in cells of 48
+pixels: none may flash more than three times a second; the same scenes drawn with full white hit flashes and the old
+blink must fail.
 
 ## The bot
 

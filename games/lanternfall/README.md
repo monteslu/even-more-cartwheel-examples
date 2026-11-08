@@ -42,6 +42,8 @@ node tests/lanternfall-rules.mjs     # the hold after a blow, knockback, trials,
 node tests/lanternfall-soak.mjs      # the bot clears the game (every pickup, every warden), one player and two, two runs each; a NaN must be caught
 node tests/lanternfall-flash.mjs     # a warden fight frame by frame: no large-area flash, none past 3 a second, no red flashing; a blink must fail
 node tests/lanternfall-look.mjs      # frames of eight regions: value, contrast, a complementary accent; a flattened grade must fail
+node tests/lanternfall-creatures.mjs # every creature painted with colour and fine detail at game scale; the old flat shapes must fail
+node tests/lanternfall-flashes.mjs   # every creature struck fast, the heroes hurt: no 48-pixel cell flashes past 3 a second; hit flashes must fail
 node tests/gate.mjs --gates-file lanternfall-gates.json   # GL and WebGPU, frames and state across hosts
 node tests/lanternfall-perf.mjs      # 1080p High on the test GPU
 ```
