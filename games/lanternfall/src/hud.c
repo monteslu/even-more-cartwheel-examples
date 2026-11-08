@@ -2,6 +2,7 @@
  * what a button does, the glyph says which. Sizes are on the 1080-line scale (u) and never under the body floor. */
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cartwheel/prompt.h"
@@ -37,7 +38,7 @@ static void leaf(float x, float y, float r, bool full, cw_color c) {
   else cw_r2d_polygon_lines(p, 4, r * 0.16f, rgba(c.r, c.g, c.b, 0.65f));
 }
 
-static const char *const CARD_TITLE[4] = { "", "HEART LEAF", "LANTERN OIL", "OLD RELIC" };
+static const char *const CARD_TITLE[PK_KINDS] = { "", "HEART LEAF", "LANTERN OIL", "OLD RELIC", "MAP STONE", "A TABLET" };
 static const char *ability_line(int ab) {
   switch (ab) {
   case AB_BOLT: return "{shoot}: loose a spark of light. It costs energy; strikes fill it again";
@@ -51,6 +52,14 @@ static const char *ability_line(int ab) {
   }
 }
 
+static bool seen_room(const sim *s, int r) { return (s->seen[r >> 3] >> (r & 7)) & 1; }
+/* a room is on the map once seen, or (faint) once its region's map stone is found */
+static bool mapped_room(const sim *s, int r) { return ((s->maps >> s->w->rooms[r].region) & 1) != 0; }
+
+/* the map: the rooms seen fill in as you go (the rooms of a region whose map stone you hold show faint before you
+ * see them); doors; each region's landmark; shrines and wardens; the finds you have SEEN: a pulsing ring round a
+ * dot while not yet reached (a reward seen across a gap waits there for the ability that reaches it), a faint ring
+ * once taken; you */
 static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, float u) {
   const world *w = s->w;
   cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(0.05f, 0.06f, 0.1f, 0.86f));
@@ -63,39 +72,56 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     if (g->x + g->w > gx1) gx1 = g->x + g->w;
     if (g->y + g->h > gy1) gy1 = g->y + g->h;
   }
-  float top = 110 * u, bottom = 90 * u;
+  float top = 110 * u, bottom = 120 * u;
   float cell = fminf((cs.x - 80 * u) / (float)(gx1 - gx0), (cs.y - top - bottom) / (float)(gy1 - gy0));
   float ox = (cs.x - cell * (float)(gx1 - gx0)) * 0.5f - (float)gx0 * cell, oy = top - (float)gy0 * cell;
   float th = cell * (1.0f / CELL_H); /* one tile in map units, vertically */
+  float pulse = 0.5f + 0.5f * sinf(t * 5);
   for (int i = 0; i < w->nrooms; i++) {
-    if (!((s->seen[i >> 3] >> (i & 7)) & 1)) continue;
+    bool seen = seen_room(s, i);
+    if (!seen && !mapped_room(s, i)) continue;
     const room *r = &w->rooms[i];
-    cw_color c = hexa(REGIONS[r->region].top, 0.85f);
+    cw_color c = hexa(REGIONS[r->region].top, seen ? 0.85f : 0.35f);
     cw_rect rc = { ox + (float)r->x * cell + 1.5f * u, oy + (float)r->y * cell + 1.5f * u, (float)r->w * cell - 3 * u, (float)r->h * cell - 3 * u };
-    cw_r2d_rect(rc, rgba(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 0.95f));
-    cw_r2d_rect_lines(rc, 2 * u, c);
+    if (seen) cw_r2d_rect(rc, rgba(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 0.95f));
+    cw_r2d_rect_lines(rc, (seen ? 2 : 1.2f) * u, c);
+    if (r->kind == RK_GATE && r->gate) { /* the obstacle across a gate room: its ability's mark */
+      cw_vec2 m = { rc.x + rc.w * 0.5f, rc.y + rc.h * 0.5f };
+      cw_r2d_circle_lines(m, cell * 0.18f, 2 * u, 8, rgba(1, 0.75f, 0.4f, seen ? 0.9f : 0.4f));
+    }
     if (i == s->room && (int)(t * 3) % 2) cw_r2d_rect(rc, rgba(1, 1, 1, 0.18f));
   }
   /* doors of seen rooms: gaps of light across the wall */
   for (int i = 0; i < w->ndoors; i++) {
     const door *d = &w->doors[i];
-    bool sa = (s->seen[d->a >> 3] >> (d->a & 7)) & 1, sb = (s->seen[d->b >> 3] >> (d->b & 7)) & 1;
-    if (!sa && !sb) continue;
+    if (!seen_room(s, d->a) && !seen_room(s, d->b)) continue;
     float x = ox + ((float)d->x + (d->vertical ? (float)d->len * 0.5f : 2)) / CELL_W * cell, y = oy + ((float)d->y + (d->vertical ? 2 : 2)) * th;
     cw_color c = d->pad == T_SEAL ? rgba(1, 0.8f, 0.35f, 1) : d->pad == T_BOSSDOOR ? rgba(0.95f, 0.45f, 1, 1) : rgba(0.95f, 0.95f, 0.85f, 1);
     if (d->vertical) cw_r2d_rect((cw_rect){ x - cell * 0.14f, y - 2 * u, cell * 0.28f, 4 * u }, c);
     else cw_r2d_rect((cw_rect){ x - 2 * u, y - cell * 0.12f, 4 * u, cell * 0.24f }, c);
   }
-  /* pickups, shrines and wardens in rooms you have seen: a dot until taken, a ring after */
+  /* landmarks (a tall diamond in the region's accent), shrines, wardens, finds */
   for (int i = 0; i < w->nents; i++) {
     const ent *e = &w->ents[i];
-    if (!((s->seen[e->room >> 3] >> (e->room & 7)) & 1)) continue;
+    bool seen = seen_room(s, e->room);
     float x = ox + e->x / CELL_W * cell, y = oy + e->y * th;
+    if (ent_is_landmark(e) && (seen || mapped_room(s, e->room))) {
+      cw_color c = hexa(REGIONS[e->arg % NREGIONS].accent, seen ? 1 : 0.5f);
+      float r = cell * 0.26f;
+      cw_vec2 p[4] = { { x, y - r * 2.2f }, { x + r * 0.6f, y - r * 1.1f }, { x, y }, { x - r * 0.6f, y - r * 1.1f } };
+      cw_r2d_polygon(p, 4, c);
+    }
+    if (!seen) continue;
     if (e->kind == EK_PICKUP) {
       bool got = sim_got(s, e->id);
-      cw_color c = e->sub == PK_ABILITY ? rgba(1, 0.85f, 0.35f, 1) : e->sub == PK_HEALTH ? rgba(1, 0.5f, 0.55f, 1) : e->sub == PK_ENERGY ? rgba(0.5f, 0.85f, 1, 1) : rgba(0.85f, 0.65f, 1, 1);
-      if (got) cw_r2d_circle_lines((cw_vec2){ x, y }, cell * 0.12f, 1.5f * u, 10, rgba(c.r, c.g, c.b, 0.6f));
-      else cw_r2d_circle((cw_vec2){ x, y }, cell * 0.14f, 10, c);
+      if (!got && !sim_pk_seen(s, e->id)) continue; /* (only what you have seen: no spoilers) */
+      cw_color c = e->sub == PK_ABILITY ? rgba(1, 0.85f, 0.35f, 1) : e->sub == PK_HEALTH ? rgba(1, 0.5f, 0.55f, 1) : e->sub == PK_ENERGY ? rgba(0.5f, 0.85f, 1, 1)
+                   : e->sub == PK_MAPSTONE ? rgba(0.6f, 1, 0.75f, 1) : e->sub == PK_LORE ? rgba(0.95f, 0.9f, 0.7f, 1) : rgba(0.85f, 0.65f, 1, 1);
+      if (got) cw_r2d_circle_lines((cw_vec2){ x, y }, cell * 0.12f, 1.5f * u, 10, rgba(c.r, c.g, c.b, 0.45f));
+      else {
+        cw_r2d_circle((cw_vec2){ x, y }, cell * 0.13f, 10, c);
+        cw_r2d_circle_lines((cw_vec2){ x, y }, cell * (0.22f + 0.08f * pulse), 2 * u, 14, rgba(c.r, c.g, c.b, 0.5f + 0.4f * pulse));
+      }
     } else if (e->kind == EK_SAVE) {
       bool lit = (s->saves_lit[e->id >> 3] >> (e->id & 7)) & 1;
       cw_r2d_circle_lines((cw_vec2){ x, y - cell * 0.1f }, cell * 0.16f, 2.5f * u, 12, lit ? rgba(0.55f, 1, 0.9f, 1) : rgba(0.6f, 0.65f, 0.65f, 1));
@@ -104,6 +130,16 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
       cw_r2d_circle((cw_vec2){ x, y - cell * 0.2f }, cell * 0.2f, 12, down ? rgba(0.5f, 0.5f, 0.55f, 1) : rgba(1, 0.35f, 0.35f, 1));
     }
   }
+  /* the names of the regions you have been in, over their middle */
+  for (int r = 0; r < NREGIONS; r++) {
+    bool any = false;
+    float sx = 0, sy = 0;
+    int n = 0;
+    for (int i = 0; i < w->nrooms; i++)
+      if (w->rooms[i].region == r && seen_room(s, i)) any = true, sx += (float)w->rooms[i].x + (float)w->rooms[i].w * 0.5f, sy += (float)w->rooms[i].y + (float)w->rooms[i].h * 0.5f, n++;
+    if (!any) continue;
+    text(REGIONS[r].name, ox + sx / (float)n * cell, oy + sy / (float)n * cell - 10 * u, 20 * u, hexa(REGIONS[r].top, 0.75f), CW_ALIGN_CENTER);
+  }
   /* you */
   for (int i = 0; i < s->players; i++) {
     const player *p = &s->p[i];
@@ -111,15 +147,22 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     float x = ox + p->x / CELL_W * cell, y = oy + (p->y - 0.9f) * th;
     cw_r2d_circle((cw_vec2){ x, y }, cell * 0.22f * (1 + 0.15f * sinf(t * 8)), 14, i ? rgba(1, 0.6f, 0.85f, 1) : rgba(1, 1, 1, 1));
   }
-  char b[160];
+  char b[200];
   int region = s->room >= 0 ? w->rooms[s->room].region : 0;
   text(REGIONS[region].name, cs.x * 0.5f, 30 * u, 44 * u, hexa(REGIONS[region].top, 1), CW_ALIGN_CENTER);
-  int got = 0, all = w->npickups, seen = 0;
-  for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(s, k);
-  for (int r = 0; r < w->nrooms; r++) seen += (s->seen[r >> 3] >> (r & 7)) & 1;
-  snprintf(b, sizeof b, "rooms %d of %d    finds %d of %d    beacons %d of 5", seen, w->nrooms, got, all, sim_beacons(s));
-  text(b, cs.x * 0.5f, cs.y - bottom + 12 * u, 28 * u, rgba(0.9f, 0.92f, 1, 1), CW_ALIGN_CENTER);
-  pill("{map}: close the map", cs.x * 0.5f, cs.y - bottom + 50 * u, 0.5f, 26 * u, rgba(1, 1, 1, 1), rgba(0.1f, 0.12f, 0.2f, 0.85f));
+  int all = w->npickups, seen = 0, waiting = 0;
+  for (int r = 0; r < w->nrooms; r++) seen += seen_room(s, r);
+  for (int i = 0; i < w->nents; i++)
+    if (w->ents[i].kind == EK_PICKUP && sim_pk_seen(s, w->ents[i].id) && !sim_got(s, w->ents[i].id)) waiting++;
+  snprintf(b, sizeof b, "rooms %d of %d    finds %d of %d    seen, not yet reached %d    tablets %d    beacons %d of 5", seen, w->nrooms, sim_finds(s), all, waiting,
+           sim_lore_found(s), sim_beacons(s));
+  text(b, cs.x * 0.5f, cs.y - bottom + 12 * u, 26 * u, rgba(0.9f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+  /* the key: a pulsing ring is a find seen but not yet reached */
+  float kx = cs.x * 0.5f - 260 * u, ky = cs.y - bottom + 62 * u;
+  cw_r2d_circle((cw_vec2){ kx, ky }, 7 * u, 10, rgba(1, 0.85f, 0.35f, 1));
+  cw_r2d_circle_lines((cw_vec2){ kx, ky }, (12 + 4 * pulse) * u, 2 * u, 14, rgba(1, 0.85f, 0.35f, 0.5f + 0.4f * pulse));
+  text("seen, not yet reached", kx + 24 * u, ky - 14 * u, 24 * u, rgba(0.9f, 0.92f, 1, 0.9f), CW_ALIGN_LEFT);
+  pill("{map}: close the map", cs.x * 0.5f + 200 * u, ky - 18 * u, 0.5f, 24 * u, rgba(1, 1, 1, 1), rgba(0.1f, 0.12f, 0.2f, 0.85f));
   (void)h;
 }
 
@@ -178,16 +221,36 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
   if (h->card_t > 0) {
     float a = fminf(1, h->card_t * 2);
     float y = cs.y * 0.62f;
-    const char *title = h->card_kind == PK_ABILITY || h->card_kind > PK_RELIC ? "" : CARD_TITLE[h->card_kind];
-    if (h->card_kind == 4 && h->card_arg >= 0 && h->card_arg < CH_KINDS) title = CHARM_NAME[h->card_arg];
+    const char *title = h->card_kind >= PK_HEALTH && h->card_kind <= PK_LORE ? CARD_TITLE[h->card_kind] : "";
+    if (h->card_kind == CARD_CHARM && h->card_arg >= 0 && h->card_arg < CH_KINDS) title = CHARM_NAME[h->card_arg];
     if (h->card_kind == PK_ABILITY)
       for (int k = 0; k < NABILITIES; k++)
         if (h->card_arg == (1 << k)) title = ABILITY_NAME[k];
-    cw_r2d_round_rect((cw_rect){ cs.x * 0.2f, y - 16 * u, cs.x * 0.6f, 170 * u }, 18 * u, 6, rgba(0.06f, 0.07f, 0.12f, 0.78f * a));
+    char mapline[120];
+    if (h->card_kind == PK_MAPSTONE) snprintf(mapline, sizeof mapline, "the rooms of %s are on your map", REGIONS[h->card_arg % NREGIONS].name);
+    const char *line = h->card_kind == CARD_CHARM ? CHARM_LINE[h->card_arg] : h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health"
+                       : h->card_kind == PK_ENERGY ? "one more measure of energy" : h->card_kind == PK_MAPSTONE ? mapline : h->card_kind == PK_LORE ? LORE[h->card_arg % NLORE]
+                       : "a relic of the old city";
+    /* a long line in two, at the space nearest its middle */
+    char l1[200], l2[200];
+    snprintf(l1, sizeof l1, "%s", line);
+    l2[0] = 0;
+    int n = (int)strlen(l1);
+    if (n > 64) {
+      int cut = -1;
+      for (int i = 0; i < n; i++)
+        if (l1[i] == ' ' && (cut < 0 || abs(i - n / 2) < abs(cut - n / 2))) cut = i;
+      if (cut > 0) snprintf(l2, sizeof l2, "%s", l1 + cut + 1), l1[cut] = 0;
+    }
+    float boxh = l2[0] ? 210 * u : 170 * u;
+    cw_r2d_round_rect((cw_rect){ cs.x * 0.2f, y - 16 * u, cs.x * 0.6f, boxh }, 18 * u, 6, rgba(0.06f, 0.07f, 0.12f, 0.78f * a));
     text(title, cs.x * 0.5f, y, 56 * u, rgba(1, 0.88f, 0.5f, a), CW_ALIGN_CENTER);
-    const char *line = h->card_kind == 4 ? CHARM_LINE[h->card_arg] : h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health" : h->card_kind == PK_ENERGY ? "one more measure of energy" : "a relic of the old city";
-    cw_vec2 sz = cw_prompt_text_size(F, line, -1, 30 * u);
-    cw_prompt_text(F, line, -1, (cw_vec2){ cs.x * 0.5f - sz.x * 0.5f, y + 80 * u }, 30 * u, rgba(1, 1, 1, a), CW_ALIGN_LEFT);
+    for (int k = 0; k < 2; k++) {
+      const char *ln = k ? l2 : l1;
+      if (!ln[0]) continue;
+      cw_vec2 sz = cw_prompt_text_size(F, ln, -1, 30 * u);
+      cw_prompt_text(F, ln, -1, (cw_vec2){ cs.x * 0.5f - sz.x * 0.5f, y + (80 + 40 * (float)k) * u }, 30 * u, rgba(1, 1, 1, a), CW_ALIGN_LEFT);
+    }
   }
   /* a trial: the doors shut on an upgrade's guardians */
   if (h->trial_t > 0) {

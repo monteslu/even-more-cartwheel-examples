@@ -232,7 +232,7 @@ static void react(void) {
     case EV_BOUNCE: sfx_pitch(SFX_DJUMP, 0.45f, 1.25f), rumble(e->a, 0.15f, 0.3f, 50); break;
     case EV_ECHO: sfx_pitch(SFX_SAVE, 0.6f, e->a ? 1.2f : 0.7f); if (e->a) rumble_all(0.3f, 0.3f, 200); break;
     case EV_CHARM:
-      if (e->b == 0) H.card_kind = 4, H.card_arg = e->a, H.card_t = 6;
+      if (e->b == 0) H.card_kind = CARD_CHARM, H.card_arg = e->a, H.card_t = 6;
       else sfx(SFX_SAVE, 0.7f), rumble_all(0.6f, 0.2f, 300); /* (the second wind) */
       break;
     case EV_TRIAL: H.trial_msg = 0, H.trial_t = 2.5f, sfx(SFX_DOOR, 0.8f), rumble_all(0.6f, 0.1f, 250), music_play(MOOD_BOSS); break;

@@ -18,7 +18,7 @@ if (!process.env.CW_GPU_SUITE_INNER) { /* (inside one hold of the GPU suite lock
 }
 const exe = [join(ROOT, 'build/native/project/games/lanternfall/lanternfall_soak'), join(ROOT, 'build/native/games/lanternfall/lanternfall_soak')].find(existsSync);
 const assets = join(ROOT, 'games/lanternfall/assets');
-const MINUTES = 240, PICKUPS = 38, WARDENS = 6;
+const MINUTES = 240, WARDENS = 6;
 const SEEDS = [0, 13];
 const run = (players, env = {}) => spawnSync(exe, [assets, String(MINUTES), String(players)], { encoding: 'utf8', timeout: 3600000, env: { ...process.env, ...env } });
 let bad = 0;
@@ -30,7 +30,8 @@ for (const p of [1, 2]) for (const seed of SEEDS) {
   const growth = mem.length ? Math.max(...mem) : 99;
   const pick = m ? +m[2] : 0, ward = m ? +m[3] : 0;
   const won = m ? +m[4] : 0;
-  const at = (/minute (\d+): .*pickups 38\/38/.exec(out) || [])[1];
+  const PICKUPS = +((/pickups \d+\/(\d+)/.exec(out) || [])[1] || 1e9); // (every pickup in the world: the soak prints how many there are)
+  const at = (new RegExp(`minute (\\d+): .*pickups ${PICKUPS}/${PICKUPS}`).exec(out) || [])[1];
   if (r.status !== 0 || !m || growth > 1.05 || pick < PICKUPS || ward < WARDENS || won !== 1) {
     console.log(`FAIL soak ${p} player${p > 1 ? 's' : ''} run ${seed}: status ${r.status}, ${pick} pickups, ${ward} wardens, won ${won}, memory x${growth.toFixed(3)}\n${out.split('\n').filter((l) => !l.startsWith('t')).slice(-6).join('\n')}`);
     bad++;

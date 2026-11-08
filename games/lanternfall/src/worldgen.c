@@ -1059,13 +1059,30 @@ void world_generate(world *w, uint32_t seed) {
   /* carve */
   for (int i = 0; i < W->nrooms; i++) carve_room(i);
   for (int i = 0; i < ngates; i++) carve_gate(&gates[i]);
-  /* boss arenas: a flat floor and two ledges */
+  /* warden arenas: a flat floor (the wardens move along it) and one-way ledges laid out for each warden: low ones a
+   * single jump reaches for the first, higher tiers for the later ones, anchors under the Sky Warden's roof. Each
+   * row is x0, x1 (tiles from the arena's left wall), rows above the floor; 0 ends the list. */
+  static const int8_t ARENA[NBOSSES][6][3] = {
+    { { 12, 19, 4 }, { 44, 51, 4 }, { 28, 35, 8 } },                                  /* the Moss Warden: one jump, then a perch */
+    { { 8, 14, 4 }, { 49, 55, 4 }, { 22, 29, 8 }, { 34, 41, 8 } },                   /* the Glass Mantis: four places to land */
+    { { 6, 12, 5 }, { 51, 57, 5 }, { 20, 26, 9 }, { 37, 43, 9 } },                   /* the Brass Sentinel: two tiers */
+    { { 10, 17, 5 }, { 46, 53, 5 }, { 28, 35, 10 } },                                 /* the Tide Serpent: high ground over its dives */
+    { { 12, 19, 5 }, { 44, 51, 5 }, { 26, 37, 10 } },                                /* the Sky Warden: and anchors to swing on */
+    { { 6, 12, 5 }, { 51, 57, 5 }, { 22, 28, 9 }, { 35, 41, 9 }, { 29, 34, 13 } },  /* the heart: a climb of ledges */
+  };
   for (int i = 0; i < W->nrooms; i++) {
     room *rm = &W->rooms[i];
-    if (rm->kind != RK_BOSS) continue;
-    int X0 = rm->x * CELL_W, fy = rm->y * CELL_H + CELL_H - 2;
-    fill(X0 + 12, fy - 5, X0 + 19, fy - 5, T_ONEWAY);
-    fill(X0 + 44, fy - 5, X0 + 51, fy - 5, T_ONEWAY);
+    if (rm->kind != RK_BOSS || !rm->boss) continue;
+    int X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H, fy = Y0 + CELL_H - 2, b = rm->boss - 1;
+    for (int k = 0; k < 6 && ARENA[b][k][2]; k++) fill(X0 + ARENA[b][k][0], fy - ARENA[b][k][2], X0 + ARENA[b][k][1], fy - ARENA[b][k][2], T_ONEWAY);
+    if (b == 4)
+      for (int k = 0; k < 3; k++)
+        for (int d = 0; d < 6; d++) { /* (under whole roof: not under a door up) */
+          int ax = X0 + 16 + k * 16 + (d & 1 ? -(d + 1) / 2 : d / 2) * 3;
+          if (!t_solid(tile(ax, Y0 + 1)) || !t_solid(tile(ax - 1, Y0 + 1)) || !t_solid(tile(ax + 1, Y0 + 1))) continue;
+          add_ent(EK_ANCHOR, 0, 0, HOLD_CEIL, i, (float)ax + 0.5f, (float)(Y0 + 2) + 0.5f);
+          break;
+        }
   }
   for (int i = 0; i < W->nents; i++) /* pedestals under the pickups */
     if (W->ents[i].kind == EK_PICKUP && W->ents[i].sub != PK_LORE) fill((int)W->ents[i].x - 1, (int)W->ents[i].y, (int)W->ents[i].x, (int)W->ents[i].y, T_SOLID);

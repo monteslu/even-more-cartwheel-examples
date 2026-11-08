@@ -666,6 +666,26 @@ static void draw_barriers(const sim *s, float x0, float y0, float x1, float y1, 
 }
 
 /* ── props and lamps ── */
+/* a region's landmark (placeholder art: a beacon tower on a stepped plinth, its lantern in the region's accent; arg is
+ * the region). Big enough to know the room by, and marked on the map. */
+static void draw_landmark(const ent *e, const region_info *g, float t) {
+  float x = e->x, y = e->y;
+  cw_color stone = mixc(hexc(g->ground, 1), rgba(0.62f, 0.6f, 0.56f, 1), 0.35f), acc = hexc(g->accent, 1);
+  cw_r2d_rect((cw_rect){ x - 2.2f, y - 0.6f, 4.4f, 0.6f }, scalec(stone, 0.8f));
+  cw_r2d_rect((cw_rect){ x - 1.6f, y - 1.2f, 3.2f, 0.6f }, scalec(stone, 0.9f));
+  cw_vec2 shaft[4] = { v2(x - 1.0f, y - 1.2f), v2(x + 1.0f, y - 1.2f), v2(x + 0.6f, y - 7.6f), v2(x - 0.6f, y - 7.6f) };
+  cw_r2d_polygon(shaft, 4, stone);
+  for (int k = 0; k < 4; k++) cw_r2d_rect((cw_rect){ x - 0.9f + 0.08f * (float)k, y - 2.4f - 1.4f * (float)k, 1.8f - 0.16f * (float)k, 0.12f }, scalec(stone, 0.7f));
+  cw_r2d_rect((cw_rect){ x - 1.0f, y - 8.0f, 2.0f, 0.4f }, scalec(stone, 0.75f));
+  cw_vec2 roof[3] = { v2(x - 1.1f, y - 9.6f), v2(x + 1.1f, y - 9.6f), v2(x, y - 10.8f) };
+  cw_r2d_polygon(roof, 3, scalec(stone, 0.75f));
+  float fl = 0.85f + 0.15f * sinf(t * 2.3f + x);
+  glowing(2.4f);
+  cw_r2d_round_rect((cw_rect){ x - 0.7f, y - 9.6f, 1.4f, 1.6f }, 0.3f, 6, scalec(acc, fl));
+  glowing(1);
+  light(x, y - 8.8f, 10, acc, 0.85f * fl, true);
+}
+
 static void draw_prop(const ent *e, const region_info *g, float t) {
   float x = e->x, y = e->y;
   cw_color leaf = mixc(hexc(g->top, 1), hexc(g->accent, 1), 0.3f), dark = hexc(g->ground, 1), acc = hexc(g->accent, 1);
@@ -815,6 +835,7 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
     glowing(1);
     break;
   }
+  case PR_LANDMARK: draw_landmark(e, g, t); break;
   default: { /* hanging vines / roots / chains from the ceiling: arg is the length */
     float len = (float)e->arg * 0.5f;
     cw_vec2 prev = v2(x, y);
@@ -1360,10 +1381,25 @@ static void shot_lights(const sim *s) {
   }
 }
 
+/* a map stone or a tablet of the story (placeholder art: a carved slab, glowing lines on it; the map stone green, a
+ * tablet warm) */
+static void draw_tablet(const ent *e, float t) {
+  bool map = e->sub == PK_MAPSTONE;
+  float x = e->x, y = e->y, w = map ? 1.1f : 0.8f, hgt = map ? 1.5f : 1.0f;
+  cw_color glow = map ? rgba(0.55f, 1, 0.7f, 1) : rgba(1, 0.85f, 0.55f, 1);
+  cw_r2d_round_rect((cw_rect){ x - w * 0.5f, y - hgt, w, hgt }, 0.15f, 4, rgba(0.55f, 0.53f, 0.5f, 1));
+  glowing(2.2f);
+  for (int k = 0; k < 3; k++) cw_r2d_rect((cw_rect){ x - w * 0.32f, y - hgt * (0.78f - 0.22f * (float)k), w * (k == 1 ? 0.5f : 0.64f), 0.07f }, glow);
+  glowing(1);
+  light(x, y - hgt * 0.5f, 4.5f, glow, 0.7f + 0.15f * sinf(t * 3 + x), false);
+}
+
 static void draw_pickups(const sim *s, float t, float x0, float x1, float y0, float y1) {
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
     if (e->x < x0 - 2 || e->x > x1 + 2 || e->y < y0 - 3 || e->y > y1 + 3) continue;
+    if (e->kind == EK_PICKUP && !sim_got(s, e->id) && w_in((int)floorf(e->x), (int)roundf(e->y) - 1) && s->t[(int)roundf(e->y) - 1][(int)floorf(e->x)] == T_SECRET) continue; /* (still inside hidden rock) */
+    if (e->kind == EK_PICKUP && !sim_got(s, e->id) && (e->sub == PK_MAPSTONE || e->sub == PK_LORE)) { draw_tablet(e, t); continue; }
     if (e->kind == EK_PICKUP && !sim_got(s, e->id)) {
       float bob = sinf(t * 2.5f + e->x) * 0.12f, y = e->y - 0.9f + bob;
       cw_color c = e->sub == PK_ABILITY ? rgba(1, 0.85f, 0.4f, 1) : e->sub == PK_HEALTH ? rgba(1, 0.45f, 0.5f, 1) : e->sub == PK_ENERGY ? rgba(0.45f, 0.85f, 1, 1) : rgba(0.85f, 0.6f, 1, 1);
