@@ -698,6 +698,7 @@ static void draw_barriers(const sim *s, float x0, float y0, float x1, float y1, 
 /* what holds a one-way ledge up (placeholder art): a chain hanging from the rock to the ledge's end (HOLD_CEIL, from
  * e->y down arg tiles), a post standing up to it (HOLD_FLOOR, from e->y up arg tiles), a bracket from a wall (HOLD_WALL) */
 static void draw_support(const ent *e, const region_info *g) {
+  if (!flat_props()) return; /* (the painted scenery draws what holds each ledge: scenery.c; these shapes stand in under LANTERNFALL_PROPS_FLAT) */
   float x = e->x, y = e->y, len = (float)e->arg;
   cw_color iron = mixc(hexc(g->ground, 1), rgba(0.25f, 0.24f, 0.26f, 1), 0.6f), wood = mixc(hexc(g->ground, 1), rgba(0.45f, 0.32f, 0.2f, 1), 0.5f);
   if (e->hold & HOLD_CEIL) {
