@@ -74,7 +74,7 @@ static struct {
   float share;       /* the structure down (game_share), refreshed a few times a second for the HUD */
   int32_t result, judged_awake;
   bool replayed, replay_cut; /* this level's replay has been shown; the replay's first frame (the camera cuts) */
-  int32_t replay_match_dbg, replay_ticks;
+  int32_t replay_match_dbg, replay_ticks, last_result, last_awake, results;
   uint32_t replay_hash_dbg;
 } G;
 
@@ -152,7 +152,7 @@ static void begin_level(int level) {
 #else
   replay_reset(level, G.players, G.mode, false, 180);
 #endif
-  G.replayed = false, G.replay_match_dbg = -1;
+  G.replayed = false;
 #ifdef DESTRUCTO_AUTOPILOT
   /* tests/destructo-result.mjs's controls (native: carts read no environment): the result rules before the fix, and
    * a replay whose last shot is nudged */
@@ -232,6 +232,10 @@ static void init(void *u) {
   cw_debug_f32("game.share", &G.share);
   cw_debug_i32("replay.match", &G.replay_match_dbg);  /* 1: the last replay ended on the live game's judged state; 0: elsewhere; -1: none yet */
   cw_debug_i32("replay.ticks", &G.replay_ticks);      /* ticks the last replay ran */
+  cw_debug_i32("result.last", &G.last_result);        /* the last level judged: its result (game.result's values) ... */
+  cw_debug_i32("result.awake", &G.last_awake);        /* ... the bodies awake when it was judged ... */
+  cw_debug_i32("result.count", &G.results);           /* ... and how many levels have been judged */
+  G.replay_match_dbg = -1;
   cw_debug_u32("replay.hash", &G.replay_hash_dbg);
   cw_debug_field("player.score", G.score, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
@@ -350,6 +354,7 @@ static void fixed_update(void *u, double dt) {
     if (G.turn_banner > 0) G.turn_banner--;
     if (game_over(&G.g)) {
       level_done();
+      G.last_result = game_result(&G.g), G.last_awake = G.g.judged_awake, G.results++;
       G.phase = PH_RESULT, G.phase_t = 0;
       sound_result(G.g.state == GS_WON);
     }

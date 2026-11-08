@@ -2,7 +2,7 @@
 // GPU): a level is judged once the world is still, and the instant replay of its last shot ends where the level did.
 //   Stone Giant (level 24: one charge brings a six-storey tower down) and First Stones (level 1: two shots, so the
 //   replay re-runs the first one before it shows the second):
-//     judged    when the game says won or lost (game.result), at most 10 bodies were awake (game.judged_awake)
+//     judged    when the game says won or lost (result.last), at most 10 bodies were awake (result.awake)
 //     replay    the replay ran (replay.ticks) and ended on the live game's judged state (replay.match: every block's
 //               pose to the bit, the counters and the scores)
 //   Frames of each level's result card and of its replay are left in out/result/ for review.
@@ -38,7 +38,7 @@ function run(level, frames, name, extra = {}) {
   if (r.status !== 0) return { status: r.status };
   const d = JSON.parse(readFileSync(dump, 'utf8'));
   const f = (k) => d[k] ?? d.fields?.[k];
-  return { status: 0, phase: f('game.phase'), result: f('game.result'), awake: f('game.judged_awake'), match: f('replay.match'), ticks: f('replay.ticks'), level: f('game.level') };
+  return { status: 0, phase: f('game.phase'), result: f('result.last'), awake: f('result.awake'), count: f('result.count'), match: f('replay.match'), ticks: f('replay.ticks'), level: f('game.level') };
 }
 const judged = (r) => r.status === 0 && r.result > 0 && r.awake <= 10;
 const replayed = (r) => r.status === 0 && r.ticks > 0 && r.match === 1;

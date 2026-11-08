@@ -88,18 +88,18 @@ static cw_node bnode(const char *name, const char *const *kv, int seed, int slot
 static const char *const DUST_WARM[] = { "amount", "10", "lifetime", "2.6", "lifetime_random", "0.3", "explosiveness", "0.9", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.35", "direction", "vec3(0, 1, 0)", "spread", "110", "speed_min", "0.4", "speed_max", "2.0",
   "gravity", "vec3(0, 0.25, 0)", "damping", "1.6", "blend", "ALPHA", "soft_distance", "0.5", "size", "1.6", "size_random", "0.4",
-  "size_curve", "\"0 0.35, 0.25 1, 1 1.6\"", "color_ramp", "\"0 0.82 0.66 0.48 0, 0.08 0.78 0.62 0.45 0.65, 1 0.7 0.6 0.5 0\"",
+  "size_curve", "\"0 0.35, 0.25 1, 1 1.6\"", "color_ramp", "\"0 0.82 0.66 0.48 0, 0.2 0.78 0.62 0.45 0.6, 1 0.7 0.6 0.5 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.25", "turbulence", "0.5", "turbulence_scale", "0.4", NULL };
 static const char *const DUST_PALE[] = { "amount", "10", "lifetime", "3.0", "lifetime_random", "0.3", "explosiveness", "0.9", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.4", "direction", "vec3(0, 1, 0)", "spread", "120", "speed_min", "0.4", "speed_max", "2.2",
   "gravity", "vec3(0, 0.2, 0)", "damping", "1.5", "blend", "ALPHA", "soft_distance", "0.5", "size", "1.9", "size_random", "0.4",
-  "size_curve", "\"0 0.35, 0.25 1, 1 1.7\"", "color_ramp", "\"0 0.93 0.9 0.84 0, 0.08 0.88 0.85 0.8 0.6, 1 0.8 0.78 0.75 0\"",
+  "size_curve", "\"0 0.35, 0.25 1, 1 1.7\"", "color_ramp", "\"0 0.8 0.78 0.72 0, 0.2 0.76 0.74 0.7 0.55, 1 0.7 0.68 0.66 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.2", "turbulence", "0.5", "turbulence_scale", "0.4", NULL };
 /* the cloud a falling storey raises: few, big, slow */
 static const char *const DUST_BIG[] = { "amount", "14", "lifetime", "4.5", "lifetime_random", "0.3", "explosiveness", "0.8", "one_shot", "true",
   "emission_shape", "BOX", "emission_extents", "vec3(1.6, 0.2, 1.6)", "direction", "vec3(0, 1, 0)", "spread", "80", "speed_min", "0.5", "speed_max", "2.5",
   "gravity", "vec3(0, 0.15, 0)", "damping", "1.0", "blend", "ALPHA", "soft_distance", "0.8", "size", "3.6", "size_random", "0.4",
-  "size_curve", "\"0 0.4, 0.3 1, 1 1.5\"", "color_ramp", "\"0 0.86 0.8 0.7 0, 0.1 0.84 0.78 0.7 0.55, 1 0.78 0.74 0.68 0\"",
+  "size_curve", "\"0 0.4, 0.3 1, 1 1.5\"", "color_ramp", "\"0 0.66 0.6 0.52 0, 0.25 0.64 0.58 0.52 0.5, 1 0.6 0.56 0.52 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.12", "turbulence", "0.6", "turbulence_scale", "0.3", "camera_fade", "4", NULL };
 static const char *const CHIPS[] = { "amount", "14", "lifetime", "2.0", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.25", "direction", "vec3(0, 1, 0)", "spread", "100", "speed_min", "2", "speed_max", "7",
@@ -132,14 +132,14 @@ static const char *const SMOKE[] = { "amount", "8", "lifetime", "2.4", "explosiv
 static const char *const PLUME[] = { "amount", "7", "lifetime", "9.5", "lifetime_random", "0.15", "explosiveness", "0.6", "one_shot", "true",
   "emission_shape", "BOX", "emission_extents", "vec3(2.4, 0.6, 2.4)", "direction", "vec3(0, 1, 0)", "spread", "60", "speed_min", "0.3", "speed_max", "1.2",
   "gravity", "vec3(0.32, 0.12, 0.1)", "damping", "0.35", "blend", "ALPHA", "soft_distance", "1.5", "size", "6.5", "size_random", "0.3",
-  "size_curve", "\"0 0.5, 0.25 1, 1 1.9\"", "color_ramp", "\"0 0.86 0.8 0.7 0, 0.12 0.84 0.79 0.71 0.42, 0.6 0.8 0.77 0.72 0.26, 1 0.78 0.76 0.72 0\"",
+  "size_curve", "\"0 0.5, 0.25 1, 1 1.9\"", "color_ramp", "\"0 0.6 0.55 0.48 0, 0.12 0.58 0.54 0.48 0.36, 0.6 0.56 0.53 0.5 0.22, 1 0.55 0.53 0.5 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.05", "turbulence", "0.35", "turbulence_scale", "0.2", "camera_fade", "6", NULL };
 
 /* the explosion kit (Explosion3D's children), as hordeshooter tunes it */
 static const char *const K_FIRE[] = { "amount", "12", "lifetime", "1.3", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.9", "direction", "vec3(0, 1, 0)", "spread", "180", "speed_min", "0.4", "speed_max", "2.2",
   "gravity", "vec3(0, 1.6, 0)", "damping", "2.2", "size", "5.0", "size_random", "0.35", "size_curve", "\"0 0.5, 0.3 1, 1 1.2\"",
-  "color_ramp", "\"0 1 1 1 0, 0.06 1 1 1 1, 0.75 1 0.85 0.8 0.85, 1 1 0.7 0.6 0\"", "energy", "1.6",
+  "color_ramp", "\"0 1 0.9 0.75 0, 0.3 1 0.85 0.65 0.9, 0.75 1 0.75 0.6 0.75, 1 1 0.65 0.5 0\"", "energy", "1.0",
   "texture", "\"fx/fire.png\"", "motion_texture", "\"fx/fire_mv.png\"", "hframes", "8", "vframes", "8", "spin", "0.25", "soft_distance", "0.8", NULL };
 static const char *const K_SMOKE[] = { "amount", "20", "lifetime", "4.5", "lifetime_random", "0.2", "explosiveness", "0.75", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "1.0", "direction", "vec3(0, 1, 0)", "spread", "120", "speed_min", "1", "speed_max", "4",
@@ -318,7 +318,7 @@ void fx_events(const game *g, int shooter) {
       cw_node3d_set_position(b, e->p);
       cw_node3d_global_transform(b);
       cw_explosion_fire(b);
-      light_swell((t3_vec3){ e->p.x, e->p.y + 1.0f, e->p.z }, 160, 18, 0.12f, 1.1f, 1, 0.62f, 0.3f);
+      light_swell((t3_vec3){ e->p.x, e->p.y + 1.0f, e->p.z }, 160, 18, 0.25f, 1.2f, 1, 0.62f, 0.3f);
       FX.st.booms++;
       rumble(shooter, 1.0f, 0.45f, 420);
       break;

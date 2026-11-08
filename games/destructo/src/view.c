@@ -627,8 +627,21 @@ void view_level(const game *g) {
     t3_geometry *cg = t3_plane_geometry_new(640, 40, 1, 1);
     xform_geo(cg, (t3_vec3){ 0, -20, -40 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
     piece(V.field, "Cliff", cg, cm, false);
-    t3_material *sm = std_mat(0.03f, 0.18f, 0.32f, 0.08f, 0);
-    flat("Sea", 1400, 700, (t3_vec3){ 0, -38, -390 }, sm);
+    /* the sea: the engine's water (long swells, glints of the sun, foam on the crests), rings round the camera */
+    cw_node w = cw_node_new("Water3D", "Sea");
+    cw_node_add_child(V.field, w);
+    cw_node3d_set_position(w, (t3_vec3){ 0, -38, -390 });
+    static const char *const SEA[] = { "size", "vec2(1400, 700)", "grid", "VIEW", "horizon_distance", "900", "subdivisions", "48",
+      "wave_count", "3", "wave0", "vec4(250, 38, 0.5, 0.35)", "wave1", "vec4(230, 17, 0.22, 0.4)", "wave2", "vec4(270, 9, 0.1, 0.4)",
+      "color", "color(0.1, 0.32, 0.42, 1)", "deep_color", "color(0.02, 0.12, 0.2, 1)", "detail", "0.6", "roughness", "0.12",
+      "reflection", "false", "refraction", "false", "crest_foam", "0.25", "floor_map_size", "0", "normal_scale", "0.05", "flow_speed", "0.02", NULL };
+    for (int i = 0; SEA[i]; i += 2) {
+      const cw_prop *p = cw_node_find_prop(w, SEA[i], NULL);
+      cw_value v;
+      if (p && p->type == CW_T_ENUM) cw_node_set(w, SEA[i], cw_val_enum(SEA[i + 1]));
+      else if (p && cw_value_parse(SEA[i + 1], p->type, &v)) cw_node_set(w, SEA[i], v);
+      else cw_warn("destructo: bad sea setting %s", SEA[i]);
+    }
   }
   if (S->backdrop == BD_GORGE) { /* a river under the bridge's first span, running down the gorge */
     t3_material *wm = std_mat(0.04f, 0.2f, 0.3f, 0.06f, 0);
@@ -644,6 +657,32 @@ void view_level(const game *g) {
     t3_material_set_map(m, t);
     t3_release(t);
     piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
+  }
+  /* grass on green ground: tufts in the field round the yard, thick near it and thinning out to 45 m, off the yard,
+   * the track and the river; the setting's green, lighter and drier in patches */
+  if (S->ground[1] > S->ground[0] * 1.25f && S->ground[1] > S->ground[2] * 2 && !getenv("DESTRUCTO_NO_GRASS")) {
+    enum { NG = 9000 };
+    static grass_tuft tufts[NG];
+    int n = 0;
+    float r = g->extent + 5, tz = g->muzzle.z + 6;
+    t3_color base = { powf(S->ground[0], 2.2f) * 1.9f, powf(S->ground[1], 2.2f) * 1.9f, powf(S->ground[2], 2.2f) * 1.9f };
+    for (int i = 0; i < NG * 4 && n < NG; i++) {
+      float a = hashf(g->L->seed * 7u + (uint32_t)i * 2654435761u) * 6.2831853f;
+      float rr = r + 2 + powf(hashf((uint32_t)i * 40503u + 17u), 1.6f) * 45;
+      float x = cosf(a) * rr, z = sinf(a) * rr;
+      float d = fminf(sqrtf(x * x + z * z) - r, fmaxf(fabsf(x) - 4.0f, fmaxf(-z, z - tz)));
+      if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
+      float clump = fbm(x / 9.0f + 5, z / 9.0f + 2, 33);
+      if (d < 1.5f + clump * 3 || clump < 0.3f) continue;
+      if (sea && z < -38) continue;
+      float dry = cw_smoothstep(0.55f, 0.8f, fbm(x / 25.0f + 1, z / 25.0f + 8, 44)), v = 0.8f + 0.4f * hashf((uint32_t)i * 977u);
+      grass_tuft *t = &tufts[n++];
+      t->x = x, t->z = z, t->y = relief_h(S, g, x, z);
+      t->yaw = hashf((uint32_t)i * 313u) * 3.1415927f;
+      t->w = 0.5f + 0.35f * hashf((uint32_t)i * 71u), t->h = (0.3f + 0.3f * hashf((uint32_t)i * 53u)) * (0.7f + 0.6f * clump);
+      t->c = (t3_color){ (base.r + dry * 0.12f) * v, (base.g + dry * 0.05f) * v, base.b * v };
+    }
+    grass_build(V.field, tufts, n);
   }
   /* trees: the setting's two species, in groves, outside the field of fire */
   if (S->ntrees > 0 && !getenv("DESTRUCTO_NO_TREES")) {
