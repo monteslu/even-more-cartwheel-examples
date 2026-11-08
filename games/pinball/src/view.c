@@ -297,6 +297,14 @@ static void view_toys(const game *g) {
 
 /* ── the room ────────────────────────────────────────────────────────── */
 
+/* a piece of the room: drawn by the camera only (layer 2, as the balls): the mirror ball's probe sees the table, not
+ * the room, so the room costs the probe nothing */
+static cw_node room_piece(cw_node parent, const char *name, t3_geometry *g, t3_material *m, bool shadow) {
+  cw_node n = piece(parent, name, g, m, shadow);
+  cw_node_set(n, "layers", cw_val_int(2));
+  return n;
+}
+
 #define FLOOR_Y (-0.86f) /* the floor, under the playfield (world y) */
 #define NNEON 6
 
@@ -356,7 +364,7 @@ static void cabinet_body(cw_node parent, float x0, float dz, const float *wood, 
   gb_box(&b, x0, -0.36f, zc, 0.3f, 0.012f, hl, 0);     /* bottom */
   for (int s = -1; s <= 1; s += 2)
     for (int e = 0; e < 2; e++) gb_cyl(&b, x0 + (float)s * 0.26f, FLOOR_Y, e ? zb - 0.04f : zt + 0.04f, -0.36f, 0.018f, 10, false);
-  piece(parent, "CabinetBody", gb_geometry(&b), std_mat(wood[0] * 0.7f, wood[1] * 0.7f, wood[2] * 0.7f, 0.5f, 0), false);
+  room_piece(parent, "CabinetBody", gb_geometry(&b), std_mat(wood[0] * 0.7f, wood[1] * 0.7f, wood[2] * 0.7f, 0.5f, 0), false);
   (void)stripe;
 }
 
@@ -374,7 +382,7 @@ static void build_room(const game *g) {
     tex->color_space = T3_SRGB_COLOR_SPACE, tex->wrap_s = tex->wrap_t = T3_REPEAT, tex->repeat = (t3_vec2){ 10, 10 };
     t3_material_set_map(m, tex);
     t3_release(tex);
-    cw_node n = piece(room, "Floor", card_geo(3.0f, 3.0f, false), m, false);
+    cw_node n = room_piece(room, "Floor", card_geo(3.0f, 3.0f, false), m, false);
     cw_node3d_set_position(n, (t3_vec3){ 0, FLOOR_Y, -0.6f });
   }
   /* the neighbours: the other two tables, their playfields and backboxes lit */
@@ -387,13 +395,13 @@ static void build_room(const game *g) {
     cabinet_body(room, x0, dz, nt->th.wood, nt->th.col[2]);
     int w, h;
     uint8_t *px = art_paint(nt, &w, &h);
-    cw_node pf = piece(room, "NeighbourPlayfield", card_geo(0.26f, 0.545f, false), card_mat(px, w, h, 0.32f), false);
+    cw_node pf = room_piece(room, "NeighbourPlayfield", card_geo(0.26f, 0.545f, false), card_mat(px, w, h, 0.32f), false);
     cw_node3d_set_position(pf, (t3_vec3){ x0, 0.002f, dz });
-    cw_node bb = piece(room, "NeighbourBackbox", card_geo(0.28f, 0.175f, true), card_mat(backbox_paint(nt), BB_W, BB_H, 0.55f), false);
+    cw_node bb = room_piece(room, "NeighbourBackbox", card_geo(0.28f, 0.175f, true), card_mat(backbox_paint(nt), BB_W, BB_H, 0.55f), false);
     cw_node3d_set_position(bb, (t3_vec3){ x0, 0.32f, TABLE_MID - 1.1f + dz - 0.02f });
     gb box = { 0 };
     gb_box(&box, x0, 0.3f, TABLE_MID - 1.1f + dz - 0.08f, 0.3f, 0.24f, 0.05f, 0);
-    piece(room, "NeighbourBackboxBody", gb_geometry(&box), std_mat(nt->th.wood[0] * 0.5f, nt->th.wood[1] * 0.5f, nt->th.wood[2] * 0.5f, 0.5f, 0), false);
+    room_piece(room, "NeighbourBackboxBody", gb_geometry(&box), std_mat(nt->th.wood[0] * 0.5f, nt->th.wood[1] * 0.5f, nt->th.wood[2] * 0.5f, 0.5f, 0), false);
     free(nt);
     k++;
   }
@@ -401,7 +409,7 @@ static void build_room(const game *g) {
   {
     gb wall = { 0 };
     gb_box(&wall, 0, 0.2f, -2.2f, 3.0f, 1.2f, 0.02f, 0);
-    piece(room, "BackWall", gb_geometry(&wall), std_mat(0.03f, 0.028f, 0.035f, 0.9f, 0), false);
+    room_piece(room, "BackWall", gb_geometry(&wall), std_mat(0.03f, 0.028f, 0.035f, 0.9f, 0), false);
     R.n = 0;
     for (int i = 0; i < NNEON; i++) {
       gb nb = { 0 };
@@ -424,7 +432,7 @@ static void build_room(const game *g) {
       R.base[i][0] = c[0], R.base[i][1] = c[1], R.base[i][2] = c[2];
       m->color = (t3_color){ c[0] * 1.4f, c[1] * 1.4f, c[2] * 1.4f };
       R.neon[i] = m;
-      piece(room, "Neon", gb_geometry(&nb), m, false);
+      room_piece(room, "Neon", gb_geometry(&nb), m, false);
       R.n++;
     }
   }
