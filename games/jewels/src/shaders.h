@@ -20,5 +20,8 @@ char *jw_shader_under(bool wgsl, char **vs);
 char *jw_shader_spark(bool wgsl, char **vs);
 char *jw_shader_mark(bool wgsl, char **vs);
 char *jw_shader_glint(bool wgsl, int stage, char **vs); /* 0 the bright pass, 1 the spokes, 2 over the board (with its vertex stage) */
+char *jw_shader_light(bool wgsl, char **vs); /* one light of the moment into the tray's light buffer */
+char *jw_shader_grab(bool wgsl);             /* a copy of part of the scene (full-screen) */
+char *jw_shader_shock(bool wgsl, char **vs); /* a shockwave: the copy, bent round a ring */
 
 #endif

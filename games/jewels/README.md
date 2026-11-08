@@ -59,11 +59,22 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
   through pooled in it (traced on the CPU at load through the same facets, coloured by wavelength). The frames are
   lacquered walnut (wandering growth rings, latewood and streaks, open pores, the room in the lacquer where the edge
   turns) with a hairline of gold inlaid and a gold bead; the panel is the same velvet with plaques in fine gold rims.
+- **The light of a clear.** Each stone that breaks gives off a light of its own colour: it gathers while the stone
+  swells, peaks just after it breaks and fades over a few hundred milliseconds, and it lights the scene. The velvet
+  round it takes the colour on its pile (the tufting and the dishes show in it), the gold and the lacquer catch it, and
+  the stones beside it see it as a lamp in the room their facets are traced against: the facets that face it flash
+  in its colour, and its small hot core, split by dispersion like the studio's lamps, throws fire in them. The shards
+  catch it too. Where the stone stood an afterglow of its colour lies on the velvet for a moment. The lights of the
+  moment are added up at a quarter of the canvas for the velvet; each stone takes the two that reach it most.
 - **The effects** scale with the clear: cells, run length, crossings (an L, a T) and the step of a cascade set each
-  clear's power, and power sets the shards (fragments of the stone, traced like it), the sparks, the flash that
-  lights the stones round it, a ring across the velvet, the pad's rumble and the size of the score. A cascade builds
-  a counter, links its groups with streaks of light, warms the room step by step, and four steps or more end in a
-  finale. Everything fades within about a second.
+  clear's power, and power sets the lights, the shards (fragments of the stone, traced like it, each with a short
+  trail), the sparks and a dust of sparkles that lingers, a ring across the velvet that bends the picture as it
+  passes (a shockwave), rays of light from the bigger clears, the pad's rumble and the size of the score. A cascade
+  builds a counter, links its groups with streaks of light, and warms and brightens the room step by step; four steps
+  or more end in a climax: a slow swell of warm light through every stone, a sweep of brilliance across them, a
+  shower round the frame and the pad's longest rumble, and the finale's word on the panel. Nothing strobes: every light
+  swells and fades smoothly and sparkles twinkle slowly (`tests/jewels-flash.mjs` holds the worst case to the
+  photosensitivity thresholds). Everything fades within about a second.
 - **Quality**: High traces one ray a pixel with five bounces and resolves over frames; Ultra four rays and eight
   bounces; Medium and Low fewer bounces; Very Low three bounces, no fire and no glints.
 
@@ -74,6 +85,7 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
 | `tests/jewels-rules.mjs` | the C game plays exactly as the original Lua game: its own `main.lua` and `board.lua` driven through their pad input (`tests/jewels-rules-driver.lua`), every step of three traces compared, and every deadlocked board of a family reshuffled the same; controls break the cascade's pay, the refills and the hint |
 | `tests/jewels-soak.mjs` | an hour of play a seed through every input path, every tick checked (the score never falls, an idle board has a move and no match, every move comes to rest); control: a broken cell |
 | `tests/jewels-gates.json` | a game on the pad and a game by touch and the mouse (`tests/jewels-inputs.mjs` plans them), and the bot, the same on every host, GL and WebGPU; the panel's layout with every element showing (no two text boxes overlap); each with a control that must fail |
-| `tests/jewels-effects.mjs` | the effects grow with the clear and with each cascade step, in the logged state and in the frames; control: flat effects |
+| `tests/jewels-effects.mjs` | the effects grow with the clear and with each cascade step, in the logged state and in the frames, and a clear's light lifts the stones and the velvet beside it; controls: flat effects, no light from the clears |
+| `tests/jewels-flash.mjs` | nothing strobes: every frame of the worst case (a cascade of six and its climax) through the engine's flash check (WCAG 2.3.1 general and red flashes, the Harding thresholds), GL or WebGPU; controls: the engine's strobe, a light switched on and off ten times a second |
 | `tests/jewels-look.mjs` | a dark board and light stones in every cell, mid-key, never washed out, the stones in colour; control: the frames flattened |
 | `tests/jewels-perf.mjs` | the worst case (long cascades of big clears) within its GPU budget at 1080p High; controls: 4K, an impossible bound |

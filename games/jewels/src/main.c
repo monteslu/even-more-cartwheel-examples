@@ -160,6 +160,9 @@ static void bot_plan(void) {
 static void bot_filter(cw_raw_input *in, uint64_t frame, void *u) {
   (void)frame, (void)u;
   if (!G.in_match || cw_shell_screen_now() != CW_SHELL_PLAY) return;
+  /* under the debugger's pause a frame that runs no tick still reads input: the bot waits for a frame that ticks
+   * (tests/jewels-frames.mjs steps the game a tick at a time) */
+  if (cw_debug_paused() && !cw_debug_steps_left()) return;
   /* the bot's fingers and mouse button are up unless a step holds them (a host may keep the last frame's state) */
   in->touches[1].active = in->touches[1].tapped = false;
   in->touches[2].active = in->touches[2].tapped = false;
@@ -261,10 +264,13 @@ static void fixed_update(void *u, double dt) {
     for (int i = 0; i < G.g.nev; i++) {
       const jw_event *e = &G.g.ev[i];
       if (e->kind != JW_EV_CLEAR) continue;
-      fprintf(stderr, "fx clear frame=%u step=%d cells=%d shape=%d power=%.3f sparks=%d shards=%d ring=%d trail=%d rumble=%.3f x=%.0f y=%.0f\n", (unsigned)cw_frame_index(),
+      char hit[JW_W * JW_H + 1]; /* the cells it cleared, row by row (the effects test measures the light round them) */
+      for (int k = 0; k < JW_W * JW_H; k++) hit[k] = G.g.clear.hit[k / JW_W][k % JW_W] ? '1' : '0';
+      hit[JW_W * JW_H] = 0;
+      fprintf(stderr, "fx clear frame=%u step=%d cells=%d shape=%d power=%.3f sparks=%d shards=%d ring=%d trail=%d rumble=%.3f x=%.0f y=%.0f hit=%s\n", (unsigned)cw_frame_index(),
               e->b, e->a, e->d, G.fx.power_last, (int)(10 + 8 * G.fx.power_last > 50 ? 50 : 10 + 8 * G.fx.power_last),
               (int)(4 + 3 * G.fx.power_last > 18 ? 18 : 4 + 3 * G.fx.power_last), e->a >= 4 || e->b >= 2, e->b >= 2,
-              G.fx.rumbles > rumbles_before ? G.fx.rumble_last : 0.0f, e->x, e->y);
+              G.fx.rumbles > rumbles_before ? G.fx.rumble_last : 0.0f, e->x, e->y, hit);
     }
   /* the strongest clear of each step, for the effects test (kept until the next move starts) */
   for (int i = 0; i < 6; i++)
@@ -427,8 +433,18 @@ static void hud(void) {
   ptext(serif, "MOVES", px, 440, 26, QUIET, 6);
   snprintf(b, sizeof b, "%d", g->moves);
   ptext(serif, b, px, 470, 46, PALE, 0);
-  /* the cascade: a counter that builds a step at a time */
-  if (combo_on) {
+  /* the cascade: a counter that builds a step at a time; when a long one comes to rest its finale takes the counter's
+   * place on the panel (never over the stones: the board must show where the new stones fell). JEWELS_HUD_ALL shows
+   * the finale for the second half of every four seconds */
+  bool finale_on = all ? fmodf(t, 4.0f) >= 2.0f : fx->finale_steps != 0;
+  if (finale_on) {
+    float k = all ? 0.5f : fx->finale_t / 2.6f, a = k < 0.12f ? k / 0.12f : k > 0.7f ? fmaxf(0, (1 - k) / 0.3f) : 1;
+    int steps = all ? 6 : fx->finale_steps;
+    float sw = 1 + 0.03f * sinf(t * 3);
+    ptext(serif, steps >= 6 ? "MAGNIFICENT" : "BRILLIANT", px, 552 - (sw - 1) * 23, 46 * sw, rgba(1, 0.86f, 0.5f, a), 4);
+    snprintf(b, sizeof b, "A CASCADE OF %d", steps);
+    ptext(serif, b, px, 618, 28, rgba(1, 0.95f, 0.85f, a), 3);
+  } else if (combo_on) {
     float k = all ? 1 : fminf(1, fx->combo_t * 5), a = all ? 1 : fminf(1, fmaxf(fx->combo_hold, 0) * 2 + (g->state != JW_IDLE));
     float sz = 56 + 6 * (float)(combo > 6 ? 6 : combo);
     float s = sz * (1.2f - 0.2f * k);
@@ -468,17 +484,6 @@ static void hud(void) {
     fmt_num(p->value, b + 1, sizeof b - 1);
     float sz = 40 + 8 * fminf(p->power, 5);
     text_on_board(b, p->x, p->y - 30 - 60 * k - 26 * (float)(i % 2), sz, rgba(1, 0.92f, 0.7f, a));
-  }
-  /* the finale: a band of dark velvet across the board's middle, the word in gold, gone in under three seconds */
-  if (fx->finale_steps) {
-    float k = fx->finale_t / 2.6f, a = k < 0.12f ? k / 0.12f : k > 0.7f ? fmaxf(0, (1 - k) / 0.3f) : 1;
-    cw_r2d_rect(cw_rect_make(JW_BX, 400, 10 * JW_CELL, 220), rgba(0.01f, 0.01f, 0.02f, 0.62f * a));
-    cw_r2d_rect(cw_rect_make(JW_BX, 400, 10 * JW_CELL, 3), rgba(0.95f, 0.76f, 0.4f, 0.9f * a));
-    cw_r2d_rect(cw_rect_make(JW_BX, 617, 10 * JW_CELL, 3), rgba(0.95f, 0.76f, 0.4f, 0.9f * a));
-    float sz = 112 * (1 + 0.04f * sinf(t * 3));
-    text_on_board(fx->finale_steps >= 6 ? "MAGNIFICENT" : "BRILLIANT", 672, 412, sz, rgba(1, 0.86f, 0.5f, a));
-    snprintf(b, sizeof b, "A CASCADE OF %d", fx->finale_steps);
-    text_on_board(b, 672, 548, 44, rgba(1, 0.95f, 0.85f, a));
   }
 }
 

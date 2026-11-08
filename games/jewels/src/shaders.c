@@ -228,24 +228,25 @@ static void gem_env_fns(sb *b, bool w) {
            "  let id = textureLoad(u_t0, vec2i(s + 0.5), 0).a;\n"
            "  return vec4f(c, id);\n"
            "}\n"
-           "fn pinMono(d: vec3f, id: f32) -> vec3f {\n"
+           "fn pinMono(d: vec3f, id: f32, bl: f32) -> vec3f {\n"
            "  if (id < -0.5) { return vec3f(0.0); }\n"
            "  let pa = textureLoad(u_t0, vec2i(i32(id + 0.5), %d), 0);\n"
            "  let pc = textureLoad(u_t0, vec2i(i32(id + 0.5), %d), 0).rgb;\n"
-           "  return pc * smoothstep(cos(pa.w + 0.006), cos(pa.w * 0.4), dot(d, pa.xyz));\n"
+           "  let r = pa.w + bl;\n"
+           "  return pc * (pa.w * pa.w / (r * r)) * smoothstep(cos(r + 0.006), cos(r * 0.4), dot(d, pa.xyz));\n"
            "}\n"
            "fn lamOf(t: f32) -> f32 { return 1.0 / sqrt(1.0 / (400.0 * 400.0) + t * (1.0 / (700.0 * 700.0) - 1.0 / (400.0 * 400.0))); }\n"
-           "fn pinDisp(e0: vec3f, e1: vec3f, id: f32) -> vec3f {\n"
+           "fn pinDisp(e0: vec3f, e1: vec3f, id: f32, bl: f32) -> vec3f {\n"
            "  if (id < -0.5) { return vec3f(0.0); }\n"
            "  let pa = textureLoad(u_t0, vec2i(i32(id + 0.5), %d), 0);\n"
-           "  let R = pa.w + 0.006;\n"
+           "  let rr = pa.w + bl; let R = rr + 0.006;\n"
            "  let seg = e1 - e0; let sl2 = max(dot(seg, seg), 1e-14);\n"
            "  let t = clamp(dot(pa.xyz - e0, seg) / sl2, 0.0, 1.0);\n"
            "  let d = length(e0 + seg * t - pa.xyz);\n"
            "  if (d >= R) { return vec3f(0.0); }\n"
            "  let pc = textureLoad(u_t0, vec2i(i32(id + 0.5), %d), 0).rgb;\n"
-           "  let fr = min(1.0, 2.0 * pa.w / sqrt(sl2));\n"
-           "  return pc * (1.0 - smoothstep(pa.w * 0.4, R, d)) * fr * mix(spec(lamOf(t)), vec3f(1.0), fr);\n"
+           "  let fr = min(1.0, 2.0 * rr / sqrt(sl2));\n"
+           "  return pc * (pa.w * pa.w / (rr * rr)) * (1.0 - smoothstep(rr * 0.4, R, d)) * fr * mix(spec(lamOf(t)), vec3f(1.0), fr);\n"
            "}\n",
         JW_STUDIO_N, JW_STUDIO_N + 2, JW_STUDIO_N, JW_STUDIO_N + 1, JW_STUDIO_N, JW_STUDIO_N + 1);
   else
@@ -260,24 +261,25 @@ static void gem_env_fns(sb *b, bool w) {
            "  float id = texelFetch(u_t0, ivec2(s + 0.5), 0).a;\n"
            "  return vec4(c, id);\n"
            "}\n"
-           "vec3 pinMono(vec3 d, float id) {\n"
+           "vec3 pinMono(vec3 d, float id, float bl) {\n"
            "  if (id < -0.5) return vec3(0.0);\n"
            "  vec4 pa = texelFetch(u_t0, ivec2(int(id + 0.5), %d), 0);\n"
            "  vec3 pc = texelFetch(u_t0, ivec2(int(id + 0.5), %d), 0).rgb;\n"
-           "  return pc * smoothstep(cos(pa.w + 0.006), cos(pa.w * 0.4), dot(d, pa.xyz));\n"
+           "  float r = pa.w + bl;\n"
+           "  return pc * (pa.w * pa.w / (r * r)) * smoothstep(cos(r + 0.006), cos(r * 0.4), dot(d, pa.xyz));\n"
            "}\n"
            "float lamOf(float t) { return 1.0 / sqrt(1.0 / (400.0 * 400.0) + t * (1.0 / (700.0 * 700.0) - 1.0 / (400.0 * 400.0))); }\n"
-           "vec3 pinDisp(vec3 e0, vec3 e1, float id) {\n"
+           "vec3 pinDisp(vec3 e0, vec3 e1, float id, float bl) {\n"
            "  if (id < -0.5) return vec3(0.0);\n"
            "  vec4 pa = texelFetch(u_t0, ivec2(int(id + 0.5), %d), 0);\n"
-           "  float R = pa.w + 0.006;\n"
+           "  float rr = pa.w + bl, R = rr + 0.006;\n"
            "  vec3 seg = e1 - e0; float sl2 = max(dot(seg, seg), 1e-14);\n"
            "  float t = clamp(dot(pa.xyz - e0, seg) / sl2, 0.0, 1.0);\n"
            "  float d = length(e0 + seg * t - pa.xyz);\n"
            "  if (d >= R) return vec3(0.0);\n"
            "  vec3 pc = texelFetch(u_t0, ivec2(int(id + 0.5), %d), 0).rgb;\n"
-           "  float fr = min(1.0, 2.0 * pa.w / sqrt(sl2));\n"
-           "  return pc * (1.0 - smoothstep(pa.w * 0.4, R, d)) * fr * mix(spec(lamOf(t)), vec3(1.0), fr);\n"
+           "  float fr = min(1.0, 2.0 * rr / sqrt(sl2));\n"
+           "  return pc * (pa.w * pa.w / (rr * rr)) * (1.0 - smoothstep(rr * 0.4, R, d)) * fr * mix(spec(lamOf(t)), vec3(1.0), fr);\n"
            "}\n",
         JW_STUDIO_N, JW_STUDIO_N + 2, JW_STUDIO_N, JW_STUDIO_N + 1, JW_STUDIO_N, JW_STUDIO_N + 1);
 }
@@ -636,14 +638,56 @@ static const char *GEM_FS_GL =
     "uniform vec4 u_q;\n"    /* subsamples, bounces, fire on, show leaks */
     "uniform vec4 u_body;\n"
     "uniform vec4 u_jit;\n"
-    "uniform vec4 u_gf0; uniform vec4 u_gf1; uniform vec4 u_gc0; uniform vec4 u_gc1;\n"
+    /* the lights of the bursts round this stone, nearest first (render.c picks them): direction from the stone and
+     * the angular radius of the hot core (u_glN), colour and strength, w 1 when the light is on (u_gkN); the light
+     * of them all on the stone's body (u_gx) */
+    "uniform vec4 u_gl0; uniform vec4 u_gl1; uniform vec4 u_gl2; uniform vec4 u_gl3;\n"
+    "uniform vec4 u_gk0; uniform vec4 u_gk1; uniform vec4 u_gk2; uniform vec4 u_gk3;\n"
+    "uniform vec4 u_gx;\n"
     "out vec4 o;\n"
-    "vec3 flashL(vec3 dw) {\n"
-    "  return u_gc0.xyz * (u_gf0.w * 9.0 * pow(max(dot(dw, u_gf0.xyz), 0.0), 24.0)) + u_gc1.xyz * (u_gf1.w * 9.0 * pow(max(dot(dw, u_gf1.xyz), 0.0), 24.0));\n"
+    /* a burst's light as the stone sees it: a small hot core (seen in a facet as a flash, split by dispersion into
+     * fire) inside a broad glow (the facets that face it brighten), all in the burst's colour */
+    "vec3 lampMono(vec3 d, vec4 gl, vec4 gk) {\n"
+    "  float c = dot(d, gl.xyz);\n"
+    "  float core = smoothstep(cos(gl.w * 1.3), cos(gl.w * 0.5), c);\n"
+    "  float glow = smoothstep(cos(0.20), cos(0.08), c);\n"
+    "  return gk.xyz * (core * LAMP_CORE + glow * LAMP_GLOW + pow(max(c, 0.0), 4.0) * LAMP_HALO);\n"
     "}\n"
-    "vec3 toW(vec3 dl) { return drift(normalize(mat3(u_rot) * dl)); }\n"
-    "vec3 envMono(vec3 dl) { vec3 dw = toW(dl); vec4 s = studioT(dw); return (s.rgb + pinMono(dw, s.a)) * u_tint.xyz + flashL(dw); }\n"
-    "vec3 envDisp(vec3 e0, vec3 e1, vec3 em) { vec3 dm = toW(em); vec4 s = studioT(dm); return (s.rgb + pinDisp(toW(e0), toW(e1), s.a)) * u_tint.xyz + flashL(dm); }\n"
+    "vec3 lampDisp(vec3 e0, vec3 e1, vec3 em, vec4 gl, vec4 gk) {\n"
+    "  vec3 seg = e1 - e0; float sl2 = max(dot(seg, seg), 1e-14);\n"
+    "  float t = clamp(dot(gl.xyz - e0, seg) / sl2, 0.0, 1.0);\n"
+    "  float d = length(e0 + seg * t - gl.xyz);\n"
+    "  float core = 1.0 - smoothstep(gl.w * 0.5, gl.w * 1.3, d);\n"
+    "  float fr = min(1.0, 2.0 * gl.w / sqrt(sl2));\n"
+    "  float c = dot(em, gl.xyz);\n"
+    "  float glow = smoothstep(cos(0.20), cos(0.08), c);\n"
+    "  return gk.xyz * (core * fr * mix(spec(lamOf(t)), vec3(1.0), fr) * LAMP_CORE + glow * LAMP_GLOW + pow(max(c, 0.0), 4.0) * LAMP_HALO);\n"
+    "}\n"
+    "vec3 lampsMono(vec3 d) {\n"
+    "  vec3 c = vec3(0.0);\n"
+    "  if (u_gk0.w > 0.5) c += lampMono(d, u_gl0, u_gk0);\n"
+    "  if (u_gk1.w > 0.5) c += lampMono(d, u_gl1, u_gk1);\n"
+    "  if (u_gk2.w > 0.5) c += lampMono(d, u_gl2, u_gk2);\n"
+    "  if (u_gk3.w > 0.5) c += lampMono(d, u_gl3, u_gk3);\n"
+    "  return c;\n"
+    "}\n"
+    /* only the strongest light is split into fire (the cost of the arc is paid once an exit) */
+    "vec3 lampsDisp(vec3 e0, vec3 e1, vec3 em) {\n"
+    "  vec3 c = vec3(0.0);\n"
+    "  if (u_gk0.w > 0.5) c += lampDisp(e0, e1, em, u_gl0, u_gk0);\n"
+    "  if (u_gk1.w > 0.5) c += lampMono(em, u_gl1, u_gk1);\n"
+    "  if (u_gk2.w > 0.5) c += lampMono(em, u_gl2, u_gk2);\n"
+    "  if (u_gk3.w > 0.5) c += lampMono(em, u_gl3, u_gk3);\n"
+    "  return c;\n"
+    "}\n"
+    "vec3 toR(vec3 dl) { return normalize(mat3(u_rot) * dl); }\n" /* the world, as the bursts are in it */
+    /* u_ior.w: how far a small lamp spreads in this stone's facets (the polish of a broad flat facet; the emerald cut's
+     * steps and table, which the camera sees all at one angle: unspread, one lamp would fill a whole table white) */
+    "vec3 envMono(vec3 dl) { vec3 dr = toR(dl); vec3 dw = drift(dr); vec4 s = studioT(dw); return (s.rgb + pinMono(dw, s.a, u_ior.w)) * u_tint.xyz + lampsMono(dr); }\n"
+    "vec3 envDisp(vec3 e0, vec3 e1, vec3 em) {\n"
+    "  vec3 r0 = toR(e0), r1 = toR(e1), rm = toR(em); vec3 dm = drift(rm); vec4 s = studioT(dm);\n"
+    "  return (s.rgb + pinDisp(drift(r0), drift(r1), s.a, u_ior.w)) * u_tint.xyz + lampsDisp(r0, r1, rm);\n"
+    "}\n"
     "float fres(float ci, float n1, float n2) {\n"
     "  float st = n1 / n2 * sqrt(max(0.0, 1.0 - ci * ci));\n"
     "  if (st >= 1.0) return 1.0;\n"
@@ -706,17 +750,28 @@ static const char *GEM_FS_GL =
     "  }\n"
     "  if (cover <= 0.0) discard;\n"
     "  vec3 col = acc / cover;\n"
-    "  col += u_body.xyz * u_body.w;\n"
+    "  col += u_body.xyz * u_body.w + u_gx.xyz;\n"
     "  float g = u_ior.z;\n"
     "  col = col * (1.0 + 1.6 * g) + u_body.xyz * g * 0.3;\n"
     "  float a = cover / float(S) * u_abs.w;\n"
     "  o = vec4(col * a, a);\n"
     "}\n";
 
+/* a burst's light as the stones see it: the radiance of its hot core, of the glow round it and of its broad halo,
+ * per unit of the light's strength at the stone (render.c) */
+#define LAMP_CORE 40.0f
+#define LAMP_GLOW 0.9f
+#define LAMP_HALO 0.025f
+static void lamp_consts(sb *b, bool w) {
+  if (w) put(b, "const LAMP_CORE = %.4f;\nconst LAMP_GLOW = %.4f;\nconst LAMP_HALO = %.4f;\n", LAMP_CORE, LAMP_GLOW, LAMP_HALO);
+  else put(b, "const float LAMP_CORE = %.4f, LAMP_GLOW = %.4f, LAMP_HALO = %.4f;\n", LAMP_CORE, LAMP_GLOW, LAMP_HALO);
+}
+
 char *jw_shader_gem(bool w, const jw_cut *c, char **vs) {
   sb b = { 0 };
   if (w) {
     put(&b, "%s%s", WG_GEM_U, WG_COMMON_FNS);
+    lamp_consts(&b, true);
     spectrum_fn(&b, true);
     gem_env_fns(&b, true);
     hull_fns(&b, c, true);
@@ -725,6 +780,7 @@ char *jw_shader_gem(bool w, const jw_cut *c, char **vs) {
   }
   *vs = strdup(GEM_VS_GL);
   put(&b, "%s", GL_COMMON);
+  lamp_consts(&b, false);
   spectrum_fn(&b, false);
   gem_env_fns(&b, false);
   hull_fns(&b, c, false);
@@ -809,7 +865,9 @@ static const char *SPARK_VS_GL =
     "  vec2 q = c == 1 ? vec2(1.0, 0.0) : (c == 2 || c == 4) ? vec2(1.0) : c == 5 ? vec2(0.0, 1.0) : vec2(0.0);\n"
     "  q = q * 2.0 - 1.0;\n"
     "  vec2 p; float sz; vec4 col;\n"
-    "  if (u_kind.x < 0.5) {\n"
+    "  if (u_kind.x > 5.5) {\n"
+    "    p = u_burst.xy; sz = u_kind.z; col = vec4(u_col.xyz, 0.0);\n"
+    "  } else if (u_kind.x < 0.5) {\n"
     "    float fi = float(i), r1 = hs(fi), r2 = hs(fi + 17.3), r3 = hs(fi + 41.9), r4 = hs(fi + 77.1);\n"
     "    float life = 0.45 + 0.75 * r3 + 0.15 * u_burst.w;\n"
     "    float t = u_burst.z, k = t / life;\n"
@@ -817,7 +875,7 @@ static const char *SPARK_VS_GL =
     "    float drag = (1.0 - exp(-3.2 * t)) / 3.2;\n"
     "    p = u_burst.xy + vec2(cos(a), sin(a)) * (sp * drag + 30.0 * r4) + vec2(0.0, 90.0 * t * t);\n"
     "    sz = (5.0 + 11.0 * r4) * (0.7 + 0.3 * u_burst.w) * (1.0 - k * k);\n"
-    "    float tw = 0.65 + 0.35 * sin(t * (18.0 + 20.0 * r4) + r1 * 6.0);\n" /* twinkle */
+    "    float tw = 0.75 + 0.25 * sin(t * (5.0 + 5.0 * r4) + r1 * 6.0);\n" /* a slow twinkle (under 2 Hz: no strobe) */
     "    vec3 hue = mix(u_col.xyz * 1.6 + 0.08, vec3(1.0), 0.25 + 0.5 * r3);\n"
     "    col = vec4(hue * (0.8 + 0.6 * u_burst.w) * tw * (1.0 - k), k < 1.0 ? 1.0 : 0.0);\n"
     "    if (k >= 1.0) sz = 0.0;\n"
@@ -826,15 +884,37 @@ static const char *SPARK_VS_GL =
     "    float R = 30.0 + (260.0 + 120.0 * u_burst.w) * (1.0 - exp(-4.0 * t));\n"
     "    p = u_burst.xy; sz = R + 30.0;\n"
     "    col = vec4(u_col.xyz * (1.0 - smoothstep(0.0, 0.8, t)) * (0.8 + 0.4 * u_burst.w), R);\n"
-    "  } else {\n"
+    "  } else if (u_kind.x < 2.5 || u_kind.x > 4.5) {\n"
+    /* a streak between two points: the cascade's link (2: a head of light running along it) or a shard's trail (5:
+     * bright at the shard, fading behind it) */
     "    vec2 a = u_burst.xy, b = u_kind.zw;\n"
     "    vec2 dv = b - a; float L = length(dv); vec2 dn = dv / max(L, 1.0), nn = vec2(-dn.y, dn.x);\n"
-    "    p = mix(a, b, q.x * 0.5 + 0.5) + nn * q.y * 26.0 - dn * q.x * 0.0;\n"
+    "    float wd = u_kind.x < 2.5 ? 26.0 : u_burst.w;\n"
+    "    p = mix(a, b, q.x * 0.5 + 0.5) + nn * q.y * wd + dn * q.x * (u_kind.x < 2.5 ? 0.0 : wd);\n"
     "    v_q = vec2(q.x * 0.5 + 0.5, q.y);\n"
     "    float t = u_burst.z;\n"
-    "    v_c = vec4(u_col.xyz * (1.0 - smoothstep(0.0, 0.7, t)) * 1.6, t);\n"
+    "    v_c = u_kind.x < 2.5 ? vec4(u_col.xyz * (1.0 - smoothstep(0.0, 0.7, t)) * 1.6, t) : vec4(u_col.xyz * u_burst.z, -1.0);\n"
     "    gl_Position = vec4(p.x / 960.0 - 1.0, 1.0 - p.y / 540.0, 0.0, 1.0);\n"
     "    return;\n"
+    "  } else if (u_kind.x < 3.5) {\n"
+    /* rays: a fan of soft shafts of light from a big clear, swelling and fading (u_kind.z: their reach) */
+    "    float t = u_burst.z, pw = u_burst.w;\n"
+    "    float e = t < 0.09 ? smoothstep(0.0, 0.09, t) : (1.0 + (t - 0.09) / (0.20 + 0.015 * pw)) * exp(-(t - 0.09) / (0.20 + 0.015 * pw));\n"
+    "    p = u_burst.xy; sz = u_kind.z * (0.85 + 0.15 * e);\n"
+    "    col = vec4(u_col.xyz * e * (0.10 + 0.04 * min(pw, 3.5)), t);\n"
+    "  } else {\n"
+    /* sparkle dust: tiny motes that drift out and up and linger, twinkling slowly */
+    "    float fi = float(i), r1 = hs(fi + 3.1), r2 = hs(fi + 23.7), r3 = hs(fi + 51.3), r4 = hs(fi + 91.9);\n"
+    "    float life = 0.8 + 0.6 * r3;\n"
+    "    float t = max(u_burst.z - 0.04, 0.0), k = t / life;\n"
+    "    float a = 6.2831853 * r1, sp = (40.0 + 110.0 * r2) * (0.7 + 0.12 * u_burst.w);\n"
+    "    float drag = (1.0 - exp(-1.8 * t)) / 1.8;\n"
+    "    p = u_burst.xy + vec2(cos(a), sin(a)) * (12.0 + 34.0 * r4 + sp * drag) + vec2(0.0, -26.0 * t);\n"
+    "    sz = (2.2 + 2.6 * r4) * (1.0 - k * k);\n"
+    "    float tw = 0.7 + 0.3 * sin(t * (3.0 + 4.0 * r1) + r2 * 6.2831);\n"
+    "    vec3 hue = mix(u_col.xyz * 1.3 + 0.12, vec3(1.0, 0.92, 0.75), 0.35 + 0.4 * r3);\n"
+    "    col = vec4(hue * (1.1 + 0.25 * u_burst.w) * tw * smoothstep(0.0, 0.12, t) * pow(max(1.0 - k, 0.0), 1.5), k < 1.0 ? 1.0 : 0.0);\n"
+    "    if (k >= 1.0) sz = 0.0;\n"
     "  }\n"
     "  v_q = q; v_c = col;\n"
     "  vec2 pp = p + q * sz;\n"
@@ -842,12 +922,17 @@ static const char *SPARK_VS_GL =
     "}\n";
 static const char *SPARK_FS_GL =
     "uniform vec4 u_kind;\n"
+    "uniform vec4 u_col;\n"
     "in vec2 v_q;\n"
     "in vec4 v_c;\n"
     "out vec4 o;\n"
     "void main() {\n"
     "  vec3 c;\n"
-    "  if (u_kind.x < 0.5) {\n"
+    "  if (u_kind.x > 5.5) {\n"
+    /* the glow of a light of the moment: the air round a burst lit up */
+    "    float r2 = dot(v_q, v_q);\n"
+    "    c = v_c.xyz * (exp(-r2 * 6.0) * 0.18 + exp(-r2 * 30.0) * 0.6) * (1.0 - smoothstep(0.7, 1.0, sqrt(r2)));\n"
+    "  } else if (u_kind.x < 0.5) {\n"
     /* a four-point star with a soft core */
     "    vec2 q = v_q;\n"
     "    float r = length(q);\n"
@@ -859,11 +944,25 @@ static const char *SPARK_FS_GL =
     "    float d = length(v_q) * (R + 30.0);\n"
     "    float ring = exp(-pow((d - R) / 7.0, 2.0)) + 0.35 * exp(-pow((d - R + 14.0) / 16.0, 2.0));\n"
     "    c = v_c.xyz * ring;\n"
-    "  } else {\n"
+    "  } else if (u_kind.x < 2.5) {\n"
     "    float k = v_q.x, t = v_c.w;\n"
     "    float head = smoothstep(0.0, 0.35, t);\n"
     "    float along = smoothstep(head - 0.6, head, k) * (1.0 - smoothstep(head, head + 0.05, k));\n"
     "    c = v_c.xyz * exp(-v_q.y * v_q.y * 9.0) * along;\n"
+    "  } else if (u_kind.x < 3.5) {\n"
+    "    vec2 q = v_q; float r = length(q);\n"
+    "    float a = atan(q.y, q.x) + v_c.w * 0.25 + u_col.w * 0.01;\n"
+    "    float s = u_col.w * 0.37;\n"
+    "    float rays = pow(0.5 + 0.5 * sin(a * 7.0 + s), 6.0) * 0.6 + pow(0.5 + 0.5 * sin(a * 11.0 - s * 1.7), 10.0) * 0.5\n"
+    "               + pow(0.5 + 0.5 * sin(a * 19.0 + s * 2.3), 16.0) * 0.4;\n"
+    "    float fall = pow(max(1.0 - r, 0.0), 2.2) * smoothstep(0.02, 0.18, r);\n"
+    "    c = v_c.xyz * (rays * fall + exp(-r * r * 60.0) * 0.5);\n"
+    "  } else if (u_kind.x < 4.5) {\n"
+    "    vec2 q = v_q; float r2 = dot(q, q);\n"
+    "    c = v_c.xyz * (exp(-r2 * 7.0) + 0.25 * exp(-abs(q.x) * 14.0 - q.y * q.y * 2.0) + 0.25 * exp(-abs(q.y) * 14.0 - q.x * q.x * 2.0)) * v_c.w;\n"
+    "  } else {\n"
+    "    float k = v_q.x;\n"
+    "    c = v_c.xyz * exp(-v_q.y * v_q.y * 5.0) * k * k * (1.0 - smoothstep(0.8, 1.0, k));\n"
     "  }\n"
     "  o = vec4(c, 0.0);\n"
     "}\n";
@@ -1090,22 +1189,22 @@ char *jw_shader_glint(bool w, int stage, char **vs) {
   return strdup(w ? WG_GLINT[stage] : GLINT_GL[stage]);
 }
 
-/* ── the tray, from its cache, with the light of the moment over it ─────── */
+/* ── the tray, from its cache, with the light of the moment over it ─────── *
+ * The lights of the moment are added up in a buffer at a quarter of the canvas (each light a quad of its reach,
+ * jw_shader_light) and laid over the cached tray here: the velvet takes them on its pile and as a sheen, the gold and
+ * the lacquer as the brighter things they are. */
 
 static const char *PRESENT_GL =
     "uniform sampler2D u_t0;\n"
+    "uniform sampler2D u_t1;\n" /* the light buffer */
     "uniform vec4 u_misc;\n" /* time, button glow, button pressed, reshuffle */
-    "uniform vec4 u_fl0; uniform vec4 u_fl1; uniform vec4 u_fl2; uniform vec4 u_fl3;\n"
-    "uniform vec4 u_fc0; uniform vec4 u_fc1; uniform vec4 u_fc2; uniform vec4 u_fc3;\n"
     "out vec4 o;\n"
     "float sdBox(vec2 p, vec2 b, float r) { vec2 q = abs(p) - b + r; return length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - r; }\n"
-    "vec3 pool(vec3 P, vec4 fl, vec4 fc) { vec3 L = fl.xyz - P; float d2 = dot(L, L); return fc.xyz * (fl.w / (1.0 + d2 / (220.0 * 220.0))) * (L.z * inversesqrt(d2)); }\n"
     "void main() {\n"
     "  vec2 c = canvasOf(gl_FragCoord.xy);\n"
-    "  vec3 P = trayPoint(c);\n"
     "  vec3 base = texture(u_t0, v_uv).rgb;\n"
-    "  vec3 fl = pool(P, u_fl0, u_fc0) + pool(P, u_fl1, u_fc1) + pool(P, u_fl2, u_fc2) + pool(P, u_fl3, u_fc3);\n"
-    "  vec3 col = base * (u_tint.xyz + fl * 0.45) + fl * 0.0035;\n"
+    "  vec3 fl = texture(u_t1, v_uv).rgb;\n"
+    "  vec3 col = base * (u_tint.xyz + fl * 0.6) + fl * min(dot(base, vec3(0.2126, 0.7152, 0.0722)), 0.04) * 2.0;\n"
     "  float db = sdBox(c - vec2(1600.0, 932.0), vec2(220.0, 64.0), 26.0);\n"
     "  if (db < 0.0 && db > -6.0) col *= 1.0 + 1.5 * u_misc.y;\n"
     "  else if (db <= -6.0) col = col * (1.0 - 0.4 * u_misc.z) + vec3(1.0, 0.72, 0.35) * 0.05 * u_misc.y * smoothstep(-6.0, -60.0, db);\n"
@@ -1115,17 +1214,15 @@ static const char *PRESENT_GL =
     "}\n";
 
 static const char *PRESENT_WG =
-    "struct U {\n  u_view: vec4f,\n  u_cam: vec4f,\n  u_tint: vec4f,\n  u_misc: vec4f,\n  u_fl0: vec4f, u_fl1: vec4f, u_fl2: vec4f, u_fl3: vec4f,\n"
-    "  u_fc0: vec4f, u_fc1: vec4f, u_fc2: vec4f, u_fc3: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: U;\n"
+    "struct U {\n  u_view: vec4f,\n  u_cam: vec4f,\n  u_tint: vec4f,\n  u_misc: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: U;\n"
     "@group(0) @binding(1) var u_t0: texture_2d<f32>;\n"
+    "@group(0) @binding(2) var u_t1: texture_2d<f32>;\n"
     "fn sdBox(p: vec2f, b: vec2f, r: f32) -> f32 { let q = abs(p) - b + r; return length(max(q, vec2f(0.0))) + min(max(q.x, q.y), 0.0) - r; }\n"
-    "fn pool(P: vec3f, fl: vec4f, fc: vec4f) -> vec3f { let L = fl.xyz - P; let d2 = dot(L, L); return fc.xyz * (fl.w / (1.0 + d2 / (220.0 * 220.0))) * (L.z * inverseSqrt(d2)); }\n"
     "@fragment fn fs(@builtin(position) pos: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {\n"
     "  let c = canvasOf(cw_frag_coord(pos));\n"
-    "  let P = trayPoint(c);\n"
     "  let base = textureSampleLevel(u_t0, cw_linear, uv, 0.0).rgb;\n"
-    "  let fl = pool(P, u.u_fl0, u.u_fc0) + pool(P, u.u_fl1, u.u_fc1) + pool(P, u.u_fl2, u.u_fc2) + pool(P, u.u_fl3, u.u_fc3);\n"
-    "  var col = base * (u.u_tint.xyz + fl * 0.45) + fl * 0.0035;\n"
+    "  let fl = textureSampleLevel(u_t1, cw_linear, uv, 0.0).rgb;\n"
+    "  var col = base * (u.u_tint.xyz + fl * 0.6) + fl * min(dot(base, vec3f(0.2126, 0.7152, 0.0722)), 0.04) * 2.0;\n"
     "  let db = sdBox(c - vec2f(1600.0, 932.0), vec2f(220.0, 64.0), 26.0);\n"
     "  if (db < 0.0 && db > -6.0) { col *= 1.0 + 1.5 * u.u_misc.y; }\n"
     "  else if (db <= -6.0) { col = col * (1.0 - 0.4 * u.u_misc.z) + vec3f(1.0, 0.72, 0.35) * 0.05 * u.u_misc.y * smoothstep(-6.0, -60.0, db); }\n"
@@ -1136,7 +1233,128 @@ static const char *PRESENT_WG =
 
 char *jw_shader_present(bool w) {
   sb b = { 0 };
-  if (w) put(&b, "%s%s%s", PRESENT_WG, WG_COMMON_FNS, "");
+  if (w) put(&b, "%s%s", PRESENT_WG, WG_COMMON_FNS);
   else put(&b, "%s%s", GL_COMMON, PRESENT_GL);
+  return done(&b);
+}
+
+/* ── one light into the light buffer (added) ─────────────────────────── *
+ * The light on the tray from a light at height z: its strength over 1 + (d / reach)^2, times the cosine at the
+ * velvet, and a soft edge toward the rim of its quad (u_lp.w) so the quad never shows. */
+static const char *LIGHT_VS_GL =
+    "uniform vec4 u_lp;\n" /* x, y (canvas), z, the quad's half-size */
+    "void main() {\n"
+    "  int c = gl_VertexID % 6;\n"
+    "  vec2 q = c == 1 ? vec2(1.0, 0.0) : (c == 2 || c == 4) ? vec2(1.0) : c == 5 ? vec2(0.0, 1.0) : vec2(0.0);\n"
+    "  vec2 p = u_lp.xy + (q * 2.0 - 1.0) * u_lp.w;\n"
+    "  gl_Position = vec4(p.x / 960.0 - 1.0, 1.0 - p.y / 540.0, 0.0, 1.0);\n"
+    "}\n";
+static const char *LIGHT_FS_GL =
+    "uniform vec4 u_lp;\n"
+    "uniform vec4 u_lc;\n" /* colour and strength, reach */
+    "out vec4 o;\n"
+    "void main() {\n"
+    "  vec2 c = canvasOf(gl_FragCoord.xy);\n"
+    "  vec2 d = c - u_lp.xy; float d2 = dot(d, d);\n"
+    "  float k = 1.0 / (1.0 + d2 / (u_lc.w * u_lc.w)) * u_lp.z * inversesqrt(d2 + u_lp.z * u_lp.z);\n"
+    "  k *= 1.0 - smoothstep(0.55, 1.0, sqrt(d2) / u_lp.w);\n"
+    "  o = vec4(u_lc.xyz * k, 0.0);\n"
+    "}\n";
+static const char *LIGHT_WG =
+    "struct U {\n  u_view: vec4f,\n  u_cam: vec4f,\n  u_tint: vec4f,\n  u_lp: vec4f,\n  u_lc: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: U;\n"
+    "@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {\n"
+    "  return canvasClip(u.u_lp.xy + (corner(i32(vi) % 6) * 2.0 - 1.0) * u.u_lp.w);\n"
+    "}\n"
+    "@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n"
+    "  let c = canvasOf(cw_frag_coord(pos));\n"
+    "  let d = c - u.u_lp.xy; let d2 = dot(d, d);\n"
+    "  var k = 1.0 / (1.0 + d2 / (u.u_lc.w * u.u_lc.w)) * u.u_lp.z * inverseSqrt(d2 + u.u_lp.z * u.u_lp.z);\n"
+    "  k *= 1.0 - smoothstep(0.55, 1.0, sqrt(d2) / u.u_lp.w);\n"
+    "  return vec4f(u.u_lc.xyz * k, 0.0);\n"
+    "}\n";
+
+char *jw_shader_light(bool w, char **vs) {
+  sb b = { 0 };
+  if (w) {
+    put(&b, "%s%s", LIGHT_WG, WG_COMMON_FNS);
+    return done(&b);
+  }
+  *vs = strdup(LIGHT_VS_GL);
+  put(&b, "%s%s", GL_COMMON, LIGHT_FS_GL);
+  return done(&b);
+}
+
+/* ── the shockwave ───────────────────────────────────────────────────── *
+ * A copy of the part of the scene the rings cover (jw_shader_grab), then each ring draws that copy back bent: a
+ * wave of refraction running out with the ring of light (the same radius as the ring the spark program draws), the
+ * picture pushed out ahead of it and pulled in behind, fading as it spreads. */
+static const char *GRAB_GL =
+    "uniform sampler2D u_t0;\n"
+    "uniform vec4 u_px;\n" /* the source rectangle: u0, v0, du, dv */
+    "out vec4 o;\n"
+    "void main() { o = vec4(texture(u_t0, u_px.xy + v_uv * u_px.zw).rgb, 1.0); }\n";
+static const char *GRAB_WG =
+    "struct U { u_px: vec4f };\n@group(0) @binding(0) var<uniform> u: U;\n@group(0) @binding(1) var u_t0: texture_2d<f32>;\n"
+    "@fragment fn fs(@builtin(position) pos: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {\n"
+    "  return vec4f(textureSampleLevel(u_t0, cw_linear, u.u_px.xy + uv * u.u_px.zw, 0.0).rgb, 1.0);\n"
+    "}\n";
+
+char *jw_shader_grab(bool w) { return strdup(w ? GRAB_WG : GRAB_GL); }
+
+static const char *SHOCK_VS_GL =
+    "uniform vec4 u_shock;\n" /* x, y, seconds, power */
+    "float ringR(float t, float p) { return 30.0 + (260.0 + 120.0 * p) * (1.0 - exp(-4.0 * t)); }\n"
+    "void main() {\n"
+    "  int c = gl_VertexID % 6;\n"
+    "  vec2 q = c == 1 ? vec2(1.0, 0.0) : (c == 2 || c == 4) ? vec2(1.0) : c == 5 ? vec2(0.0, 1.0) : vec2(0.0);\n"
+    "  vec2 p = u_shock.xy + (q * 2.0 - 1.0) * (ringR(u_shock.z, u_shock.w) + 70.0);\n"
+    "  gl_Position = vec4(p.x / 960.0 - 1.0, 1.0 - p.y / 540.0, 0.0, 1.0);\n"
+    "}\n";
+static const char *SHOCK_FS_GL =
+    "uniform sampler2D u_t0;\n"
+    "uniform vec4 u_shock;\n"
+    "uniform vec4 u_grab;\n" /* the copy's rectangle on the canvas: x0, y1 (its bottom), width, height */
+    "out vec4 o;\n"
+    "float ringR(float t, float p) { return 30.0 + (260.0 + 120.0 * p) * (1.0 - exp(-4.0 * t)); }\n"
+    "void main() {\n"
+    "  vec2 c = canvasOf(gl_FragCoord.xy);\n"
+    "  vec2 d = c - u_shock.xy; float r = length(d);\n"
+    "  float t = u_shock.z, p = u_shock.w;\n"
+    "  float R = ringR(t, p), w = 20.0 + 5.0 * p;\n"
+    "  float x = (r - R) / w;\n"
+    "  if (abs(x) > 2.6) discard;\n" /* outside the wave the copy is the scene: nothing to write */
+    "  float amp = (4.0 + 2.2 * p) * smoothstep(0.0, 0.04, t) * (1.0 - smoothstep(0.05, 0.75, t));\n"
+    "  vec2 s = c - d / max(r, 1.0) * amp * x * exp(-x * x) * 2.0;\n"
+    "  vec2 uv = vec2((s.x - u_grab.x) / u_grab.z, (u_grab.y - s.y) / u_grab.w);\n"
+    "  o = vec4(texture(u_t0, uv).rgb, 1.0);\n"
+    "}\n";
+static const char *SHOCK_WG =
+    "struct U {\n  u_view: vec4f,\n  u_cam: vec4f,\n  u_tint: vec4f,\n  u_shock: vec4f,\n  u_grab: vec4f,\n};\n@group(0) @binding(0) var<uniform> u: U;\n"
+    "@group(0) @binding(1) var u_t0: texture_2d<f32>;\n"
+    "fn ringR(t: f32, p: f32) -> f32 { return 30.0 + (260.0 + 120.0 * p) * (1.0 - exp(-4.0 * t)); }\n"
+    "@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4f {\n"
+    "  return canvasClip(u.u_shock.xy + (corner(i32(vi) % 6) * 2.0 - 1.0) * (ringR(u.u_shock.z, u.u_shock.w) + 70.0));\n"
+    "}\n"
+    "@fragment fn fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {\n"
+    "  let c = canvasOf(cw_frag_coord(pos));\n"
+    "  let d = c - u.u_shock.xy; let r = length(d);\n"
+    "  let t = u.u_shock.z; let p = u.u_shock.w;\n"
+    "  let R = ringR(t, p); let w = 20.0 + 5.0 * p;\n"
+    "  let x = (r - R) / w;\n"
+    "  if (abs(x) > 2.6) { discard; }\n"
+    "  let amp = (4.0 + 2.2 * p) * smoothstep(0.0, 0.04, t) * (1.0 - smoothstep(0.05, 0.75, t));\n"
+    "  let s = c - d / max(r, 1.0) * amp * x * exp(-x * x) * 2.0;\n"
+    "  let uv = vec2f((s.x - u.u_grab.x) / u.u_grab.z, (u.u_grab.y - s.y) / u.u_grab.w);\n"
+    "  return vec4f(textureSampleLevel(u_t0, cw_linear, uv, 0.0).rgb, 1.0);\n"
+    "}\n";
+
+char *jw_shader_shock(bool w, char **vs) {
+  sb b = { 0 };
+  if (w) {
+    put(&b, "%s%s", SHOCK_WG, WG_COMMON_FNS);
+    return done(&b);
+  }
+  *vs = strdup(SHOCK_VS_GL);
+  put(&b, "%s%s", GL_COMMON, SHOCK_FS_GL);
   return done(&b);
 }
