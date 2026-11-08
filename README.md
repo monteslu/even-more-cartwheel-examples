@@ -33,9 +33,11 @@ shares, grounding, the baked light and a clear by two bots.
 ![pinball: the Coral Deep table with its two ramps](docs/screenshots/pinball.jpg)
 
 Pinball for one to four players taking turns (working title), on three
-original tables: Coral Deep, Star Foundry and Neon Fair. Ramps, pop bumpers,
-drop targets, four modes per table, a three-ball multiball, nudge and tilt, and
-a saved top five per table. The ball runs on the game's own solver, swept and
+original tables: Coral Deep, Star Foundry and Neon Fair, each with its own toy
+(a creature that rises from the playfield, a magnet under a turning forge ring,
+a high striker), its own four modes and a wizard mode. Ramps, pop bumpers, drop
+targets, a three-ball multiball, nudge and tilt, goals kept as stars, rumble,
+and a saved top five per table, in a dim arcade beside a painted backbox. The ball runs on the game's own solver, swept and
 substepped so it never passes through a wall or a flipper at any speed.
 
 ### skate
