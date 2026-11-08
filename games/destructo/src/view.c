@@ -852,7 +852,9 @@ void view_sync(const game *g, float alpha) {
     }
     if (g->proj_kind == A_CHARGE) V.shot_mat->emissive_intensity = 1.5f + 1.5f * sinf((float)g->tick * 0.6f);
   } else cw_node3d_set_position(V.shot, (t3_vec3){ 0, -50, 0 });
-  /* the aim path: the first stretch of the flight, as the world will fly it */
+  /* the aim path: the flight as the world will fly it, as far as the structure's near face (how high it arrives there
+   * shows; where it lands behind does not). It used to stop at 42% of the way, short of the structure, and a low wall
+   * took shot after shot over its top from a path that seemed to run into it */
   int np = 0;
   if (g->state == GS_AIM && !g_view_no_path) {
     t3_vec3 d = game_aim_dir(g);
@@ -860,7 +862,6 @@ void view_sync(const game *g, float alpha) {
     t3_vec3 p = { g->muzzle.x + d.x * 1.4f, g->muzzle.y + d.y * 1.4f, g->muzzle.z + d.z * 1.4f };
     t3_vec3 v = { d.x * sp, d.y * sp, d.z * sp };
     float h = TICK / 4, along = 0, next = 1.2f;
-    float reach = g->muzzle.z * 0.42f; /* the path shows the first part of the way */
     for (int i = 0; i < 4 * 60 * 6 && np < NPATH; i++) {
       v.y -= GRAV * h;
       t3_vec3 q = { p.x + v.x * h, p.y + v.y * h, p.z + v.z * h };
@@ -877,7 +878,7 @@ void view_sync(const game *g, float alpha) {
         t3_instanced_mesh_set_color_at(V.path, np, (t3_color){ b, b, b });
         np++;
         next += 1.1f;
-        if (along > reach) break;
+        if (p.z <= g->front) break;
       }
     }
   }

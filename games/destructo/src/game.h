@@ -73,7 +73,7 @@ enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, 
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
 
 /* events for the view and the sound (render only; the simulation never reads them back) */
-enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH };
+enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH, EV_STRIKE /* a ball crushing into the structure (its burst) */ };
 typedef struct sim_event {
   uint8_t kind, mat;
   t3_vec3 p, n;
@@ -181,9 +181,12 @@ typedef struct game {
   int judged_awake;
   float judged_share;
   bool sandbox;      /* free fire: ammunition without end, the level never judged (the select screen's choice) */
+  bool old_damage;   /* tests only: the cannon before the fix (no strike burst): the human-like gate's control (tools/humancheck.c) */
+  bool proj_burst;   /* the shot in flight has struck the structure (its burst is spent) */
   bool old_rules;    /* tests only: the rules before the fix (the level judged 1.5 s after its last crystal fell, stars by shots alone): the result check's control */
   float extent;      /* the structure's radius (camera) */
   float top;         /* its height */
+  float front;       /* the z of its face nearest the launcher (the aim path is drawn that far) */
   /* events this tick */
   sim_event ev[MAXEV];
   int nev;
