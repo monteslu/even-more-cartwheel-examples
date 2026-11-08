@@ -5,7 +5,7 @@
 // (arms and legs hang along -Y): -x swings a limb forward, +z on the left side (+x) lifts it out sideways, +x on the
 // spine leans forward, +x on a lower leg bends the knee, -x on a lower arm bends the elbow.
 // Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time by the game's spring code.
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
@@ -1514,13 +1514,82 @@ function faceHands(name, u) {
   return out;
 }
 
+// ── figures from CC0 bases (tools/chars/blender/build_chars.py writes out/cc0/<name>.json and .bin) ──
+const CC0_DIR = join(dirname(fileURLToPath(import.meta.url)), 'out', 'cc0');
+function cc0Load(name) {
+  const pj = join(CC0_DIR, name + '.json');
+  if (!existsSync(pj)) throw new Error(`${pj} missing: run tools/chars/blender/build_chars.py first (tools/chars/build-cast.sh)`);
+  const d = JSON.parse(readFileSync(pj, 'utf8'));
+  const bin = readFileSync(join(CC0_DIR, name + '.bin'));
+  const view = (T, [off, n]) => new T(bin.buffer.slice(bin.byteOffset + off, bin.byteOffset + off + n * T.BYTES_PER_ELEMENT));
+  for (const g of d.groups) {
+    g.pos = view(Float32Array, g.pos); g.nrm = view(Float32Array, g.nrm); g.uv = view(Float32Array, g.uv);
+    g.joints = view(Uint8Array, g.joints); g.weights = view(Float32Array, g.weights); g.idx = view(Uint32Array, g.idx);
+  }
+  return d;
+}
+// where the bones the source rig has no counterpart for sit (unweighted: only the clips key them), from the head and hips
+const FACE_AT = { Jaw: [0, 0.02, 0.05], LidUL: [0.03, 0.1, 0.08], LidLL: [0.03, 0.09, 0.08], LidUR: [-0.03, 0.1, 0.08], LidLR: [-0.03, 0.09, 0.08],
+  BrowL: [0.03, 0.12, 0.09], BrowR: [-0.03, 0.12, 0.09], MouthL: [0.02, 0.03, 0.09], MouthR: [-0.02, 0.03, 0.09], LipU: [0, 0.04, 0.1] };
+function cc0Skeleton(d) {
+  // the hip joint on the vertical through the origin (the root node carries only its height), the mesh moved with it
+  const h = d.joints.Hips;
+  d.shift = [-h[0], 0, -h[2]];
+  const world = {};
+  for (const [k, v] of Object.entries(d.joints)) world[k] = add(v, d.shift);
+  world.Belly = add(world.Spine, [0, 0, 0.1]);
+  world.HairA = add(world.Head, [0, 0.17, -0.1]); world.HairB = add(world.HairA, [0, -0.15, -0.03]);
+  world.CoatL = add(world.Hips, [0.11, -0.04, -0.1]); world.CoatR = add(world.Hips, [-0.11, -0.04, -0.1]);
+  for (const n of FACE_BONES) world[n] = add(world.Head, FACE_AT[n]);
+  for (const n of COAT_BONES) world[n] = world.Hips;
+  const T = {};
+  for (const n of BONE_NAMES) T[n] = PARENT[n] === -1 ? world[n] : sub(world[n], world[PARENT[n]]);
+  return { T, world };
+}
+// what each kind of material is: outfit (painted cloth and leather, the metal fittings in its metal channel), skin, hair,
+// eye; the generated pieces: plate (metal), trim (gilt or bronze), robe (cloth), glow
+function cc0Material(glb, sp, g) {
+  const cls = { outfit: 'cloth', skin: 'skin', hair: 'hair', eye: 'eye', plate: 'metal', trim: 'metal', robe: 'cloth', leather: 'leather', glow: 'gloss' }[g.cls] ?? 'cloth';
+  const sh = shading(cls, [1, 1, 1], sp);
+  const o = { ext: sh.ext, extras: sh.extras, rough: 1, normal: 1, metal: 1 };
+  if (g.cls === 'skin') o.normal = 0.8;
+  if (g.cls === 'eye') { o.rough = 1; o.normal = 0.4; if (g.glow) o.emissive = [2.5, 2.5, 2.5]; }
+  if (g.cls === 'glow') o.emissive = g.emissive ?? [2, 2, 2];
+  if (g.double) o.doubleSided = true;
+  return glb.pbr(g.cls + '_' + g.key, TEX, g.set, o);
+}
+function cc0Meshes(glb, sp, d, world) {
+  const mats = {}, prims = [];
+  for (const g of d.groups) {
+    mats[g.key] ??= cc0Material(glb, sp, g);
+    const pos = Float32Array.from(g.pos, (v, i) => v + d.shift[i % 3]);
+    const joints = Uint8Array.from(g.joints, (j) => BI[d.bones[j]]);
+    prims.push([{ pos, nrm: g.nrm, uv: g.uv, joints, weights: g.weights, idx: g.idx }, mats[g.key]]);
+  }
+  return [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', prims), skin: 0 })];
+}
+
 function emit(sp) {
   const glb = new Glb();
+  let T, world, FR, meshNodes, tris;
+  const BONES = bonesOf(sp);
+  const jointNodes = [];
+  if (sp.cc0) {
+    // the figure from tools/chars/blender/build_chars.py (CC0 bases): its joints are the skeleton
+    const d = cc0Load(sp.name);
+    ({ T, world } = cc0Skeleton(d));
+    FR = 0.1;
+    BONES.forEach((n) => jointNodes.push(glb.node({ name: n, translation: T[n] })));
+    meshNodes = cc0Meshes(glb, sp, d, world);
+    tris = d.tris;
+  } else {
   writeFace(sp);
   const mats = materials(glb, sp);
-  const { m: g, world } = build(sp);
-  const { T, M } = skeleton(sp);
-  const FR = M.H.R; // expression offsets are in head units
+  const { m: g, world: w0 } = build(sp);
+  const sk = skeleton(sp);
+  T = sk.T; world = w0;
+  const M = sk.M;
+  FR = M.H.R; // expression offsets are in head units
   // two skinned mesh nodes: Face (the head surface with its lids and ears, the lash rims: the expression morph targets) and
   // Body (the rest). A morphed mesh draws on its own and reads every target per vertex, so only the head carries them.
   const targets = faceTargets(g, M, HEAD_GROUPS);
@@ -1530,14 +1599,15 @@ function emit(sp) {
     const gname = [...g.groups].find(([, x]) => x === gg)[0];
     if (HEAD_GROUPS.includes(gname)) { gg.targets = names.map((n) => targets[n][gname]); head.push([gg, mi]); } else if (HAIR_GROUPS.includes(gname)) hairCards.push([gg, mi]); else body.push([gg, mi]);
   }
-  const BONES = bonesOf(sp);
-  const jointNodes = BONES.map((n) => glb.node({ name: n, translation: T[n] }));
+  BONES.forEach((n) => jointNodes.push(glb.node({ name: n, translation: T[n] })));
+  meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 }), glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 })];
+  if (hairCards.length) meshNodes.push(glb.node({ name: 'Hair', mesh: glb.mesh(sp.name + '_hair', hairCards), skin: 0 })); // its own mesh: alpha-tested cards cast no shadow (the game turns that off by this name)
+  tris = g.tris();
+  }
   BONES.forEach((n, i) => { if (PARENT[n] !== -1) (glb.nodes[jointNodes[BI[PARENT[n]]]].children ||= []).push(jointNodes[i]); });
   const ibm = new Float32Array(BONES.length * 16);
   BONES.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
   glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: jointNodes, skeleton: jointNodes[0] });
-  const meshNodes = [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', body), skin: 0 }), glb.node({ name: 'Face', mesh: glb.mesh(sp.name + '_head', head, null, names), skin: 0 })];
-  if (hairCards.length) meshNodes.push(glb.node({ name: 'Hair', mesh: glb.mesh(sp.name + '_hair', hairCards), skin: 0 })); // its own mesh: alpha-tested cards cast no shadow (the game turns that off by this name)
   const s = sp.scale ?? 1; // the root hip node scales the whole body
   glb.nodes[jointNodes[0]].translation = [0, T.Hips[1] * s, 0];
   glb.nodes[jointNodes[0]].scale = [s, s, s];
@@ -1576,7 +1646,7 @@ function emit(sp) {
     glb.anim(c.name, chans);
   }
   glb.write(join(OUT, sp.name + '.glb'));
-  console.log(sp.name, 'tris', g.tris(), 'targets', names.join(','));
+  console.log(sp.name, 'tris', tris);
 }
 
 // a big gut pushes the arms out: they hang clear of it in every clip (the rest of the rig stays the same)
@@ -1592,46 +1662,46 @@ function armsOut(sp, pose) {
 export const SPECS = [
   // the heroes. The wayfarer (player one): quick and light, a teal tunic under an amber leather vest, copper hair in a
   // ponytail, bracers and gloves, dark plum leggings and boots
-  { name: 'wayfarer', fig: { waist: 0.78, hip: 1.08, bust: 0.72 }, neckShort: 0.012, hairlineH: 0.64, shoulders: 1.95, heads: 7.5, skull: { w: 0.97, h: 0.98, slope: 0.25, chin: 0.88 }, adam: false,
+  { name: 'wayfarer', cc0: true, fig: { waist: 0.78, hip: 1.08, bust: 0.72 }, neckShort: 0.012, hairlineH: 0.64, shoulders: 1.95, heads: 7.5, skull: { w: 0.97, h: 0.98, slope: 0.25, chin: 0.88 }, adam: false,
     face: { eyeR: 0.165, noseLen: 0.9, noseW: 0.85, tipUp: 0.6, lipU: 1.1, lipL: 1.15, mw: 0.23, cheek: 1.2, jawAng: 0.75, chin: 0.85, chinW: 0.85, brow: 0.7, browThick: 0.045, browArch: 0.05, tilt: 0.05, naso: 0.4 },
     paint: { freckles: 0.8, iris: [0.2, 0.42, 0.3], hairline: true },
     scale: 1.02, width: 1.05, sw: 0.2, arm: 1.1, leg: 1.05, head: 1.08, hand: 1.15, hair: 'ponytail', gloves: true, belt: true, boots: true, bracers: true,
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'leather', openFront: 0.4, coatHem: 0.05, bottom: 'tight', pantsFab: 'leather',
     colors: { skin: 0xd8a47c, shirt: 0x169c9c, pants: 0x3a2048, shoes: 0x4a2a18, hair: 0xb8501c, accent: 0xf0b030, outer: 0xc07a28, glove: 0x5a3018, belt: 0x3a2010, metal: 0xd8c070 } },
   // the warden (player two, drop-in): broad, a crimson tunic, steel shoulder plates and a chest plate, a short beard
-  { name: 'warden', shoulders: 2.35, heads: 7.35, skull: { chinZ: 1.04, slope: 0.45, chin: 1.1 }, face: { noseW: 1.1, hook: 0.4, brow: 1.3, browThick: 0.07, jawAng: 1.4, chin: 1.25, cleft: 0.3 },
+  { name: 'warden', cc0: true, shoulders: 2.35, heads: 7.35, skull: { chinZ: 1.04, slope: 0.45, chin: 1.1 }, face: { noseW: 1.1, hook: 0.4, brow: 1.3, browThick: 0.07, jawAng: 1.4, chin: 1.25, cleft: 0.3 },
     paint: { age: 0.2, hairline: true, iris: [0.25, 0.32, 0.5], beardColor: [0.18, 0.1, 0.06] }, stubble: true, beard: true,
     scale: 1.06, width: 1.3, chest: 1.08, sw: 0.23, arm: 1.25, leg: 1.1, head: 1.08, hand: 1.3, jaw: 1.3, neck: 1.2, hair: 'crop', gloves: true, belt: true, boots: true, pads: true, padMat: 'metal', armor: true,
     top: 'longsleeve', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0xb07850, shirt: 0xc0283a, pants: 0x283858, shoes: 0x2a1a10, hair: 0x2a1810, accent: 0xf0c040, metal: 0xb8c4d0, glove: 0x3a2418, belt: 0x201410, pad: 0xb8c4d0 } },
   // the foes. Hollow raiders: hooded, a cloth mask over the face, eyes that glow amber: quick, a cleaver
-  { name: 'raider', shoulders: 2.2, heads: 7.5, skull: { w: 0.98, h: 1.0, slope: 0.6 }, face: { brow: 1.4, browThick: 0.06, socket: 1.3, jawAng: 1.1 }, paint: { age: 0.3 }, glowEyes: true,
+  { name: 'raider', cc0: true, shoulders: 2.2, heads: 7.5, skull: { w: 0.98, h: 1.0, slope: 0.6 }, face: { brow: 1.4, browThick: 0.06, socket: 1.3, jawAng: 1.1 }, paint: { age: 0.3 }, glowEyes: true,
     frown: true, scale: 1.0, width: 1.1, sw: 0.21, arm: 1.12, leg: 1.08, head: 1.05, hair: 'crop', hood: true, mask: true, gloves: true, boots: true, belt: true,
     top: 'hoodie', shirtFab: 'cloth', bottom: 'cargo', pantsFab: 'cloth',
     colors: { skin: 0x9a7a6a, shirt: 0x5a7a2a, pants: 0x4a3420, shoes: 0x1a1410, hair: 0x1a1a1a, accent: 0xff9a20, glove: 0x2a2018, belt: 0x1a1008, mask: 0xd06a20 }, eyes: 0xffa020 },
   // stone brutes: big, a dented bronze helmet, plates, slow and heavy, a maul
-  { name: 'brute', fig: { waist: 0.98 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15 }, face: { brow: 1.7, browThick: 0.075, socket: 1.35, noseW: 1.4, jawAng: 1.6, chin: 1.4 }, paint: { scalp: 1, age: 0.45 }, glowEyes: true,
+  { name: 'brute', cc0: true, fig: { waist: 0.98 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15 }, face: { brow: 1.7, browThick: 0.075, socket: 1.35, noseW: 1.4, jawAng: 1.6, chin: 1.4 }, paint: { scalp: 1, age: 0.45 }, glowEyes: true,
     frown: true, scale: 1.3, width: 1.55, chest: 1.15, belly: 0.4, sw: 0.26, hw: 0.115, arm: 1.45, leg: 1.15, head: 1.0, hand: 1.45, jaw: 1.4, neck: 1.4, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
     colors: { skin: 0x7a8a8a, shirt: 0x6a2a7a, pants: 0x3a3040, shoes: 0x1a1612, hair: 0x2a2a2a, accent: 0xff4040, metal: 0xb07838, helmet: 0x9a6830, glove: 0x3a2418, belt: 0x2a1c14, pad: 0xb07838 }, eyes: 0xff3020 },
   // lancers: a long teal coat, a pale mane, a spear that reaches far
-  { name: 'lancer', shoulders: 2.1, heads: 7.7, skull: { w: 0.95, h: 1.04, temple: 0.94 }, face: { noseLen: 1.1, cheek: 1.2, hollow: 0.7, jawAng: 0.9, chin: 1.1, eyeR: 0.16, socket: 1.25 }, paint: { age: 0.2, shadow: 0.4 }, glowEyes: true,
+  { name: 'lancer', cc0: true, shoulders: 2.1, heads: 7.7, skull: { w: 0.95, h: 1.04, temple: 0.94 }, face: { noseLen: 1.1, cheek: 1.2, hollow: 0.7, jawAng: 0.9, chin: 1.1, eyeR: 0.16, socket: 1.25 }, paint: { age: 0.2, shadow: 0.4 }, glowEyes: true,
     frown: true, scale: 1.08, width: 1.0, sw: 0.205, arm: 1.08, leg: 1.1, head: 1.05, hair: 'long', mask: true, boots: true, belt: true, gloves: true, bracers: true, hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02],
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'cloth', openFront: 0.3, bottom: 'tight', pantsFab: 'leather',
     colors: { skin: 0xa89aa0, shirt: 0x202838, pants: 0x1c1c28, shoes: 0x14141c, hair: 0xe8e8f0, accent: 0x40f0e0, outer: 0x1a8a8a, glove: 0x14141c, belt: 0x0e0e14, metal: 0xa0d8e0, mask: 0x202838 }, eyes: 0x40f0ff },
   // the bosses. The Thornwarden: a hulk of moss-green plate, eyes like lime lamps (the meadow's gate)
-  { name: 'thornwarden', fig: { waist: 0.92 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.0, h: 0.95, slope: 1, chin: 1.25, chinZ: 1.06, occ: 0.92 }, face: { brow: 2, browThick: 0.08, socket: 1.5, noseW: 1.3, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3 }, paint: { age: 0.4 }, glowEyes: true,
+  { name: 'thornwarden', cc0: true, fig: { waist: 0.92 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.0, h: 0.95, slope: 1, chin: 1.25, chinZ: 1.06, occ: 0.92 }, face: { brow: 2, browThick: 0.08, socket: 1.5, noseW: 1.3, jawAng: 2, chin: 1.6, chinW: 1.2, cheek: 1.3 }, paint: { age: 0.4 }, glowEyes: true,
     frown: true, scale: 1.75, width: 1.7, chest: 1.2, sw: 0.27, hw: 0.115, arm: 1.5, leg: 1.15, head: 1.0, hand: 1.5, jaw: 1.5, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
     colors: { skin: 0x6a7a5a, shirt: 0x4a3020, pants: 0x3a3a2a, shoes: 0x1a1612, hair: 0x2a3a20, accent: 0xa0ff40, metal: 0x5a8a3a, helmet: 0x4a7a30, glove: 0x3a2a18, belt: 0x2a1c14, pad: 0x6a9a40 }, eyes: 0xb0ff40 },
   // the Tidecaller: tall, a violet coat that sweeps the floor, silver hair, a long reach (the sunken temple)
-  { name: 'tidecaller', fig: { waist: 0.78, hip: 1.1, bust: 0.7 }, neckShort: 0.01, shoulders: 1.9, heads: 7.6, skull: { w: 0.95, h: 1.02, temple: 0.93, cheek: 1.02, chin: 0.82, slope: 0.3 }, adam: false,
+  { name: 'tidecaller', cc0: true, fig: { waist: 0.78, hip: 1.1, bust: 0.7 }, neckShort: 0.01, shoulders: 1.9, heads: 7.6, skull: { w: 0.95, h: 1.02, temple: 0.93, cheek: 1.02, chin: 0.82, slope: 0.3 }, adam: false,
     face: { eyeR: 0.17, tilt: 0.12, noseLen: 1.1, noseW: 0.85, hook: 0.5, cheek: 1.4, hollow: 0.7, jawAng: 0.8, chinW: 0.8, brow: 0.8, browThick: 0.035, browArch: 0.08 }, paint: { age: 0.4, liner: 0.9, eyeShadow: [0.2, 0.4, 0.5], eyeShadowAmt: 0.7, hairline: true }, glowEyes: true,
     frown: true, scale: 1.5, width: 1.2, chest: 1.05, sw: 0.21, hw: 0.105, arm: 1.15, head: 1.1, jaw: 0.85, hair: 'long', pads: true, padMat: 'metal', boots: true, belt: true, bracers: true, lip: 0x4a2a6a,
     top: 'longsleeve', shirtFab: 'cloth', outer: true, outerKind: 'longcoat', outerFab: 'cloth', openFront: 0.35, coatHem: -0.2, bottom: 'tight', pantsFab: 'leather', hairRoot: [0, 0.08, -0.12], hairB: [0, -0.16, -0.02],
     colors: { skin: 0xa0b8c0, shirt: 0x1a3a5a, pants: 0x14202e, shoes: 0x2a1a40, hair: 0xd0e8f0, accent: 0x60e0ff, outer: 0x6a2aa0, belt: 0x201030, metal: 0x60c8d8, pad: 0x60c8d8 }, eyes: 0xb060ff },
   // the Ember King: the biggest, gold and crimson plate, a crown-like helm, eyes like coals (the keep)
-  { name: 'emberking', fig: { waist: 0.95 }, shoulders: 2.65, heads: 7.2, skull: { w: 1.02, h: 0.96, slope: 0.9, chin: 1.3, chinZ: 1.08 }, face: { brow: 1.9, browThick: 0.08, socket: 1.45, noseW: 1.25, jawAng: 1.9, chin: 1.5, chinW: 1.15, cheek: 1.2 }, paint: { age: 0.5, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true]] }, glowEyes: true,
+  { name: 'emberking', cc0: true, fig: { waist: 0.95 }, shoulders: 2.65, heads: 7.2, skull: { w: 1.02, h: 0.96, slope: 0.9, chin: 1.3, chinZ: 1.08 }, face: { brow: 1.9, browThick: 0.08, socket: 1.45, noseW: 1.25, jawAng: 1.9, chin: 1.5, chinW: 1.15, cheek: 1.2 }, paint: { age: 0.5, scars: [[0.15, 0.42, 0.35, -0.3, 0.014, true]] }, glowEyes: true,
     frown: true, scale: 1.95, width: 1.75, chest: 1.22, sw: 0.275, hw: 0.118, arm: 1.55, leg: 1.15, head: 1.0, hand: 1.55, jaw: 1.55, neck: 1.5, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather', outer: true, outerKind: 'longcoat', outerFab: 'cloth', openFront: 0.45,
     colors: { skin: 0x8a5a4a, shirt: 0x3a1010, pants: 0x2a1414, shoes: 0x1a0e0a, hair: 0x2a1010, accent: 0xff8020, metal: 0xd8a030, helmet: 0xe0b040, glove: 0x3a1a10, belt: 0x2a140a, pad: 0xd8a030, outer: 0xb01818 }, eyes: 0xff7010 },

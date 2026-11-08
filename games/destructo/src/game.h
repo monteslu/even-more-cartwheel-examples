@@ -55,6 +55,7 @@ typedef struct block {
   bool down;         /* counted as brought down (score) */
   bool queued;       /* out of strength, waiting its turn to break (the fracture queue) */
   uint16_t blasted;  /* the charge (game.booms) that last pushed it */
+  uint8_t keg;       /* a powder keg: when it breaks it goes off like a smaller charge (and may set off the next) */
 } block;
 
 typedef struct target_state {
@@ -66,7 +67,7 @@ typedef struct target_state {
 
 /* paints the level builder gives blocks (the look only) */
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
-       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_COUNT };
+       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
 #define MAXBANNER 24
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
@@ -106,10 +107,17 @@ extern const level_def LEVELS[NLEVELS];
 const level_def *level_get(int i);
 
 enum { GS_AIM, GS_FLIGHT, GS_SETTLE, GS_WON, GS_LOST };
-enum { MODE_COOP, MODE_VERSUS };
+/* party (two to four players): steady hands. Ammunition without end, a shot a turn; a turn must bring down at least
+ * one block of the structure (a turn that brings none is a strike, two strikes and you are out), and whoever brings a
+ * crystal down is out. The last one in wins. */
+enum { MODE_COOP, MODE_VERSUS, MODE_PARTY };
+#define PARTY_STRIKES 2
 
 typedef struct player_state {
   int score, shots, targets;
+  int strikes;       /* party: turns that brought nothing down */
+  int8_t out;        /* party: 0 in, 1 out for a crystal, 2 out on strikes */
+  int8_t out_order;  /* party: 1 the first out, 2 the next ... */
 } player_state;
 
 typedef struct game {
@@ -139,6 +147,8 @@ typedef struct game {
   int players, mode, cur;
   player_state P[MAXP];
   int shots;         /* the team's (coop) or everyone's (versus) shots on this structure */
+  int down_count, down_at_fire; /* placed blocks brought down so far, and when the turn's shot was fired (party) */
+  int party_winner;  /* party: the seat still in at the end, -1 none */
   int tick;
   int awake_now;
   /* the fracture queue: blocks out of strength break a few dozen a tick (a charge breaks hundreds at once: making
@@ -150,6 +160,12 @@ typedef struct game {
   /* a charge's blast runs outward over a few ticks, a shell a tick */
   t3_vec3 blast_at;
   int blast_shell;   /* the next shell, 0 when no blast is running */
+  float blast_r, blast_k; /* the running blast's radius and strength (a charge: CHARGE_R and 1; a keg: smaller) */
+  /* kegs set off and waiting their blast (a chain goes off one after another, a few ticks apart) */
+#define MAXPEND 16
+  t3_vec3 pend_at[MAXPEND];
+  uint8_t pend_charge[MAXPEND]; /* a charge that went off during a keg's blast (a charge's size, not a keg's) */
+  int npend, pend_wait;
   int breaks_tick, made_tick; /* this tick's breaks and bodies made (stats) */
   int settle_quiet;
   /* stats */
@@ -157,6 +173,15 @@ typedef struct game {
   float step_ms, step_ms_max;
   float tick_ms, world_ms, pre_ms, post_ms; /* wall time of the last game_step and its parts (profiling only: host-dependent, never fed back) */
   uint32_t hash;
+  /* how much of the structure is down: the volume of every block the level placed (crystals not counted), and of
+   * those the shot has broken or lost off the field (game_share adds the ones standing away from home) */
+  float vol_total, vol_gone;
+  /* the judgement, made once the world is still (GS_SETTLE ends when at most SETTLE_AWAKE bodies have been awake for
+   * SETTLE_QUIET ticks): what it saw */
+  int judged_awake;
+  float judged_share;
+  bool sandbox;      /* free fire: ammunition without end, the level never judged (the select screen's choice) */
+  bool old_rules;    /* tests only: the rules before the fix (the level judged 1.5 s after its last crystal fell, stars by shots alone): the result check's control */
   float extent;      /* the structure's radius (camera) */
   float top;         /* its height */
   /* events this tick */
@@ -175,15 +200,35 @@ void game_new(game *g, int level, int players, int mode);
 void game_free(game *g);
 void game_step(game *g, const input *in);
 void game_settle(game *g, int ticks);       /* step with no input (a level settling before play) */
+void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */
 int game_awake(const game *g);
 t3_vec3 game_aim_dir(const game *g);
 float game_speed(const game *g);
 t3_vec3 game_block_pos(const game *g, int i);
 bool game_over(const game *g);
+uint32_t game_state_hash(const game *g); /* the blocks' poses and the counters, apart from the world they live in (replays) */
 int game_stars(const game *g);
+/* the share of the structure (by volume, crystals not counted) brought down: broken, lost off the field, or standing
+ * more than its own size (and at least 0.6 m) from where it settled before play. Live: the HUD and the judgement */
+float game_share(const game *g);
+/* the level's mark: the share that counts as "brought down" (and the third star needs), by kit (levels.c): half a
+ * tower or a scaffold, less of a wall or a castle, a sixth of a solid stepped pyramid */
+extern const float KIT_MARK[K_COUNT];
+float game_mark(const game *g);
+#define SETTLE_AWAKE 2    /* the world is still: this many bodies awake at most ... */
+#define SETTLE_QUIET 20   /* ... for this many ticks */
+#define SETTLE_MAX (60 * 15) /* a turn's settle ends after 15 s whatever moves (jitter must not hang the game) */
+/* the level's headline once judged: won and brought down, won with the structure mostly standing, or lost */
+enum { RES_NONE, RES_BROUGHT_DOWN, RES_CLEARED, RES_LOST, RES_PARTY };
+int game_result(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);
 int game_add_target(game *g, t3_vec3 centre);
+/* a powder keg standing on the ground at (x, z) (levels.c places them against the structure) */
+int game_add_keg(game *g, float x, float z);
+#define KEG_HALF 0.32f
+/* harm block i by energy e (J) the way a hit does (tests: set off a keg) */
+void game_hit_block(game *g, int i, float e);
 /* a banner on block blk, its pole foot at local (block frame), h tall */
 void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour);
 void game_fire(game *g);

@@ -2,10 +2,13 @@
  * players taking turns, together (co-op: one score, one count of shots) or against each other (versus: each shot
  * scores for whoever fired it).
  *
- *   select    thirty levels, each with its best stars; how many play and how (co-op or versus)
+ *   select    thirty levels, each with its best stars; how many play and how (co-op, versus, or party: steady hands,
+ *             where each turn must bring a block down and whoever drops a crystal is out); free fire (any
+ *             structure open, ammunition without end, nothing judged: a physics toy)
  *   play      turn and raise the launcher, set the power, pick the ammunition (shot, heavy ball, charge), fire;
  *             bring every crystal down within par for three stars; hold the wide view to look the structure over
- *   result    the stars, then the next level or another try
+ *   result    judged once the world is still: the stars on a card at the side, the last shot's instant replay (slow
+ *             motion on the impact; any button skips it), then the next level or another try
  *   destructo_auto plays itself (the bot, through the same controls); destructo_bench is the perf gate's scene
  *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse). Environment (development, native):
  *   DESTRUCTO_LEVEL=n, DESTRUCTO_PLAYERS=n, DESTRUCTO_QUALITY=0..4, DESTRUCTO_NO_HUD=1. */
@@ -30,6 +33,7 @@
 #include "cartwheel/ui.h"
 #include "fx.h"
 #include "game.h"
+#include "replay.h"
 #include "sound.h"
 #include "view.h"
 
@@ -53,6 +57,7 @@ static struct {
   bool in_match, built, have_game;
   int phase, phase_t;
   int sel, players, mode;
+  bool free_fire;    /* the select screen's free fire */
   int last_cur, turn_banner;
   bool result_sound;
   cw_action aim_l, aim_r, aim_u, aim_d, pow_u, pow_d, fire, ammo, view;
@@ -66,6 +71,11 @@ static struct {
   double busy_sum;
   int busy_n;
   int32_t instances;
+  float share;       /* the structure down (game_share), refreshed a few times a second for the HUD */
+  int32_t result, judged_awake;
+  bool replayed, replay_cut; /* this level's replay has been shown; the replay's first frame (the camera cuts) */
+  int32_t replay_match_dbg, replay_ticks, last_result, last_awake, results;
+  uint32_t replay_hash_dbg;
 } G;
 
 static cw_font font;
@@ -119,15 +129,17 @@ static void prime_effects(void) {
 
 static void load_level_as(int level, bool settle) {
   game_new(&G.g, level, G.players, G.mode);
+  G.g.sandbox = G.free_fire;
 #ifdef DESTRUCTO_NO_BUDGET
   G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
 #endif
   if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
-  if (G.built) view_level(&G.g), prime_effects();
+  if (G.built) fx_clear(), view_level(&G.g), prime_effects();
   G.last_cur = 0, G.turn_banner = 0;
   G.result_sound = false;
+  G.share = 0;
 }
 static void load_level(int level) { load_level_as(level, true); }
 static void preview_level(int level) { load_level_as(level, false); }
@@ -135,8 +147,20 @@ static void preview_level(int level) { load_level_as(level, false); }
 static void begin_level(int level) {
   G.sel = level;
   load_level(level);
+#ifdef DESTRUCTO_NO_BUDGET
+  replay_reset(level, G.players, G.mode, true, 180);
+#else
+  replay_reset(level, G.players, G.mode, false, 180);
+#endif
+  G.replayed = false;
+#ifdef DESTRUCTO_AUTOPILOT
+  /* tests/destructo-result.mjs's controls (native: carts read no environment): the result rules before the fix, and
+   * a replay whose last shot is nudged */
+  if (getenv("DESTRUCTO_OLD_RULES")) G.g.old_rules = true;
+  if (getenv("DESTRUCTO_REPLAY_PERTURB")) g_replay_perturb = true;
+#endif
   G.phase = PH_PLAY, G.phase_t = 0;
-  save()->last_level = level, save()->last_mode = G.mode;
+  if (!G.free_fire) save()->last_level = level, save()->last_mode = G.mode;
 }
 
 static int start_level(void) {
@@ -155,7 +179,7 @@ static void start(int players, void *u) {
   begin_level(start_level());
 #else
   G.phase = PH_SELECT, G.phase_t = 0;
-  G.mode = CW_CLAMP(save()->last_mode, 0, 1);
+  G.mode = CW_CLAMP(save()->last_mode, 0, 2);
   int last = save()->last_level;
   G.sel = last >= 0 && last < NLEVELS ? last : 0;
   preview_level(G.sel); /* the level behind the choice */
@@ -203,6 +227,16 @@ static void init(void *u) {
   cw_debug_i32("game.booms", &G.booms);
   cw_debug_i32("game.stars", &G.stars_dbg);
   cw_debug_i32("game.cur", &G.cur);
+  cw_debug_i32("game.result", &G.result);             /* 0 playing, 1 brought down, 2 crystals down, 3 out of ammunition */
+  cw_debug_i32("game.judged_awake", &G.judged_awake); /* bodies awake when the level was judged */
+  cw_debug_f32("game.share", &G.share);
+  cw_debug_i32("replay.match", &G.replay_match_dbg);  /* 1: the last replay ended on the live game's judged state; 0: elsewhere; -1: none yet */
+  cw_debug_i32("replay.ticks", &G.replay_ticks);      /* ticks the last replay ran */
+  cw_debug_i32("result.last", &G.last_result);        /* the last level judged: its result (game.result's values) ... */
+  cw_debug_i32("result.awake", &G.last_awake);        /* ... the bodies awake when it was judged ... */
+  cw_debug_i32("result.count", &G.results);           /* ... and how many levels have been judged */
+  G.replay_match_dbg = -1;
+  cw_debug_u32("replay.hash", &G.replay_hash_dbg);
   cw_debug_field("player.score", G.score, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_f32("aim.yaw", &G.yaw);
@@ -294,8 +328,14 @@ static void fixed_update(void *u, double dt) {
   case PH_SELECT: {
     int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
     int n = G.sel + dx + dy * 6;
-    if ((dx || dy) && n >= 0 && n <= unlocked()) G.sel = n, sound_menu(0), preview_level(G.sel);
-    if (pressed(G.ammo, -1) && G.players > 1) G.mode ^= 1, sound_menu(0);
+    if ((dx || dy) && n >= 0 && n <= (G.free_fire ? NLEVELS - 1 : unlocked())) G.sel = n, sound_menu(0), preview_level(G.sel);
+    if (pressed(G.ammo, -1) && G.players > 1) G.mode = (G.mode + 1) % 3, sound_menu(0);
+    if (G.players < 2 && G.mode == MODE_PARTY) G.mode = MODE_COOP;
+    if (pressed(G.view, -1)) {
+      G.free_fire = !G.free_fire, sound_menu(0);
+      if (!G.free_fire && G.sel > unlocked()) G.sel = unlocked();
+      preview_level(G.sel);
+    }
     if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), begin_level(G.sel);
     G.players = CW_MAX(1, cw_shell_players());
     break;
@@ -303,34 +343,59 @@ static void fixed_update(void *u, double dt) {
   case PH_PLAY: {
     input in;
     read_input(&in);
+    replay_log(&G.g, &in);
     game_step(&G.g, &in);
+    replay_after_step(&G.g);
+    /* the replay's shadow catches up while the live world is quiet (aiming, or a settled field) */
+    replay_follow(&G.g, G.g.awake_now < 150 ? 3.0 : 0.0);
     fx_events(&G.g, G.g.cur);
     sound_events(&G.g, cw_node3d_global_position(G.camera));
     if (G.g.cur != G.last_cur) G.last_cur = G.g.cur, G.turn_banner = 100, sound_turn();
     if (G.turn_banner > 0) G.turn_banner--;
     if (game_over(&G.g)) {
       level_done();
+      G.last_result = game_result(&G.g), G.last_awake = G.g.judged_awake, G.results++;
       G.phase = PH_RESULT, G.phase_t = 0;
       sound_result(G.g.state == GS_WON);
     }
     break;
   }
   case PH_RESULT: {
-    /* the world goes on settling behind the card */
+    if (replay_running()) { /* the last shot again: any button skips it */
+      bool skip = false;
+#ifndef DESTRUCTO_AUTOPILOT
+      skip = ui("ui_accept") || ui("ui_back") || pressed(G.fire, -1) || pressed(G.ammo, -1);
+#endif
+      if (skip) replay_skip();
+      else if (replay_tick()) {
+        const game *r = replay_game();
+        if (r->nev) fx_events(r, r->cur), sound_events(r, cw_node3d_global_position(G.camera));
+        G.replay_ticks++;
+      }
+      if (!replay_running()) G.phase_t = 0, G.replay_match_dbg = replay_match(), G.replay_hash_dbg = replay_hash(); /* the card slides in again */
+      break;
+    }
+    /* the world goes on settling behind the card; the replay's shadow gets to the last shot's start */
     input none = { 0 };
     game_step(&G.g, &none);
     fx_events(&G.g, G.g.cur);
     sound_events(&G.g, cw_node3d_global_position(G.camera));
+    replay_follow(&G.g, 4.0);
     bool won = G.g.state == GS_WON;
+    bool watch = !G.replayed && replay_ready();
 #ifdef DESTRUCTO_AUTOPILOT
-    if (G.phase_t > 60 * 4) {
+    if (watch && G.phase_t > 60) watch = false, G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
+    if (G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
       int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
       if (DESTRUCTO_BENCH || getenv("DESTRUCTO_LEVEL")) next = G.g.level;
       begin_level(next);
     }
 #else
     if (G.phase_t > 45) {
-      if (ui("ui_accept") || pressed(G.fire, -1)) {
+      if (watch && pressed(G.ammo, -1)) {
+        sound_menu(1);
+        G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
+      } else if (ui("ui_accept") || pressed(G.fire, -1)) {
         sound_menu(1);
         begin_level(won ? CW_MIN(G.g.level + 1, NLEVELS - 1) : G.g.level);
       } else if (ui("ui_back")) {
@@ -347,6 +412,9 @@ static void fixed_update(void *u, double dt) {
   G.phase_dbg = G.phase, G.level = g->level, G.state = g->state, G.tick = g->tick, G.shots = g->shots, G.tleft = g->tgt_left;
   G.blocks = g->nalive, G.awake = game_awake(g), G.broken = g->broken, G.frags = g->fragments, G.booms = g->booms, G.stars_dbg = game_stars(g);
   G.cur = g->cur, G.hash = g->hash;
+  G.result = game_result(g), G.judged_awake = g->judged_awake;
+  if (G.phase == PH_RESULT) G.share = g->judged_share;
+  else if (G.phase == PH_PLAY && (g->tick % 10 == 0 || g->state == GS_AIM)) G.share = game_share(g);
   for (int i = 0; i < MAXP; i++) G.score[i] = g->P[i].score;
   G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.step_ms = g->step_ms;
   if (g->step_ms > G.step_max) G.step_max = g->step_ms;
@@ -387,13 +455,27 @@ static void hud_play(cw_vec2 cs, float u) {
   char b[96];
   /* the level: its name, crystals left, shots against par */
   float x = 28 * u, y = 24 * u;
-  panel(x, y, 430 * u, 150 * u, u, rgba(1, 0.82f, 0.3f, 0.8f));
+  panel(x, y, 430 * u, 190 * u, u, rgba(1, 0.82f, 0.3f, 0.8f));
   snprintf(b, sizeof b, "%d  %s", g->level + 1, g->L->name);
   text(b, x + 20 * u, y + 12 * u, 34 * u, GOLD, CW_ALIGN_LEFT);
   snprintf(b, sizeof b, "Crystals left: %d of %d", g->tgt_left, g->ntgt);
   text(b, x + 20 * u, y + 60 * u, 27 * u, PINK, CW_ALIGN_LEFT);
-  snprintf(b, sizeof b, "Shots: %d   Par: %d", g->shots, g->L->par);
-  text(b, x + 20 * u, y + 98 * u, 27 * u, g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_LEFT);
+  if (g->sandbox) snprintf(b, sizeof b, "Free fire   Shots: %d", g->shots);
+  else if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "Steady hands   Shots: %d", g->shots);
+  else snprintf(b, sizeof b, "Shots: %d   Par: %d", g->shots, g->L->par);
+  text(b, x + 20 * u, y + 98 * u, 27 * u, !g->sandbox && g->mode != MODE_PARTY && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_LEFT);
+  /* how much of it is down, against the mark the third star needs */
+  float share = G.share, mark = game_mark(g);
+  snprintf(b, sizeof b, "Down: %d%% of %d%%", (int)(share * 100 + 0.5f), (int)(mark * 100 + 0.5f));
+  text(b, x + 20 * u, y + 136 * u, 27 * u, share >= mark ? GOLD : WHITE, CW_ALIGN_LEFT);
+  float mx = x + 260 * u, mw = 150 * u, my = y + 148 * u;
+  cw_r2d_round_rect(cw_rect_make(mx, my, mw, 10 * u), 5 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
+  cw_r2d_round_rect(cw_rect_make(mx, my, mw * fminf(1, share / mark), 10 * u), 5 * u, 6, share >= mark ? GOLD : rgba(0.9f, 0.75f, 0.5f, 0.9f));
+  if (g->shots == 0 && g->state == GS_AIM) { /* the first look at a level with kegs: what the red ones do */
+    bool kegs = false;
+    for (int i = 0; i < g->nb && !kegs; i++) kegs = g->b[i].alive && g->b[i].keg;
+    if (kegs) text("The red kegs go off when hit, and set off the next", x + 6 * u, y + 204 * u, 23 * u, rgba(1, 0.6f, 0.45f, 1), CW_ALIGN_LEFT);
+  }
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
     float rx = cs.x - 28 * u - 330 * u, ry = 24 * u;
@@ -402,10 +484,11 @@ static void hud_play(cw_vec2 cs, float u) {
       bool now = i == g->cur;
       snprintf(b, sizeof b, "%sPlayer %d", now ? "> " : "", i + 1);
       text(b, rx + 18 * u, ry + (14 + 46 * i) * u, 28 * u, now ? SEAT[i] : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
-      snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
-      text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, WHITE, CW_ALIGN_RIGHT);
+      if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", g->P[i].out ? "out" : g->P[i].strikes ? "1 strike" : "in");
+      else snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
+      text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
     }
-    text(g->mode == MODE_VERSUS ? "VERSUS: points" : "CO-OP: shots each", rx + 165 * u, ry + (20 + 46 * g->players) * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
+    text(g->mode == MODE_PARTY ? "PARTY: bring a block down, not a crystal" : g->mode == MODE_VERSUS ? "VERSUS: points" : "CO-OP: shots each", rx + 165 * u, ry + (20 + 46 * g->players) * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
   } else {
     int score = g->P[0].score;
     snprintf(b, sizeof b, "%d", score);
@@ -428,7 +511,8 @@ static void hud_play(cw_vec2 cs, float u) {
       float cx = bx + 25 * u + a * (cw + 15 * u);
       bool sel = a == g->ammo_sel;
       cw_r2d_round_rect(cw_rect_make(cx, by + 12 * u, cw, 46 * u), 8 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.9f) : rgba(0.15f, 0.16f, 0.22f, 0.85f));
-      snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
+      if (g->sandbox || g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", AMMO[a].name);
+      else snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
       text(b, cx + cw * 0.5f, by + 22 * u, 23 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
     }
     /* power */
@@ -444,28 +528,70 @@ static void hud_play(cw_vec2 cs, float u) {
   }
 }
 
+/* the result: judged once the world is still (game_over), on a card that slides in at the right edge, clear of
+ * the pile in the middle of the picture */
 static void hud_result(cw_vec2 cs, float u) {
   const game *g = &G.g;
+  int res = game_result(g);
   bool won = g->state == GS_WON;
-  float w = 640 * u, h = 300 * u, x = cs.x * 0.5f - w * 0.5f, y = cs.y * 0.3f;
-  panel(x, y, w, h, u, won ? GOLD : rgba(1, 0.45f, 0.35f, 1));
-  text(won ? "BROUGHT DOWN" : "OUT OF AMMUNITION", cs.x * 0.5f, y + 20 * u, 50 * u, won ? GOLD : rgba(1, 0.55f, 0.45f, 1), CW_ALIGN_CENTER);
+  float w = 560 * u, h = (g->players > 1 && g->mode == MODE_VERSUS ? 420 : 380) * u;
+  float k = fminf(1, G.phase_t / 24.0f);
+  k = 1 - (1 - k) * (1 - k) * (1 - k); /* eases in */
+  float x = cs.x - (w + 28 * u) * k, y = cs.y * 0.5f - h * 0.5f, cx = x + w * 0.5f;
+  cw_color head = res == RES_BROUGHT_DOWN || res == RES_PARTY ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
+  panel(x, y, w, h, u, head);
+  if (res == RES_PARTY) { /* steady hands: who stayed in, and how the others went out */
+    char b[96];
+    int win = g->party_winner;
+    if (win >= 0) snprintf(b, sizeof b, "PLAYER %d STAYS STEADY", win + 1);
+    else snprintf(b, sizeof b, "EVERYONE IS OUT");
+    text(b, cx, y + 22 * u, 40 * u, win >= 0 ? SEAT[win] : head, CW_ALIGN_CENTER);
+    for (int k = 1, line = 0; k <= g->players; k++)
+      for (int p = 0; p < g->players; p++) {
+        if (g->P[p].out_order != k) continue;
+        snprintf(b, sizeof b, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
+        text(b, cx, y + (100 + 40 * line++) * u, 26 * u, SEAT[p], CW_ALIGN_CENTER);
+      }
+    if (G.phase_t > 45) {
+      if (!G.replayed && replay_ready())
+        cw_prompt_text(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+      cw_prompt_text(font, "{ui_accept}: next structure   {ui_back}: levels", -1, cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
+    }
+    return;
+  }
+  text(res == RES_BROUGHT_DOWN ? "BROUGHT DOWN" : res == RES_CLEARED ? "CRYSTALS DOWN" : "OUT OF AMMUNITION", cx, y + 22 * u, 46 * u, head, CW_ALIGN_CENTER);
   char b[96];
+  float ty = y + 160 * u;
   if (won) {
-    star_row(cs.x * 0.5f, y + 125 * u, 64 * u, game_stars(g), 3);
+    star_row(cx, y + 118 * u, 60 * u, game_stars(g), 3);
     snprintf(b, sizeof b, "%d shots, par %d", g->shots, g->L->par);
+    ty = y + 168 * u;
   } else snprintf(b, sizeof b, "%d of %d crystals still stand", g->tgt_left, g->ntgt);
-  text(b, cs.x * 0.5f, y + 172 * u, 28 * u, WHITE, CW_ALIGN_CENTER);
+  text(b, cx, ty, 28 * u, WHITE, CW_ALIGN_CENTER);
+  snprintf(b, sizeof b, "%d%% of the structure down (mark %d%%)", (int)(g->judged_share * 100 + 0.5f), (int)(game_mark(g) * 100 + 0.5f));
+  text(b, cx, ty + 40 * u, 26 * u, g->judged_share >= game_mark(g) ? GOLD : WHITE, CW_ALIGN_CENTER);
+  if (won && g->shots <= g->L->par && g->judged_share < game_mark(g)) text("bring more of it down for the third star", cx, ty + 76 * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
   if (g->players > 1 && g->mode == MODE_VERSUS) {
     int best = 0;
     for (int i = 1; i < g->players; i++) if (g->P[i].score > g->P[best].score) best = i;
     snprintf(b, sizeof b, "Player %d has the most points: %d", best + 1, g->P[best].score);
-    text(b, cs.x * 0.5f, y + 208 * u, 26 * u, SEAT[best], CW_ALIGN_CENTER);
+    text(b, cx, ty + 112 * u, 26 * u, SEAT[best], CW_ALIGN_CENTER);
   }
   if (G.phase_t > 45) {
-    cw_prompt_text(font, won ? "{ui_accept}: next level   {ui_back}: choose a level" : "{ui_accept}: try again   {ui_back}: choose a level", -1,
-                   cw_v2(cs.x * 0.5f, y + h - 50 * u), 26 * u, WHITE, CW_ALIGN_CENTER);
+    if (!G.replayed && replay_ready())
+      cw_prompt_text(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+    cw_prompt_text(font, won ? "{ui_accept}: next level   {ui_back}: levels" : "{ui_accept}: try again   {ui_back}: levels", -1,
+                   cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
   }
+}
+
+/* the replay: a quiet tag in the corner, nothing over the picture */
+static void hud_replay(cw_vec2 cs, float u) {
+  float x = 28 * u, y = 24 * u;
+  panel(x, y, 300 * u, (replay_slow() ? 96 : 64) * u, u, rgba(1, 1, 1, 0.5f));
+  text("REPLAY", x + 20 * u, y + 12 * u, 34 * u, WHITE, CW_ALIGN_LEFT);
+  if (replay_slow()) text("slow motion", x + 20 * u, y + 56 * u, 24 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_LEFT);
+  cw_prompt_text(font, "{fire}: skip", -1, cw_v2(cs.x - 40 * u, cs.y - 60 * u), 24 * u, rgba(1, 1, 1, 0.8f), CW_ALIGN_RIGHT);
 }
 
 static void hud_select(cw_vec2 cs, float u) {
@@ -473,7 +599,7 @@ static void hud_select(cw_vec2 cs, float u) {
   text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
   float cw = 250 * u, ch = 92 * u, gap = 14 * u;
   float gx = cs.x * 0.5f - (6 * cw + 5 * gap) * 0.5f, gy = y0 + 80 * u;
-  int open = unlocked();
+  int open = G.free_fire ? NLEVELS - 1 : unlocked(); /* free fire: every structure */
   for (int i = 0; i < NLEVELS; i++) {
     float x = gx + (i % 6) * (cw + gap), y = gy + (i / 6) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
@@ -487,10 +613,14 @@ static void hud_select(cw_vec2 cs, float u) {
   float y = gy + 5 * (ch + gap) + 16 * u;
   char b[128];
   if (G.players > 1) {
-    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op or versus)", G.players, G.mode == MODE_VERSUS ? "versus" : "co-op");
+    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,
+             G.mode == MODE_PARTY ? "party: steady hands" : G.mode == MODE_VERSUS ? "versus" : "co-op");
     cw_prompt_text(font, b, -1, cw_v2(cs.x * 0.5f, y), 26 * u, WHITE, CW_ALIGN_CENTER);
     y += 40 * u;
   }
+  cw_prompt_text(font, G.free_fire ? "{view}: free fire ON (every structure, ammunition without end)" : "{view}: free fire", -1, cw_v2(cs.x * 0.5f, y), 24 * u,
+                 G.free_fire ? GOLD : rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
+  y += 38 * u;
   cw_prompt_text(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, cw_v2(cs.x * 0.5f, y), 26 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
 }
 
@@ -499,6 +629,7 @@ static void hud(void) {
   float u = cs.y / 1080.0f;
   cw_r2d_begin(NULL);
   if (G.phase == PH_SELECT) hud_select(cs, u);
+  else if (G.phase == PH_RESULT && replay_running()) hud_replay(cs, u);
   else if (G.phase == PH_RESULT) hud_play(cs, u), hud_result(cs, u);
   else hud_play(cs, u);
   cw_r2d_end();
@@ -514,13 +645,34 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     float a = playing ? (float)alpha : 1.0f;
-    view_sync(&G.g, a);
-    view_camera(&G.g, G.camera, (float)w / (float)h, dt, G.overview || G.phase == PH_SELECT, a);
+    if (replay_running()) {
+      view_sync(replay_game(), replay_alpha());
+      view_camera_replay(replay_game(), G.camera, (float)w / (float)h, dt * (replay_slow() ? 0.34f : 1.0f), replay_slow(), G.replay_cut, replay_alpha());
+      G.replay_cut = false;
+    } else {
+      view_sync(&G.g, a);
+      view_camera(&G.g, G.camera, (float)w / (float)h, dt, G.overview || G.phase == PH_SELECT, a);
+    }
     fx_update(dt);
     G.instances = view_get_stats().instances;
   }
   bool show_hud = !getenv("DESTRUCTO_NO_HUD");
   if (show_hud && G.in_match && playing) hud();
+  { /* the flash check (tests/destructo-flash.mjs) finds the blast by this line; its control (DESTRUCTO_STROBE_CONTROL,
+     * native only) lays a white wash over the screen at 10 Hz for 1.5 s from the blast: a strobe the check must catch */
+    static uint32_t frame, boom_frame;
+    frame++;
+    if (!boom_frame && G.g.booms > 0) {
+      boom_frame = frame;
+      if (getenv("DESTRUCTO_FX_LOG")) fprintf(stderr, "destructo boom frame=%u\n", frame);
+    }
+    if (boom_frame && getenv("DESTRUCTO_STROBE_CONTROL") && frame - boom_frame < 90 && ((frame - boom_frame) / 3) & 1) {
+      cw_vec2 cs = cw_r2d_canvas_size();
+      cw_r2d_begin(NULL);
+      cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(1, 1, 1, 0.6f));
+      cw_r2d_end();
+    }
+  }
   cw_quality_auto_measure(playing);
   if (getenv("DESTRUCTO_BENCH_PRINT") && playing) { /* the perf gate reads these */
     static int n;

@@ -198,7 +198,7 @@ static void palm(mb *w, mb *f) {
 }
 
 /* ── the textures ──────────────────────────────────────────────────── */
-enum { TX_LEAF, TX_NEEDLE, TX_FROND, TX_COUNT };
+enum { TX_LEAF, TX_NEEDLE, TX_FROND, TX_GRASS, TX_COUNT };
 static t3_texture *TX[TX_COUNT];
 static uint8_t u8c(float v) { return (uint8_t)(cw_clampf(v, 0, 1) * 255 + 0.5f); }
 
@@ -299,6 +299,19 @@ static void make_textures(void) {
     for (int s = -1; s <= 1; s += 2) stroke(px, N, N * 0.5f, y0, N * 0.5f + s * l, y0 + l * 0.55f, 1.5f, rr(0.6f, 1.0f));
   }
   TX[TX_FROND] = finish_tex(px, N);
+  /* grass: blades from the bottom edge, leaning, each its own shade, darker at the foot */
+  memset(px, 0, sizeof px);
+  rs = 8191;
+  for (int i = 0; i < 150; i++) {
+    float x0 = N * rr(0.06f, 0.94f), lean = rr(-0.28f, 0.28f), h = N * rr(0.45f, 0.97f);
+    stroke(px, N, x0, N - 1, x0 + lean * h, N - h, rr(2.6f, 4.2f), rr(0.55f, 1.0f));
+  }
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      uint8_t *p = &px[(y * N + x) * 4];
+      if (p[3]) { float k = 0.6f + 0.4f * (1 - (float)y / N); p[0] = p[1] = p[2] = u8c(p[0] / 255.0f * k); }
+    }
+  TX[TX_GRASS] = finish_tex(px, N);
 }
 
 /* ── the forest ────────────────────────────────────────────────────── */
@@ -387,6 +400,34 @@ void trees_sway(float t) {
     T.wood[k]->count = T.leaf[k]->count = T.n[k];
     T.wood[k]->instance_matrix->version++, T.leaf[k]->instance_matrix->version++;
   }
+}
+
+void grass_build(cw_node parent, const grass_tuft *t, int n) {
+  if (n <= 0) return;
+  mb b = { 0 };
+  for (int i = 0; i < n; i++) {
+    for (int k = 0; k < 2; k++) {
+      float a = t[i].yaw + k * PI_F * 0.5f, ca = cosf(a) * t[i].w * 0.5f, sa = sinf(a) * t[i].w * 0.5f;
+      t3_vec3 up = V3(0, 1, 0); /* the cards shade like the ground they stand on */
+      t3_color lo = cmul(t[i].c, 0.8f), hi = t[i].c;
+      int v0 = mb_v(&b, V3(t[i].x - ca, t[i].y - 0.03f, t[i].z - sa), up, 0, 1, lo);
+      int v1 = mb_v(&b, V3(t[i].x + ca, t[i].y - 0.03f, t[i].z + sa), up, 1, 1, lo);
+      int v2 = mb_v(&b, V3(t[i].x + ca, t[i].y + t[i].h, t[i].z + sa), up, 1, 0, hi);
+      int v3 = mb_v(&b, V3(t[i].x - ca, t[i].y + t[i].h, t[i].z - sa), up, 0, 0, hi);
+      mb_quad(&b, v0, v1, v2, v3);
+    }
+  }
+  t3_material *m = t3_mesh_standard_material_new(0xffffff);
+  m->vertex_colors = true, m->roughness = 0.95f, m->side = T3_DOUBLE_SIDE, m->alpha_test = 0.5f;
+  t3_material_set_map(m, TX[TX_GRASS]);
+  t3_mesh *mesh = t3_mesh_new(mb_finish(&b), m);
+  mesh->base.cast_shadow = false, mesh->base.receive_shadow = true;
+  cw_node node = cw_node_new("Node3D", "Grass");
+  cw_node_add_child(parent, node);
+  t3_object *wrap = t3_group_new();
+  t3_object_add(wrap, mesh);
+  cw_node3d_set_object(node, wrap);
+  t3_release(wrap), t3_release(mesh), t3_release(m);
 }
 
 void trees_clear(void) { memset(T.wood, 0, sizeof T.wood), memset(T.leaf, 0, sizeof T.leaf), memset(T.n, 0, sizeof T.n); }

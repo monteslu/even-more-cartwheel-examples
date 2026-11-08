@@ -59,7 +59,7 @@ void view_title_camera(const park *k, float t);           /* behind the menus: a
 cw_node view_camera(int i);
 extern int g_view_shadow_size;
 /* what the frames show, measured (debug fields: the feel gate) */
-typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max; int32_t foot_err_state; } view_metrics;
+typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max, foot_place_max; int32_t foot_err_state, foot_place_state; } view_metrics;
 extern view_metrics g_view_metrics;
 extern float g_cam_k, g_cam_side;
 
@@ -78,7 +78,12 @@ void scenery_build(cw_node parent, const park *k, int park_index);
 
 /* ── pose.c: the rider's body from the board's state ───────────────────── */
 typedef struct rider_pose {
-  float crouch, tuck, lean, push_phase, push_w, manual, grind_w, bal, grab_w, flip_w, look; /* eased toward what the board does */
+  /* eased toward what the board does */
+  float knee, hx, hz, open, pitch, chest, look, head_pitch;     /* the body: knee bend, the hips, the turn toward the nose, the lean */
+  float front_x, front_z, front_yaw, back_x, back_z, back_yaw;  /* the feet on the deck, in the board's frame */
+  float arm_out, arm_fwd, arm_back, elbow;
+  float push_phase, push_w, manual, grind_w, bal, grab_w, flip_w, lean, tuck, air_w, drop_air, support;
+  float board_pitch, tail_drop;                                 /* the ollie's pop, on the board */
   int grab;
 } rider_pose;
 typedef struct rig {
@@ -86,13 +91,24 @@ typedef struct rig {
   cw_pose pose;
   int hips, spine, chest, neck, head, ua_l, la_l, h_l, ua_r, la_r, h_r, ul_l, ll_l, f_l, ul_r, ll_r, f_r;
   t3_vec3 foot_rest_l, foot_rest_r, hip_rest;
-  float leg_len, last_yaw, foot_err;
+  t3_quat foot_rot_l, foot_rot_r; /* the feet's rest rotations (model space) */
+  float leg_len, thigh, shin, ankle_h, last_yaw, foot_err;
+  t3_vec3 last_u, air_v;
+  int last_st;
+  bool popped, from_grind;
+  float air_time, land_time, impact;
+  float free_l, free_r; /* a foot lifted off the deck on purpose (a flip's flick) */
+  /* the board under the rider (root space): as drawn (with a flip's turn), and the deck the feet stand on */
+  t3_quat board_q, deck_q;
+  t3_vec3 board_p, deck_p;
   rider_pose s; /* smoothed */
 } rig;
 bool rig_bind(rig *r, t3_object *model);
+/* the body, and the board's placement under it (board_q, board_p), from the board's state */
 void rig_pose(rig *r, const skater *k, float dt, float t);
-/* where the board sits in the rider's model space for a grab (how high the knees pulled it) */
-float rig_board_lift(const rig *r);
+/* how far a foot's sole is outside where a skater's foot goes on the deck (metres, 0 inside); *which 1 front, 2 back */
+float rig_foot_place(const rig *r, int *which);
+float deck_top(float x); /* the deck's top over the trucks' plane at x along it */
 
 /* ── rag.c: wipeouts as ragdolls (presentation only) ───────────────────── */
 void rag_park(const park *k);   /* the ragdoll world: the park's triangles as one static mesh */

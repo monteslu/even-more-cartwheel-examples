@@ -180,9 +180,12 @@ static bool warmup(void *u) {
 static void cmd_run(int argc, const char **argv, cw_reply *r) {
   /* run <park> [mode] [players]: a run now */
   if (argc < 2) { cw_reply_error(r, "usage: run <park> [mode] [players]"); return; }
-  G.ui.park = atoi(argv[1]) % PARK_COUNT;
-  if (argc > 2) G.ui.mode = atoi(argv[2]) % MODE_COUNT;
-  if (argc > 3) G.players = CW_CLAMP(atoi(argv[3]), 1, MAXP);
+  int park_i = atoi(argv[1]) % PARK_COUNT, mode = argc > 2 ? atoi(argv[2]) % MODE_COUNT : G.ui.mode;
+  int players = argc > 3 ? CW_CLAMP(atoi(argv[3]), 1, MAXP) : G.players > 0 ? G.players : 1;
+  /* the shell's match has that many seats (its split views, its HUD rects): a run with more players than the menus
+     joined drew one full view under a split HUD */
+  if (!G.in_match || players != cw_shell_players()) cw_shell_start(players);
+  G.ui.park = park_i, G.ui.mode = mode, G.players = players;
   begin_run();
   cw_reply_printf(r, "{\"park\":%d,\"mode\":%d,\"players\":%d}", G.ui.park, G.ui.mode, G.players);
 }
@@ -231,6 +234,8 @@ static void init(void *u) {
   cw_debug_f32("view.cam_dist", &g_view_metrics.cam_dist);
   cw_debug_f32("view.foot_err_max", &g_view_metrics.foot_err_max); /* metres, the feet off the deck at worst */
   cw_debug_i32("view.foot_err_state", &g_view_metrics.foot_err_state); /* what it was doing then: state * 10 + 1 pushing + 2 manual */
+  cw_debug_f32("view.foot_place_max", &g_view_metrics.foot_place_max); /* metres, a sole outside where a skater's foot goes on the deck, at worst */
+  cw_debug_i32("view.foot_place_state", &g_view_metrics.foot_place_state); /* then: state * 100 + foot (1 front, 2 back) * 10 + 1 pushing + 2 manual */
   cw_debug_u32("tex.hash", &tex_hash);
   cw_debug_command("run", "run <park> [mode] [players]: start a run now", cmd_run);
 #if AUTO
@@ -241,11 +246,39 @@ static void init(void *u) {
 
 /* ── input ──────────────────────────────────────────────────────────────── */
 
+#if AUTO
+/* development (the posing's frame strips, games/skate/tools/strip.mjs): the first skater's pad from a script keyed by the
+   run's tick, so a paused and stepped run plays it the same: lines "<tick> <sx> <sy> <buttons>", buttons any of o (pop),
+   f (flip), g (grab), i (grind), m (manual), or - for none; each line holds from its tick on */
+static bool pad_script(int tick, input *in) {
+  static struct { int t; float sx, sy; char b[8]; } L[256];
+  static int n = -1;
+  if (n < 0) {
+    n = 0;
+    const char *path = getenv("SKATE_PAD");
+    FILE *f = path ? fopen(path, "r") : NULL;
+    if (f) {
+      while (n < 256 && fscanf(f, "%d %f %f %7s", &L[n].t, &L[n].sx, &L[n].sy, L[n].b) == 4) n++;
+      fclose(f);
+    }
+  }
+  if (!n) return false;
+  int k = -1;
+  for (int j = 0; j < n && L[j].t <= tick; j++) k = j;
+  if (k < 0) return true;
+  in->sx = L[k].sx, in->sy = L[k].sy;
+  in->ollie = strchr(L[k].b, 'o') != NULL, in->flip = strchr(L[k].b, 'f') != NULL, in->grab = strchr(L[k].b, 'g') != NULL;
+  in->grind = strchr(L[k].b, 'i') != NULL, in->manual = strchr(L[k].b, 'm') != NULL;
+  return true;
+}
+#endif
+
 static void read_input(input in[MAXP]) {
   memset(in, 0, sizeof(input) * MAXP);
   for (int i = 0; i < G.S.players; i++) {
 #if AUTO
     if (i == 0 && getenv("SKATE_IDLE")) continue; /* development: the first skater coasts (the camera check) */
+    if (i == 0 && getenv("SKATE_PAD") && pad_script(G.S.tick, &in[0])) continue;
     bot_tick(&G.bots[i], &G.S, i, &in[i]);
 #else
     if (!cw_shell_seat_taken(i)) continue;

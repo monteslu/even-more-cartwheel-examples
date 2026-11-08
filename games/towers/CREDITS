@@ -12,7 +12,8 @@ Where each asset comes from
   games/crawler), as they are.
 - assets/maps/*.cwtd: tools/gen-maps.mjs. assets/lightmaps/*.cwlm and *.hash: baked by towers_mapview (tools/mapview).
 - assets/textures/*.png: tools/gen-textures.mjs. assets/grade/*.cube: tools/gen-luts.mjs.
-- assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png, haze.png: crawler's copies (baked by
+- assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png, haze.png: crawler's copies (scorch.png lightened
+  so its darkest multiplies the ground by about 0.56, never a black hole on a pale path; baked by
   cartwheel-engine's tools/fx/bake-flipbooks.mjs and hordeshooter's gen-fx-sheets.mjs; procedural, CC0).
 - The creeps' crowd, the flow field and the effect kit follow crawler's and hordeshooter's code (sim.c, view.c, fx.c).
 - Sounds: synthesised in main.c.
