@@ -185,13 +185,14 @@ static void glowing(float intensity) {
 /* ── background ── */
 /* each region's complementary accent: cool steel blue against the warm regions, lantern amber against the cool */
 static cw_color comp_accent(int region) {
+  if (region == R_BLOOM) return rgba(0.3f, 0.8f, 0.52f, 1); /* (the gardens: green leaves against the pink blossom) */
   cw_color k = hexc(REGIONS[region].sky, 1);
   return k.r > k.b + 0.05f ? rgba(0.42f, 0.66f, 1.0f, 1) : rgba(1.0f, 0.68f, 0.32f, 1);
 }
 static void draw_sky(const sim *s, float t, int region) {
   const region_info *ri = &REGIONS[region];
   /* a little more light behind the rock-heavy halls of the Forge, a little less in the snow (luma steps) */
-  static const int8_t EXPO[NREGIONS] = { [R_FORGE] = 22, [R_CLOCK] = 10, [R_ROOTWAY] = 4, [R_FROST] = -14, [R_SKY] = -8 };
+  static const int8_t EXPO[NREGIONS] = { [R_FORGE] = 34, [R_CLOCK] = 10, [R_ROOTWAY] = 4, [R_FROST] = -4, [R_SKY] = -8, [R_GATE] = 16, [R_GLASS] = -8 };
   int ex = EXPO[region];
   cw_vec2 cs = view_canvas();
   cw_r2d_use_layer(L_SKY);
@@ -223,7 +224,8 @@ static void draw_sky(const sim *s, float t, int region) {
     [R_HEART] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
   };
   static const float PAR[3] = { 0.14f, 0.32f, 0.55f };
-  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, 0.85f), VAL(V_FAR + ex)), toluma(region == R_FORGE || region == R_CLOCK ? mixc(comp, rgba(0.3f, 0.36f, 0.48f, 1), 0.35f) : mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.6f : 0.25f), VAL(V_MID + ex)), toluma(hexc(ri->near, 1), VAL(V_NEAR + ex)) };
+  bool cool = comp.r > comp.b; /* (a cool region: its far ridges glow the full lantern amber, the warm accent of the frame) */
+  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, cool ? 1.0f : 0.85f), VAL(V_FAR + ex - (cool ? 12 : 0))), toluma(region == R_FORGE || region == R_CLOCK ? mixc(comp, rgba(0.3f, 0.36f, 0.48f, 1), 0.35f) : mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.6f : 0.25f), VAL(V_MID + ex)), toluma(hexc(ri->near, 1), VAL(V_NEAR + ex)) };
   if (region == R_FORGE || region == R_CLOCK) cols[2] = mixc(cols[2], rgba(0.42f, 0.5f, 0.6f, 1), 0.45f); /* cool steel against the heat */
   for (int k = 0; k < 3; k++) {
     int tex = SET[region][k];
@@ -395,7 +397,10 @@ static int tile_region(const sim *s, int x, int y) {
   return cr != 0xffff ? s->w->rooms[cr].region : s->room >= 0 ? s->w->rooms[s->room].region : 0;
 }
 static cw_color rock_body(int region, int tt) {
-  cw_color body = toluma(hexc(REGIONS[region].ground, 1), VAL(V_ROCK));
+  /* a value nudge per region: darker rock where the haze is pale (the Gate, the Frostvault: the value range), lighter in
+   * the rock-heavy Forge (its halls are mostly rock) */
+  static const int8_t ROCKV[NREGIONS] = { [R_GATE] = -12, [R_FROST] = -10, [R_FORGE] = 16 };
+  cw_color body = toluma(hexc(REGIONS[region].ground, 1), VAL(V_ROCK + ROCKV[region]));
   if (tt == T_CRACKED) body = mixc(body, rgba(1, 0.85f, 0.6f, 1), 0.18f);
   if (tt == T_SECRET) body = scalec(body, 0.93f);
   return body;
@@ -462,6 +467,7 @@ static void fillet(const sim *s, int tx, int ty, int cx, int cy, cw_color body) 
   rock_poly(tile_region(s, tx, ty), tx, ty, 0, p, c, n);
 }
 
+enum { Z_ROCK, Z_DECAL, Z_SUPPORT, Z_TRIM, Z_PROP, Z_THINGS }; /* the tiles layer's bands (draw_tiles, view_draw) */
 static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, float t) {
   int tx0 = (int)floorf(x0) - 1, ty0 = (int)floorf(y0) - 1, tx1 = (int)ceilf(x1) + 1, ty1 = (int)ceilf(y1) + 1;
   nrb = 0;
@@ -531,6 +537,10 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
     }
   for (int k = 0; k < nrb; k++)
     if (RBS[k].ni) cw_r2d_triangles(A.rock[RBS[k].region], RBS[k].v, RBS[k].nv, RBS[k].i, RBS[k].ni);
+  /* the tiles layer is drawn in bands of z, each band's art from one atlas array, so the sort groups them into few
+   * batches: the painted art (mipmapped pages) and the plain art (rock trim, lips, ledges, thorns) would otherwise
+   * alternate draw by draw. Each band draws over the one below it, as the submission order did before. */
+  cw_r2d_set_z(Z_DECAL);
   /* features set into the rock two tiles deep or more (scenery.c): no stretch of rock one repeating pattern */
   for (int y = ty0; y <= ty1 && !perf_off("decal"); y++)
     for (int x = tx0; x <= tx1; x++) {
@@ -541,7 +551,8 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
       scenery_decal(region_material(region), (float)x + 0.5f, (float)y + 0.5f, h / 100u, corner_colour(rock_body(region, s->t[y][x]), x, y), rockin[y][x] >= 3 ? 3.6f : 2.0f);
       VS.sprites++;
     }
-  /* what lies on the rock: lips, cracks; ledges, thorns, molten channels */
+  /* what lies on the rock: lips, cracks; ledges, thorns, molten channels (what holds a ledge: the band under it) */
+  cw_r2d_set_z(Z_TRIM);
   for (int y = ty0; y <= ty1; y++)
     for (int x = tx0; x <= tx1; x++) {
       if (!w_in(x, y)) continue;
@@ -574,7 +585,9 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
           int cl = 0, cr = 0;
           for (int k = 1; k <= 12 && !cl; k++) if (y - k >= 0 && t_solid(s->t[y - k][x])) cl = k;
           for (int k = 1; k <= 12 && !cr; k++) if (y - k >= 0 && t_solid(s->t[y - k][b])) cr = k;
+          cw_r2d_set_z(Z_SUPPORT);
           scenery_ledge(x, b, y, x > 0 && t_solid(s->t[y][x - 1]), b + 1 < TW && t_solid(s->t[y][b + 1]), cl, cr, m, hexc(g->ground, 1));
+          cw_r2d_set_z(Z_TRIM);
         }
         int piece = !l ? 0 : !r ? 2 : 1;
         cw_r2d_sprite(&(cw_sprite){ .texture = A.ledge[m], .src = { (float)(piece * TILE_PX), 0, TILE_PX, 28 }, .pos = { (float)x, (float)y },
@@ -700,7 +713,10 @@ static void draw_barriers(const sim *s, float x0, float y0, float x1, float y1, 
 /* what holds a one-way ledge up (placeholder art): a chain hanging from the rock to the ledge's end (HOLD_CEIL, from
  * e->y down arg tiles), a post standing up to it (HOLD_FLOOR, from e->y up arg tiles), a bracket from a wall (HOLD_WALL) */
 static void draw_support(const ent *e, const region_info *g) {
-  if (!flat_props()) return; /* (the painted scenery draws what holds each ledge: scenery.c; these shapes stand in under LANTERNFALL_PROPS_FLAT) */
+  if (!flat_props()) { /* painted (scenery.c); the shapes below stand in under LANTERNFALL_PROPS_FLAT */
+    scenery_support(e->hold, e->x, e->y, e->arg, hexc(g->ground, 1));
+    return;
+  }
   float x = e->x, y = e->y, len = (float)e->arg;
   cw_color iron = mixc(hexc(g->ground, 1), rgba(0.25f, 0.24f, 0.26f, 1), 0.6f), wood = mixc(hexc(g->ground, 1), rgba(0.45f, 0.32f, 0.2f, 1), 0.5f);
   if (e->hold & HOLD_CEIL) {
@@ -715,10 +731,15 @@ static void draw_support(const ent *e, const region_info *g) {
   }
 }
 
-/* a region's landmark (placeholder art: a beacon tower on a stepped plinth, its lantern in the region's accent; arg is
- * the region). Big enough to know the room by, and marked on the map. */
+/* a region's landmark: its beacon tower painted in the region's own building (scenery.c), the lamp lit in its accent;
+ * arg is the region. Big enough to know the room by, and marked on the map. The shapes below stand in under
+ * LANTERNFALL_PROPS_FLAT. */
 static void draw_landmark(const ent *e, const region_info *g, float t) {
-  float x = e->x, y = e->y;
+  float x = e->x, y = e->y, lx, ly;
+  if (!flat_props() && scenery_landmark((int)(g - REGIONS), x, y, t, &lx, &ly)) { /* (painted: scenery.c) */
+    light(lx, ly, 10, hexc(g->accent, 1), 0.85f * (0.88f + 0.12f * sinf(t * 2.3f + x)), true);
+    return;
+  }
   cw_color stone = mixc(hexc(g->ground, 1), rgba(0.62f, 0.6f, 0.56f, 1), 0.35f), acc = hexc(g->accent, 1);
   cw_r2d_rect((cw_rect){ x - 2.2f, y - 0.6f, 4.4f, 0.6f }, scalec(stone, 0.8f));
   cw_r2d_rect((cw_rect){ x - 1.6f, y - 1.2f, 3.2f, 0.6f }, scalec(stone, 0.9f));
@@ -1456,12 +1477,16 @@ static void shot_lights(const sim *s) {
   }
 }
 
-/* a map stone or a tablet of the story (placeholder art: a carved slab, glowing lines on it; the map stone green, a
- * tablet warm) */
+/* a map stone or a tablet of the story: a carved slab with a glowing inlay (scenery.c), the map stone green, a tablet
+ * warm; the shapes below stand in under LANTERNFALL_PROPS_FLAT */
 static void draw_tablet(const ent *e, float t) {
   bool map = e->sub == PK_MAPSTONE;
   float x = e->x, y = e->y, w = map ? 1.1f : 0.8f, hgt = map ? 1.5f : 1.0f;
   cw_color glow = map ? rgba(0.55f, 1, 0.7f, 1) : rgba(1, 0.85f, 0.55f, 1);
+  if (!flat_props() && scenery_tablet(map, x, y, t)) { /* (painted: scenery.c) */
+    light(x, y - hgt * 0.6f, 4.5f, glow, 0.7f + 0.15f * sinf(t * 3 + x), false);
+    return;
+  }
   cw_r2d_round_rect((cw_rect){ x - w * 0.5f, y - hgt, w, hgt }, 0.15f, 4, rgba(0.55f, 0.53f, 0.5f, 1));
   glowing(2.2f);
   for (int k = 0; k < 3; k++) cw_r2d_rect((cw_rect){ x - w * 0.32f, y - hgt * (0.78f - 0.22f * (float)k), w * (k == 1 ? 0.5f : 0.64f), 0.07f }, glow);
@@ -1737,9 +1762,12 @@ void view_draw(const sim *s, float t) {
 #endif
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
-    if (e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
+    float ey0 = e->y, ey1 = e->y; /* (a support reaches len tiles down from the rock, or up from the ground) */
+    if (e->kind == EK_PROP && e->sub == PR_SUPPORT) ey0 -= (e->hold & HOLD_FLOOR) ? (float)e->arg : 0, ey1 += (e->hold & HOLD_CEIL) ? (float)e->arg : 0;
+    if (e->x < x0 - 3 || e->x > x1 + 3 || ey1 < y0 - 4 || ey0 > y1 + 6) continue;
     if (showcase_plain()) continue; /* (the creature check: the room's rock and sky, none of its lamps or props) */
     int er = s->w->rooms[e->room].region;
+    cw_r2d_set_z(e->kind == EK_PROP ? (e->sub == PR_SUPPORT ? Z_SUPPORT : Z_PROP) : Z_THINGS); /* (the painted props in one band, the lamps over them; supports under the ledges) */
     if (e->kind == EK_PROP) draw_prop(e, &REGIONS[er], t);
     else if (e->kind == EK_LAMP) draw_lamp(e, &REGIONS[er], t, true);
     else if (e->kind == EK_ANCHOR) {
@@ -1748,6 +1776,7 @@ void view_draw(const sim *s, float t) {
       light(e->x, e->y, 3.5f, rgba(1, 0.9f, 0.6f, 1), 0.5f, false);
     }
   }
+  cw_r2d_set_z(Z_THINGS);
   draw_pickups(s, t, x0, x1, y0, y1);
   if (s->echo && s->echo_x > x0 - 2 && s->echo_x < x1 + 2 && s->echo_y > y0 - 3 && s->echo_y < y1 + 3) { /* your flame where you fell */
     float fl = 0.9f + 0.1f * sinf(t * 3), ey = s->echo_y - 1.0f + sinf(t * 2) * 0.1f;
@@ -1758,7 +1787,9 @@ void view_draw(const sim *s, float t) {
     light(s->echo_x, ey, 6, rgba(0.5f, 0.85f, 1, 1), 0.9f * fl, false);
   }
   shot_lights(s);
+  cw_r2d_set_z(0);
   cw_r2d_use_layer(L_ACTORS);
+  g_scarf_dye = sim_scarf_dye(s);
   if (showcase_mode()) draw_showcase(region, t);
   for (int i = 0; i < s->nen && !showcase_mode(); i++)
     if (s->en[i].alive) enemy_art(&s->en[i], region, t), VS.enemies++;

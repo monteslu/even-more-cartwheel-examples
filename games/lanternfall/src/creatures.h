@@ -10,6 +10,7 @@
 
 #define EN_KINDS_PAINTED EN_KINDS /* (the kinds painted; a kind added after them keeps its placeholder shapes until it is) */
 void creatures_init(void);
+extern int g_scarf_dye; /* the lamplighter's scarf: 0 its first colour, then the keepsakes' dyes (sim_scarf_dye) */
 /* into the current (lit) layer */
 void creature_enemy(const enemy *e, int region, float t);
 void creature_boss(const boss *b, int region, float t);

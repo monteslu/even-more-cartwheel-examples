@@ -29,7 +29,7 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
   each for a purpose:
   | purpose | rooms |
   |---|---|
-  | a view | the region's landmark (a beacon on a plinth, marked on the map) with its map stone by the door, on a way through |
+  | a view | the region's landmark (its beacon tower in the region's own building: a lighthouse, a great hollow tree, a crystal spire, a clockwork tower, a coral spire or a sky spire; marked on the map) with its map stone by the door, on a way through |
   | a reward in plain sight | a shelf six tiles up (the second jump), past an eleven-tile thorn pit under a low roof (the dash), on a sheer pillar (wall climbing), in a vault under a cracked lid (the plunge), behind a wall of deep water (the tide charm), on an island high over thorns under anchors (the grapple line) |
   | a challenge | a wall, then a thorn pit under a low roof (second jump and dash together); a spire to climb, then a leap over thorns |
   | a threat | an ambush: walkers on the floor, spitters on ledges, a moth, the reward past them |
@@ -139,7 +139,9 @@ inside, two waves of the region's guardians come for you, and the find is yours 
 cutting dash (the dash hurts what it passes and nothing touches you in it), the runner's stride (a held dash runs on
 as a sprint), ember harvest (kills fill energy), swift mend, updraft (a higher bounce), thorn ward (a blow taken bursts
 out), quick hand, twin spark, quake (the plunge's shock reaches twice as far), second wind (once a rest, a killing blow
-leaves a leaf). Relics past the eleventh give a leaf or a measure.
+leaves a leaf). A relic past the eleventh is a **keepsake** of the lamplighters: its card reads a line of their story
+(27 of them), and every third keepsake dyes the lamplighter's scarf a new colour (looks only; health and energy
+come from heart leaves and lantern oil alone).
 
 **A fall** leaves your lantern's flame at your last firm ground, holding a measure of your energy: go back and touch it
 to take the measure back (a second fall moves it).
@@ -158,7 +160,7 @@ warden's stagger and second phase, the first charm, the flame.
 
 Up beside a shrine rests there: full health, a save, and the shrine's waystone lit; the shrine's menu travels to any
 lit shrine. The save keeps abilities, finds, the walls and floors broken, the wardens fallen, the rooms seen, the finds
-seen, the map stones and tablets. Back opens the map, which fills in as you go: every room seen (and, faint, the rooms
+seen, the map stones and tablets. Back opens the map, a painted chart (aged vellum, a gold border, a compass rose, a wash of each known region's colour), which fills in as you go: every room seen (and, faint, the rooms
 of a region whose map stone you hold), its doors, a ring across each gate, each region's landmark and name, the
 shrines, the wardens, you, and the finds you have seen: a dot in a pulsing ring while not yet reached (a reward seen
 across a gap waits there for the ability that reaches it), a faint ring once taken. Finds never seen stay off the map.

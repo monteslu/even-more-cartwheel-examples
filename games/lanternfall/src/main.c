@@ -22,6 +22,7 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
+#include "cartwheel/render2d.h"
 #include "cartwheel/prompt.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/scene_file.h"
@@ -232,6 +233,7 @@ static void react(void) {
     case EV_PARRY: sfx_pitch(SFX_HIT, 0.5f, 1.8f), rumble(e->a, 0.1f, 0.6f, 50); break;
     case EV_BOUNCE: sfx_pitch(SFX_DJUMP, 0.45f, 1.25f), rumble(e->a, 0.15f, 0.3f, 50); break;
     case EV_ECHO: sfx_pitch(SFX_SAVE, 0.6f, e->a ? 1.2f : 0.7f); if (e->a) rumble_all(0.3f, 0.3f, 200); break;
+    case EV_KEEPSAKE: H.card_kind = CARD_KEEPSAKE, H.card_arg = e->a, H.card_dye = e->b, H.card_t = 6; break;
     case EV_CHARM:
       if (e->b == 0) H.card_kind = CARD_CHARM, H.card_arg = e->a, H.card_t = 6;
       else sfx(SFX_SAVE, 0.7f), rumble_all(0.6f, 0.2f, 300); /* (the second wind) */
@@ -346,6 +348,8 @@ static void render(void *u, double alpha) {
   G.snap = false;
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE || !G.in_match) view_tick(&S, sc == CW_SHELL_PLAY ? 1.0f / 60.0f : 0);
   view_draw(&S, t);
+  static cw_r2d_stats world_stats; /* (the bench: the world pass alone, before the HUD pass) */
+  world_stats = *cw_r2d_get_stats();
   bool show_hud = G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE);
 #ifdef LANTERNFALL_AUTOPILOT
   if (getenv("LANTERNFALL_NO_HUD")) show_hud = false;
@@ -367,6 +371,10 @@ static void render(void *u, double alpha) {
     for (int k = 0; k < np; k++)
       if (pst[k].ran) fprintf(stderr, " %s=%.3f/%.3f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
     fprintf(stderr, "\n");
+    const cw_r2d_stats *rs = &world_stats; /* (the stream: what the world pass asked of the renderer) */
+    fprintf(stderr, "bench_r2d draws=%u batches=%u vertices=%u commands=%u gpu_calls=%u lights=%u\n", rs->draw_calls, rs->batches, rs->vertices, rs->commands,
+            rs->gpu_calls, rs->lights);
+    if (getenv("LANTERNFALL_BENCH_DUMP")) cw_debug_dump_json(getenv("LANTERNFALL_BENCH_DUMP")); /* (with CW_R2D_TIMERS=1: each part's GPU time) */
     G.t_frame = 0, G.t_n = 0, G.t_gpu = 0;
   }
   cw_shell_draw();

@@ -1993,13 +1993,15 @@ static void paint_hero(int i) {
   el(0.18f, 0.12f, 0.06f, 0.035f, 0, &brass);
   H[0].lantern = done(0.18f, 0.04f, 2.5f);
   cv(0.66f, 0.2f);
-  pstyle sc = sty(0xe8c070, 0x7a5020, 0xfff0c0, 0.4f, TX_CLOTH, 0.02f, 0.7f);
+  pstyle sc = sty(0xf4ecdc, 0x8a8278, 0xffffff, 0.4f, TX_CLOTH, 0.02f, 0.7f); /* (undyed: the dye is the tint it is drawn with) */
   sc.ink = 1, sc.rim = 0.3f;
   float sv[8] = { 0.6f, 0.08f, 0.4f, 0.1f, 0.22f, 0.08f, 0.04f, 0.12f };
   stk(sv, 4, 0.05f, 0.03f, &sc);
   H[0].scarf = done(0.6f, 0.08f, 2);
 }
 
+int g_scarf_dye;
+static const uint32_t DYE[NDYES] = { 0xf0c070, 0xd8503c, 0x74b04e, 0x5a90e0, 0xe8c040, 0x3cbab0, 0xa070e0, 0xf08030, 0xf4f6fa, 0xf088a8 };
 static float hero_run[16], hero_swing[16], hero_swing_v[16];
 static cw_vec2 hero_tip[16]; /* (the lantern in the world, for the strike's trail) */ /* (per player; the showcase uses more slots) */
 void creature_hero(const player *p, int i, int region, float t) {
@@ -2030,7 +2032,7 @@ void creature_hero(const player *p, int i, int region, float t) {
   float sweep = 0.25f + sp * 0.55f + (p->state == PS_DASH ? 0.6f : 0) + sinf(t * 7 + ph * 2) * 0.06f, lift = air ? -p->vy * 0.012f : 0;
   cw_vec2 nk = rot2(0.02f, -0.62f, lean);
   put(&h->cape, nk.x - 0.05f, hipy + nk.y + 0.02f, sweep * 0.9f + lift, 1, 1 - lift * 0.3f);
-  put(&h->scarf, nk.x - 0.02f, hipy + nk.y + 0.05f, sweep * 0.5f - 0.2f + sinf(t * 9 + ph) * 0.12f, 1 + sp * 0.3f, 1);
+  putk(&h->scarf, nk.x - 0.02f, hipy + nk.y + 0.05f, sweep * 0.5f - 0.2f + sinf(t * 9 + ph) * 0.12f, 1 + sp * 0.3f, 1, pc_hex(DYE[g_scarf_dye % NDYES]));
   /* legs: the run cycle, tucked in the air, splayed when clinging */
   for (int k = 0; k < 2; k++) {
     float side = k ? 1.0f : -1.0f, a1, a2;

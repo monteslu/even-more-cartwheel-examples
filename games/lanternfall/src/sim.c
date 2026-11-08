@@ -14,7 +14,42 @@ const char *const CHARM_LINE[CH_KINDS] = { "your strike reaches further", "{dash
                                          "the mend takes half as long", "{attack} downward in the air bounces you higher", "a blow you take bursts out at all near",
                                          "your strikes come faster", "{shoot} sends the spark as two", "the plunge's shock reaches twice as far",
                                          "once a rest, a killing blow leaves you a leaf" };
+const char *const KEEPSAKE_LINE[NKEEPSAKE] = {
+  "a lamplighter's tally stick: a notch for every lamp lit, and the notches never end",
+  "a brass wick trimmer, worn bright where a thumb rested on it for forty years",
+  "a child's first lantern, no bigger than a fist, its glass painted with stars",
+  "a ledger of oil: every flask that came down the Rootway, signed for in a careful hand",
+  "a wick of braided hair, kept in a tin: someone's mother, someone's light",
+  "a map of the lamp rounds, the safe ways inked in gold and the bad ways in red",
+  "a ring of keys to doors that no longer stand",
+  "a pressed flower from the garden that grew under the great lamp",
+  "a glass bead from the Glasswater kilns, still warm when held to the cheek",
+  "a lamplighter's badge: a flame inside a ring, the enamel half gone",
+  "a letter never sent: the lamps are failing faster than we can climb to them",
+  "a cog from the clockwork that once raised the lamps at dusk by itself",
+  "a shell whistle the tide keepers blew when the water rose",
+  "a star chart scratched into slate, with one star circled again and again",
+  "a page of a hymn sung while the lamps were lit, the last verse torn away",
+  "a forge token, good for one hot meal at the Forge in its busy years",
+  "a glove stiff with frost: the Frostvault crews worked in pairs, and one came back",
+  "a seed of the Bloom, hard as stone, that may grow again when the light comes back",
+  "a carved lantern hook, the wood dark with handling",
+  "a list of names: the last lamplighters, each crossed out but one",
+  "a candle stub from the night the great lamp went dark",
+  "a warden's scale, shed long before it forgot what it guarded",
+  "a tin of lamp black, used to write the year over every door",
+  "a brass bell that rang the hours from the beacon towers",
+  "a drawing of the city lit end to end, done by a child from memory",
+  "a spool of fuse cord from the Sky Warden's eyrie",
+  "the last lamplighter's oath: keep one light burning, and the rest will follow it home" };
+const char *const DYE_NAME[NDYES] = { "", "ember red", "moss green", "glass blue", "brass gold", "tide teal", "starlight violet", "forge orange", "frost white", "bloom rose" };
 const char *const BOSS_NAME[NBOSSES] = { "THE MOSS WARDEN", "THE GLASS MANTIS", "THE BRASS SENTINEL", "THE TIDE SERPENT", "THE SKY WARDEN", "THE HEART OF THORNS" };
+
+int sim_keepsakes(const sim *s) { return s->relics > CH_KINDS ? s->relics - CH_KINDS : 0; }
+int sim_scarf_dye(const sim *s) {
+  int d = sim_keepsakes(s) / KEEP_PER_DYE;
+  return d < NDYES ? d : NDYES - 1;
+}
 
 /* rules a test can turn off (tools/rules.c --control): each check there must then fail */
 int g_rules_off;
@@ -973,17 +1008,19 @@ void sim_step(sim *s, const pinput in[MAXP]) {
         if (e->sub == PK_MAPSTONE && e->arg < 16) s->maps |= (uint16_t)(1u << e->arg);
         if (e->sub == PK_LORE && e->arg < NLORE) s->lore[e->arg >> 3] |= (uint8_t)(1 << (e->arg & 7));
         ev(s, EV_PICKUP, e->sub, e->arg, e->x, e->y);
-        if (e->sub == PK_RELIC) { /* a relic: the next charm (a new move); past the last, a leaf or a measure */
+        if (e->sub == PK_RELIC) { /* a relic: the next charm (a new move); past the last, a keepsake (a story line, a scarf dye) */
           int c = s->relics++;
           if (c < CH_KINDS && !(g_rules_off & RULE_CHARMS)) {
             s->charms |= CHARM_BIT(c);
             if (c == CH_SECONDWIND) for (int j = 0; j < MAXP; j++) s->p[j].second_wind = true;
             ev(s, EV_CHARM, c, 0, e->x, e->y);
-          } else
+          } else if (c >= CH_KINDS && (g_rules_off & RULE_KEEPSAKE)) /* (the control: the old rule, a leaf or a measure each) */
             for (int j = 0; j < MAXP; j++) {
               if (c & 1) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
               else s->p[j].hp_max++, s->p[j].hp = s->p[j].hp_max;
             }
+          else if (c >= CH_KINDS)
+            ev(s, EV_KEEPSAKE, c - CH_KINDS, (c - CH_KINDS + 1) % KEEP_PER_DYE == 0 ? sim_scarf_dye(s) : 0, e->x, e->y);
         }
       }
     }

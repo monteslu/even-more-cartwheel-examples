@@ -80,7 +80,12 @@
 - Checker: `CHECK_ALL=1` prints every blind drop; `CHECK_GATE_DEBUG=1` the move that crosses a leaking gate.
 - Soak: `LANTERNFALL_SOAK_TIMELINE=1` (gaps between meaningful events, empty minutes, when each ability came;
   `LANTERNFALL_SOAK_TIMELINE_ALL=1` every event), `LANTERNFALL_SOAK_GOALS=1` (route goals passed, finds not taken).
-- Placeholder art (for the art round): `draw_landmark`, `draw_tablet` in view.c; the map in hud.c.
+- Painted since (integration round): the landmarks (scenery.c `paint_landmarks`, one beacon tower per material), the
+  map stones and tablets (`paint_tablets`), the map's chart (`paint_map`, hud.c `draw_map`), and the ledge supports drawn
+  from the world's PR_SUPPORT props (`scenery_support`). `LANTERNFALL_PROPS_FLAT=1` still shows the old shapes.
+- Relics past the eleventh are keepsakes (sim.c, `KEEPSAKE_LINE`): a story line and every third a scarf dye.
+- Bench: `LANTERNFALL_BENCH_DUMP=<file>` with `CW_R2D_TIMERS=1` writes each render part's GPU time; `bench_r2d` prints
+  the world pass's draws and batches. The tiles layer draws in z bands (view.c `Z_*`) so each atlas array batches once.
 
 ## Debugging switches
 - Fast looks without the GPU lock: `node tests/lanternfall-look.mjs` (lavapipe, out/look-lanternfall/r<region>.png), or

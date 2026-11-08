@@ -19,4 +19,16 @@ bool scenery_prop(int sub, int arg, float x, float y, int region, float t);
  * ceiling ceil_* tiles up (0: none), else knotted roots */
 void scenery_ledge(int x0, int x1, int y, bool wall_l, bool wall_r, int ceil_l, int ceil_r, int material, cw_color tint);
 
+/* what holds a one-way ledge up, from a PR_SUPPORT prop at (x, y): hold HOLD_CEIL a chain down len tiles, HOLD_FLOOR a post up
+ * len tiles, HOLD_WALL_L / HOLD_WALL_R a bracket from that wall */
+void scenery_support(int hold, float x, float y, int len, cw_color tint);
+/* a region's landmark (its beacon tower, in the region's own building) standing at (x, y); the lamp's place for its light */
+bool scenery_landmark(int region, float x, float y, float t, float *lamp_x, float *lamp_y);
+/* a map stone (map) or a tablet of the story standing at (x, y): carved stone with a glowing inlay */
+bool scenery_tablet(bool map, float x, float y, float t);
+/* the landmark of a region drawn h high with its foot at (x, y) (the map) */
+bool scenery_landmark_icon(int region, float x, float y, float h, cw_color tint);
+/* the map's chart: painted vellum over the canvas (w x h, screen units), a compass rose in its top right corner */
+void scenery_map_paper(float w, float h, float a);
+
 #endif

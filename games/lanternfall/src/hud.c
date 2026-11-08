@@ -7,6 +7,7 @@
 
 #include "cartwheel/prompt.h"
 #include "hud.h"
+#include "scenery.h"
 #include "view.h"
 
 static cw_font F;
@@ -56,13 +57,14 @@ static bool seen_room(const sim *s, int r) { return (s->seen[r >> 3] >> (r & 7))
 /* a room is on the map once seen, or (faint) once its region's map stone is found */
 static bool mapped_room(const sim *s, int r) { return ((s->maps >> s->w->rooms[r].region) & 1) != 0; }
 
-/* the map: the rooms seen fill in as you go (the rooms of a region whose map stone you hold show faint before you
+/* the map, drawn as a painted chart (scenery.c: vellum, a gold border, a compass rose): each region you know a soft wash
+ * of its colour, its landmark drawn small where it stands; the rooms seen fill in as you go (the rooms of a region whose map stone you hold show faint before you
  * see them); doors; each region's landmark; shrines and wardens; the finds you have SEEN: a pulsing ring round a
  * dot while not yet reached (a reward seen across a gap waits there for the ability that reaches it), a faint ring
  * once taken; you */
 static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, float u) {
   const world *w = s->w;
-  cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(0.05f, 0.06f, 0.1f, 0.86f));
+  scenery_map_paper(cs.x, cs.y, 0.97f);
   /* the grid's used span */
   int gx0 = GW, gy0 = GH, gx1 = 0, gy1 = 0;
   for (int r = 0; r < NREGIONS; r++) {
@@ -77,6 +79,24 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
   float ox = (cs.x - cell * (float)(gx1 - gx0)) * 0.5f - (float)gx0 * cell, oy = top - (float)gy0 * cell;
   float th = cell * (1.0f / CELL_H); /* one tile in map units, vertically */
   float pulse = 0.5f + 0.5f * sinf(t * 5);
+  /* a wash of each known region's colour under its rooms, as watercolour on the chart */
+  for (int r = 0; r < NREGIONS; r++) {
+    int x0 = GW, y0 = GH, x1 = -1, y1 = -1;
+    for (int i = 0; i < w->nrooms; i++) {
+      const room *rm = &w->rooms[i];
+      if (rm->region != r || (!seen_room(s, i) && !mapped_room(s, i))) continue;
+      if (rm->x < x0) x0 = rm->x;
+      if (rm->y < y0) y0 = rm->y;
+      if (rm->x + rm->w > x1) x1 = rm->x + rm->w;
+      if (rm->y + rm->h > y1) y1 = rm->y + rm->h;
+    }
+    if (x1 < 0) continue;
+    for (int k = 0; k < 3; k++) { /* (three soft layers: a wash that fades out past the rooms) */
+      float pad = (float)(22 - 8 * k) * u;
+      cw_r2d_round_rect((cw_rect){ ox + (float)x0 * cell - pad, oy + (float)y0 * cell - pad, (float)(x1 - x0) * cell + pad * 2, (float)(y1 - y0) * cell + pad * 2 }, pad + cell * 0.4f, 10,
+                        hexa(REGIONS[r].top, 0.06f));
+    }
+  }
   for (int i = 0; i < w->nrooms; i++) {
     bool seen = seen_room(s, i);
     if (!seen && !mapped_room(s, i)) continue;
@@ -93,7 +113,7 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
       cw_r2d_circle_lines(m, cell * 0.2f, 2.5f * u, 10, gc);
       text(WORD[r->gate], m.x, m.y - cell * 0.2f - 26 * u, 22 * u, gc, CW_ALIGN_CENTER);
     }
-    if (i == s->room && (int)(t * 3) % 2) cw_r2d_rect(rc, rgba(1, 1, 1, 0.18f));
+    if (i == s->room) cw_r2d_rect(rc, rgba(1, 1, 1, 0.08f + 0.08f * (0.5f + 0.5f * sinf(t * 3)))); /* (the room you are in: a soft swell, never a blink) */
   }
   /* doors of seen rooms: gaps of light across the wall */
   for (int i = 0; i < w->ndoors; i++) {
@@ -109,11 +129,15 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     const ent *e = &w->ents[i];
     bool seen = seen_room(s, e->room);
     float x = ox + e->x / CELL_W * cell, y = oy + e->y * th;
-    if (ent_is_landmark(e) && (seen || mapped_room(s, e->room))) {
+    if (ent_is_landmark(e) && (seen || mapped_room(s, e->room))) { /* the region's own beacon tower, small, its lamp a dot of its accent */
       cw_color c = hexa(REGIONS[e->arg % NREGIONS].accent, seen ? 1 : 0.5f);
-      float r = cell * 0.26f;
-      cw_vec2 p[4] = { { x, y - r * 2.2f }, { x + r * 0.6f, y - r * 1.1f }, { x, y }, { x - r * 0.6f, y - r * 1.1f } };
-      cw_r2d_polygon(p, 4, c);
+      float hgt = cell * 0.62f;
+      if (!scenery_landmark_icon(e->arg % NREGIONS, x, y, hgt, rgba(1, 0.95f, 0.85f, seen ? 1 : 0.5f))) {
+        float r = cell * 0.26f;
+        cw_vec2 p[4] = { { x, y - r * 2.2f }, { x + r * 0.6f, y - r * 1.1f }, { x, y }, { x - r * 0.6f, y - r * 1.1f } };
+        cw_r2d_polygon(p, 4, c);
+      } else
+        cw_r2d_circle((cw_vec2){ x, y - hgt * 0.84f }, cell * 0.06f, 8, c);
     }
     if (!seen) continue;
     if (e->kind == EK_PICKUP) {
@@ -227,30 +251,41 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
     float y = cs.y * 0.62f;
     const char *title = h->card_kind >= PK_HEALTH && h->card_kind <= PK_LORE ? CARD_TITLE[h->card_kind] : "";
     if (h->card_kind == CARD_CHARM && h->card_arg >= 0 && h->card_arg < CH_KINDS) title = CHARM_NAME[h->card_arg];
+    if (h->card_kind == CARD_KEEPSAKE) title = "A KEEPSAKE";
+    char keepline[200];
+    if (h->card_kind == CARD_KEEPSAKE) {
+      if (h->card_dye > 0 && h->card_dye < NDYES) snprintf(keepline, sizeof keepline, "%s. Your scarf takes its dye: %s", KEEPSAKE_LINE[h->card_arg % NKEEPSAKE], DYE_NAME[h->card_dye]);
+      else snprintf(keepline, sizeof keepline, "%s", KEEPSAKE_LINE[h->card_arg % NKEEPSAKE]);
+    }
     if (h->card_kind == PK_ABILITY)
       for (int k = 0; k < NABILITIES; k++)
         if (h->card_arg == (1 << k)) title = ABILITY_NAME[k];
     char mapline[120];
     if (h->card_kind == PK_MAPSTONE) snprintf(mapline, sizeof mapline, "the rooms of %s are on your map", REGIONS[h->card_arg % NREGIONS].name);
-    const char *line = h->card_kind == CARD_CHARM ? CHARM_LINE[h->card_arg] : h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health"
+    const char *line = h->card_kind == CARD_KEEPSAKE ? keepline : h->card_kind == CARD_CHARM ? CHARM_LINE[h->card_arg] : h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health"
                        : h->card_kind == PK_ENERGY ? "one more measure of energy" : h->card_kind == PK_MAPSTONE ? mapline : h->card_kind == PK_LORE ? LORE[h->card_arg % NLORE]
                        : "a relic of the old city";
-    /* a long line in two, at the space nearest its middle */
-    char l1[200], l2[200];
-    snprintf(l1, sizeof l1, "%s", line);
-    l2[0] = 0;
-    int n = (int)strlen(l1);
-    if (n > 64) {
-      int cut = -1;
-      for (int i = 0; i < n; i++)
-        if (l1[i] == ' ' && (cut < 0 || abs(i - n / 2) < abs(cut - n / 2))) cut = i;
-      if (cut > 0) snprintf(l2, sizeof l2, "%s", l1 + cut + 1), l1[cut] = 0;
+    /* a long line in two or three, at the spaces nearest the even cuts */
+    char ls[3][240];
+    int n = (int)strlen(line), nl = n > 128 ? 3 : n > 64 ? 2 : 1, at = 0;
+    for (int k = 0; k < nl; k++) {
+      int cut = n;
+      if (k < nl - 1) {
+        int want = n * (k + 1) / nl;
+        cut = -1;
+        for (int i = at; i < n; i++)
+          if (line[i] == ' ' && (cut < 0 || abs(i - want) < abs(cut - want))) cut = i;
+        if (cut < 0) cut = n;
+      }
+      snprintf(ls[k], sizeof ls[k], "%.*s", cut - at, line + at);
+      at = cut < n ? cut + 1 : n;
     }
-    float boxh = l2[0] ? 210 * u : 170 * u;
+    for (int k = nl; k < 3; k++) ls[k][0] = 0;
+    float boxh = (130 + 40 * (float)nl) * u;
     cw_r2d_round_rect((cw_rect){ cs.x * 0.2f, y - 16 * u, cs.x * 0.6f, boxh }, 18 * u, 6, rgba(0.06f, 0.07f, 0.12f, 0.78f * a));
     text(title, cs.x * 0.5f, y, 56 * u, rgba(1, 0.88f, 0.5f, a), CW_ALIGN_CENTER);
-    for (int k = 0; k < 2; k++) {
-      const char *ln = k ? l2 : l1;
+    for (int k = 0; k < 3; k++) {
+      const char *ln = ls[k];
       if (!ln[0]) continue;
       cw_vec2 sz = cw_prompt_text_size(F, ln, -1, 30 * u);
       cw_prompt_text(F, ln, -1, (cw_vec2){ cs.x * 0.5f - sz.x * 0.5f, y + (80 + 40 * (float)k) * u }, 30 * u, rgba(1, 1, 1, a), CW_ALIGN_LEFT);
