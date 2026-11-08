@@ -12,10 +12,15 @@ three levels each: chain lightning, freeze fields, beams and mortars. 30 maps in
 | hop between your pads | d-pad or left stick | W A S D or the arrows |
 | build on an empty pad | the four face buttons, as a diamond: north bolt, west frost, east beam, south mortar | I J L K |
 | on your tower: upgrade / aim / sell (hold) | south / north / west | K or Space / I / J |
+| on your tower at its second level: the third level's other branch | east | L |
 | call the next wave early | a shoulder | Q |
+| the storm: lightning round your cursor (every 30 s) | a trigger | E |
 | pause | Start | Escape |
 
-The build diamond round your cursor shows which button builds what and its price. Every kill pays the whole team
+The build diamond round your cursor shows which button builds what and its price. The third level comes in two
+branches, each tower's choice for good (bolt storm or arc, frost shatter or blizzard, beam lance or prism, mortar
+cluster or napalm), and the towers help each other: blasts shatter frozen creeps, beams heat faster on slowed ones,
+lightning leaps farther off chilled ones. Every kill pays the whole team
 alike, and every wave pays everyone; calling a wave early pays a gold for every second left on its clock. A creep that
 reaches the core costs it health; hold the core through the last wave to take the map.
 
@@ -50,7 +55,14 @@ reaches the core costs it health; hold the core through the last wave to take th
 - `node tests/towers-look.mjs <frames>`: the look check (value, contrast, accent and smooth edges; frames as
   `TOWERS_NO_HUD=1 TOWERS_NO_CURSORS=1 TOWERS_WAVE=14`, masks with `TOWERS_LOOK_MASK=1`).
 - `node tests/towers-perf.mjs`: the perf gate (GPU time a frame at 1920x1080 High on GL and WebGPU, with controls).
-- `node tests/towers-soak.mjs`: 30 game minutes of bots at one to four players with checks every tick.
+- `node tests/towers-soak.mjs`: 30 game minutes of bots at one to four players with checks every tick
+  (`TOWERS_BOT_BRANCH=0|1|2`: the bots take the A branch, the B branch, or each in turn).
+- `node tests/towers-flash.mjs`: the photosensitivity check (no strobe: WCAG 2.3.1's general and red flash
+  thresholds over every tick of the busiest scenes, and no small flicker either; controls: the old flickering effects,
+  `TOWERS_STROBE_CONTROL=1`, and a 10 Hz blink).
+- `node tests/towers-crowd.mjs`: a wave-18 crowd stands off its ground and parts into bodies on every theme
+  (control: the old dark ink on the snowfields, `TOWERS_OLD_INK=1`).
+- `node tests/towers-shots.mjs <dir>`: the look check's frames (`--mask` for the edge masks).
 - `towers_soak --clear <map.cwtd>`: two bots play one map (the map check's clear run).
 - Development switches (native): `TOWERS_MAP=n` starts on map n, `TOWERS_PLAYERS=n` the auto build's players,
   `TOWERS_WAVE=n` starts at wave n with towers on every pad, `TOWERS_CROWD=n` keeps n creeps on the paths,

@@ -34,6 +34,11 @@ int sim_kind_by_name(const char *name) {
 }
 static const char *const TOWER_NAME[TK_KINDS] = { "BOLT", "FROST", "BEAM", "MORTAR" };
 const char *sim_tower_name(int k) { return TOWER_NAME[(unsigned)k % TK_KINDS]; }
+static const char *const BRANCH_NAME[TK_KINDS][2] = { { "STORM", "ARC" }, { "SHATTER", "BLIZZARD" }, { "LANCE", "PRISM" }, { "CLUSTER", "NAPALM" } };
+static const char *const BRANCH_DOES[TK_KINDS][2] = { { "eight leaps", "stuns all it strikes" }, { "every third pulse freezes", "wide, deep cold" },
+                                                      { "pierces the line", "splits on to two more" }, { "four bomblets", "the path burns" } };
+const char *sim_branch_name(int kind, int branch) { return branch == BR_B ? BRANCH_NAME[(unsigned)kind % TK_KINDS][1] : BRANCH_NAME[(unsigned)kind % TK_KINDS][0]; }
+const char *sim_branch_does(int kind, int branch) { return branch == BR_B ? BRANCH_DOES[(unsigned)kind % TK_KINDS][1] : BRANCH_DOES[(unsigned)kind % TK_KINDS][0]; }
 static const char *const AIM_NAME[AIM_KINDS] = { "first", "strongest", "last" };
 const char *sim_aim_name(int a) { return AIM_NAME[(unsigned)a % AIM_KINDS]; }
 
@@ -53,6 +58,27 @@ static const float SPLASH[3] = { 2.2f, 2.6f, 3.0f };
 #define MORTAR_T 70
 #define BOLT_HOP 3.6f
 #define SELL_HOLD 36
+/* the third level's B branches (DESIGN.md, towers): arc (3 leaps, harder strikes, each creep struck stands stunned),
+ * blizzard (no freeze: a wider, deeper, longer cold), prism (the beam splits from its creep on to two more near it),
+ * napalm (no bomblets: the blast leaves the path burning) */
+#define ARC_LEAPS 3
+#define ARC_DMG 52.0f
+#define ARC_STUN 20
+#define BLIZZARD_RANGE 9.0f
+#define BLIZZARD_SLOW 68
+#define BLIZZARD_DMG 7.0f
+#define PRISM_MAIN 0.75f
+#define PRISM_SPLIT 0.5f
+#define PRISM_REACH 3.5f
+#define NAPALM_R 2.6f
+#define NAPALM_DPS 26.0f
+#define NAPALM_T 180
+/* synergies (DESIGN.md, towers): a mixed defence beats four of one kind. Blasts and fire hit a frozen or stunned creep
+ * half again as hard (it shatters); a beam heats twice as fast on a slowed creep; lightning leaps farther off a chilled
+ * one */
+#define SHATTER_K 1.5f
+#define CHILL_HOP 4.8f
+float sim_tower_reach(const tower *t) { return t->kind == TK_FROST && t->level >= 3 && t->branch == BR_B ? BLIZZARD_RANGE : sim_tower_range(t->kind, t->level); }
 
 /* health, speed (m/s), bounty, what a leak costs the core, armour (taken off every hit but the beam's), crowd radius */
 typedef struct ckind { float hp, speed; int bounty, leak; float armor, radius; } ckind;
@@ -297,19 +323,24 @@ static void tower_bolt(sim *s, int slot, tower *t) {
   t->fired++;
   s->zaps_total++;
   static int hit[16];
-  int nh = 0, cur = first;
-  float px = t->x, py = t->y, dmg = ts->dmg[L];
-  for (int hop = 0; hop <= ts->extra[L] && cur >= 0; hop++) {
+  bool arc = t->level >= 3 && t->branch == BR_B;
+  int nh = 0, cur = first, leaps = arc ? ARC_LEAPS : ts->extra[L];
+  float px = t->x, py = t->y, dmg = arc ? ARC_DMG : ts->dmg[L];
+  for (int hop = 0; hop <= leaps && cur >= 0; hop++) {
     creep *e = &s->e[cur];
-    float ex = e->x, ey = e->y;
+    float ex = e->x, ey = e->y, hop_r = e->slow_t > 0 ? CHILL_HOP : BOLT_HOP; /* (read before the strike: it may die) */
     ev(s, EV_ZAP, px, py, ex, ey, t->level, hop);
     hit[nh++] = cur;
+    if (arc && !e->boss && e->kind != CK_SHADE) {
+      if (e->stun <= 0) ev(s, EV_STUN, ex, ey, 0, 0, e->kind, 0);
+      e->stun = ARC_STUN;
+    }
     damage(s, cur, dmg * (e->kind == CK_SHADE ? 1.5f : 1.0f), slot, false);
     dmg *= 0.86f;
     px = ex, py = ey;
     /* the next: the nearest creep within a hop not struck yet */
     static int buf[512];
-    int n = creeps_near(s, px, py, BOLT_HOP, buf, 512), nx = -1;
+    int n = creeps_near(s, px, py, hop_r, buf, 512), nx = -1;
     float bd = 1e9f;
     for (int k = 0; k < n; k++) {
       bool done = false;
@@ -325,17 +356,18 @@ static void tower_bolt(sim *s, int slot, tower *t) {
 static void tower_frost(sim *s, int slot, tower *t) {
   const tower_stats *ts = &TOWER[TK_FROST];
   int L = t->level - 1;
-  float r = ts->range[L];
+  bool blizzard = t->level >= 3 && t->branch == BR_B;
+  float r = sim_tower_reach(t);
   static int buf[MAXE];
   int n = creeps_near(s, t->x, t->y, r, buf, MAXE);
   if (!n) return;
   t->cd = ts->period[L];
   t->fired++, t->pulses++;
   s->frost_total++;
-  bool freeze = t->level >= 3 && t->pulses % 3 == 0;
-  ev(s, EV_FROST, t->x, t->y, r, 0, t->level, freeze);
-  float k = (float)ts->extra[L] / 100.0f;
-  int dur = 120 + 30 * L;
+  bool freeze = t->level >= 3 && !blizzard && t->pulses % 3 == 0;
+  ev(s, EV_FROST, t->x, t->y, r, blizzard ? 1.0f : 0.0f, t->level, freeze);
+  float k = (float)(blizzard ? BLIZZARD_SLOW : ts->extra[L]) / 100.0f;
+  int dur = blizzard ? 170 : 120 + 30 * L;
   for (int j = 0; j < n; j++) {
     creep *e = &s->e[buf[j]];
     if (!e->alive) continue;
@@ -344,7 +376,7 @@ static void tower_frost(sim *s, int slot, tower *t) {
       if (!e->frozen) ev(s, EV_FREEZE, e->x, e->y, 0, 0, e->kind, 0);
       e->frozen = 45;
     }
-    damage(s, buf[j], ts->dmg[L], slot, false);
+    damage(s, buf[j], blizzard ? BLIZZARD_DMG : ts->dmg[L], slot, false);
   }
 }
 
@@ -359,17 +391,41 @@ static void tower_beam(sim *s, int slot, tower *t) {
   }
   if (t->tgt < 0) {
     t->tgt = pick_target(s, t, r, 0);
-    t->beam_t = 0;
+    t->beam_t = 0, t->tgt2[0] = t->tgt2[1] = -1;
     if (t->tgt < 0) { t->beam_k = 1; return; }
     ev(s, EV_BEAM_ON, t->x, t->y, s->e[t->tgt].x, s->e[t->tgt].y, t->level, slot);
   }
   creep *e = &s->e[t->tgt];
-  t->beam_t++;
+  t->beam_t += e->slow_t > 0 ? 2 : 1;
   t->beam_k = 1.0f + 2.0f * CW_MIN((float)t->beam_t / 180.0f, 1.0f);
   float want = cw_atan2(e->y - t->y, e->x - t->x);
   t->yaw = want;
   float dps = ts->dmg[L] * t->beam_k / TICK;
-  if (ts->extra[L]) { /* it pierces: everything on the line to the edge of its range takes half */
+  bool prism = t->level >= 3 && t->branch == BR_B;
+  if (prism) { /* it splits at its creep on to two others within reach of it: each ray holds its creep while it can */
+    for (int q = 0; q < 2; q++) {
+      int o = t->tgt2[q];
+      float dx = o >= 0 ? s->e[o].x - e->x : 0, dy = o >= 0 ? s->e[o].y - e->y : 0;
+      if (o < 0 || o == t->tgt || !s->e[o].alive || dx * dx + dy * dy > PRISM_REACH * PRISM_REACH || (q == 1 && o == t->tgt2[0])) t->tgt2[q] = -1;
+    }
+    if (t->tgt2[0] < 0 || t->tgt2[1] < 0) {
+      static int buf[256];
+      int n = creeps_near(s, e->x, e->y, PRISM_REACH, buf, 256);
+      for (int q = 0; q < 2; q++) {
+        if (t->tgt2[q] >= 0) continue;
+        float bd = 1e9f;
+        for (int k = 0; k < n; k++) {
+          if (buf[k] == t->tgt || buf[k] == t->tgt2[0] || buf[k] == t->tgt2[1]) continue;
+          float dx = s->e[buf[k]].x - e->x, dy = s->e[buf[k]].y - e->y, d = dx * dx + dy * dy;
+          if (d < bd) bd = d, t->tgt2[q] = buf[k];
+        }
+      }
+    }
+    for (int k = 0; k < 2; k++)
+      if (t->tgt2[k] >= 0) damage(s, t->tgt2[k], dps * PRISM_SPLIT, slot, true);
+    dps *= PRISM_MAIN;
+    if (!e->alive) { t->tgt = -1; return; }
+  } else if (ts->extra[L]) { /* it pierces: everything on the line to the edge of its range takes half */
     float dx = e->x - t->x, dy = e->y - t->y, l = sqrtf(dx * dx + dy * dy) + 1e-4f;
     dx /= l, dy /= l;
     static int buf[MAXE];
@@ -389,7 +445,7 @@ static void tower_beam(sim *s, int slot, tower *t) {
 static void fire_shell(sim *s, int slot, tower *t, float x0, float y0, float tx, float ty, float dmg, float r, int T, int level) {
   for (int k = 0; k < MAXSH; k++)
     if (!s->sh[k].alive) {
-      s->sh[k] = (shell){ true, (uint8_t)slot, t->owner, (uint8_t)level, x0, y0, tx, ty, dmg, r, 0, T };
+      s->sh[k] = (shell){ true, (uint8_t)slot, t->owner, (uint8_t)level, level >= 3 ? t->branch : 0, x0, y0, tx, ty, dmg, r, 0, T };
       return;
     }
 }
@@ -431,16 +487,38 @@ static void shells_step(sim *s) {
     for (int j = 0; j < n; j++) {
       const creep *e = &s->e[buf[j]];
       float d = sqrtf((e->x - sh->tx) * (e->x - sh->tx) + (e->y - sh->ty) * (e->y - sh->ty));
-      damage(s, buf[j], sh->dmg * (1.0f - 0.5f * CW_MIN(d / sh->r, 1.0f)), sh->slot, false);
+      float k = e->frozen > 0 || e->stun > 0 ? SHATTER_K : 1.0f;
+      if (k > 1 && e->hp <= sh->dmg * k) ev(s, EV_FREEZE, e->x, e->y, 0, 0, e->kind, 1); /* (shards: it shatters) */
+      damage(s, buf[j], k * sh->dmg * (1.0f - 0.5f * CW_MIN(d / sh->r, 1.0f)), sh->slot, false);
     }
     tower *t = &s->tw[sh->slot];
-    if (sh->r > 2.0f && t->alive && TOWER[TK_MORTAR].extra[CW_CLAMP(sh->level, 1, 3) - 1] > 0) { /* the cluster: bomblets round the blast */
+    if (sh->level >= 3 && sh->branch == BR_B) { /* napalm: the path burns where it lands */
+      for (int k2 = 0; k2 < MAXFIRE; k2++)
+        if (!s->fire[k2].alive) {
+          s->fire[k2] = (fire){ true, sh->slot, sh->tx, sh->ty, NAPALM_R, NAPALM_DPS, 0, NAPALM_T };
+          ev(s, EV_FIRE, sh->tx, sh->ty, NAPALM_R, (float)NAPALM_T, sh->level, sh->slot);
+          break;
+        }
+    } else if (sh->r > 2.0f && t->alive && TOWER[TK_MORTAR].extra[CW_CLAMP(sh->level, 1, 3) - 1] > 0) { /* the cluster: bomblets round the blast */
       int nb = TOWER[TK_MORTAR].extra[sh->level - 1];
       for (int b = 0; b < nb; b++) {
         float a = (float)b * 6.2831853f / (float)nb + (float)(s->tick % 7) * 0.3f, d = sh->r * 0.9f;
         fire_shell(s, sh->slot, t, sh->tx, sh->ty, sh->tx + cw_cos(a) * d, sh->ty + cw_sin(a) * d, sh->dmg * 0.4f, 1.6f, 16 + b * 3, 1);
       }
     }
+  }
+}
+
+/* napalm: each fire burns what stands in it (every 6 ticks, a tenth of a second's worth), then dies */
+static void fires_step(sim *s) {
+  for (int k = 0; k < MAXFIRE; k++) {
+    fire *f = &s->fire[k];
+    if (!f->alive) continue;
+    if (++f->t >= f->T) { f->alive = false; continue; }
+    if (f->t % 6) continue;
+    static int buf[MAXE];
+    int n = creeps_near(s, f->x, f->y, f->r, buf, MAXE);
+    for (int j = 0; j < n; j++) damage(s, buf[j], f->dps * 6.0f / TICK * (s->e[buf[j]].frozen > 0 || s->e[buf[j]].stun > 0 ? SHATTER_K : 1.0f), f->slot, true);
   }
 }
 
@@ -506,15 +584,39 @@ static void build(sim *s, int i, int slot, int kind) {
   float x = mp_wx(&s->m, s->m.slot[slot].x), y = mp_wz(&s->m, s->m.slot[slot].y);
   if (p->gold < cost) { ev(s, EV_NOGOLD, x, y, 0, 0, i, kind); return; }
   p->gold -= cost, p->spent += cost, p->built++;
-  *t = (tower){ .alive = true, .kind = (uint8_t)kind, .level = 1, .owner = (uint8_t)i, .x = x, .y = y, .tgt = -1, .spent = cost, .beam_k = 1, .cd = 20 };
+  *t = (tower){ .alive = true, .kind = (uint8_t)kind, .level = 1, .owner = (uint8_t)i, .x = x, .y = y, .tgt = -1, .tgt2 = { -1, -1 }, .spent = cost, .beam_k = 1, .cd = 20 };
   t->yaw = cw_atan2(s->core_y - y, s->core_x - x);
   s->built_total++;
   ev(s, EV_BUILD, x, y, 0, 0, kind, i);
 }
 
+float sim_power_damage(int wave) { return 60.0f + 9.0f * (float)CW_MAX(wave - 1, 0); }
+/* the storm: lightning down on everything round the cursor's pad (bosses take it but are never stunned) */
+static void power(sim *s, int i) {
+  player *p = &s->p[i];
+  if (p->power_cd > 0 || p->slot < 0) return;
+  float x = mp_wx(&s->m, s->m.slot[p->slot].x), y = mp_wz(&s->m, s->m.slot[p->slot].y);
+  static int buf[MAXE];
+  int n = creeps_near(s, x, y, POWER_R, buf, MAXE);
+  p->power_cd = POWER_CD;
+  ev(s, EV_POWER, x, y, POWER_R, 0, i, (int)CW_MIN(n, 255));
+  float dmg = sim_power_damage(s->wave);
+  int k0 = s->kills;
+  for (int j = 0; j < n; j++) {
+    creep *e = &s->e[buf[j]];
+    if (!e->alive) continue;
+    if (j < 14) ev(s, EV_ZAP, x, y, e->x, e->y, 3, 200); /* (b 200: a bolt from the sky) */
+    if (!e->boss) e->stun = CW_MAX(e->stun, POWER_STUN);
+    damage(s, buf[j], dmg, -1, false);
+  }
+  p->kills += s->kills - k0; /* (the storm's kills are the player's) */
+}
+
 static void player_step(sim *s, int i, const input *in) {
   player *p = &s->p[i];
   if (!p->active) return;
+  if (p->power_cd > 0) p->power_cd--;
+  if (in->power && s->state == ST_PLAY) power(s, i);
   if (!sim_slot_mine(s, i, p->slot)) p->slot = nearest_mine(s, i, p->slot >= 0 ? mp_wx(&s->m, s->m.slot[p->slot].x) : 0, p->slot >= 0 ? mp_wz(&s->m, s->m.slot[p->slot].y) : 0);
   if (p->slot < 0) return;
   /* the hop: on a press, then again every 9 ticks after 18 held */
@@ -531,10 +633,12 @@ static void player_step(sim *s, int i, const input *in) {
       if (in->act[a]) { build(s, i, slot, a); break; } /* the diamond: A_N bolt, A_W frost, A_E beam, A_S mortar (the TK_ order) */
     return;
   }
-  if (in->act[A_S] && t->level < 3) { /* upgrade */
+  bool branch_b = in->act[A_E] && t->level == 2;
+  if ((in->act[A_S] || branch_b) && t->level < 3) { /* upgrade (to the third level: south A, east B) */
     int cost = sim_tower_cost(t->kind, t->level + 1);
     if (p->gold >= cost) {
       p->gold -= cost, p->spent += cost, t->spent += cost, t->level++;
+      if (t->level == 3) t->branch = branch_b ? BR_B : BR_A;
       s->upgrades_total++;
       ev(s, EV_UPGRADE, t->x, t->y, 0, 0, t->kind, t->level);
     } else
@@ -665,6 +769,7 @@ static void creeps_step(sim *s) {
     float sp = e->speed;
     if (e->slow_t > 0) e->slow_t--, sp *= 1.0f - e->slow_k;
     if (e->frozen > 0) e->frozen--, sp = 0;
+    if (e->stun > 0) e->stun--, sp = 0;
     if (e->age < 15) sp *= 0.6f;
     cw_crowd_set_velocity(s->crowd, e->agent, (t3_vec3){ vx * sp, 0, vy * sp });
     if (e->flash > 0) e->flash--;
@@ -751,6 +856,7 @@ void sim_map_start(sim *s, const tdmap *m) {
   memset(s->tw, 0, sizeof s->tw);
   memset(s->e, 0, sizeof s->e);
   memset(s->sh, 0, sizeof s->sh);
+  memset(s->fire, 0, sizeof s->fire);
   memset(s->grp, 0, sizeof s->grp);
   memset(s->slot_at, 0, sizeof s->slot_at);
   s->nenemies = 0, s->kills = 0, s->leaks = 0, s->wave = 0, s->core_hp = CORE_HP, s->pot = 0;
@@ -799,7 +905,8 @@ static void hash_state(sim *s) {
   uint32_t h = 2166136261u;
 #define HMIX(v) do { uint32_t _v; float _f = (float)(v); memcpy(&_v, &_f, 4); h = (h ^ _v) * 16777619u; } while (0)
   for (int i = 0; i < MAXP; i++) { HMIX(s->p[i].gold); HMIX(s->p[i].slot); }
-  for (int k = 0; k < s->m.nslot; k++) if (s->tw[k].alive) { HMIX(s->tw[k].kind); HMIX(s->tw[k].level); HMIX(s->tw[k].dmg); }
+  for (int k = 0; k < s->m.nslot; k++) if (s->tw[k].alive) { HMIX(s->tw[k].kind); HMIX(s->tw[k].level); HMIX(s->tw[k].dmg); if (s->tw[k].branch == BR_B) HMIX(BR_B); }
+  /* (a B branch mixes in; A plays exactly as the third level always has, so runs pinned before the branches stay pinned) */
   HMIX(s->nenemies); HMIX(s->kills); HMIX(s->core_hp); HMIX(s->wave); HMIX(s->tick);
   for (int i = 0; i < MAXE; i += 7) if (s->e[i].alive) { HMIX(s->e[i].x); HMIX(s->e[i].y); HMIX(s->e[i].hp); }
   s->hash = h;
@@ -821,6 +928,7 @@ void sim_step(sim *s, const input in[MAXP]) {
   { CW_PROFILE_SCOPE("towers.creeps"); creeps_step(s); }
   { CW_PROFILE_SCOPE("towers.towers"); towers_step(s); }
   shells_step(s);
+  fires_step(s);
   if (s->nenemies > s->most_alive) s->most_alive = s->nenemies;
   { /* the bounties, shared: each player an equal part, the remainder kept for the next */
     int n = 0;

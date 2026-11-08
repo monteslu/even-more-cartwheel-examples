@@ -36,6 +36,7 @@ static const t3_mat4 ZERO;
 
 typedef struct kindv { mb_chr c; int nwalk, natk; t3_instanced_mesh *im[MB_MAXF], *edge[MB_MAXF]; float r; t3_material *edge_mat; } kindv;
 typedef struct partv { t3_instanced_mesh *surf[3], *glow[3], *trim[3]; int n; } partv; /* a model by level (frame) */
+typedef struct beamv { int tgt, ray[2]; float on, w, x, z, g, gw, gx, gz, ray_in[2]; t3_vec3 a, b, ga, gb; } beamv;
 
 static struct {
   cw_node root;
@@ -54,6 +55,9 @@ static struct {
   t3_instanced_mesh *portal, *portal_glow, *shell, *shell_glow;
   t3_instanced_mesh *beam_core, *beam_glow, *bolt_core, *bolt_glow, *column;
   t3_instanced_mesh *ring;      /* flat rings on the ground: the cursors, the ranges */
+  t3_instanced_mesh *halo;      /* a tower's level at a glance: glowing rings round it (one at II, two and a crown at III) */
+  uint8_t lvl_seen[MAXT];       /* each slot's tower level as last drawn, and frames since it rose (the upgrade's lift) */
+  int up_t[MAXT];
   t3_instanced_mesh *marker;    /* the cursors' markers: a bobbing diamond over the slot */
   t3_instanced_mesh *glint;     /* the pools' surface: glints of the sky on the water, bubbles of light on the lava */
   float glint_c[GLINT_C][3];    /* where they may show: points on the pools (x, z, how deep) */
@@ -64,6 +68,13 @@ static struct {
   t3_vec3 eye, at;
   float aspect, dist;
   cw_node core_light, portal_light[MP_MAXSPAWN], beam_light[8];
+  float hit[MAXE];             /* each creep's hit glow, eased (render only) */
+  float gate_k[MP_MAXSPAWN];   /* each gate's glow, eased toward live or quiet */
+  float core_hurt, core_ph;    /* the core's health as shown (eased) and its throb's phase */
+  /* each beam: how far it is on (eased), where it was last drawn, and the ghost of the last one fading where it was 
+   * when it let go */
+  beamv beam[MAXT];
+  int beam_light_slot[8]; /* the beam each beam light serves (-1 free) */
 } V;
 
 float g_cam_k = 1.0f, g_cam_x, g_cam_z; /* development and key art: a closer camera over another point */
@@ -259,7 +270,7 @@ static void kind_load(int k) {
     e->mesh.base.render_order = 1;
     kv->edge[f] = e;
   }
-  kv->edge_mat = em;
+  kv->edge_mat = kv->edge[0] ? em : NULL; /* (kept only while an edge mesh holds it: the swarm has none, and its material is freed below) */
   t3_release(em), t3_release(m);
 }
 
@@ -347,8 +358,8 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       t3_geometry *g = t3_cylinder_geometry_new(1, 1, 1, 8, 1, true);
       t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0.5f, 1 } });
       geo_colored(g, 1, 1, 1);
-      V.beam_core = imesh("BeamCore", t3_retain(g), mat_add(), MAXT);
-      V.beam_glow = imesh("BeamGlow", g, mat_add(), MAXT);
+      V.beam_core = imesh("BeamCore", t3_retain(g), mat_add(), MAXT * 4); /* (a beam and the ghost of the last fading out) */
+      V.beam_glow = imesh("BeamGlow", g, mat_add(), MAXT * 4);
       V.beam_core->mesh.base.render_order = 6, V.beam_glow->mesh.base.render_order = 6;
     }
     { /* lightning: thin boxes along each jagged segment */
@@ -378,6 +389,11 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       m->depth_test = false;
       V.ring = imesh("Rings", geo_colored(g, 1, 1, 1), m, 64);
       V.ring->mesh.base.render_order = 10;
+    }
+    { /* the level halos: a thin glowing torus, laid flat */
+      t3_geometry *g = t3_torus_geometry_new(1.0f, 0.14f, 6, 32, 6.2831853f); /* (a tube three pixels thick: a thinner one crawls as it aliases) */
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+      V.halo = imesh("LevelHalos", geo_colored(g, 1, 1, 1), mat_glow(), MAXT * 3);
     }
     { /* a cursor's marker: a squat diamond (an octahedron) floating over its slot */
       t3_geometry *g = t3_octahedron_geometry_new(0.42f, 0);
@@ -440,6 +456,21 @@ void view_map(const sim *s) {
       float x = mp_wx(&V.m, f->x - 0.5f) + (h01((uint32_t)k, (uint32_t)t * 2) - 0.5f) * 2 * f->r * MP_TILE, z = mp_wz(&V.m, f->y - 0.5f) + (h01((uint32_t)k + 77, (uint32_t)t * 2 + 1) - 0.5f) * 2 * f->r * MP_TILE;
       float d = mapbuild_pool_deep(&V.m, x, z);
       if (d > 0.15f) V.glint_c[V.nglint_c][0] = x, V.glint_c[V.nglint_c][1] = z, V.glint_c[V.nglint_c++][2] = d;
+    }
+  }
+  for (int k = 0; k < MAXT; k++) V.beam[k] = (beamv){ .tgt = -1, .ray = { -1, -1 } };
+  for (int i = 0; i < 8; i++) V.beam_light_slot[i] = -1;
+  memset(V.hit, 0, sizeof V.hit);
+  memset(V.lvl_seen, 0, sizeof V.lvl_seen);
+  for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
+  { /* the crowd's edge in the value opposite the path it walks: dark ink on the pale and middling paths, a pale rim of
+     * the kind's hue on the snowfields' dark frozen earth, so a late crowd parts into bodies on every theme */
+    bool dark = V.theme == MP_THEME_SNOW && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
+    for (int k = 0; k < CK_KINDS; k++) {
+      if (!V.k[k].edge_mat) continue;
+      t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
+      V.k[k].edge_mat->color = dark ? (t3_color){ kc.r * 0.3f + 0.22f, kc.g * 0.3f + 0.22f, kc.b * 0.3f + 0.22f }
+                                    : (t3_color){ kc.r * 0.05f + 0.012f, kc.g * 0.05f + 0.012f, kc.b * 0.05f + 0.016f };
     }
   }
   V.have_map = true;
@@ -556,14 +587,44 @@ static void sync_creeps(const sim *s, float time) {
     float lm = CW_MAX(gl.r, CW_MAX(gl.g, gl.b)), lk = lm > 1.4f ? 1.4f / lm : 1.0f;
     const float *kb = KIND_BODY[e->kind];
     t3_color c = { gl.r * lk * kb[0], gl.g * lk * kb[1], gl.b * lk * kb[2] };
-    if (e->flash > 0) c = (t3_color){ 3.5f, 3.0f, 2.6f };
+    if (g_strobe_control && e->flash > 0) c = (t3_color){ 3.5f, 3.0f, 2.6f }; /* (the control: a white pop on every hit) */
     else if (e->frozen > 0) c = (t3_color){ 1.4f, 1.9f, 2.6f };
+    else if (e->stun > 0) c = (t3_color){ c.r * 0.5f + 1.1f, c.g * 0.5f + 0.9f, c.b * 0.5f + 1.6f }; /* stunned by an arc: lit violet-white */
     else if (e->slow_t > 0) c.r *= 0.6f, c.g *= 0.9f, c.b *= 1.7f;
-    if (e->boss && e->flash <= 0) c.r *= 1.3f;
+    if (e->boss) c.r *= 1.3f;
+    { /* a hit warms the body toward white: quickly in, slowly out, so a creep struck again and again glows rather than blinks */
+      float want = e->flash > 0 ? 1.0f : 0.0f, h = e->age <= 1 ? 0 : V.hit[i];
+      h += (want - h) * (want > h ? 0.5f : 0.12f);
+      V.hit[i] = h;
+      float k = 0.5f * h;
+      if (!g_strobe_control) c = (t3_color){ c.r + (2.6f - c.r) * k, c.g + (2.3f - c.g) * k, c.b + (2.0f - c.b) * k };
+    }
     t3_instanced_mesh_set_color_at(im, n, c);
     if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.55f);
+    if (e->boss) ring(e->x, 0.06f, e->y, 1.6f, (t3_color){ 2.4f, 0.5f, 0.45f }); /* a boss stands in a ring of its colour */
     else if (e->kind != CK_SKITTER && ((i & 1) == 0 || s->nenemies < 1200)) shadow_at(e->x, e->y, 0.3f * sc, 0.4f); /* (the swarm casts none) */
     drawn++;
+  }
+  { /* the fallen: each body tips over onto its side and sinks into the ground, darkening, over half a second */
+    const corpse *dead;
+    int nd = fx_corpses(&dead);
+    for (int i = 0; i < nd; i++) {
+      const corpse *c = &dead[i];
+      kindv *kv = &V.k[c->kind];
+      if (c->age >= CORPSE_LIFE || kv->nwalk <= 0 || !kv->im[0] || cnt[c->kind][0] >= kv->im[0]->instance_matrix->count) continue;
+      float a = (float)c->age / (float)CORPSE_LIFE, tip = cw_smoothstep(0, 0.4f, a) * 1.45f, sink = cw_smoothstep(0.3f, 1.0f, a);
+      float sc = SIZE[c->kind] * (c->boss ? 2.2f : 1.0f) * (1.0f - 0.35f * sink);
+      float yaw = -c->face + 1.5708f, l = g_lean * 3.14159265f / 180.0f * (1 - cw_smoothstep(0, 0.4f, a));
+      t3_quat qx = { cw_sin(l * 0.5f), 0, 0, cw_cos(l * 0.5f) }, qy = { 0, cw_sin(yaw * 0.5f), 0, cw_cos(yaw * 0.5f) }, qt = { 0, 0, cw_sin(tip * 0.5f), cw_cos(tip * 0.5f) };
+      t3_mat4 m;
+      t3_mat4_compose(&m, (t3_vec3){ c->x, -0.9f * sink * sc, c->z }, t3_quat_multiply(t3_quat_multiply(qx, qy), qt), (t3_vec3){ sc, sc, sc });
+      int n = cnt[c->kind][0]++;
+      t3_instanced_mesh_set_matrix_at(kv->im[0], n, &m);
+      t3_color gl = view_light_at(c->x, c->z);
+      const float *kb = KIND_BODY[c->kind];
+      float d = 0.75f * (1 - 0.6f * a);
+      t3_instanced_mesh_set_color_at(kv->im[0], n, (t3_color){ gl.r * kb[0] * d, gl.g * kb[1] * d, gl.b * kb[2] * d });
+    }
   }
   for (int k = 0; k < CK_KINDS; k++)
     for (int f = 0; f < V.k[k].nwalk && f < MB_MAXF; f++) {
@@ -575,7 +636,9 @@ static void sync_creeps(const sim *s, float time) {
 
 static void sync_towers(const sim *s, float time) {
   static const float TOP[3] = { 1.0f, 1.25f, 1.5f };
-  int nb[TK_KINDS][3] = { { 0 } }, nh[TK_KINDS][3] = { { 0 } }, npad = 0, nbeam = 0, nlight = 0;
+  int nb[TK_KINDS][3] = { { 0 } }, nh[TK_KINDS][3] = { { 0 } }, npad = 0, nbeam = 0;
+  bool lit_seen[8] = { false };
+  int nhalo = 0;
   for (int k = 0; k < s->m.nslot; k++) {
     float x = mp_wx(&s->m, s->m.slot[k].x), z = mp_wz(&s->m, s->m.slot[k].y);
     const tower *t = &s->tw[k];
@@ -594,18 +657,29 @@ static void sync_towers(const sim *s, float time) {
       }
       npad++;
     }
-    if (!t->alive) continue;
+    if (!t->alive) { V.lvl_seen[k] = 0; continue; }
     int L = CW_CLAMP(t->level, 1, 3) - 1, kd = t->kind;
     partv *b = &V.base[kd], *h = &V.head[kd];
     int fb = CW_MIN(L, b->n - 1), fh = CW_MIN(L, h->n - 1);
     float grow = t->age < 20 ? 0.3f + 0.7f * (float)t->age / 20.0f : 1.0f; /* rising out of the pad */
+    if (t->level > V.lvl_seen[k] && V.lvl_seen[k] > 0) V.up_t[k] = 0; /* an upgrade: it lifts and settles over half a second */
+    V.lvl_seen[k] = t->level;
+    if (V.up_t[k] < 30) grow *= 1.0f + 0.16f * cw_sin(3.14159265f * (float)V.up_t[k]++ / 30.0f);
     const float *tc = TCOL[kd];
     float pulse = 1.0f;
-    if (kd == TK_BOLT) pulse = 1.0f + 2.5f * CW_MAX(0.0f, 1.0f - (float)(TOWER[TK_BOLT].period[L] - t->cd) / 12.0f) + 0.25f * cw_sin(time * 9 + (float)k);
+    /* the bolt's coil and the mortar's mouth charge up before a shot and cool after it: one smooth swell a shot (the
+     * control: a step to full at the shot) */
+    float since = (float)(TOWER[kd].period[L] - t->cd), charge = 1.0f - cw_smoothstep(0, kd == TK_BOLT ? 16.0f : 22.0f, since);
+    charge = CW_MAX(charge, cw_smoothstep(kd == TK_BOLT ? 16.0f : 24.0f, 0, (float)t->cd));
+    if (kd == TK_BOLT) pulse = g_strobe_control ? 1.0f + 2.5f * CW_MAX(0.0f, 1.0f - since / 12.0f) + 0.25f * cw_sin(time * 9 + (float)k) : 1.0f + 1.8f * charge + 0.12f * cw_sin(time * 2.2f + (float)k);
     else if (kd == TK_FROST) pulse = 1.0f + 0.4f * cw_sin(time * 2.5f + (float)k);
     else if (kd == TK_BEAM) pulse = t->tgt >= 0 ? 1.4f + 0.8f * (t->beam_k - 1) : 0.8f;
-    else pulse = 1.0f + 2.0f * CW_MAX(0.0f, 1.0f - (float)(TOWER[TK_MORTAR].period[L] - t->cd) / 20.0f);
+    else pulse = g_strobe_control ? 1.0f + 2.0f * CW_MAX(0.0f, 1.0f - since / 20.0f) : 1.0f + 1.5f * charge;
     t3_color glc = lin(tc[0], tc[1], tc[2]);
+    if (t->level >= 3 && t->branch == BR_B) { /* the B branch glows in a second hue: arc white-cyan, blizzard white, prism gold, napalm red-orange */
+      static const float B2[TK_KINDS][3] = { { 0.55f, 0.95f, 1.0f }, { 0.9f, 0.97f, 1.0f }, { 1.0f, 0.75f, 0.25f }, { 1.0f, 0.32f, 0.08f } };
+      glc = lin(B2[kd][0], B2[kd][1], B2[kd][2]);
+    }
     glc = (t3_color){ glc.r * 2.4f * pulse, glc.g * 2.4f * pulse, glc.b * 2.4f * pulse };
     if (fb >= 0 && b->surf[fb] && nb[kd][fb] < MAXT) {
       int n = nb[kd][fb]++;
@@ -624,45 +698,106 @@ static void sync_towers(const sim *s, float time) {
       if (h->glow[fh]) put(h->glow[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->glow[fh], n, glc);
       if (h->trim[fh]) put(h->trim[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->trim[fh], n, lin(pc[0], pc[1], pc[2]));
     }
+    if (V.halo && t->level >= 2 && nhalo + 3 <= MAXT * 3) { /* its level at a glance: a ring round the base at II; at III a second, and a crown turning over the head in its branch's hue */
+      float base = MP_GROUND_H + PAD_H, k2 = 0.55f + 0.45f * cw_smoothstep(0, 30, (float)V.up_t[k]);
+      t3_color hc = { glc.r * 0.5f * k2 / pulse, glc.g * 0.5f * k2 / pulse, glc.b * 0.5f * k2 / pulse };
+      put_s(V.halo, nhalo, x, base + 0.35f * TSC * grow, z, 0, 0.62f * TSC, 1, 0.62f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
+      if (t->level >= 3) {
+        put_s(V.halo, nhalo, x, base + 0.7f * TSC * grow, z, 0, 0.56f * TSC, 1, 0.56f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
+        float cy = hy + 0.95f * TSC * grow;
+        put_s(V.halo, nhalo, x, cy, z, 0, 0.42f * TSC, 1.6f, 0.42f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, (t3_color){ hc.r * 1.4f, hc.g * 1.4f, hc.b * 1.4f });
+      }
+    }
     /* a shadow cast away from the sun (north-west light: south-east of the tower), and the tower's glow on the ground */
     cw_splats_add(V.shadows, (t3_vec3){ x + 0.5f, 0, z + 0.45f }, 2.4f, 1.8f, 0.6f, 0, (t3_color){ 1, 1, 1 }, 0.75f);
     if (kd == TK_FROST) {
-      float r = TOWER[TK_FROST].range[L];
+      float r = sim_tower_reach(t);
       cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, r * 2, r * 2, time * 0.3f, 0, (t3_color){ 0.25f, 0.65f, 1.0f }, 0.16f + 0.05f * cw_sin(time * 2.5f + (float)k));
     } else
       cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 2.6f, 2.6f, 0, 0, lin(tc[0], tc[1], tc[2]), 0.35f * pulse);
     cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 3.2f, 3.2f, 0, 0, lin(pc[0], pc[1], pc[2]), 0.9f); /* a lit disc of the owner's colour under every tower */
-    /* the beam: from the emitter to the target, white-hot at its core, wider and hotter as it ramps */
-    if (kd == TK_BEAM && t->tgt >= 0 && s->e[t->tgt].alive && nbeam < MAXT) {
-      const creep *e = &s->e[t->tgt];
-      t3_vec3 a = view_muzzle(s, k), bpt = { e->x, 0.7f, e->y };
-      float ramp = (t->beam_k - 1) * 0.5f, fl = 0.85f + 0.15f * cw_sin(time * 47 + (float)k * 3);
-      if (TOWER[TK_BEAM].extra[L]) { /* the pierce: on to the edge of its range */
-        float dx = bpt.x - a.x, dz = bpt.z - a.z, l = sqrtf(dx * dx + dz * dz) + 1e-4f, r = TOWER[TK_BEAM].range[L];
-        float ext = CW_MAX(r - sqrtf((e->x - t->x) * (e->x - t->x) + (e->y - t->y) * (e->y - t->y)), 0.0f);
-        bpt = (t3_vec3){ bpt.x + dx / l * ext, 0.5f, bpt.z + dz / l * ext };
+    /* the beam: from the emitter to the target, white-hot at its core, wider and hotter as it ramps. It swells in on a
+     * new target over a few frames and, when it lets go, fades out where it was (never a step on or off); its shimmer
+     * is slow, and its light stays with it (the control: a 7 Hz flicker, on and off at once) */
+    if (kd == TK_BEAM) {
+      bool on = t->tgt >= 0 && s->e[t->tgt].alive;
+      beamv *bv = &V.beam[k];
+      if (bv->tgt != (on ? t->tgt : -1)) { /* let go, or moved on: the old beam fades from where it was */
+        if (bv->tgt >= 0 && bv->on > 0.02f && !g_strobe_control) bv->ga = bv->a, bv->gb = bv->b, bv->gw = bv->w, bv->g = bv->on, bv->gx = bv->x, bv->gz = bv->z;
+        bv->tgt = on ? t->tgt : -1, bv->on = 0;
       }
-      put_seg(V.beam_core, nbeam, a, bpt, (0.05f + 0.05f * ramp) * fl);
-      t3_instanced_mesh_set_color_at(V.beam_core, nbeam, (t3_color){ 6 + 4 * ramp, 5 + 3 * ramp, 6 + 4 * ramp });
-      put_seg(V.beam_glow, nbeam, a, bpt, (0.16f + 0.14f * ramp) * fl);
-      t3_instanced_mesh_set_color_at(V.beam_glow, nbeam, (t3_color){ glc.r * 0.45f, glc.g * 0.45f, glc.b * 0.45f });
-      nbeam++;
-      cw_splats_add(V.glows, (t3_vec3){ e->x, 0, e->y }, 2.2f + ramp, 2.2f + ramp, time * 3, 0, lin(tc[0], tc[1], tc[2]), 1.2f + ramp);
-      if (nlight < 8) {
-        cw_node3d_set_position(V.beam_light[nlight], (t3_vec3){ e->x, 1.0f, e->y });
-        cw_node_set(V.beam_light[nlight], "color", cw_val_color(tc[0], tc[1], tc[2], 1));
-        cw_node_set(V.beam_light[nlight], "energy", cw_val_float((18 + 14 * ramp) * fl));
-        nlight++;
+      float lit = 0;
+      if (bv->g > 0.02f && nbeam < MAXT * 4) {
+        float f = bv->g;
+        put_seg(V.beam_core, nbeam, bv->ga, bv->gb, bv->gw * 0.3f * f);
+        t3_instanced_mesh_set_color_at(V.beam_core, nbeam, (t3_color){ 6 * f, 5 * f, 6 * f });
+        put_seg(V.beam_glow, nbeam, bv->ga, bv->gb, bv->gw * f);
+        t3_instanced_mesh_set_color_at(V.beam_glow, nbeam, (t3_color){ glc.r * 0.45f * f, glc.g * 0.45f * f, glc.b * 0.45f * f });
+        nbeam++;
+        cw_splats_add(V.glows, (t3_vec3){ bv->gx, 0, bv->gz }, 2.2f, 2.2f, time * 3, 0, lin(tc[0], tc[1], tc[2]), 1.2f * f);
+        if (!on) lit = 18 * f, bv->x = bv->gx, bv->z = bv->gz;
+        bv->g *= 0.75f;
+      } else
+        bv->g = 0;
+      if (on && nbeam < MAXT * 4) {
+        const creep *e = &s->e[t->tgt];
+        t3_vec3 a = view_muzzle(s, k), bpt = { e->x, 0.7f, e->y };
+        float ramp = (t->beam_k - 1) * 0.5f;
+        float fl = g_strobe_control ? 0.85f + 0.15f * cw_sin(time * 47 + (float)k * 3) : 0.95f + 0.05f * cw_sin(time * 3.5f + (float)k * 3);
+        float in = g_strobe_control ? 1.0f : cw_smoothstep(0, 8, (float)t->beam_t);
+        if (TOWER[TK_BEAM].extra[L]) { /* the pierce: on to the edge of its range */
+          float dx = bpt.x - a.x, dz = bpt.z - a.z, l = sqrtf(dx * dx + dz * dz) + 1e-4f, r = TOWER[TK_BEAM].range[L];
+          float ext = CW_MAX(r - sqrtf((e->x - t->x) * (e->x - t->x) + (e->y - t->y) * (e->y - t->y)), 0.0f);
+          bpt = (t3_vec3){ bpt.x + dx / l * ext, 0.5f, bpt.z + dz / l * ext };
+        }
+        float wg = (0.16f + 0.14f * ramp) * fl;
+        put_seg(V.beam_core, nbeam, a, bpt, (0.05f + 0.05f * ramp) * fl * in);
+        t3_instanced_mesh_set_color_at(V.beam_core, nbeam, (t3_color){ (6 + 4 * ramp) * in, (5 + 3 * ramp) * in, (6 + 4 * ramp) * in });
+        put_seg(V.beam_glow, nbeam, a, bpt, wg * in);
+        t3_instanced_mesh_set_color_at(V.beam_glow, nbeam, (t3_color){ glc.r * 0.45f * in, glc.g * 0.45f * in, glc.b * 0.45f * in });
+        nbeam++;
+        bv->a = a, bv->b = bpt, bv->w = wg, bv->on = in, bv->x = e->x, bv->z = e->y;
+        cw_splats_add(V.glows, (t3_vec3){ e->x, 0, e->y }, 2.2f + ramp, 2.2f + ramp, time * 3, 0, lin(tc[0], tc[1], tc[2]), (1.2f + ramp) * in);
+        lit = CW_MAX(lit, (18 + 14 * ramp) * fl * in);
+        for (int q = 0; q < 2; q++) { /* the prism's split rays: from the creep it burns on to two more (they swell in with it) */
+          int o = t->tgt2[q];
+          if (bv->ray[q] != o) bv->ray[q] = o, bv->ray_in[q] = 0;
+          bv->ray_in[q] = CW_MIN(bv->ray_in[q] + 0.2f, 1.0f);
+          if (o < 0 || !s->e[o].alive || nbeam >= MAXT * 4 - 1) continue;
+          float ri = cw_smoothstep(0, 1, bv->ray_in[q]) * cw_smoothstep(0, 8, (float)t->beam_t);
+          t3_vec3 c0 = { e->x, 0.7f, e->y }, c1 = { s->e[o].x, 0.6f, s->e[o].y };
+          put_seg(V.beam_core, nbeam, c0, c1, 0.035f * fl * ri);
+          t3_instanced_mesh_set_color_at(V.beam_core, nbeam, (t3_color){ 5 * ri, 4.5f * ri, 3 * ri });
+          put_seg(V.beam_glow, nbeam, c0, c1, 0.11f * fl * ri);
+          t3_instanced_mesh_set_color_at(V.beam_glow, nbeam, (t3_color){ 0.9f * ri, 0.55f * ri, 0.25f * ri });
+          nbeam++;
+        }
+      }
+      /* its light: the one it holds, or a free one (which swells in with it); given back when the beam has faded */
+      int li = -1;
+      for (int j = 0; j < 8; j++)
+        if (V.beam_light_slot[j] == k) li = j;
+      if (lit > 0.3f && li < 0)
+        for (int j = 0; j < 8 && li < 0; j++)
+          if (V.beam_light_slot[j] < 0 && (g_strobe_control || bv->on < 0.5f)) li = j, V.beam_light_slot[j] = k;
+      if (li >= 0) {
+        cw_node3d_set_position(V.beam_light[li], (t3_vec3){ bv->x, 1.0f, bv->z });
+        cw_node_set(V.beam_light[li], "color", cw_val_color(tc[0], tc[1], tc[2], 1));
+        cw_node_set(V.beam_light[li], "energy", cw_val_float(lit));
+        lit_seen[li] = true;
+        if (lit <= 0.3f) V.beam_light_slot[li] = -1;
       }
     }
   }
-  for (int i = nlight; i < 8; i++) cw_node_set(V.beam_light[i], "energy", cw_val_float(0));
+  for (int i = 0; i < 8; i++)
+    if (!lit_seen[i]) cw_node_set(V.beam_light[i], "energy", cw_val_float(0)), V.beam_light_slot[i] = -1;
   for (int kd = 0; kd < TK_KINDS; kd++)
     for (int l = 0; l < 3; l++) {
       done(V.base[kd].surf[l], nb[kd][l]), done(V.base[kd].glow[l], nb[kd][l]), done(V.base[kd].trim[l], nb[kd][l]);
       done(V.head[kd].surf[l], nh[kd][l]), done(V.head[kd].glow[l], nh[kd][l]), done(V.head[kd].trim[l], nh[kd][l]);
     }
   done(V.pad, npad), done(V.pad_glow, npad), done(V.pad_trim, npad);
+  done(V.halo, nhalo);
   done(V.beam_core, nbeam), done(V.beam_glow, nbeam);
   int tw = 0;
   for (int k = 0; k < s->m.nslot; k++) tw += s->tw[k].alive;
@@ -671,6 +806,13 @@ static void sync_towers(const sim *s, float time) {
 
 static void sync_core_gates(const sim *s, float time) {
   float cx = s->core_x, cz = s->core_y;
+  { /* the core's health as it shows: eased over half a second, and its throb's phase run on (a throb that quickens as it
+     * is hurt, never a jump in its phase or its colour) */
+    float want = (float)s->core_hp / (float)CORE_HP;
+    if (V.core_hurt <= 0 || s->core_hp == CORE_HP) V.core_hurt = want;
+    V.core_hurt += (want - V.core_hurt) * 0.06f;
+    V.core_ph += (2.0f + 2.0f * (1 - V.core_hurt)) / 60.0f;
+  }
   int f = s->core_hp > CORE_HP * 3 / 4 ? 0 : s->core_hp > CORE_HP / 2 ? 1 : s->core_hp > 0 ? 2 : 3;
   f = CW_MIN(f, V.core_frames - 1);
   for (int k = 0; k < V.core_frames; k++) done(V.core[k], 0), done(V.core_glow[k], 0);
@@ -680,13 +822,13 @@ static void sync_core_gates(const sim *s, float time) {
     t3_instanced_mesh_set_color_at(V.core[f], 0, view_light_at(cx, cz));
     done(V.core[f], 1);
     if (V.core_glow[f]) {
-      float hurt = (float)s->core_hp / (float)CORE_HP, p = 0.8f + 0.3f * cw_sin(time * (2.0f + 4.0f * (1 - hurt)));
+      float hurt = V.core_hurt, p = 0.8f + 0.3f * cw_sin(V.core_ph);
       put(V.core_glow[f], 0, cx, bob, cz, time * 0.15f, 1);
       t3_instanced_mesh_set_color_at(V.core_glow[f], 0, (t3_color){ (0.4f + 1.6f * (1 - hurt)) * p, (1.4f * hurt + 0.3f) * p, (2.2f * hurt + 0.3f) * p });
       done(V.core_glow[f], 1);
     }
   }
-  float hurt = (float)s->core_hp / (float)CORE_HP;
+  float hurt = V.core_hurt;
   t3_color cc = { 0.3f + 0.7f * (1 - hurt), 0.6f * hurt + 0.2f, 1.0f * hurt + 0.2f };
   cw_splats_add(V.glows, (t3_vec3){ cx, 0, cz }, 6, 6, 0, 0, cc, 0.8f + 0.2f * cw_sin(time * 2));
   column(cx, 0.02f, cz, 7, 1.6f, (t3_color){ cc.r * 0.35f, cc.g * 0.35f, cc.b * 0.35f });
@@ -702,7 +844,8 @@ static void sync_core_gates(const sim *s, float time) {
     t3_instanced_mesh_set_color_at(V.portal, g, view_light_at(x, z));
     bool live = false;
     for (int k = 0; k < MAXGRP; k++) live |= s->grp[k].live && s->grp[k].spawn == g;
-    float p = (live ? 2.2f : 1.0f) + 0.4f * cw_sin(time * 3 + (float)g);
+    V.gate_k[g] += ((live ? 1.0f : 0.0f) - V.gate_k[g]) * 0.04f; /* a gate wakes and quiets over a second, never at a step */
+    float p = 1.0f + 1.2f * V.gate_k[g] + 0.4f * cw_sin(time * 3 + (float)g);
     if (V.portal_glow) put(V.portal_glow, g, x, 0, z, yaw, 1), t3_instanced_mesh_set_color_at(V.portal_glow, g, (t3_color){ 2.0f * p, 0.35f * p, 1.6f * p });
     cw_splats_add(V.glows, (t3_vec3){ x, 0, z }, 4.5f, 4.5f, time, 0, (t3_color){ 1.0f, 0.25f, 0.8f }, 0.6f * p);
     cw_node3d_set_position(V.portal_light[g], (t3_vec3){ x, 2.2f, z });
@@ -732,6 +875,32 @@ static void sync_shells(const sim *s, float time) {
   V.st.shells = n;
 }
 
+/* napalm: the burning patches glow on the path, swelling in and dying down (fx.c throws the flames) */
+static void sync_fires(const sim *s) {
+  for (int k = 0; k < MAXFIRE; k++) {
+    const fire *f = &s->fire[k];
+    if (!f->alive) continue;
+    float a = cw_smoothstep(0, 10, (float)f->t) * cw_smoothstep((float)f->T, (float)f->T - 50, (float)f->t);
+    cw_splats_add(V.glows, (t3_vec3){ f->x, 0, f->y }, f->r * 2.2f, f->r * 2.2f, (float)k, 0, (t3_color){ 1.0f, 0.42f, 0.12f }, 1.1f * a);
+    shadow_at(f->x, f->y, f->r * 0.8f, 0.35f * a); /* the char it leaves */
+  }
+}
+
+/* cloud shadows drifting over the map: a few wide soft shadows sailing slowly with the wind (a crossing takes a
+ * minute or more), each fading in at the upwind edge and out at the downwind one, so the still map lives and nothing
+ * pops or flashes. They lie at the ground's height, over the path and what walks on it too. */
+static void sync_clouds(float time) {
+  if (V.theme == MP_THEME_CRYSTAL) return; /* (the vale lies under its own glow) */
+  float hw = (float)V.m.w * MP_TILE * 0.5f + 10, hh = (float)V.m.h * MP_TILE * 0.5f + 10, span = hw * 2;
+  for (int i = 0; i < 5; i++) {
+    float sp = 0.55f + 0.25f * h01((uint32_t)i, 11), u = fmodf(time * sp + h01((uint32_t)i, 12) * span, span) / span; /* 0..1 across */
+    float x = -hw + u * span, z = -hh + (0.15f + 0.7f * h01((uint32_t)i, 13)) * hh * 2 + (u - 0.5f) * 6;
+    float a = cw_smoothstep(0, 0.15f, u) * cw_smoothstep(1, 0.85f, u);
+    float l = 16 + 10 * h01((uint32_t)i, 14), w = 11 + 6 * h01((uint32_t)i, 15);
+    cw_splats_add(V.shadows, (t3_vec3){ x, MP_GROUND_H + 0.03f, z }, l, w, 0.35f + 0.3f * h01((uint32_t)i, 16), 0, (t3_color){ 1, 1, 1 }, 0.2f * a);
+  }
+}
+
 static void sync_bolts(void) {
   const float *seg;
   int ns = fx_bolt_segments(&seg), n = 0;
@@ -756,14 +925,15 @@ static void sync_cursors(const sim *s, float time, const bool show[MAXP]) {
     if (!p->active || p->slot < 0 || !show[i] || g_hide_cursors) continue;
     float x = mp_wx(&s->m, s->m.slot[p->slot].x), z = mp_wz(&s->m, s->m.slot[p->slot].y);
     t3_color pc = lin(PCOL[i][0], PCOL[i][1], PCOL[i][2]);
-    float pulse = 1.6f + 0.6f * cw_sin(time * 6 + (float)i);
+    float pulse = 1.6f + 0.5f * cw_sin(time * 4 + (float)i);
     ring(x, MP_GROUND_H + 0.06f, z, 1.15f, (t3_color){ pc.r * 3 * pulse, pc.g * 3 * pulse, pc.b * 3 * pulse });
     ring(x, MP_GROUND_H + 0.06f, z, 1.05f, (t3_color){ pc.r * 2 * pulse, pc.g * 2 * pulse, pc.b * 2 * pulse });
     const tower *t = &s->tw[p->slot];
-    if (t->alive) { /* its reach */
-      float r = sim_tower_range(t->kind, t->level);
-      ring(t->x, 0.08f, t->y, r, (t3_color){ pc.r * 0.9f, pc.g * 0.9f, pc.b * 0.9f });
-      if (t->level < 3) ring(t->x, 0.08f, t->y, sim_tower_range(t->kind, t->level + 1), (t3_color){ pc.r * 0.3f, pc.g * 0.3f, pc.b * 0.3f });
+    float dk = g_cursor_k[i];
+    if (t->alive && dk > 0.01f) { /* its reach (and the next level's), while the player is choosing */
+      float r = sim_tower_reach(t);
+      ring(t->x, 0.08f, t->y, r, (t3_color){ pc.r * 0.9f * dk, pc.g * 0.9f * dk, pc.b * 0.9f * dk });
+      if (t->level < 3) ring(t->x, 0.08f, t->y, t->level == 2 && t->kind == TK_FROST ? 9.0f : sim_tower_range(t->kind, t->level + 1), (t3_color){ pc.r * 0.3f * dk, pc.g * 0.3f * dk, pc.b * 0.3f * dk });
     }
     if (V.marker && nm < MAXP) {
       float top = t->alive ? MP_GROUND_H + 2.9f + 0.3f * (float)t->level : MP_GROUND_H + 1.6f;
@@ -811,6 +981,8 @@ void view_sync(const sim *s, float time, const bool show_cursor[MAXP]) {
   sync_core_gates(s, time);
   sync_creeps(s, time);
   sync_shells(s, time);
+  sync_fires(s);
+  sync_clouds(time);
   sync_bolts();
   sync_cursors(s, time, show_cursor);
   sync_pools(time);
