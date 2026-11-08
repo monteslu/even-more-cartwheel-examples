@@ -131,7 +131,7 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     float x = ox + e->x / CELL_W * cell, y = oy + e->y * th;
     if (ent_is_landmark(e) && (seen || mapped_room(s, e->room))) { /* the region's own beacon tower, small, its lamp a dot of its accent */
       cw_color c = hexa(REGIONS[e->arg % NREGIONS].accent, seen ? 1 : 0.5f);
-      float hgt = cell * 0.62f;
+      float hgt = cell * 1.3f;
       if (!scenery_landmark_icon(e->arg % NREGIONS, x, y, hgt, rgba(1, 0.95f, 0.85f, seen ? 1 : 0.5f))) {
         float r = cell * 0.26f;
         cw_vec2 p[4] = { { x, y - r * 2.2f }, { x + r * 0.6f, y - r * 1.1f }, { x, y }, { x - r * 0.6f, y - r * 1.1f } };
