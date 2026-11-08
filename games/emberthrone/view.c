@@ -110,14 +110,14 @@ static void tint_outfit(t3_object *o, int kind, int region) {
  * so each gets its rim once. */
 static void rim(t3_object *o, int kind) {
   static const t3_color C[K_KINDS] = { { 1, 0.82f, 0.55f }, { 1, 0.82f, 0.55f }, { 0.75f, 0.85f, 1 }, { 0.75f, 0.85f, 1 }, { 0.75f, 0.85f, 1 },
-                                       { 0.7f, 1, 0.45f }, { 0.75f, 0.6f, 1 }, { 1, 0.55f, 0.25f } };
+                                       { 0.6f, 0.85f, 0.45f }, { 0.75f, 0.6f, 1 }, { 1, 0.55f, 0.25f } };
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
     t3_mesh *m = (t3_mesh *)o;
     for (int k = 0; k < m->material_count; k++) {
       t3_material *mat = m->materials[k];
       if (!mat || cw_rim_light_get(mat, NULL) || (mat->name && !strncmp(mat->name, "eye", 3))) continue;
       cw_rim_light_desc d = cw_rim_light_default();
-      d.color = C[kind], d.strength = kind <= K_WARDEN ? 0.7f : 0.55f, d.power = 3.2f, d.near = 4, d.far = 14, d.close = 0.2f;
+      d.color = C[kind], d.strength = kind <= K_WARDEN ? 0.7f : kind >= K_THORN ? 0.45f : 0.55f, d.power = 3.2f, d.near = 4, d.far = 14, d.close = 0.2f;
       cw_rim_light_apply(mat, &d);
     }
   }
