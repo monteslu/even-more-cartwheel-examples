@@ -8,7 +8,9 @@ against the foot of some structures: a keg that is hit goes off, and its blast s
 One to four players take turns at the one launcher on the one structure: together (co-op: one count of shots against
 par), against each other (versus: each shot scores for whoever fired it), or at a party (steady hands: ammunition
 without end, each turn must bring at least one block down, a turn that brings none is a strike and two strikes put you
-out, and whoever brings a crystal down is out; the last one in wins).
+out, and whoever brings a crystal down is out; the last one in wins). Co-op is one team: any pad aims and fires on any
+turn, so a seat that joined and walked away never holds the game up. In versus and party a seat that touches nothing
+for eight seconds of its turn is away, and any pad can take that turn (the HUD says so).
 
 ## Playing
 
@@ -29,7 +31,7 @@ A level is judged once its world is still (at most two bodies awake for a third 
 after 15 s whatever still moves), never while the structure is falling. The share of the structure brought down is
 counted by volume over every block the level placed (crystals not counted): a block is down when it is broken, gone
 off the field, or more than its own size (and at least 0.6 m) from where it settled before play. Each kit has a mark:
-half a tower or a scaffold, two fifths of a keep, about a third of a wall, a quarter of a castle or a bridge, 15% of a
+half a tower or a scaffold, two fifths of a keep, about a third of a wall, a quarter of a castle, a fifth of a bridge, 15% of a
 stepped pyramid. The HUD shows the share against the mark while you play.
 
 | Stars | Needs |
@@ -50,9 +52,11 @@ that shot was fired. When the level is judged it therefore stands where the last
 shot, turns slowly round the impact in slow motion for the first second and a quarter after it, and ends on exactly
 the state the live game was judged on (every block's pose to the bit, the counters and the scores).
 
-The aim path shows the first part of the shot's flight, as the world will fly it. Charges go off on the first thing
-they touch and push and break everything within about four and a half metres; shot that breaks what it hits keeps the
-speed the break did not use and goes on through.
+The aim path shows the shot's flight as the world will fly it, as far as the structure's near face: how high it
+arrives there shows, where it comes down behind does not. A ball crushes the masonry round where it first strikes (a
+shot within about 1.6 m, a heavy ball 2.2 m) and drives what stands behind it back (3.4 m and 4.6 m): a shot breaks a
+hole a few bricks across and knocks a small tower's top off, a heavy ball topples a tower. Charges go off on the first
+thing they touch and push and break everything within about four and a half metres.
 
 ## How it is made
 
@@ -72,7 +76,12 @@ speed the break did not use and goes on through.
 - `src/replay.c`: the instant replay (above).
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
-  ball into what holds it up, then holds and taps the aim buttons until the launcher points there.
+  ball into what holds it up, then holds and taps the aim buttons until the launcher points there. It reads each
+  crystal's exact place and aims to a milliradian, so it proves a level can be cleared, not that a person can.
+- `src/human.c`: the human-like player of the playability gate: it sees only what the screen shows (the crystals and
+  their beacons, the aim path, the HUD, where its last shot struck), aims with a person's error (0.5 m across and 0.8 m
+  up and down at the structure, mostly a lean it keeps and corrects from where its shots strike), lets go of the d-pad
+  a quarter of a second late, and sends its buttons through the game's pad mapping.
 - `src/view.c`, `src/trees.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at
   start-up and the builder's paints in real material colours (warm stone, timber, plaster, slate, terracotta,
   copper), the roofs' boards drawn with a course texture of their own; a setting per kit (highlands under
@@ -135,10 +144,11 @@ collapse: about 2.3 ms a step at worst over the collapse windows.
 |---|---|
 | `node tests/destructo-physics.mjs` | the measurements above, each with a control that must fail |
 | `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
+| `node tests/destructo-human.mjs` | eight human-like players (src/human.c) on every level with the ammunition it gives: every one clears levels 1 to 3, every level is cleared by 7 of 8, 97% of all plays clear; a steadier player is within par on two levels in three and more often than the newcomer (control: the cannon before the fix, the ball breaking only the block it touches, must fail) |
 | `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep |
 | `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
 | `node tests/destructo-flash.mjs` | every frame of Great Keep's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
 | `node tests/destructo-perf.mjs` | the GPU frame at 1920x1080 on High during a castle's collapse, GL and WebGPU, on the 890M |
 | `node tests/destructo-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms, natively and in the cart on romdev |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) |
-| `node tests/gate.mjs --gates-file destructo-gates.json` | a person's first shot: the same collapse on every host and both GPU paths |
+| `node tests/gate.mjs --gates-file destructo-gates.json` | a person's first shot: the same collapse on every host and both GPU paths; two pads join and the second walks away, and the first still plays the second seat's turn (control: the seat rule before the fix waits on the idle pad) |

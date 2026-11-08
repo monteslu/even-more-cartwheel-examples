@@ -209,6 +209,7 @@ void sound_events(const game *g, t3_vec3 cam) {
     case EV_TARGET: play(S_CHIME, 0.8f, 1 + 0.12f * (float)(g->ntgt - g->tgt_left), pan); break;
     case EV_BREAK: s = e->mat == M_WOOD ? S_WOOD : e->mat == M_STEEL ? S_STEEL : S_STONE; v = vol * fminf(1, 0.4f + e->size); break;
     case EV_SHATTER: s = S_GLASS; v = vol * 0.8f; break;
+    case EV_STRIKE: play(S_THUD, fminf(1, vol * 2.0f), 0.8f, pan); s = e->mat == M_WOOD ? S_WOOD : e->mat == M_STEEL ? S_STEEL : S_STONE, v = fminf(1, vol * 1.6f); break; /* the ball crushing in: a deep thud and the crack of what it broke */
     case EV_HIT: case EV_LAND:
       if (e->mat == M_STEEL && e->speed > 3) s = S_STEEL, v = vol * fminf(0.6f, e->speed * 0.06f);
       else s = e->a > 8000 ? S_THUD : S_THUD_SMALL, v = vol * fminf(1, 0.25f + e->a / 30000.0f);

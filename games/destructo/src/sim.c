@@ -293,15 +293,16 @@ void game_new(game *g, int level, int players, int mode) {
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
   g->ammo_sel = A_SHOT;
   /* the structure's size (the camera frames it) */
-  float ext = 3, top = 2;
+  float ext = 3, top = 2, front = 0;
   for (int i = 0; i < g->nb; i++) {
     if (!g->b[i].alive) continue;
     t3_vec3 p = g->b[i].home;
+    if (!g->b[i].keg && p.z + fmaxf(g->b[i].half.x, g->b[i].half.z) > front) front = p.z + fmaxf(g->b[i].half.x, g->b[i].half.z);
     float r = sqrtf(p.x * p.x + p.z * p.z) + vlen(g->b[i].half);
     if (r > ext) ext = r;
     if (p.y + g->b[i].half.y > top) top = p.y + g->b[i].half.y;
   }
-  g->extent = ext, g->top = top;
+  g->extent = ext, g->top = top, g->front = front;
   g->state = GS_AIM;
 }
 
@@ -359,7 +360,7 @@ void game_fire(game *g) {
   sd.layer = LAYER_PROJ;
   sd.hit_events = true;
   cw_shape3d_sphere(g->proj, &sd, v3(0, 0, 0), ai->radius);
-  g->proj_kind = a, g->proj_ticks = 0, g->proj_hit_tick = -1, g->proj_live = true, g->charge_armed = a == A_CHARGE;
+  g->proj_kind = a, g->proj_ticks = 0, g->proj_hit_tick = -1, g->proj_live = true, g->charge_armed = a == A_CHARGE, g->proj_burst = false;
   g->proj_pos = bd.position, g->proj_vel = bd.linear_velocity;
   g->shots++;
   g->P[g->cur].shots++;
@@ -453,6 +454,65 @@ static void detonate(game *g, t3_vec3 at) {
   g->blast_shell = g->no_budget ? 0 : 2;
 }
 
+/* A ball's strike on the structure. Box3D hands a hit to the one block the ball touches, and the game used to stop
+ * there: a 50 kg shot at 51 m/s (65 kJ) broke the 124 kg brick it met (8.1 kJ of strength) and flew on, so a shot took
+ * 2 blocks out of a structure of hundreds (median 0.1% of it down, a heavy ball 0.6%) and nothing standing moved. A
+ * real ball crushes the masonry round where it lands and drives what is behind it back; the burst does that, once a
+ * shot, where the ball first meets a block it is moving fast into:
+ *   crush  blocks within crush_r take crush_k of the ball's energy, falling off linearly with the distance (a shot at
+ *          the power a level starts with breaks a stone brick, 8.1 kJ + 0.9 kJ, out to 0.86 of crush_r)
+ *   drive  blocks within drive_r are pushed along the flight (and a little outward and up): drive_k of the ball's
+ *          momentum, falling off with the square of the distance, each at most drive_v m/s (a 124 kg brick at the
+ *          point takes the cap, one 1.7 m off about 6 m/s from a shot)
+ * Measured on the thirty levels' front faces (tools/humancheck.c --shot), a shot now breaks 35 blocks on average and
+ * moves 200 (median 5.5% of a structure down, the top of a small tower off, a breach in a wall) and a heavy ball
+ * breaks 92 (median 24%: it topples a tower); a charge is unchanged (median 40%). The ball keeps BURST_KEEP of its
+ * speed and goes on through what broke. */
+typedef struct burst_info { float crush_r, crush_k, drive_r, drive_k, drive_v; } burst_info;
+static const burst_info BURST[NAMMO] = {
+  [A_SHOT] = { 1.6f, 1.0f, 3.4f, 1.2f, 10.0f },
+  [A_HEAVY] = { 2.2f, 1.0f, 4.6f, 0.9f, 9.0f },
+  [A_CHARGE] = { 0, 0, 0, 0, 0 }, /* a charge goes off on its own */
+};
+#define BURST_MIN_SPEED 8.0f
+#define BURST_KEEP 0.5f
+
+/* true when it burst (the strike is spent on it: no single-block harm and punch-through for that hit) */
+static bool strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
+  const burst_info *bi = &BURST[g->proj_kind];
+  float sp = vlen(v);
+  g->proj_burst = true;
+  if (g->old_damage || bi->drive_r <= 0 || sp < BURST_MIN_SPEED) return false;
+  float m = AMMO[g->proj_kind].mass, ke = 0.5f * m * sp * sp, mom = m * sp;
+  t3_vec3 dn = vscale(v, 1.0f / sp);
+  cw_qshape3d q = cw_qshape3d_sphere(at, bi->drive_r);
+  static cw_shape3d hit[1024];
+  static int idx[1024];
+  static float dist[1024];
+  static t3_vec3 dirs[1024];
+  cw_phys_filter f = cw_phys_filter_layers(1u << LAYER_BLOCK);
+  int n = cw_world3d_overlap(g->w, &q, &f, hit, 1024), k = 0;
+  for (int s = 0; s < n; s++) { /* pushes first (pieces of what breaks fly with them), then the harm, in the overlap's order */
+    int i = block_of(cw_shape3d_body(hit[s]));
+    if (i < 0 || !g->b[i].alive) continue;
+    t3_vec3 p = cw_body3d_transform(g->b[i].body).p, r = vsub(p, at);
+    float d = vlen(r), w = 1 - d / bi->drive_r;
+    if (w <= 0) continue;
+    t3_vec3 out = vscale(r, 1.0f / (d + 1e-4f));
+    t3_vec3 dir = vadd(dn, vadd(vscale(out, 0.35f), v3(0, 0.15f, 0)));
+    dir = vscale(dir, 1.0f / (vlen(dir) + 1e-6f));
+    float mass = cw_body3d_mass(g->b[i].body), imp = mom * bi->drive_k * w * w;
+    if (imp > mass * bi->drive_v) imp = mass * bi->drive_v;
+    cw_body3d_apply_impulse(g->b[i].body, vscale(dir, imp), NULL);
+    idx[k] = i, dist[k] = d, dirs[k] = dir, k++;
+  }
+  for (int s = 0; s < k; s++)
+    if (dist[s] < bi->crush_r) harm(g, idx[s], ke * bi->crush_k * (1 - dist[s] / bi->crush_r), dirs[s], false);
+  if (g->proj_live) cw_body3d_set_velocity(g->proj, vscale(v, BURST_KEEP));
+  ev_push(g, EV_STRIKE, mat_at, at, vscale(dn, -1), bi->crush_r, sp, (int)fminf(ke, 2e9f)); /* dust, chips, the thump and the pad's kick where it struck */
+  return true;
+}
+
 /* the hits of the last step */
 static void read_hits(game *g, t3_vec3 proj_v_before) {
   int n;
@@ -473,6 +533,10 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
       if (g->proj_hit_tick < 0) g->proj_hit_tick = g->tick, g->impact = h->point;
       if (g->proj_kind == A_CHARGE && g->charge_armed && g->proj_ticks > 2) {
         detonate(g, h->point);
+        continue;
+      }
+      if (!g->proj_burst && g->proj_kind != A_CHARGE && (pa ? ib : ia) >= 0 && strike_burst(g, h->point, proj_v_before, g->b[pa ? ib : ia].mat)) {
+        proj_broke = false; /* the first block it strikes: the burst, and no punch-through sum after it */
         continue;
       }
     }
