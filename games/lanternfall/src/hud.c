@@ -115,7 +115,7 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
   int region = s->room >= 0 ? w->rooms[s->room].region : 0;
   text(REGIONS[region].name, cs.x * 0.5f, 30 * u, 44 * u, hexa(REGIONS[region].top, 1), CW_ALIGN_CENTER);
   int got = 0, all = w->npickups, seen = 0;
-  for (int k = 0; k < 4; k++) got += sim_pickups_got(s, k);
+  for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(s, k);
   for (int r = 0; r < w->nrooms; r++) seen += (s->seen[r >> 3] >> (r & 7)) & 1;
   snprintf(b, sizeof b, "rooms %d of %d    finds %d of %d    beacons %d of 5", seen, w->nrooms, got, all, sim_beacons(s));
   text(b, cs.x * 0.5f, cs.y - bottom + 12 * u, 28 * u, rgba(0.9f, 0.92f, 1, 1), CW_ALIGN_CENTER);
@@ -178,15 +178,22 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
   if (h->card_t > 0) {
     float a = fminf(1, h->card_t * 2);
     float y = cs.y * 0.62f;
-    const char *title = h->card_kind == PK_ABILITY ? "" : CARD_TITLE[h->card_kind];
+    const char *title = h->card_kind == PK_ABILITY || h->card_kind > PK_RELIC ? "" : CARD_TITLE[h->card_kind];
+    if (h->card_kind == 4 && h->card_arg >= 0 && h->card_arg < CH_KINDS) title = CHARM_NAME[h->card_arg];
     if (h->card_kind == PK_ABILITY)
       for (int k = 0; k < NABILITIES; k++)
         if (h->card_arg == (1 << k)) title = ABILITY_NAME[k];
     cw_r2d_round_rect((cw_rect){ cs.x * 0.2f, y - 16 * u, cs.x * 0.6f, 170 * u }, 18 * u, 6, rgba(0.06f, 0.07f, 0.12f, 0.78f * a));
     text(title, cs.x * 0.5f, y, 56 * u, rgba(1, 0.88f, 0.5f, a), CW_ALIGN_CENTER);
-    const char *line = h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health" : h->card_kind == PK_ENERGY ? "one more measure of energy" : "a relic of the old city";
+    const char *line = h->card_kind == 4 ? CHARM_LINE[h->card_arg] : h->card_kind == PK_ABILITY ? ability_line(h->card_arg) : h->card_kind == PK_HEALTH ? "one more leaf of health" : h->card_kind == PK_ENERGY ? "one more measure of energy" : "a relic of the old city";
     cw_vec2 sz = cw_prompt_text_size(F, line, -1, 30 * u);
     cw_prompt_text(F, line, -1, (cw_vec2){ cs.x * 0.5f - sz.x * 0.5f, y + 80 * u }, 30 * u, rgba(1, 1, 1, a), CW_ALIGN_LEFT);
+  }
+  /* a trial: the doors shut on an upgrade's guardians */
+  if (h->trial_t > 0) {
+    static const char *const MSG[3] = { "THE DOORS SEAL: ITS GUARDIANS WAKE", "MORE COME", "THE WAY IS OPEN" };
+    float a = fminf(1, h->trial_t * 2);
+    text(MSG[h->trial_msg % 3], cs.x * 0.5f, cs.y * 0.3f, 40 * u, rgba(1, 0.8f, 0.6f, a), CW_ALIGN_CENTER);
   }
   /* the warden's name and its health */
   if (s->b.active) {
@@ -235,7 +242,7 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
     float a = fminf(1, h->won_t);
     cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(1, 0.95f, 0.8f, 0.35f * a));
     text("THE HEART WAKES", cs.x * 0.5f, cs.y * 0.35f, 84 * u, rgba(1, 0.9f, 0.6f, a), CW_ALIGN_CENTER);
-    snprintf(b, sizeof b, "the lanterns are lit again.   finds %d of %d   relics %d", sim_pickups_got(s, 0) + sim_pickups_got(s, 1) + sim_pickups_got(s, 2) + sim_pickups_got(s, 3),
+    snprintf(b, sizeof b, "the lanterns are lit again.   finds %d of %d   relics %d", sim_finds(s),
              s->w->npickups, s->relics);
     text(b, cs.x * 0.5f, cs.y * 0.35f + 110 * u, 32 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }

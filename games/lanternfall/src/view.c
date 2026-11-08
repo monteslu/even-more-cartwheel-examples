@@ -1082,6 +1082,70 @@ static void draw_hero(const sim *s, int i, float t) {
 }
 
 /* ── enemies ── */
+/* the newer kinds (placeholder shapes: the drawing only, every number that matters is in sim.c) */
+bool enemy_eye_line(const sim *s, const enemy *e, float *x0, float *x1, float *y);
+static void draw_enemy_extra(const sim *s, const enemy *e, float t, cw_color shell, cw_color eye, cw_color hot) {
+  float f = e->facing_left ? -1.0f : 1.0f, x = e->x, y = e->y;
+  bool tell = e->state == ES_TELL;
+  float tk = tell ? (float)e->t / (float)(enemy_tell_ticks(e->kind) > 0 ? enemy_tell_ticks(e->kind) : 30) : 0;
+  switch (e->kind) {
+  case EN_PUFF: { /* a soft round puff; swelling (the tell), then thorns all round (stay off it: strike it from above) */
+    bool spiky = e->state == ES_ACT;
+    float r = 0.55f * (1 + (tell ? tk * 0.25f : spiky ? 0.25f : 0.04f * sinf(t * 3 + x)));
+    cw_vec2 c = v2(x, y - 0.55f);
+    cw_color body = mixc(shell, rgba(0.9f, 0.9f, 1, 1), spiky ? 0.05f : 0.35f);
+    if (spiky || tell)
+      for (int k = 0; k < 10; k++) {
+        float a = (float)k * 0.628f + t * 0.8f, l = spiky ? 0.45f : 0.45f * tk;
+        cw_vec2 d = polar(c, a, r * 0.9f), q = polar(c, a, r + l);
+        limb(d, q, 0.08f, 0.01f, spiky ? hot : mixc(body, hot, tk));
+      }
+    cw_r2d_circle(c, r, 18, body);
+    cw_r2d_circle(v2(c.x + f * 0.18f, c.y - 0.08f), 0.08f, 8, eye);
+    cw_r2d_circle(v2(c.x + f * 0.36f, c.y - 0.08f), 0.06f, 8, eye);
+    break;
+  }
+  case EN_DROPPER: { /* a bulb on a thread from the ceiling; it shivers (the tell), then falls and bursts */
+    float shake = tell ? sinf(t * 60) * 0.08f * tk : 0;
+    if (e->state == ES_IDLE || e->state == ES_TELL || (e->state == ES_REST && e->t >= 90))
+      limb(v2(x, e->hy - 1.05f - 0.6f), v2(x + shake, y - 0.9f), 0.02f, 0.02f, rgba(0.85f, 0.85f, 0.75f, 0.8f));
+    cw_vec2 c = v2(x + shake, y - 0.5f);
+    cw_r2d_circle(c, 0.48f, 16, shell);
+    cw_r2d_circle(v2(c.x, c.y + 0.12f), 0.3f, 12, mixc(shell, hot, tell ? 0.4f + 0.5f * tk : 0.25f));
+    cw_r2d_circle(v2(c.x + f * 0.12f, c.y - 0.1f), 0.07f, 8, eye);
+    if (e->state == ES_REST && e->t < 90) cw_r2d_circle_lines(v2(c.x, c.y - 0.7f), 0.25f, 0.05f, 10, rgba(1, 1, 0.6f, 0.7f)); /* (stunned) */
+    break;
+  }
+  case EN_BURROWER: { /* under the floor: a ripple of dust that follows you; then a jaw bursts up, and rests out */
+    bool out = (e->aux & 1) != 0;
+    if (!out) {
+      float k = tell ? 0.5f + 0.5f * tk : 0.25f;
+      for (int i = 0; i < 4; i++) {
+        float dx = ((float)i - 1.5f) * 0.35f + sinf(t * 12 + (float)i) * 0.06f * k;
+        cw_r2d_circle(v2(x + dx, y - 0.08f - fabsf(sinf(t * 9 + (float)i)) * 0.18f * k), 0.12f + 0.08f * k, 8, rgba(0.6f, 0.5f, 0.4f, 0.5f + 0.4f * k));
+      }
+      break;
+    }
+    float rise = e->state == ES_ACT ? fminf(1, (float)e->t / 4.0f) : 1;
+    cw_vec2 c = v2(x, y - 0.6f * rise);
+    cw_r2d_arc(c, 0, 0.7f, -1.5708f, 1.5708f, 16, shell);
+    for (int k = -2; k <= 2; k++) limb(v2(x + (float)k * 0.22f, c.y - 0.35f), v2(x + (float)k * 0.26f, c.y - 0.75f), 0.06f, 0.01f, rgba(0.95f, 0.92f, 0.85f, 1));
+    cw_r2d_circle(v2(x + f * 0.25f, c.y - 0.15f), 0.08f, 8, eye);
+    break;
+  }
+  default: { /* the eye: a lantern eye on a stalk; it charges (the line it will burn shows), then burns */
+    limb(v2(x, y), v2(x + sinf(t + x) * 0.05f, y - 0.9f), 0.1f, 0.07f, scalec(shell, 0.7f));
+    cw_vec2 c = v2(x, y - 1.15f);
+    cw_r2d_circle(c, 0.42f, 16, shell);
+    cw_r2d_circle(v2(c.x + f * 0.12f, c.y), 0.22f + 0.06f * tk, 12, rgba(1, 1, 0.95f, 1));
+    glowing(tell ? 2 + 3 * tk : 1.5f);
+    cw_r2d_circle(v2(c.x + f * 0.2f, c.y), 0.1f, 8, tell ? hot : eye);
+    glowing(1);
+    break;
+  }
+  }
+}
+
 static void draw_enemy(const sim *s, const enemy *e, float t) {
   const region_info *g = &REGIONS[s->room >= 0 ? s->w->rooms[s->room].region : 0];
   float f = e->facing_left ? -1.0f : 1.0f, x = e->x, y = e->y;
@@ -1090,6 +1154,7 @@ static void draw_enemy(const sim *s, const enemy *e, float t) {
   cw_color hot = rgba(1, 0.42f, 0.25f, 1), shell = mixc(rgba(0.55f, 0.2f, 0.45f, 1), hexc(g->accent, 1), 0.2f);
   if (e->flash > 0) shell = mixc(shell, rgba(1, 1, 1, 1), 0.7f);
   cw_color eye = tell ? mixc(rgba(1, 0.9f, 0.4f, 1), rgba(1, 1, 1, 1), 0.5f + 0.5f * sinf(t * 30)) : rgba(1, 0.85f, 0.35f, 1);
+  if (e->kind >= EN_PUFF) { draw_enemy_extra(s, e, t, shell, eye, hot); return; }
   switch (e->kind) {
   case EN_CRAWLER: {
     float rear = tell ? fminf(1, tk * 2) * 0.35f : 0;
@@ -1488,6 +1553,14 @@ void view_draw(const sim *s, float t) {
     }
   }
   draw_pickups(s, t, x0, x1, y0, y1);
+  if (s->echo && s->echo_x > x0 - 2 && s->echo_x < x1 + 2 && s->echo_y > y0 - 3 && s->echo_y < y1 + 3) { /* your flame where you fell */
+    float fl = 0.8f + 0.2f * sinf(t * 11) + 0.1f * sinf(t * 23), ey = s->echo_y - 1.0f + sinf(t * 2) * 0.1f;
+    glowing(3.2f);
+    cw_vec2 fp[4] = { v2(s->echo_x, ey - 0.55f * fl), v2(s->echo_x + 0.22f, ey), v2(s->echo_x, ey + 0.2f), v2(s->echo_x - 0.22f, ey) };
+    cw_r2d_polygon(fp, 4, rgba(0.55f, 0.9f, 1, 1));
+    glowing(1);
+    light(s->echo_x, ey, 6, rgba(0.5f, 0.85f, 1, 1), 0.9f * fl, false);
+  }
   shot_lights(s);
   cw_r2d_use_layer(L_ACTORS);
   for (int i = 0; i < s->nen; i++)
@@ -1534,9 +1607,16 @@ void view_draw(const sim *s, float t) {
       else a0 = f > 0 ? -1.2f : 1.9f, a1 = f > 0 ? 1.2f : 4.3f;
       cw_r2d_arc(c, 1.2f, 2.1f, a0 + (a1 - a0) * (k - 0.5f), a0 + (a1 - a0) * k, 14, rgba(0.85f, 0.95f, 1, 0.55f * (1 - k * 0.6f)));
     }
+    if (p->sprint) cw_r2d_rect((cw_rect){ p->x - (p->vx > 0 ? 1.8f : -0.4f) - (p->vx > 0 ? 0 : 1.4f), p->y - 1.6f, 1.8f, 1.4f }, rgba(1, 0.75f, 0.4f, 0.18f));
     if (p->state == PS_DASH) cw_r2d_rect((cw_rect){ p->x - (p->dash_dir > 0 ? 2.5f : 0), p->y - 1.3f, 2.5f, 0.9f }, rgba(0.6f, 0.9f, 1, 0.25f));
   }
   draw_tells(s, t);
+  for (int i = 0; i < s->nen; i++) { /* an eye's charge: the line it will burn, thin then bright */
+    float ex0, ex1, ey;
+    if (!s->en[i].alive || !enemy_eye_line(s, &s->en[i], &ex0, &ex1, &ey)) continue;
+    float k = (float)s->en[i].t / (float)enemy_tell_ticks(EN_EYE);
+    cw_r2d_rect((cw_rect){ fminf(ex0, ex1), ey - 0.03f - 0.05f * k, fabsf(ex1 - ex0), 0.06f + 0.1f * k }, rgba(1, 0.5f, 0.3f, 0.25f + 0.5f * k));
+  }
   glowing(3.0f);
   draw_shots(s, t);
   glowing(1.8f);
@@ -1612,8 +1692,29 @@ void view_events(const sim *s) {
   for (int i = 0; i < s->nev; i++) {
     const event *e = &s->ev[i];
     switch (e->kind) {
-    case EV_KILL: burst(e->x, e->y, 22, 7, 0.6f, 0.4f, rgba(1, 0.55f, 0.35f, 1), true, 4); break;
-    case EV_HIT: burst(e->x, e->y, 8, 5, 0.3f, 0.3f, e->a == 2 ? rgba(0.8f, 0.85f, 1, 1) : rgba(1, 0.85f, 0.6f, 1), true, 0); break;
+    case EV_KILL:
+      burst(e->x, e->y, 30, 9, 0.7f, 0.45f, rgba(1, 0.55f, 0.35f, 1), true, 4);
+      emit(e->x, e->y, 0, 0, 0.16f, 2.4f, rgba(1, 0.95f, 0.8f, 1), 0, true, 0);
+#ifdef LANTERNFALL_R2D_V2
+      add_wave(e->x, e->y, 3);
+#endif
+      break;
+    case EV_HIT:
+      burst(e->x, e->y, e->a == 0 ? 16 : 8, e->a == 0 ? 8 : 5, 0.3f, 0.3f, e->a == 2 ? rgba(0.8f, 0.85f, 1, 1) : rgba(1, 0.85f, 0.6f, 1), true, 0);
+      if (e->a == 0) emit(e->x, e->y, 0, 0, 0.12f, 1.6f, rgba(1, 1, 1, 0.9f), 0, true, 0); /* (the impact star) */
+      break;
+    case EV_PARRY: burst(e->x, e->y, 12, 7, 0.25f, 0.25f, rgba(0.9f, 0.95f, 1, 1), true, 0), emit(e->x, e->y, 0, 0, 0.1f, 1.2f, rgba(0.8f, 0.9f, 1, 1), 0, true, 0); break;
+    case EV_BOSS_PHASE:
+#ifdef LANTERNFALL_R2D_V2
+      add_wave(e->x, e->y, 12);
+#endif
+      burst(e->x, e->y, 70, 10, 1.0f, 0.5f, rgba(1, 0.6f, 0.4f, 1), true, 0), flash_t = 0.8f, flash_c = rgba(1, 0.55f, 0.4f, 0.35f);
+      break;
+    case EV_TRIAL: rock_dirty = true, flash_t = 0.4f, flash_c = rgba(1, 0.5f, 0.3f, 0.18f); break;
+    case EV_TRIAL_WAVE: burst(e->x, e->y, 30, 8, 0.8f, 0.4f, rgba(1, 0.5f, 0.35f, 1), true, 0); break;
+    case EV_TRIAL_DONE: rock_dirty = true, flash_t = 0.6f, flash_c = rgba(1, 0.95f, 0.75f, 0.25f); break;
+    case EV_ECHO: burst(e->x, e->y - (e->a ? 0 : 1.0f), 40, 5, 1.0f, 0.4f, rgba(0.55f, 0.9f, 1, 1), true, -1); break;
+    case EV_CHARM: burst(e->x, e->y - 0.9f, 60, 7, 1.2f, 0.45f, rgba(0.85f, 0.6f, 1, 1), true, -1); break;
     case EV_BOSS_HIT: burst(e->x, e->y, 10, 6, 0.35f, 0.35f, rgba(1, 0.9f, 0.7f, 1), true, 0); break;
     case EV_BOSS_DOWN:
 #ifdef LANTERNFALL_R2D_V2

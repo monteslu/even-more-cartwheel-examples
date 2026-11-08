@@ -18,8 +18,8 @@
  *              frames 32 x 18 tiles round the player inside its room; a reward inside hidden rock is not seen)
  *   shortcuts  every ability opens a gate whose two sides were both reached before it
  *   set pieces every region has a hand-shaped room (pieces.h), and the walk reaches it
- *   blind drops  no move falls into thorns below where it left the ground that were not on screen as it left (any
- *              tile of the thorns' run along their row on screen counts)
+ *   blind drops  no move falls into thorns below where it left the ground that were on screen neither as it left nor
+ *              at the top of its flight (any tile of the thorns' run along their row on screen counts)
  * Exit 0 when everything holds, 1 when a check fails.
  *
  * --break n breaks the world on purpose first (the controls, which must fail): 1 takes the anchors out of the
@@ -50,7 +50,7 @@ static bool standable(int x, int y) {
   int t = T[y][x];
   if (!(t_solid(t) || t == T_ONEWAY) || t == T_SECRET) return false; /* (a hidden floor breaks under you: nobody stands on it) */
   for (int k = 1; k <= 2; k++) {
-    int a = w_tile(&W, x, y - k);
+    int a = y - k >= 0 ? T[y - k][x] : T_SOLID; /* (the live tiles: room under a broken hidden wall is room to stand) */
     if (t_solid(a) || a == T_SPIKE) return false;
   }
   if (w_tile(&W, x, y - 2) == T_WATER && T[y - 2][x] == T_WATER) return false;
@@ -129,7 +129,9 @@ static bool thorns_in_view(int hz, float gx, float gy, float gvx) {
   return false;
 }
 /* a move played like move_play (reach.c), but when it ends in thorns it says which tile: -1 none */
-static int move_play_h(const move *m, uint32_t abilities, float x, float y, player *out, int *broke, int *hazard, float *gx, float *gy, float *gvx) {
+/* gx, gy, gvx: where it last left the ground (feet, speed); ax, ay, avx: the top of its flight after that */
+static int move_play_h(const move *m, uint32_t abilities, float x, float y, player *out, int *broke, int *hazard, float *gx, float *gy, float *gvx, float *ax,
+                       float *ay, float *avx) {
   player p;
   memset(&p, 0, sizeof p);
   p.hp_max = 5, p.en_max = 3;
@@ -140,7 +142,8 @@ static int move_play_h(const move *m, uint32_t abilities, float x, float y, play
   pworld_anchors(&pw, &W, room);
   int phase = 0;
   *broke = -1, *hazard = -1;
-  *gx = x, *gy = y, *gvx = 0;
+  *gx = x, *gy = y, *gvx = 0, *ax = x, *ay = y, *avx = 0;
+  bool rising = false;
   for (int tick = 0; tick <= MOVE_MAX_TICKS + 60; tick++) {
     pinput in;
     if (!move_input(m, tick, &p, &phase, &in)) {
@@ -148,7 +151,9 @@ static int move_play_h(const move *m, uint32_t abilities, float x, float y, play
       return tick;
     }
     float bx = p.x, by = p.y, bvx = p.vx, bvy = p.vy;
-    if (p.on_ground) *gx = p.x, *gy = p.y, *gvx = p.vx;
+    if (p.on_ground) *gx = p.x, *gy = p.y, *gvx = p.vx, *ax = p.x, *ay = p.y, *avx = p.vx, rising = false;
+    else if (p.vy < 0) rising = true;
+    else if (rising) *ax = p.x, *ay = p.y, *avx = p.vx, rising = false; /* (the top of the flight) */
     int b = player_step(&p, &in, &pw);
     if (p.ev & PE_HAZARD) { /* the thorns it touched: round where the body was going */
       float hx = bx + bvx * DT, hy = by + bvy * DT;
@@ -188,10 +193,10 @@ static void expand(int tile, edges *out) {
     player a, b;
     int ba, bb;
     int hz;
-    float gx, gy, gvx;
-    int ta = move_play_h(&MOVES[m], AB, (float)x + 0.3f, (float)y, &a, &ba, &hz, &gx, &gy, &gvx);
-    if (ta < 0) { /* thorns below where it left the ground, not on screen as it left */
-      if (hz >= 0 && !no_blind && (float)(hz / TW) > gy + 1 && !thorns_in_view(hz, gx, gy, gvx)) blind[hz] = 1, blind_from[hz] = tile;
+    float gx, gy, gvx, ax, ay, avx;
+    int ta = move_play_h(&MOVES[m], AB, (float)x + 0.3f, (float)y, &a, &ba, &hz, &gx, &gy, &gvx, &ax, &ay, &avx);
+    if (ta < 0) { /* thorns below where it left the ground, on screen neither as it left nor at the top of its flight */
+      if (hz >= 0 && !no_blind && (float)(hz / TW) > gy + 1 && !thorns_in_view(hz, gx, gy, gvx) && !thorns_in_view(hz, ax, ay, avx)) blind[hz] = 1, blind_from[hz] = (int)roundf(gy) * TW + (int)floorf(gx); /* (where it left the ground) */
       continue;
     }
     int la = landing_node(&a);
@@ -573,9 +578,10 @@ static void break_world(int n) {
 static bool grounded(const ent *e) {
   int x = (int)floorf(e->x), y = (int)roundf(e->y);
   if (e->kind == EK_ANCHOR) return t_solid(w_tile(&W, x, (int)floorf(e->y) - 1)) || t_solid(w_tile(&W, x, (int)floorf(e->y) - 2));
-  if (e->kind == EK_ENEMY && e->sub == EN_FLYER) return true;
+  if (e->kind == EK_ENEMY && (e->sub == EN_FLYER || e->sub == EN_PUFF)) return true; /* (they fly) */
+  if (e->kind == EK_ENEMY && e->sub == EN_DROPPER) return t_solid(w_tile(&W, x, (int)floorf(e->y) - 2)) && !t_solid(w_tile(&W, x, (int)floorf(e->y) - 1)); /* (its thread from the ceiling) */
   if (e->kind == EK_START) return t_solid(w_tile(&W, x, y));
-  if (e->hold & HOLD_FLOOR) return t_solid(w_tile(&W, x, y)) && !t_solid(w_tile(&W, x, y - 1));
+  if (e->hold & HOLD_FLOOR) return t_solid(w_tile(&W, x, y)) && (!t_solid(w_tile(&W, x, y - 1)) || w_tile(&W, x, y - 1) == T_SECRET); /* (in a hidden alcove: there once it opens) */
   if (e->hold & HOLD_CEIL) return t_solid(w_tile(&W, x, y - 1)) && !t_solid(w_tile(&W, x, y));
   if (e->hold & HOLD_WALL_L) return t_solid(w_tile(&W, x - 1, (int)e->y));
   if (e->hold & HOLD_WALL_R) return t_solid(w_tile(&W, x + 1, (int)e->y));
@@ -591,6 +597,7 @@ typedef struct route_step { int32_t from, to; uint8_t move, stage, goal, pad; } 
 
 /* the cheapest way over a stage's edges from `from` to the nearest tile of `goal_mask` (1 = a goal): steps
  * appended, the goal reached returned (-1 none) */
+static bool route_shut_heart; /* the heart's seal is still shut where the route has got to: no way through the Heartwood */
 static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out, int *nout, int cap) {
   static int32_t *dist, *prev, *prevmv;
   static uint8_t *done;
@@ -632,6 +639,10 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
     const edges *e = &stage_E[st][eslot[u]];
     for (int k = 0; k < e->n; k++) {
       int v = e->to[k], nd = dist[u] + e->ticks[k] + 4;
+      if (route_shut_heart) {
+        int vr = w_room_at(&W, (float)(v % TW) + 0.5f, (float)(v / TW) - 0.5f);
+        if (vr >= 0 && W.rooms[vr].region == R_HEART) continue;
+      }
       if (nd < dist[v]) {
         dist[v] = nd, prev[v] = u, prevmv[v] = e->mv[k];
         HPUSH(v);
@@ -651,10 +662,11 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
 }
 
 static int write_route(const char *path, int start) {
-  static uint8_t goal[TW * TH];
+  static uint8_t goal[TW * TH], is_warden[TW * TH];
   static route_step steps[60000];
-  int n = 0;
+  int n = 0, wardens_met = 0;
   memset(goal, 0, sizeof goal);
+  memset(is_warden, 0, sizeof is_warden);
   int ngoals = 0, last = -1;
   for (int i = 0; i < W.nents; i++) {
     const ent *e = &W.ents[i];
@@ -667,15 +679,19 @@ static int write_route(const char *path, int start) {
     if (t < 0 || t >= TW * TH || node_at[t] < 0) continue;
     if (e->kind == EK_BOSS && e->sub == NBOSSES - 1) last = t; /* the heart: last of all, once everything else is found */
     else goal[t] = 1;
+    if (e->kind == EK_BOSS && e->sub < NBOSSES - 1) is_warden[t] = 1;
     ngoals++;
   }
   int cur = start, legs = 0;
   for (int st = 0; st < nstages; st++)
     for (;;) {
+      route_shut_heart = wardens_met < 5;
       int g = plan_leg(st, cur, goal, steps, &n, 60000);
       if (g < 0) break;
       goal[g] = 0, cur = g, legs++;
+      wardens_met += is_warden[g];
     }
+  route_shut_heart = false;
   if (last >= 0) {
     goal[last] = 1;
     int g = plan_leg(nstages - 1, cur, goal, steps, &n, 60000);
@@ -860,7 +876,7 @@ int main(int argc, char **argv) {
         nb++;
         if (nb <= 6 || getenv("CHECK_ALL")) {
           int f = blind_from[i];
-          printf("FAIL blind drop: thorns at %d,%d (room %d) out of view from %d,%d (room %d)\n", i % TW, i / TW, w_room_at(&W, (float)(i % TW) + 0.5f, (float)(i / TW) + 0.5f),
+          printf("FAIL blind drop: thorns at %d,%d (room %d) out of view where the move left the ground at %d,%d (room %d)\n", i % TW, i / TW, w_room_at(&W, (float)(i % TW) + 0.5f, (float)(i / TW) + 0.5f),
                  f % TW, f / TW, w_room_at(&W, (float)(f % TW) + 0.5f, (float)(f / TW) - 0.5f));
         }
       }

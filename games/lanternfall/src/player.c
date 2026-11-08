@@ -7,7 +7,7 @@
 #define EPS 0.001f
 
 /* tunables a test can turn off (tools/feel.c --control) */
-int g_coyote = COYOTE, g_jbuf = JBUF;
+int g_coyote = COYOTE, g_jbuf = JBUF, g_wall_dash = 1, g_sprint = 1;
 float g_grav_cut = GRAV_CUT;
 
 static inline float clampf(float v, float lo, float hi) { return v < lo ? lo : v > hi ? hi : v; }
@@ -299,6 +299,8 @@ int player_step(player *p, const pinput *in, const pworld *pw) {
     if (--p->dash_t <= 0) {
       p->state = PS_NORMAL;
       p->vx = (float)p->dash_dir * RUN;
+      if (g_sprint && (pw->charms & CHARM_BIT(CH_SPRINT)) && in->dash_held && mx == p->dash_dir && !p->in_water)
+        p->sprint = true, p->vx = (float)p->dash_dir * RUN * 1.45f, p->ev |= PE_SPRINT;
     } else {
       p->vy = 0;
       p->vx = (float)p->dash_dir * DASH_V;
@@ -350,7 +352,20 @@ int player_step(player *p, const pinput *in, const pworld *pw) {
     p->ev |= PE_CLING;
   }
   if (p->state == PS_CLING) {
-    if (!wside || ground || mx == -wside) p->state = PS_NORMAL;
+    if (g_wall_dash && wside && !ground && in->dash && (ab & AB_DASH) && p->dash_cd == 0 && !(my > 0 && (ab & AB_POUND))) { /* a dash straight off the wall: climbing and dashing chain */
+      p->state = PS_DASH;
+      p->dash_t = DASH_T;
+      p->dash_dir = (int8_t)-wside;
+      p->dash_cd = DASH_CD + DASH_T;
+      p->dash_ready = false;
+      p->facing_left = wside > 0;
+      p->vy = 0;
+      p->vx = (float)p->dash_dir * DASH_V;
+      p->wall_lock = WALL_LOCK, p->lock_side = (int8_t)wside;
+      p->ev |= PE_DASH;
+      if (move_x(pw, p, p->vx * DT)) p->state = PS_NORMAL, p->vx = 0;
+      return -1;
+    } else if (!wside || ground || mx == -wside) p->state = PS_NORMAL;
     else if (in->jump) { /* off the wall */
       p->state = PS_NORMAL;
       p->vx = (float)-wside * WALLJ_VX;
@@ -432,13 +447,15 @@ int player_step(player *p, const pinput *in, const pworld *pw) {
     if (p->state == PS_GRAPPLE) return -1;
   }
 
-  /* ── running ── */
-  float target = (float)mx * RUN;
+  /* ── running (the sprint charm: a dash held on into the run keeps going as a sprint, and a jump keeps its speed) ── */
+  if (p->sprint && (!(pw->charms & CHARM_BIT(CH_SPRINT)) || !mx || p->vx * (float)mx < RUN * 0.9f || p->in_water || p->state != PS_NORMAL)) p->sprint = false;
+  float target = (float)mx * (p->sprint ? RUN * 1.45f : RUN);
   if (p->in_water) target *= 0.75f;
   if (p->deep) target = (float)mx * 3.5f;
   float acc = ground ? (mx ? G_ACC : G_DEC) : (mx ? A_ACC : A_DEC);
   if (mx && p->vx * (float)mx < 0) acc = ground ? G_DEC : A_ACC; /* turning round */
   if (p->state == PS_HURT) acc = ground ? 30 : 8;
+  if (p->recoil_t > 0) p->recoil_t--, acc = ground ? 34 : 22; /* (a blow's push back is felt) */
   p->vx = toward(p->vx, target, acc * DT);
 
   /* ── gravity: lighter while a held jump rises, heavier when it is let go, a hang at the top ── */
@@ -454,7 +471,7 @@ int player_step(player *p, const pinput *in, const pworld *pw) {
   } else p->vy = 0;
 
   int hx = move_x(pw, p, p->vx * DT);
-  if (hx) p->vx = 0;
+  if (hx) p->vx = 0, p->sprint = false;
   int r = move_y(pw, p, p->vy * DT, p->drop_t == 0);
   if (r == -1) { /* a bonk: round a ceiling corner when the head only clipped it */
     float vy0 = p->vy;

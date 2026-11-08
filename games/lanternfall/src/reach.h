@@ -18,6 +18,7 @@ typedef struct move {
   uint8_t grapple, release, chain; /* tick of the line, ticks until the jump off it (0 none), lines again after */
   uint8_t climb;       /* hold toward the wall and up after the jump */
   uint8_t walljump;    /* tick of a jump off the wall (with climb) */
+  uint8_t cdash;       /* tick of a dash off the wall (with climb): climbing and the dash chain */
   uint8_t pound;       /* tick of the plunge after the jump */
   int8_t swim;         /* hold this vertical while swimming (with 2 = no swim) */
   uint8_t drop;        /* down + jump through a one-way ledge */

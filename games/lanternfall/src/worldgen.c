@@ -419,28 +419,28 @@ static int add_ent(int kind, int sub, int arg, int hold, int room, float x, floa
 typedef struct piece_plan { int region, piece, pk, arg; } piece_plan;
 static const piece_plan PIECE_PLAN[] = {
   /* seen at the start, reached with the second jump */
-  { R_GATE, PC_HIGH_SHELF, PK_CHARM, CH_ECHO },
-  { R_ROOTWAY, PC_HIGH_SHELF, PK_MOVE, MV_RISING },
+  { R_GATE, PC_HIGH_SHELF, PK_RELIC, 0 },
+  { R_ROOTWAY, PC_HIGH_SHELF, PK_RELIC, 0 },
   /* the dash */
-  { R_GATE, PC_THORN_REACH, PK_CHARM, CH_SWIFT },
+  { R_GATE, PC_THORN_REACH, PK_RELIC, 0 },
   { R_ROOTWAY, PC_THORN_REACH, PK_RELIC, 0 },
-  { R_GLASS, PC_THORN_REACH, PK_CHARM, CH_WAYFINDER },
+  { R_GLASS, PC_THORN_REACH, PK_RELIC, 0 },
   { R_ROOTWAY, PC_GAUNTLET, PK_RELIC, 0 },
   /* wall climbing */
-  { R_ROOTWAY, PC_SHEER_WALL, PK_CHARM, CH_FEATHER },
+  { R_ROOTWAY, PC_SHEER_WALL, PK_RELIC, 0 },
   { R_GLASS, PC_SHEER_WALL, PK_RELIC, 0 },
-  { R_ARCHIVE, PC_SHEER_WALL, PK_CHARM, CH_EMBER },
+  { R_ARCHIVE, PC_SHEER_WALL, PK_RELIC, 0 },
   { R_GLASS, PC_SPIRE_LEAP, PK_RELIC, 0 },
   /* the plunge */
-  { R_ROOTWAY, PC_SEALED_VAULT, PK_MOVE, MV_SHOCK },
-  { R_FEN, PC_SEALED_VAULT, PK_CHARM, CH_HEARTH },
+  { R_ROOTWAY, PC_SEALED_VAULT, PK_RELIC, 0 },
+  { R_FEN, PC_SEALED_VAULT, PK_RELIC, 0 },
   { R_CLOCK, PC_SEALED_VAULT, PK_RELIC, 0 },
   /* the tide charm */
-  { R_GATE, PC_FLOODED_NOOK, PK_CHARM, CH_THORNWALK },
+  { R_GATE, PC_FLOODED_NOOK, PK_RELIC, 0 },
   { R_GLASS, PC_FLOODED_NOOK, PK_RELIC, 0 },
-  { R_ARCHIVE, PC_FLOODED_NOOK, PK_CHARM, CH_LONGARM },
+  { R_ARCHIVE, PC_FLOODED_NOOK, PK_RELIC, 0 },
   /* the grapple line */
-  { R_ROOTWAY, PC_HIGH_ISLE, PK_MOVE, MV_SPIN },
+  { R_ROOTWAY, PC_HIGH_ISLE, PK_RELIC, 0 },
   { R_TIDAL, PC_HIGH_ISLE, PK_RELIC, 0 },
   { R_FORGE, PC_HIGH_ISLE, PK_RELIC, 0 },
   /* fights of several at once, a relic past them */
@@ -456,7 +456,7 @@ static struct { uint8_t pk, arg; } piece_reward[MAXROOMS];
 static void place_set_pieces(int r) {
   int rooms[4], ex, ey;
   /* the view first: a way through the region with its landmark */
-  piece_room v[1] = { { 0, 0, 1, 1, RK_ITEM } };
+  piece_room v[1] = { { 0, 0, 1, 1, RK_PIECE } };
   if (place_piece_f(r, v, 1, rooms, &ex, &ey, 3) >= 0) {
     W->rooms[rooms[0]].piece = PC_VISTA, W->rooms[rooms[0]].intent = IN_VISTA;
     piece_reward[rooms[0]].pk = PK_MAPSTONE, piece_reward[rooms[0]].arg = (uint8_t)r;
@@ -464,7 +464,7 @@ static void place_set_pieces(int r) {
   for (int i = 0; i < NPIECE_PLAN; i++) {
     const piece_plan *pp = &PIECE_PLAN[i];
     if (pp->region != r) continue;
-    piece_room p[1] = { { 0, 0, 1, 1, RK_ITEM } };
+    piece_room p[1] = { { 0, 0, 1, 1, RK_PIECE } };
     if (place_piece_f(r, p, 1, rooms, &ex, &ey, PIECES[pp->piece].through ? 3 : 1) < 0) {
       fprintf(stderr, "worldgen: no room for the %s in %s\n", PIECES[pp->piece].name, REGIONS[r].name);
       continue;
@@ -511,7 +511,8 @@ static void stamp_piece(int ri, bool mirror) {
 }
 
 /* a hidden alcove in a room's floor against a wall with no door: a face of hidden rock (a strike breaks it, the
- * alcove's hidden rock with it) and a relic inside. Returns true when laid. */
+ * alcove's hidden rock with it) and a tablet of the city's story inside. Returns true when laid. */
+static int lore_n; /* tablets laid so far */
 static bool secret_pocket(int ri, int side, int floor_y, const uint8_t *keep) {
   room *rm = &W->rooms[ri];
   int X0 = rm->x * CELL_W, Wd = rm->w * CELL_W;
@@ -530,12 +531,29 @@ static bool secret_pocket(int ri, int side, int floor_y, const uint8_t *keep) {
     set(x, floor_y - 5, T_SOLID);
     for (int y = floor_y - 4; y <= floor_y - 1; y++) set(x, y, T_SECRET);
   }
-  /* the relic on its pedestal (laid with the others after carving): two in from the wall */
-  add_ent(EK_PICKUP, PK_RELIC, 0, HOLD_FLOOR, ri, (float)(side ? wx - 1 : wx + 2), (float)(floor_y - 1));
+  /* a tablet of the old city's story on its pedestal (laid with the others after carving): two in from the wall */
+  add_ent(EK_PICKUP, PK_LORE, (uint8_t)(lore_n++ % NLORE), HOLD_FLOOR, ri, (float)(side ? wx - 1 : wx + 2), (float)floor_y);
   return true;
 }
 
 /* a ladder of one-way ledges from the floor at (x, floor_y) up to a surface at top_y around x */
+/* the same out in the room: a low mound of rock on level floor, its sides hidden rock, a tablet inside */
+static bool secret_mound(int ri, int x0, int base_y, const uint8_t *keep) {
+  room *rm = &W->rooms[ri];
+  int X0 = rm->x * CELL_W, Wd = rm->w * CELL_W;
+  int floor_y = base_y - 3; /* the ground's top under it: the floor or a step (the same for all of it) */
+  while (floor_y < base_y && !t_solid(tile(x0, floor_y))) floor_y++;
+  for (int x = x0 - 2; x <= x0 + 7; x++) {
+    if (x < X0 + 3 || x > X0 + Wd - 4 || keep[x - X0] || !t_solid(tile(x, floor_y)) || tile(x, floor_y) == T_SPIKE) return false;
+    for (int y = floor_y - 7; y <= floor_y - 1; y++)
+      if (tile(x, y) != T_EMPTY) return false;
+  }
+  fill(x0, floor_y - 4, x0 + 5, floor_y - 4, T_SOLID);
+  fill(x0, floor_y - 3, x0 + 5, floor_y - 1, T_SECRET);
+  add_ent(EK_PICKUP, PK_LORE, (uint8_t)(lore_n++ % NLORE), HOLD_FLOOR, ri, (float)(x0 + 3), (float)floor_y); /* (a tablet lies on the floor: no pedestal) */
+  return true;
+}
+
 static void ladder(int x0, int x1, int fx, int floor_y, int top_y, int target_lo, int target_hi) {
   int y = floor_y - 3, k = 0, cx = fx;
   while (y > top_y + 3) {
@@ -639,7 +657,7 @@ static void carve_room(int ri) {
   int floor_y = Y0 + Ht - 2; /* the floor's surface row (the first solid row) */
   /* columns the floor keeps level and clear: under doors and ladders */
   static uint8_t keep[TW];
-  memset(keep + X0, 0, (size_t)Wd);
+  memset(keep, 0, (size_t)Wd); /* (indexed from the room's left wall: x - X0) */
   for (int i = 0; i < W->ndoors; i++) {
     door *d = &W->doors[i];
     if (d->a != ri && d->b != ri) continue;
@@ -684,7 +702,7 @@ static void carve_room(int ri) {
     stamp_piece(ri, right && !left);
     return;
   }
-  if (rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START) { compose(ri, keep, true); return; }
+  if (rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START || rm->kind == RK_SECRET) { compose(ri, keep, true); return; }
   /* the floor: steps of one to three, thorn pits and pools between kept columns */
   int region = rm->region;
   bool flooded = (region == R_TIDAL || region == R_GLASS) && rm->w >= 2 && rm->h == 1 && rm->kind == RK_PLAIN && (ri % 3) == 0;
@@ -692,6 +710,7 @@ static void carve_room(int ri) {
   int level = 0; /* rows above the base floor */
   while (x < ix1 - 5) {
     int run = rint_(4, 9);
+    if (x + run - 1 >= ix1 - 3) run = ix1 - x + 1; /* (a step near the wall runs into it: no slot left beside it) */
     bool kept = false;
     for (int k = -1; k <= run; k++)
       if (x + k >= X0 && x + k < X0 + Wd && keep[x + k - X0]) kept = true;
@@ -708,7 +727,7 @@ static void carve_room(int ri) {
       if (nl - level > 3) nl = level + 3;
       level = nl;
       if (level) fill(x, floor_y - level, x + run - 1, floor_y - 1, T_SOLID);
-    } else if (choice < 48 && level == 0) { /* a thorn pit */
+    } else if (choice < 48 && level == 0 && rm->h == 1) { /* a thorn pit (never at the foot of a tall room: a fall from its top would meet it out of view) */
       int pw = rint_(2, 4);
       fill(x + 1, floor_y, x + pw, floor_y, T_SPIKE);
       run = pw + 2;
@@ -722,9 +741,10 @@ static void carve_room(int ri) {
     x += run;
   }
   /* a hidden alcove against a wall with no door, now and then */
-  if ((rm->kind == RK_PLAIN || rm->kind == RK_HALL) && !flooded && chance(24)) {
+  if ((rm->kind == RK_PLAIN || rm->kind == RK_HALL) && !flooded && chance(30)) {
     int side = rint_(0, 1);
-    if (!secret_pocket(ri, side, floor_y, keep)) secret_pocket(ri, 1 - side, floor_y, keep);
+    if (!secret_pocket(ri, side, floor_y, keep) && !secret_pocket(ri, 1 - side, floor_y, keep))
+      for (int tries = 0; tries < 8 && !secret_mound(ri, rint_(X0 + 6, X0 + Wd - 12), floor_y, keep); tries++) {}
   }
   compose(ri, keep, false);
   /* platforms in the air: one-way ledges (some broken in two), and islands of rock with tapered undersides, never
@@ -890,15 +910,39 @@ static void populate(int ri) {
       }
   }
   if (rm->kind != RK_PLAIN && rm->kind != RK_SHAFT && rm->kind != RK_HALL) return;
-  /* enemies: ground walkers on long floors, spitters on ledges, flyers in the air */
+  /* enemies: each region has its own cast (four kinds, the first two commonest), so a new region means new fights:
+   * ground walkers on long floors, spitters and eyes on ledges, moths and puffs in the air, droppers on ceilings */
+  static const uint8_t CAST[NREGIONS][4] = {
+    [R_GATE] = { EN_CRAWLER, EN_FLYER, EN_SPITTER, EN_PUFF },     [R_ROOTWAY] = { EN_CRAWLER, EN_PUFF, EN_SPITTER, EN_FLYER },
+    [R_GLASS] = { EN_DROPPER, EN_HOPPER, EN_FLYER, EN_EYE },      [R_FEN] = { EN_BURROWER, EN_SPITTER, EN_PUFF, EN_HOPPER },
+    [R_CLOCK] = { EN_EYE, EN_KNIGHT, EN_DROPPER, EN_CRAWLER },    [R_TIDAL] = { EN_PUFF, EN_BURROWER, EN_SPITTER, EN_FLYER },
+    [R_STAR] = { EN_EYE, EN_FLYER, EN_BURROWER, EN_KNIGHT },      [R_SKY] = { EN_FLYER, EN_PUFF, EN_KNIGHT, EN_EYE },
+    [R_ARCHIVE] = { EN_KNIGHT, EN_DROPPER, EN_EYE, EN_FLYER },    [R_FORGE] = { EN_CRAWLER, EN_EYE, EN_BURROWER, EN_KNIGHT },
+    [R_FROST] = { EN_DROPPER, EN_HOPPER, EN_KNIGHT, EN_BURROWER }, [R_BLOOM] = { EN_HOPPER, EN_PUFF, EN_BURROWER, EN_SPITTER },
+    [R_HEART] = { EN_KNIGHT, EN_BURROWER, EN_EYE, EN_FLYER },
+  };
   int ne = rm->w * rm->h + rint_(0, 1) + (region >= R_CLOCK);
   for (int k = 0; k < ne; k++) {
     int x = rint_(X0 + 8, X0 + Wd - 9), y = surface_at(ri, x);
     if (y < 0) continue;
-    int kind = (int)(rnd() % EN_KINDS);
-    if (region == R_GATE || region == R_ROOTWAY) kind = (int)(rnd() % 3);
-    if (kind == EN_FLYER) add_ent(EK_ENEMY, EN_FLYER, 0, 0, ri, (float)x + 0.5f, (float)(y - 5));
-    else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, (uint8_t)kind, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    uint32_t r4 = rnd() % 10u;
+    if (region == R_GATE || region == R_ROOTWAY) (void)rnd(); /* (the draw the old cast took here: the rest of the world stays as it was) */
+    int kind = CAST[region][r4 < 4 ? 0 : r4 < 7 ? 1 : r4 < 9 ? 2 : 3];
+    if (kind == EN_PUFF) { /* a puff drifts in open air, clear of anywhere to stand (its thorny breath must not sit on a ledge) */
+      int hy = y - 6;
+      bool open = true;
+      for (int yy = hy - 3; yy <= hy + 4 && open; yy++)
+        for (int xx = x - 5; xx <= x + 5 && open; xx++) open = tile(xx, yy) == T_EMPTY;
+      if (!open) kind = EN_FLYER;
+      else { add_ent(EK_ENEMY, EN_PUFF, 0, 0, ri, (float)x + 0.5f, (float)hy); continue; }
+    }
+    if (kind == EN_FLYER) add_ent(EK_ENEMY, (uint8_t)kind, 0, 0, ri, (float)x + 0.5f, (float)(y - 5));
+    else if (kind == EN_DROPPER) { /* on the ceiling over the floor, with room to fall */
+      int cy = y - 4;
+      while (cy > Y0 + 1 && !t_solid(tile(x, cy - 1))) cy--;
+      if (y - cy >= 5 && t_solid(tile(x, cy - 1))) add_ent(EK_ENEMY, EN_DROPPER, 0, HOLD_CEIL, ri, (float)x + 0.5f, (float)cy + 1.0f);
+      else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, EN_CRAWLER, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    } else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, (uint8_t)kind, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
   }
 }
 
@@ -925,6 +969,7 @@ void world_generate(world *w, uint32_t seed) {
     for (int x = 0; x < GW; x++) w->cell_room[y][x] = 0xffff, creg[y][x] = -1;
   memset(used, 0, sizeof used);
   memset(piece_reward, 0, sizeof piece_reward);
+  lore_n = 0;
   for (int r = 0; r < NREGIONS; r++)
     for (int y = REGIONS[r].y; y < REGIONS[r].y + REGIONS[r].h; y++)
       for (int x = REGIONS[r].x; x < REGIONS[r].x + REGIONS[r].w; x++) creg[y][x] = (int8_t)r;
@@ -1014,7 +1059,7 @@ void world_generate(world *w, uint32_t seed) {
     fill(X0 + 44, fy - 5, X0 + 51, fy - 5, T_ONEWAY);
   }
   for (int i = 0; i < W->nents; i++) /* pedestals under the pickups */
-    if (W->ents[i].kind == EK_PICKUP) fill((int)W->ents[i].x - 1, (int)W->ents[i].y, (int)W->ents[i].x, (int)W->ents[i].y, T_SOLID);
+    if (W->ents[i].kind == EK_PICKUP && W->ents[i].sub != PK_LORE) fill((int)W->ents[i].x - 1, (int)W->ents[i].y, (int)W->ents[i].x, (int)W->ents[i].y, T_SOLID);
   for (int i = 0; i < W->nrooms; i++) populate(i);
   if (start_room >= 0) {
     room *rm = &W->rooms[start_room];

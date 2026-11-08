@@ -141,6 +141,9 @@ int main(int argc, char **argv) {
     if (timeline) tl_tick(&S, tick), tl_ticks = tick + 1;
     if (getenv("LANTERNFALL_SOAK_HURT") && B.i < prev_i - 40) printf("t%ld REGRESS step %d -> %d at %.1f,%.1f room %d mode %d deaths %d\n", tick, prev_i, B.i, S.p[0].x, S.p[0].y, S.room, B.mode, S.deaths);
     prev_i = i_before > B.i ? i_before : B.i;
+    if (getenv("LANTERNFALL_SOAK_GOALS") && B.i > i_before)
+      for (int k = i_before; k < B.i && k < B.n; k++)
+        if (B.steps[k].goal) printf("t%ld goal step %d at %d,%d (room %d) pickups %d\n", tick, k, B.steps[k].to % TW, B.steps[k].to / TW, w_room_at(&W, (float)(B.steps[k].to % TW) + 0.5f, (float)(B.steps[k].to / TW) - 0.5f), sim_finds(&S));
     for (int k = 0; getenv("LANTERNFALL_SOAK_HURT") && k < S.nev; k++)
       if (S.ev[k].kind == EV_HURT || S.ev[k].kind == EV_DIE) {
         printf("t%ld %s hp %d at %.1f,%.1f room %d state %d:", tick, S.ev[k].kind == EV_DIE ? "DIE" : "hurt", S.p[0].hp, S.p[0].x, S.p[0].y, S.room, S.p[0].state);
@@ -150,10 +153,37 @@ int main(int argc, char **argv) {
         printf(" bot mode %d step %d atkcd %d facing %d\n", B.mode, B.i, S.p[0].atk_cd, S.p[0].facing_left);
       }
     if (getenv("LANTERNFALL_SOAK_TRACE") && tick < atoi(getenv("LANTERNFALL_SOAK_TRACE")) && tick > (getenv("LANTERNFALL_SOAK_FROM") ? atoi(getenv("LANTERNFALL_SOAK_FROM")) : 0)) {
-      for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 6) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
+      for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < (getenv("LANTERNFALL_SOAK_FAR") ? 40 : 6)) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
       const route_step *st = &B.steps[B.i < B.n ? B.i : B.n - 1];
-      printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump);
+      printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d a%d my%d cd%d hs%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump, in[0].attack, in[0].my, S.p[0].atk_cd, S.hitstop);
       if (S.b.active) printf("   boss st%d mv%d t%d x %.2f y %.2f\n", S.b.state, S.b.move, S.b.t, S.b.x, S.b.y);
+    }
+    if (getenv("LANTERNFALL_SOAK_TIMELINE")) { /* the moments a player notices, by game second (the diagnosis) */
+      static uint8_t seen_room[MAXROOMS], seen_kind[16];
+      static int last_room = -1;
+      double sec = (double)tick / 60.0;
+      if (S.room != last_room && S.room >= 0) {
+        last_room = S.room;
+        const room *rm = &W.rooms[S.room];
+        if (!seen_room[S.room]) {
+          seen_room[S.room] = 1;
+          int ne = 0;
+          for (int j = 0; j < S.nen; j++) ne += S.en[j].alive;
+          printf("T %.1f room %d kind %d region %d enemies %d%s\n", sec, S.room, rm->kind, rm->region, ne, seen_kind[rm->kind] ? "" : " NEWKIND");
+          seen_kind[rm->kind] = 1;
+          static uint8_t seen_foe[EN_KINDS];
+          for (int j = 0; j < S.nen; j++)
+            if (S.en[j].alive && !seen_foe[S.en[j].kind]) seen_foe[S.en[j].kind] = 1, printf("T %.1f newfoe %d 0\n", sec, S.en[j].kind);
+        }
+      }
+      for (int k = 0; k < S.nev; k++) {
+        const event *e = &S.ev[k];
+        const char *nm = e->kind == EV_KILL ? "kill" : e->kind == EV_PICKUP ? "pickup" : e->kind == EV_SAVE ? "shrine" : e->kind == EV_SECRET ? "secret"
+                         : e->kind == EV_BOSS_START ? "warden" : e->kind == EV_BOSS_DOWN ? "warden_down" : e->kind == EV_HURT ? "hurt" : e->kind == EV_DIE ? "die"
+                         : e->kind == EV_BREAK ? "break" : e->kind == EV_ENEMY_TELL ? "tell" : e->kind == EV_HIT ? "hit" : e->kind == EV_CHARM ? "charm"
+                         : e->kind == EV_TRIAL ? "trial" : e->kind == EV_TRIAL_DONE ? "trial_done" : e->kind == EV_BOSS_PHASE ? "phase" : NULL;
+        if (nm) printf("T %.1f %s %d %d\n", sec, nm, e->a, e->b);
+      }
     }
     if (inject && tick == 3600) S.p[0].vx = NAN;
     for (int i = 0; i < S.players; i++) {
@@ -172,7 +202,7 @@ int main(int argc, char **argv) {
       int seen = 0;
       for (int r = 0; r < W.nrooms; r++) seen += (S.seen[r >> 3] >> (r & 7)) & 1;
       int got = 0;
-      for (int k = 0; k < 4; k++) got += sim_pickups_got(&S, k);
+      for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(&S, k);
       long rss = rss_kb();
       if (!first_rss) first_rss = rss;
       printf("minute %ld: step %d/%d, pickups %d/%d, wardens %d, rooms %d/%d, abilities %02x, deaths %d, recoveries %d, stuck %d, rss %ld kB (first minute %ld)\n",
@@ -182,7 +212,10 @@ int main(int argc, char **argv) {
       flat_minutes = B.i == last_i ? flat_minutes + 1 : 0;
       last_i = B.i;
       if (flat_minutes >= 4) {
-        printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f)\n", B.i, S.room, S.p[0].x, S.p[0].y);
+        printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f; trial %d wave %d t %d; boss %d)\n", B.i, S.room, S.p[0].x, S.p[0].y, S.trial_room, S.trial_wave, S.trial_t, S.b.active);
+        for (int k = 0; k < W.nents; k++) /* the finds it passed by */
+          if (W.ents[k].kind == EK_PICKUP && !sim_got(&S, W.ents[k].id)) printf("  not taken: pickup %d kind %d in room %d at %.1f,%.1f\n", W.ents[k].id, W.ents[k].sub, W.ents[k].room, W.ents[k].x, W.ents[k].y);
+        for (int j = 0; j < S.nen; j++) if (S.en[j].alive) printf("  enemy %d kind %d state %d at %.1f,%.1f hp %d\n", j, S.en[j].kind, S.en[j].state, S.en[j].x, S.en[j].y, S.en[j].hp);
         for (int y = (int)S.p[0].y - 8; y <= (int)S.p[0].y + 5; y++) {
           for (int x = (int)S.p[0].x - 20; x <= (int)S.p[0].x + 20; x++) putchar(x == (int)S.p[0].x && y == (int)S.p[0].y - 1 ? '@' : " #=^~%?BS"[w_tile(&W, x, y) == S.t[y][x] ? S.t[y][x] : S.t[y][x]]);
           printf(" %d\n", y);
@@ -192,8 +225,10 @@ int main(int argc, char **argv) {
     }
   }
   int got = 0;
-  for (int k = 0; k < 4; k++) got += sim_pickups_got(&S, k);
+  for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(&S, k);
   if (timeline) tl_report(tl_ticks);
+  for (int k = 0; k < W.nents && getenv("LANTERNFALL_SOAK_GOALS"); k++)
+    if (W.ents[k].kind == EK_PICKUP && !sim_got(&S, W.ents[k].id)) printf("  not taken: pickup %d kind %d in room %d at %.1f,%.1f\n", W.ents[k].id, W.ents[k].sub, W.ents[k].room, W.ents[k].x, W.ents[k].y);
   printf("soak ok: %d minutes, %d pickups, %d wardens, won %d\n", minutes, got, __builtin_popcount(S.bosses_down), S.won ? 1 : 0);
   free(rb);
   return 0;

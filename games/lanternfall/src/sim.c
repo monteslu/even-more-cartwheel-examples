@@ -7,7 +7,17 @@
 #include "sim.h"
 
 const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "WALL CLIMB", "PLUNGE", "TIDE CHARM", "GRAPPLE LINE" };
+const char *const CHARM_NAME[CH_KINDS] = { "LONG WICK", "CUTTING DASH", "RUNNER'S STRIDE", "EMBER HARVEST", "SWIFT MEND", "UPDRAFT", "THORN WARD",
+                                         "QUICK HAND", "TWIN SPARK", "QUAKE", "SECOND WIND" };
+const char *const CHARM_LINE[CH_KINDS] = { "your strike reaches further", "{dash} cuts through what it passes, and nothing touches you in it",
+                                         "hold {dash} and run on: a sprint, and {jump} keeps its speed", "every kill fills a measure of energy",
+                                         "the mend takes half as long", "{attack} downward in the air bounces you higher", "a blow you take bursts out at all near",
+                                         "your strikes come faster", "{shoot} sends the spark as two", "the plunge's shock reaches twice as far",
+                                         "once a rest, a killing blow leaves you a leaf" };
 const char *const BOSS_NAME[NBOSSES] = { "THE MOSS WARDEN", "THE GLASS MANTIS", "THE BRASS SENTINEL", "THE TIDE SERPENT", "THE SKY WARDEN", "THE HEART OF THORNS" };
+
+/* rules a test can turn off (tools/rules.c --control): each check there must then fail */
+int g_rules_off;
 
 /* how hard each region is (the stage it is reached at) */
 static const uint8_t TIER[NREGIONS] = { [R_GATE] = 0, [R_ROOTWAY] = 0, [R_GLASS] = 1, [R_FEN] = 2, [R_CLOCK] = 3, [R_TIDAL] = 4, [R_STAR] = 5,
@@ -70,8 +80,13 @@ typedef struct enemy_def { const char *name; int hp; float hw, hh, speed; int te
 static const enemy_def EDEF[EN_KINDS] = {
   [EN_CRAWLER] = { "crawler", 3, 0.6f, 0.45f, 2.6f, 26 }, [EN_SPITTER] = { "spitter", 3, 0.55f, 0.7f, 0, 36 },
   [EN_FLYER] = { "flyer", 2, 0.55f, 0.45f, 3.5f, 28 },    [EN_HOPPER] = { "hopper", 3, 0.55f, 0.5f, 0, 22 },
-  [EN_KNIGHT] = { "knight", 6, 0.55f, 0.95f, 1.8f, 30 },
+  [EN_KNIGHT] = { "knight", 6, 0.55f, 0.95f, 1.8f, 30 },  [EN_PUFF] = { "puff", 2, 0.6f, 0.55f, 1.2f, 0 },
+  [EN_DROPPER] = { "dropper", 2, 0.5f, 0.5f, 0, 24 },      [EN_BURROWER] = { "burrower", 3, 0.6f, 0.6f, 5.0f, 40 },
+  [EN_EYE] = { "eye", 3, 0.5f, 0.75f, 0, 46 },
 };
+int enemy_tell_ticks(int k) { return EDEF[k].tell; }
+/* what a body can be hit by: a burrower under the floor is out of reach */
+static bool enemy_exposed(const enemy *e) { return !(e->kind == EN_BURROWER && !(e->aux & 1)); }
 float enemy_hw(int k) { return EDEF[k].hw; }
 float enemy_hh(int k) { return EDEF[k].hh; }
 
@@ -127,8 +142,9 @@ static void spawn_enemy(sim *s, int kind, float x, float y, int ent, int tier) {
   enemy *e = &s->en[s->nen++];
   memset(e, 0, sizeof *e);
   e->kind = (uint8_t)kind, e->alive = 1, e->x = x, e->y = y, e->hx = x, e->hy = y, e->ent = (int16_t)ent;
-  e->hp = e->hp_max = (int16_t)(EDEF[kind].hp + tier);
+  e->hp = e->hp_max = (int16_t)(EDEF[kind].hp + tier / 2);
   e->facing_left = (uint8_t)((ent * 7 + kind) & 1);
+  if (kind == EN_DROPPER) e->hy = y; /* (its perch on the ceiling) */
 }
 
 static void enemy_update(sim *s, enemy *e) {
@@ -137,10 +153,21 @@ static void enemy_update(sim *s, enemy *e) {
   player *p = nearest_player(s, e->x, e->y - d->hh, &pd2);
   float px = p ? p->x : e->x, py = p ? p->y - 0.9f : e->y;
   float dx = px - e->x, dy = py - (e->y - d->hh);
+  float far = e->ent < 0 ? 4.0f : 1.0f; /* (a trial's guardians and a warden's helpers come for you from across the room) */
   if (e->flash > 0) e->flash--;
   e->t++;
-  bool ground = e->kind != EN_FLYER && enemy_ground(s, e);
-  if (e->kind != EN_FLYER && !ground) e->vy = fminf(e->vy + 60 * DT, 20);
+  bool floats = e->kind == EN_FLYER || e->kind == EN_PUFF || (e->kind == EN_DROPPER && e->state != ES_ACT && e->state != ES_REST);
+  bool ground = !floats && enemy_ground(s, e);
+  if (!floats && !ground) e->vy = fminf(e->vy + 60 * DT, 20);
+  /* knockback: a blow pushes it away and bleeds off (never off its ledge) */
+  if (e->kb != 0) {
+    float dir = e->kb > 0 ? 1.0f : -1.0f, ahead = e->x + dir * (d->hw + 0.3f);
+    if (floats) {
+      if (!solid(s, ahead, e->y - d->hh)) e->x += e->kb * DT;
+    } else if (!(ground && !solid(s, ahead, e->y + 0.5f) && tile(s, (int)floorf(ahead), (int)floorf(e->y + 0.5f)) != T_ONEWAY)) enemy_move(s, e, e->kb * DT, 0);
+    e->kb *= 0.82f;
+    if (absf(e->kb) < 0.3f) e->kb = 0;
+  }
   switch (e->kind) {
   case EN_CRAWLER: /* walks its floor; seeing you ahead it rears up (the tell), then charges */
     if (e->state == ES_IDLE) {
@@ -179,7 +206,8 @@ static void enemy_update(sim *s, enemy *e) {
       e->x += (e->hx + bob * 2.5f - e->x) * 0.04f;
       e->y += (e->hy + cw_sin((float)e->t * 0.11f) * 0.8f - e->y) * 0.06f;
       e->facing_left = dx < 0;
-      if (p && pd2 < 9 * 9 && e->t > 50) e->state = ES_TELL, e->t = 0, e->vx = px, e->vy = py + 0.5f, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+      if (p && e->ent < 0) e->hx += clampf(px - e->hx, -4 * DT, 4 * DT), e->hy += clampf(py - 3.5f - e->hy, -3 * DT, 3 * DT); /* (a guardian hunts) */
+      if (p && pd2 < 81 && e->t > 50) e->state = ES_TELL, e->t = 0, e->vx = px, e->vy = py + 0.5f, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
     } else if (e->state == ES_TELL) {
       if (e->t >= d->tell) e->state = ES_ACT, e->t = 0;
     } else if (e->state == ES_ACT) {
@@ -195,7 +223,7 @@ static void enemy_update(sim *s, enemy *e) {
     if (e->state == ES_IDLE) {
       enemy_move(s, e, 0, e->vy * DT);
       e->facing_left = dx < 0;
-      if (p && pd2 < 8 * 8 && e->t > 40 && ground) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+      if (p && pd2 < 64 * far * far && e->t > 40 && ground) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
     } else if (e->state == ES_TELL) {
       if (e->t >= d->tell) e->state = ES_ACT, e->t = 0, e->vy = -16, e->vx = clampf(dx * 1.4f, -7, 7);
     } else if (e->state == ES_ACT) {
@@ -209,7 +237,7 @@ static void enemy_update(sim *s, enemy *e) {
       e->facing_left = dx < 0;
       float dir = e->facing_left ? -1.0f : 1.0f, ahead = e->x + dir * (d->hw + 0.3f);
       bool edge = ground && !solid(s, ahead, e->y + 0.5f);
-      if (p && absf(dx) < 10 && absf(dx) > 2.2f && absf(dy) < 3 && !edge) enemy_move(s, e, dir * d->speed * DT, e->vy * DT);
+      if (p && absf(dx) < 10 * far && absf(dx) > 2.2f && absf(dy) < 3 && !edge) enemy_move(s, e, dir * d->speed * DT, e->vy * DT);
       else enemy_move(s, e, 0, e->vy * DT);
       if (p && absf(dx) < 3.2f && absf(dy) < 2 && e->t > 50) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
     } else if (e->state == ES_TELL) {
@@ -218,9 +246,97 @@ static void enemy_update(sim *s, enemy *e) {
     } else if (e->state == ES_ACT) {
       enemy_move(s, e, 0, e->vy * DT);
       if (e->t > 14) e->state = ES_IDLE, e->t = 0;
+    } else { /* staggered: its guard drops a moment */
+      enemy_move(s, e, 0, e->vy * DT);
+      if (e->t > 30) e->state = ES_IDLE, e->t = 0;
+    }
+    break;
+  case EN_PUFF: { /* drifts about its home, soft (a touch only bumps you), then it swells (the tell) and bristles with
+                  * thorns a while; only a strike from above hurts it, and that bounces you */
+    float bob = cw_sin((float)e->t * 0.05f + (float)e->ent);
+    e->x += (e->hx + bob * 2.2f - e->x) * 0.03f;
+    e->y += (e->hy + cw_sin((float)e->t * 0.09f) * 0.5f - e->y) * 0.05f;
+    e->facing_left = dx < 0;
+    { /* every puff keeps the same breath (the world's tick), so a room of them is one rhythm to read */
+      int ph = (int)(s->tick % PUFF_CYCLE), st = ph < PUFF_SOFT ? ES_IDLE : ph < PUFF_SOFT + 30 ? ES_TELL : ES_ACT;
+      if (e->state == ES_REST && e->t < 20) break; /* (struck: a moment soft) */
+      if (st == ES_TELL && e->state != ES_TELL && p && pd2 < 14 * 14) ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+      if (st != e->state) e->state = (uint8_t)st, e->t = 0;
     }
     break;
   }
+  case EN_DROPPER: /* hangs from the ceiling; something passing under and it shivers, then drops */
+    if (e->state == ES_IDLE) {
+      e->y += (e->hy - e->y) * 0.2f;
+      if (p && absf(dx) < 1.8f && dy > 0.5f && dy < 13) {
+        bool clear = true;
+        for (float yy = e->y + 0.3f; yy < py - 0.5f && clear; yy += 0.5f) clear = !solid(s, e->x, yy);
+        if (clear) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+      }
+    } else if (e->state == ES_TELL) {
+      if (e->t >= d->tell) e->state = ES_ACT, e->t = 0, e->vy = 2;
+    } else if (e->state == ES_ACT) { /* falling: it bursts on the floor */
+      e->vy = fminf(e->vy + 70 * DT, 24);
+      enemy_move(s, e, 0, e->vy * DT);
+      if (enemy_ground(s, e) && e->t > 2) {
+        for (int k = -1; k <= 1; k += 2) spawn_shot(s, SH_ORB, true, e->x + (float)k * 0.4f, e->y - 0.4f, (float)k * 6, -7, 0.3f, 0.3f, 50, 1);
+        ev(s, EV_SHOT, SH_ORB, 1, e->x, e->y);
+        e->state = ES_REST, e->t = 0, e->vy = 0;
+      }
+      if (e->t > 120) e->state = ES_REST, e->t = 0;
+    } else { /* stunned on the floor, then it climbs back up its thread */
+      if (e->t < 90) enemy_move(s, e, 0, e->vy * DT);
+      else {
+        e->y -= 6 * DT;
+        if (e->y <= e->hy) e->y = e->hy, e->state = ES_IDLE, e->t = 0, e->vy = 0;
+      }
+    }
+    break;
+  case EN_BURROWER: /* under the floor: it follows you along it (a ripple of dust), then bursts up where you stand */
+    if (e->state == ES_IDLE) {
+      enemy_move(s, e, 0, e->vy * DT);
+      e->aux &= ~1;
+      if (p && p->on_ground && absf(dx) < 9 * far && absf(p->y - e->y) < 0.6f && e->t > 50) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+      else if (e->t > 200) e->state = ES_REST, e->t = 0, e->aux |= 1; /* (it comes up for air now and then) */
+    } else if (e->state == ES_TELL) {
+      if (e->t < d->tell - 16 && p) { /* tracks you, along firm floor only */
+        float step = clampf(px - e->x, -d->speed * DT, d->speed * DT), nx = e->x + step;
+        if (solid(s, nx + signf(step) * d->hw, e->y + 0.5f) && !solid(s, nx + signf(step) * d->hw, e->y - 0.5f)) e->x = nx;
+      }
+      if (e->t >= d->tell) e->state = ES_ACT, e->t = 0, e->aux |= 1, ev(s, EV_BREAK, 2, 0, e->x, e->y);
+    } else if (e->state == ES_ACT) {
+      if (e->t > 10) e->state = ES_REST, e->t = 0;
+    } else if (e->state == ES_REST) { /* out, and open to blows, then it digs back down */
+      e->aux |= 1;
+      if (e->t > 80) e->state = ES_IDLE, e->t = 0, e->aux &= ~1;
+    }
+    break;
+  case EN_EYE: /* a lantern eye on a stalk: it looks along its row, charges (a thin line shows), and burns a beam down it */
+    enemy_move(s, e, 0, e->vy * DT);
+    if (e->state == ES_IDLE) {
+      e->facing_left = dx < 0;
+      if (p && absf(dx) < 15 && absf(dy) < 2.2f && e->t > 80) e->state = ES_TELL, e->t = 0, ev(s, EV_ENEMY_TELL, e->kind, 0, e->x, e->y);
+    } else if (e->state == ES_TELL) {
+      if (e->t >= d->tell) {
+        float dir = e->facing_left ? -1.0f : 1.0f, yy = e->y - 1.15f, len = 0.6f;
+        while (len < 16 && !solid(s, e->x + dir * len, yy)) len += 0.5f;
+        spawn_shot(s, SH_BEAM, true, e->x + dir * (0.5f + len * 0.5f), yy, 0, 0, len * 0.5f, 0.3f, 22, 1);
+        ev(s, EV_SHOT, SH_BEAM, 1, e->x, yy);
+        e->state = ES_REST, e->t = 0;
+      }
+    } else if (e->t > 50) e->state = ES_IDLE, e->t = 0;
+    break;
+  }
+}
+
+/* where the eye will burn: its row in front, while it charges (the view draws it) */
+bool enemy_eye_line(const sim *s, const enemy *e, float *x0, float *x1, float *y);
+bool enemy_eye_line(const sim *s, const enemy *e, float *x0, float *x1, float *y) {
+  if (e->kind != EN_EYE || e->state != ES_TELL) return false;
+  float dir = e->facing_left ? -1.0f : 1.0f, yy = e->y - 1.15f, len = 0.6f;
+  while (len < 16 && !solid(s, e->x + dir * len, yy)) len += 0.5f;
+  *x0 = e->x + dir * 0.5f, *x1 = e->x + dir * (0.5f + len), *y = yy;
+  return true;
 }
 
 /* the knight's spear while it thrusts: a box in front */
@@ -231,14 +347,16 @@ static bool knight_spear(const enemy *e, float *x, float *y, float *w, float *h)
 }
 
 /* ── the wardens ── */
-typedef struct boss_def { int hp; float hw, hh; bool flies; int moves[5], nmoves; int dmg; } boss_def;
+/* moves: the first phase's; at half health the warden staggers, roars, and adds its second phase's move (the last in
+ * the list) and starts chaining one move straight into the next */
+typedef struct boss_def { int hp; float hw, hh; bool flies; int moves[6], nmoves; int dmg; } boss_def;
 static const boss_def BDEF[NBOSSES] = {
-  { 22, 1.5f, 1.2f, false, { BM_CHARGE, BM_LEAP, BM_VOLLEY }, 3, 1 },
-  { 30, 1.3f, 1.8f, false, { BM_SWEEP_LOW, BM_RAIN, BM_LEAP, BM_SWEEP_HIGH }, 4, 1 },
-  { 38, 1.6f, 2.0f, false, { BM_SWEEP_HIGH, BM_VOLLEY, BM_CHARGE, BM_SUMMON }, 4, 1 },
-  { 44, 1.5f, 1.2f, true, { BM_DIVE, BM_PILLARS, BM_VOLLEY }, 3, 1 },
-  { 50, 1.4f, 1.2f, true, { BM_DIVE, BM_VOLLEY, BM_RAIN, BM_DIVE }, 4, 2 },
-  { 80, 2.2f, 2.6f, false, { BM_PILLARS, BM_VOLLEY, BM_SUMMON, BM_SWEEP_LOW, BM_RAIN }, 5, 2 },
+  { 28, 1.5f, 1.2f, false, { BM_CHARGE, BM_LEAP, BM_VOLLEY, BM_RAIN }, 3, 1 },
+  { 40, 1.3f, 1.8f, false, { BM_SWEEP_LOW, BM_RAIN, BM_LEAP, BM_SWEEP_HIGH, BM_CHARGE }, 4, 1 },
+  { 52, 1.6f, 2.0f, false, { BM_SWEEP_HIGH, BM_VOLLEY, BM_CHARGE, BM_SUMMON, BM_PILLARS }, 4, 1 },
+  { 58, 1.5f, 1.2f, true, { BM_DIVE, BM_PILLARS, BM_VOLLEY, BM_RAIN }, 3, 1 },
+  { 66, 1.4f, 1.2f, true, { BM_DIVE, BM_VOLLEY, BM_RAIN, BM_DIVE, BM_PILLARS }, 4, 2 },
+  { 105, 2.2f, 2.6f, false, { BM_PILLARS, BM_VOLLEY, BM_SUMMON, BM_SWEEP_LOW, BM_RAIN, BM_SWEEP_HIGH }, 5, 2 },
 };
 static const int TELL_T[BM_KINDS] = { 44, 34, 34, 46, 40, 40, 40, 40, 50 };
 int boss_tell_ticks(int move) { return TELL_T[move]; }
@@ -317,7 +435,23 @@ static void boss_update(sim *s) {
   float pd2;
   player *p = nearest_player(s, b->x, b->y - d->hh, &pd2);
   float px = p ? p->x : b->x, py = p ? p->y : b->floor_y;
-  bool late = b->hp * 2 < b->hp_max; /* the second phase: tells a little shorter (never under 26 ticks) */
+  bool late = b->phase > 0; /* the second phase: tells a little shorter (never under 26 ticks) */
+  if (b->phase == 0 && b->hp * 2 < b->hp_max && b->state != ES_ACT && !(g_rules_off & RULE_PHASE)) { /* half health: it staggers and roars */
+    b->phase = 1, b->state = ES_HURT, b->t = 0, b->vx = 0;
+    for (int i = 0; i < MAXSHOTS; i++)
+      if (s->sh[i].enemy) s->sh[i].alive = 0;
+    s->hitstop = 10;
+    ev(s, EV_BOSS_PHASE, b->idx, 0, b->x, b->y - d->hh);
+    return;
+  }
+  if (b->state == ES_HURT) { /* the stagger: open to blows, then the second phase */
+    if (!d->flies) {
+      b->vy = fminf(b->vy + 60 * DT, 22);
+      b->y = fminf(b->y + b->vy * DT, b->floor_y);
+    } else b->y += (b->floor_y - 3 - b->y) * 0.05f; /* (it sinks within reach) */
+    if (b->t > 75) b->state = ES_REST, b->t = 0;
+    return;
+  }
   if (b->state == ES_REST) {
     if (!d->flies) {
       b->vy = fminf(b->vy + 60 * DT, 22);
@@ -330,8 +464,10 @@ static void boss_update(sim *s) {
       b->x += clampf((px - b->x) * 0.02f, -0.12f, 0.12f);
       b->facing_left = px < b->x;
     }
-    if (b->t > (late ? 34 : 50)) {
-      int pick = d->moves[(b->moves_done + (int)(srand_(s, b->moves_done) % 2u)) % d->nmoves];
+    bool chain = late && (b->moves_done % 3) == 1; /* (the second phase strings two moves together) */
+    if (b->t > (chain ? 12 : late ? 34 : 50)) {
+      int nm = d->nmoves + (late ? 1 : 0);
+      int pick = d->moves[(b->moves_done + (int)(srand_(s, b->moves_done) % 2u)) % nm];
       b->move = (uint8_t)pick;
       b->state = ES_TELL, b->t = 0;
       b->nmarks = 0;
@@ -441,6 +577,8 @@ void sim_init(sim *s, const world *w, int players) {
     s->p[i].active = i < s->players;
   }
   s->save_ent = -1;
+  s->trial_room = -1;
+  for (int i = 0; i < MAXP; i++) s->p[i].second_wind = true;
   for (int i = 0; i < w->nents; i++)
     if (w->ents[i].kind == EK_START) s->save_ent = -1;
   s->pw.t = (const uint8_t(*)[TW])s->t;
@@ -460,7 +598,7 @@ void sim_enter_room(sim *s, int room) {
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
     if (e->room != room) continue;
-    if (e->kind == EK_ENEMY) spawn_enemy(s, e->sub, e->x, e->y, i, tier);
+    if (e->kind == EK_ENEMY && !((s->slain[i >> 3] >> (i & 7)) & 1)) spawn_enemy(s, e->sub, e->x, e->y, i, tier);
     (void)0; /* (a warden wakes once you are well inside its arena: sim_step) */
   }
   pworld_anchors(&s->pw, s->w, room);
@@ -471,8 +609,9 @@ void sim_teleport(sim *s, float x, float y) {
   for (int i = 0; i < s->players; i++) {
     player *p = &s->p[i];
     int hp = p->hp, en = p->en;
+    bool sw = p->second_wind;
     player_spawn(p, x + (float)i * 1.2f, y);
-    p->hp = (int16_t)hp, p->en = (int16_t)en;
+    p->hp = (int16_t)hp, p->en = (int16_t)en, p->second_wind = sw;
     p->active = 1;
   }
   int r = w_room_at(s->w, x, y - 0.5f);
@@ -491,17 +630,48 @@ int sim_pickups_total(const world *w, int pk) {
   for (int i = 0; i < w->nents; i++) n += w->ents[i].kind == EK_PICKUP && w->ents[i].sub == pk;
   return n;
 }
+bool sim_pk_seen(const sim *s, int id) { return id >= 0 && id < MAXENTS && ((s->pk_seen[id >> 3] >> (id & 7)) & 1); }
+int sim_finds(const sim *s) {
+  int n = 0;
+  for (int k = 0; k < PK_KINDS; k++) n += sim_pickups_got(s, k);
+  return n;
+}
+int sim_lore_found(const sim *s) {
+  int n = 0;
+  for (int i = 0; i < NLORE; i++) n += (s->lore[i >> 3] >> (i & 7)) & 1;
+  return n;
+}
+bool sim_in_view(const world *w, int ri, float fx, float fy, float px, float py) {
+  if (ri < 0 || w_room_at(w, px, py) != ri) return false;
+  const room *rm = &w->rooms[ri];
+  float tx = fx, ty = fy - 1.2f;
+  float x0 = (float)(rm->x * CELL_W) + 16, x1 = (float)((rm->x + rm->w) * CELL_W) - 16;
+  float y0 = (float)(rm->y * CELL_H) + 9, y1 = (float)((rm->y + rm->h) * CELL_H) - 9;
+  tx = x1 < x0 ? (x0 + x1) * 0.5f : tx < x0 ? x0 : tx > x1 ? x1 : tx;
+  ty = y1 < y0 ? (y0 + y1) * 0.5f : ty < y0 ? y0 : ty > y1 ? y1 : ty;
+  return absf(px - tx) <= 15.6f && absf(py - ty) <= 8.6f;
+}
 int sim_pickups_got(const sim *s, int pk) {
   int n = 0;
   for (int i = 0; i < s->w->nents; i++) n += s->w->ents[i].kind == EK_PICKUP && s->w->ents[i].sub == pk && sim_got(s, s->w->ents[i].id);
   return n;
 }
 
+static void enemy_damage(sim *s, enemy *e, int dmg, float from_x, float push, int pi);
 static void hurt(sim *s, player *p, int dmg, float from_x) {
   if (p->invuln > 0 || p->state == PS_DEAD || s->god) return;
+  if (p->state == PS_DASH && (s->charms & CHARM_BIT(CH_DASHSTRIKE))) return; /* (the cutting dash: nothing touches you) */
   if (s->assist > 1 && (++p->assist_hits % s->assist) != 0) dmg = 0; /* assist: only every n-th hit costs a leaf */
+  if (dmg > 0 && p->hp - dmg <= 0 && p->second_wind && (s->charms & CHARM_BIT(CH_SECONDWIND))) /* the second wind: a leaf left */
+    dmg = p->hp - 1, p->second_wind = false, ev(s, EV_CHARM, CH_SECONDWIND, 1, p->x, p->y - 0.9f);
   p->hp = (int16_t)(p->hp - dmg);
   p->invuln = 70;
+  s->hitstop = s->hitstop > 7 ? s->hitstop : 7; /* (a blow taken holds the world a moment: you feel it land) */
+  if (s->charms & CHARM_BIT(CH_THORNWARD)) /* the thorn ward: the blow bursts out at everything near */
+    for (int i = 0; i < s->nen; i++) {
+      enemy *e = &s->en[i];
+      if (e->alive && enemy_exposed(e) && absf(e->x - p->x) < 3.5f && absf(e->y - p->y) < 3) enemy_damage(s, e, 2, p->x, 10, (int)(p - s->p));
+    }
   if (p->state == PS_GRAPPLE || p->state == PS_CLING || p->state == PS_DASH || p->state == PS_POUND) p->state = PS_NORMAL, p->anchor = -1;
   if (p->state != PS_SWIM) {
     p->state = PS_HURT, p->hurt_t = 12;
@@ -516,10 +686,20 @@ static void die_and_return(sim *s, player *p) {
   ev(s, EV_DIE, i, 0, p->x, p->y - 0.9f);
   if (i == 0 || s->players == 1) {
     s->deaths++;
+    /* the flame stays where you fell, with a measure of your energy (a second fall moves it here) */
+    if (s->echo) for (int k = 0; k < MAXP; k++) s->p[k].en_max = (int16_t)(s->p[k].en_max + 1);
+    s->echo = false;
+    if (p->en_max > 1 && !(g_rules_off & RULE_ECHO)) {
+      s->echo = true, s->echo_x = p->safe_x, s->echo_y = p->safe_y;
+      for (int k = 0; k < MAXP; k++) s->p[k].en_max = (int16_t)(s->p[k].en_max - 1);
+      ev(s, EV_ECHO, 0, 0, s->echo_x, s->echo_y);
+    }
     if (s->b.active) lock_doors(s, s->b.room, false), s->b.active = false, s->boss_ticks = 0;
+    if (s->trial_room >= 0) lock_doors(s, s->trial_room, false), s->trial_room = -1; /* (the trial starts over next time) */
     float x = s->w->start_x, y = s->w->start_y;
     if (s->save_ent >= 0) x = s->w->ents[s->save_ent].x, y = s->w->ents[s->save_ent].y;
-    for (int k = 0; k < s->players; k++) s->p[k].hp = s->p[k].hp_max, s->p[k].en = s->p[k].en_max;
+    for (int k = 0; k < s->players; k++) s->p[k].hp = s->p[k].hp_max, s->p[k].en = s->p[k].en_max, s->p[k].second_wind = true;
+    memset(s->slain, 0, sizeof s->slain);
     sim_teleport(s, x, y);
   } else { /* the second player comes back beside the first */
     int16_t hpm = p->hp_max, enm = p->en_max;
@@ -529,42 +709,57 @@ static void die_and_return(sim *s, player *p) {
   }
 }
 
+/* a blow lands on an enemy: it flashes, is pushed away (harder by a heavier blow), and a kill pays */
+static void enemy_damage(sim *s, enemy *e, int dmg, float from_x, float push, int pi) {
+  float hh = EDEF[e->kind].hh;
+  e->hp = (int16_t)(e->hp - dmg), e->flash = 8;
+  if (e->state == ES_TELL || (e->state == ES_ACT && e->kind != EN_DROPPER)) e->state = ES_REST, e->t = 0; /* a blow staggers: the attack is broken off */
+  bool rooted = e->kind == EN_SPITTER || e->kind == EN_EYE || e->kind == EN_BURROWER || (e->kind == EN_DROPPER && e->state != ES_REST);
+  float heft = e->kind == EN_KNIGHT ? 0.45f : rooted ? 0 : 1;
+  e->kb = (g_rules_off & RULE_KNOCKBACK) ? 0 : (e->x < from_x ? -1.0f : 1.0f) * push * heft * (e->hp <= 0 ? 1.6f : 1);
+  if (e->kind == EN_FLYER || e->kind == EN_PUFF) e->y -= 0.25f * heft;
+  if (e->hp <= 0) {
+    e->alive = 0, ev(s, EV_KILL, e->kind, pi, e->x, e->y - hh);
+    if (e->ent >= 0 && !(g_rules_off & RULE_SLAIN)) s->slain[e->ent >> 3] |= (uint8_t)(1 << (e->ent & 7));
+    if ((s->charms & CHARM_BIT(CH_HARVEST)) && pi >= 0 && pi < MAXP && s->p[pi].en < s->p[pi].en_max) s->p[pi].en++;
+  } else ev(s, EV_HIT, 0, pi, e->x, e->y - hh);
+}
+
 static void strike(sim *s, player *p, int pi) {
-  /* the strike's box: in front, above, or below (in the air) */
-  float bx, by, bw, bh;
-  if (p->atk_dir == 1) bx = p->x, by = p->y - 2.5f, bw = 1.1f, bh = 0.95f;
-  else if (p->atk_dir == 2) bx = p->x, by = p->y + 0.7f, bw = 1.1f, bh = 0.9f;
-  else bx = p->x + (p->facing_left ? -1.3f : 1.3f), by = p->y - 0.85f, bw = 1.15f, bh = 1.15f;
-  bool hit = false;
+  /* the strike's box: in front, above, or below (in the air); the long wick reaches further */
+  float bx, by, bw, bh, reach = (s->charms & CHARM_BIT(CH_REACH)) ? 1.35f : 1.0f;
+  if (p->atk_dir == 1) bx = p->x, by = p->y - 2.5f - (reach - 1) * 1.2f, bw = 1.1f, bh = 0.95f * reach;
+  else if (p->atk_dir == 2) bx = p->x, by = p->y + 0.7f + (reach - 1) * 1.0f, bw = 1.1f, bh = 0.9f * reach;
+  else bx = p->x + (p->facing_left ? -1.3f : 1.3f) * reach, by = p->y - 0.85f, bw = 1.15f * reach, bh = 1.15f;
+  bool hit = false, landed = false, killed = false;
   for (int i = 0; i < s->nen; i++) {
     enemy *e = &s->en[i];
-    if (!e->alive) continue;
+    if (!e->alive || !enemy_exposed(e)) continue;
     float hw = EDEF[e->kind].hw, hh = EDEF[e->kind].hh;
     if (!overlap(bx, by, bw, bh, e->x, e->y - hh, hw, hh)) continue;
-    /* a knight's shield turns a strike from the front */
-    if (e->kind == EN_KNIGHT && p->atk_dir == 0 && e->state != ES_ACT && ((p->x < e->x) == !e->facing_left)) {
+    /* a knight's shield turns a strike from the front; a puff gives only to a blow from above */
+    if ((e->kind == EN_KNIGHT && p->atk_dir == 0 && e->state != ES_ACT && ((p->x < e->x) == !e->facing_left)) || (e->kind == EN_PUFF && p->atk_dir != 2 && !(g_rules_off & RULE_PUFF))) {
       ev(s, EV_HIT, 2, 0, e->x, e->y - hh);
-      p->vx = p->x < e->x ? -6.0f : 6.0f;
+      ev(s, EV_PARRY, pi, e->kind, (bx + e->x) * 0.5f, by);
+      p->vx = p->x < e->x ? -8.0f : 8.0f, p->recoil_t = 10;
+      if (e->kind == EN_PUFF) e->kb = p->x < e->x ? 6.0f : -6.0f;
+      s->hitstop = s->hitstop > 3 ? s->hitstop : 3;
       hit = true;
       continue;
     }
-    e->hp--, e->flash = 8;
-    if (e->state == ES_TELL || e->state == ES_ACT) e->state = ES_REST, e->t = 0; /* a strike staggers: the attack is broken off */
-    if (e->kind == EN_FLYER) e->x += p->x < e->x ? 1.0f : -1.0f, e->y -= 0.6f;
-    if (e->kind != EN_SPITTER && e->kind != EN_KNIGHT) e->x += p->x < e->x ? 0.35f : -0.35f;
-    hit = true;
+    enemy_damage(s, e, 1, p->x, 13, pi);
+    hit = landed = true;
+    killed |= !e->alive;
     p->en_frac = (int16_t)(p->en_frac + 90);
-    if (e->hp <= 0) e->alive = 0, ev(s, EV_KILL, e->kind, pi, e->x, e->y - hh);
-    else ev(s, EV_HIT, 0, pi, e->x, e->y - hh);
   }
   if (s->b.active) {
     boss *b = &s->b;
     float hw = BDEF[b->idx].hw, hh = BDEF[b->idx].hh;
     if (overlap(bx, by, bw, bh, b->x, b->y - hh, hw, hh)) {
-      b->hp--, b->flash = 6, hit = true;
+      b->hp--, b->flash = 6, hit = landed = true;
       p->en_frac = (int16_t)(p->en_frac + 60);
       ev(s, EV_BOSS_HIT, b->idx, 0, bx, by);
-      if (b->hp <= 0) boss_down(s);
+      if (b->hp <= 0) boss_down(s), killed = true;
     }
   }
   /* a strike cuts the small things thrown at you out of the air */
@@ -577,30 +772,116 @@ static void strike(sim *s, player *p, int pi) {
   for (int ty = (int)floorf(by - bh); ty <= (int)floorf(by + bh); ty++)
     for (int tx = (int)floorf(bx - bw); tx <= (int)floorf(bx + bw); tx++)
       if (tile(s, tx, ty) == T_SECRET) flood(s, tx, ty, T_SECRET, true), ev(s, EV_SECRET, 0, 0, (float)tx, (float)ty);
+  /* a blow that lands holds the world still a moment (longer for a kill) and pushes you back from what you hit */
+  if (landed) {
+    int hs = killed ? 6 : 4;
+    s->hitstop = s->hitstop > hs ? s->hitstop : hs;
+    if (p->atk_dir == 0 && !(g_rules_off & RULE_RECOIL)) p->vx = p->facing_left ? 5.5f : -5.5f, p->recoil_t = 8;
+  }
   /* a downward strike bounces off what it hits, thorns included */
   if (p->atk_dir == 2) {
     bool thorn = false;
     for (int tx = (int)floorf(bx - bw); tx <= (int)floorf(bx + bw); tx++)
       for (int ty = (int)floorf(by - bh); ty <= (int)floorf(by + bh); ty++) thorn |= tile(s, tx, ty) == T_SPIKE;
-    if (hit || thorn) p->vy = -17, p->jump_rising = false, p->air_jumps = (s->abilities & AB_DJUMP) ? 1 : 0, p->dash_ready = true, ev(s, EV_BOUNCE, pi, 0, p->x, p->y);
+    if (hit || thorn)
+      p->vy = (s->charms & CHARM_BIT(CH_UPDRAFT)) ? -21.0f : -17.0f, p->jump_rising = false, p->air_jumps = (s->abilities & AB_DJUMP) ? 1 : 0, p->dash_ready = true,
+      p->dash_cd = 0, ev(s, EV_BOUNCE, pi, 0, p->x, p->y);
+  }
+}
+
+/* ── trials: an upgrade's room locks, its guardians come in two waves, and the find is yours once they fall ── */
+bool sim_trial_room(const sim *s, int room) {
+  if ((g_rules_off & RULE_TRIAL) || room < 0 || s->w->rooms[room].kind != RK_ITEM || ((s->trials_done[room >> 3] >> (room & 7)) & 1)) return false;
+  for (int i = 0; i < s->w->nents; i++) {
+    const ent *e = &s->w->ents[i];
+    if (e->kind == EK_PICKUP && e->room == room) return e->sub != PK_ABILITY && !sim_got(s, e->id);
+  }
+  return false;
+}
+static int floor_under(const sim *s, int x, int y0, int y1) { /* the first standable floor going down x, or -1 */
+  for (int y = y0; y < y1; y++)
+    if (t_solid(tile(s, x, y)) && !t_solid(tile(s, x, y - 1)) && !t_solid(tile(s, x, y - 2)) && tile(s, x, y - 1) != T_SPIKE) return y;
+  return -1;
+}
+static void trial_wave(sim *s) {
+  const room *rm = &s->w->rooms[s->trial_room];
+  int tier = TIER[rm->region], X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H;
+  /* each region's guardians: its own kinds */
+  static const uint8_t GUARD[NREGIONS][3] = {
+    [R_GATE] = { EN_CRAWLER, EN_FLYER, EN_CRAWLER }, [R_ROOTWAY] = { EN_CRAWLER, EN_FLYER, EN_HOPPER }, [R_GLASS] = { EN_HOPPER, EN_FLYER, EN_DROPPER },
+    [R_FEN] = { EN_BURROWER, EN_FLYER, EN_HOPPER }, [R_CLOCK] = { EN_KNIGHT, EN_FLYER, EN_CRAWLER }, [R_TIDAL] = { EN_BURROWER, EN_FLYER, EN_HOPPER },
+    [R_STAR] = { EN_KNIGHT, EN_FLYER, EN_BURROWER }, [R_SKY] = { EN_HOPPER, EN_FLYER, EN_KNIGHT }, [R_ARCHIVE] = { EN_KNIGHT, EN_FLYER, EN_HOPPER },
+    [R_FORGE] = { EN_CRAWLER, EN_FLYER, EN_KNIGHT }, [R_FROST] = { EN_BURROWER, EN_FLYER, EN_KNIGHT }, [R_BLOOM] = { EN_HOPPER, EN_FLYER, EN_BURROWER },
+    [R_HEART] = { EN_KNIGHT, EN_FLYER, EN_CRAWLER },
+  };
+  int n = s->trial_wave == 0 ? 2 : 3 + (tier >= 3);
+  for (int k = 0; k < n; k++) {
+    int kind = GUARD[rm->region][(k + s->trial_wave) % 3];
+    if (kind == EN_DROPPER) kind = EN_CRAWLER;
+    int x = X0 + (k & 1 ? CELL_W * rm->w - 6 - k : 5 + k);
+    if (kind == EN_FLYER || kind == EN_PUFF) { spawn_enemy(s, kind, (float)x + 0.5f, (float)(Y0 + 6), -1, tier); continue; }
+    int fy = floor_under(s, x, Y0 + 3, Y0 + CELL_H * rm->h);
+    if (fy > 0) spawn_enemy(s, kind, (float)x + 0.5f, (float)fy, -1, tier);
+    else spawn_enemy(s, EN_FLYER, (float)x + 0.5f, (float)(Y0 + 6), -1, tier);
+  }
+  ev(s, EV_TRIAL_WAVE, s->trial_wave, 0, (float)(X0 + CELL_W * rm->w / 2), (float)(Y0 + CELL_H / 2));
+}
+static void trial_update(sim *s) {
+  if (s->trial_room < 0) {
+    if (s->room < 0 || !sim_trial_room(s, s->room) || s->b.active) return;
+    const room *rm = &s->w->rooms[s->room];
+    float x0 = (float)(rm->x * CELL_W + 5), x1 = (float)((rm->x + rm->w) * CELL_W - 5);
+    const player *p = &s->p[0];
+    if (p->x > x0 && p->x < x1 && p->y > (float)(rm->y * CELL_H) + 5.5f && p->on_ground) {
+      s->trial_room = s->room, s->trial_wave = 0, s->trial_t = 0;
+      lock_doors(s, s->room, true);
+      ev(s, EV_TRIAL, 0, 0, p->x, p->y);
+    }
+    return;
+  }
+  s->trial_t++;
+  int alive = 0;
+  for (int i = 0; i < s->nen; i++) alive += s->en[i].alive && s->en[i].kind != EN_PUFF; /* (a puff is no guardian) */
+  if (s->trial_t == 50) trial_wave(s);
+  else if (s->trial_t > 60 && alive == 0) {
+    if (s->trial_wave == 0) s->trial_wave = 1, s->trial_t = 20; /* (the second wave after a breath) */
+    else {
+      s->trials_done[s->trial_room >> 3] |= (uint8_t)(1 << (s->trial_room & 7));
+      lock_doors(s, s->trial_room, false);
+      ev(s, EV_TRIAL_DONE, 0, 0, s->p[0].x, s->p[0].y);
+      s->trial_room = -1;
+    }
   }
 }
 
 void sim_step(sim *s, const pinput in[MAXP]) {
   s->nev = 0;
+  if (g_rules_off & RULE_HITSTOP) s->hitstop = 0;
+  if (s->hitstop > 0) { /* the world holds still; presses made in the hold are kept for the tick after */
+    s->hitstop--;
+    for (int i = 0; i < s->players; i++) {
+      s->p[i].ev = 0;
+      s->held_jump[i] |= in[i].jump, s->held_attack[i] |= in[i].attack, s->held_dash[i] |= in[i].dash, s->held_shoot[i] |= in[i].shoot;
+      s->held_grapple[i] |= in[i].grapple;
+    }
+    return;
+  }
   s->tick++;
   s->pw.abilities = s->abilities;
+  s->pw.charms = s->charms;
   for (int i = 0; i < s->players; i++) {
     player *p = &s->p[i];
     if (!p->active) continue;
     pinput q = in[i];
+    q.jump |= s->held_jump[i], q.attack |= s->held_attack[i], q.dash |= s->held_dash[i], q.shoot |= s->held_shoot[i], q.grapple |= s->held_grapple[i];
+    s->held_jump[i] = s->held_attack[i] = s->held_dash[i] = s->held_shoot[i] = s->held_grapple[i] = false;
     if (p->invuln > 0) p->invuln--;
     if (p->atk_cd > 0) p->atk_cd--;
     if (p->shot_cd > 0) p->shot_cd--;
     /* striking (not while hurt, plunging or on the line) */
     bool can_act = p->state == PS_NORMAL || p->state == PS_SWIM || p->state == PS_CLING;
     if (q.attack && p->atk_cd == 0 && can_act && !(q.my > 0 && q.dash)) {
-      p->atk_t = 14, p->atk_cd = 19;
+      p->atk_t = 14, p->atk_cd = (s->charms & CHARM_BIT(CH_QUICK)) ? 13 : 19;
       p->atk_dir = (int16_t)(q.my < 0 ? 1 : (q.my > 0 && !p->on_ground) ? 2 : 0);
       ev(s, EV_STRIKE, i, p->atk_dir, p->x, p->y - 0.9f);
     }
@@ -610,7 +891,7 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       if (p->state == PS_HURT) p->mend_t = 0;
       else if (--p->mend_t == 0 && p->hp < p->hp_max) p->hp++, ev(s, EV_MEND, i, 1, p->x, p->y - 0.9f);
     } else if (q.shoot && q.my > 0 && p->on_ground && p->state == PS_NORMAL && p->en >= 2 && p->hp < p->hp_max && fabsf(p->vx) < 0.5f) {
-      p->en = (int16_t)(p->en - 2), p->mend_t = 45;
+      p->en = (int16_t)(p->en - 2), p->mend_t = (s->charms & CHARM_BIT(CH_SWIFTMEND)) ? 22 : 45;
       ev(s, EV_MEND, i, 0, p->x, p->y - 0.9f);
       q.shoot = false;
     }
@@ -620,11 +901,25 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       p->en--, p->shot_cd = 16;
       bool up = q.my < 0;
       spawn_shot(s, SH_BOLT, false, p->x + (up ? 0 : p->facing_left ? -0.6f : 0.6f), p->y - (up ? 1.9f : 1.15f), up ? 0 : p->facing_left ? -24.0f : 24.0f, up ? -24.0f : 0, 0.45f, 0.3f, 34, 2);
+      if (s->charms & CHARM_BIT(CH_TWINSPARK)) /* the twin spark: a second one, rising (or leaning, shot upward) */
+        spawn_shot(s, SH_BOLT, false, p->x, p->y - 1.4f, up ? (p->facing_left ? -6.0f : 6.0f) : p->facing_left ? -22.0f : 22.0f, up ? -23.0f : -7.0f, 0.45f, 0.3f, 34, 2);
       ev(s, EV_BOLT, i, 0, p->x, p->y - 1.1f);
     }
     if (p->en < p->en_max && ++p->en_frac >= 300) p->en++, p->en_frac = 0;
     if (p->en >= p->en_max) p->en_frac = 0;
     int broke = player_step(p, &q, &s->pw);
+    if (p->ev & PE_DASH)
+      for (int k = 0; k < s->nen; k++) s->en[k].aux &= ~2; /* (a new dash: everything can be cut again) */
+    if (p->state == PS_DASH && (s->charms & CHARM_BIT(CH_DASHSTRIKE))) /* the cutting dash */
+      for (int k = 0; k < s->nen; k++) {
+        enemy *e = &s->en[k];
+        if (e->alive && enemy_exposed(e) && !(e->aux & 2) && e->kind != EN_PUFF &&
+            overlap(p->x, p->y - PH * 0.5f, PW + 0.3f, PH * 0.5f, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw, EDEF[e->kind].hh)) {
+          e->aux |= 2;
+          enemy_damage(s, e, 2, p->x, 7, i);
+          s->hitstop = s->hitstop > 3 ? s->hitstop : 3;
+        }
+      }
     if (p->atk_t > 0) {
       p->atk_t--;
       if (p->atk_t == 11) strike(s, p, i);
@@ -634,15 +929,13 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       ev(s, EV_BREAK, 0, 0, p->x, p->y);
     }
     if (p->ev & PE_POUND_LAND) { /* the plunge's shock hits what stands near */
+      bool quake = (s->charms & CHARM_BIT(CH_QUAKE)) != 0;
       for (int k = 0; k < s->nen; k++) {
         enemy *e = &s->en[k];
-        if (e->alive && absf(e->x - p->x) < 3.5f && absf(e->y - p->y) < 1.5f) {
-          e->hp = (int16_t)(e->hp - 2), e->flash = 8;
-          if (e->hp <= 0) e->alive = 0, ev(s, EV_KILL, e->kind, i, e->x, e->y);
-        }
+        if (e->alive && absf(e->x - p->x) < (quake ? 7.0f : 3.5f) && absf(e->y - p->y) < (quake ? 2.5f : 1.5f)) enemy_damage(s, e, quake ? 4 : 2, p->x, 12, i);
       }
-      if (s->b.active && absf(s->b.x - p->x) < 4 && absf(s->b.y - p->y) < 2) {
-        s->b.hp = (int16_t)(s->b.hp - 3), s->b.flash = 6;
+      if (s->b.active && absf(s->b.x - p->x) < (quake ? 7 : 4) && absf(s->b.y - p->y) < 2) {
+        s->b.hp = (int16_t)(s->b.hp - (quake ? 5 : 3)), s->b.flash = 6, s->hitstop = 5;
         if (s->b.hp <= 0) boss_down(s);
       }
     }
@@ -651,10 +944,25 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       p->invuln = 50;
       ev(s, EV_HURT, i, 1, p->x, p->y);
     }
+    /* your flame, where you fell: touch it and its measure comes back */
+    if (s->echo && absf(s->echo_x - p->x) < 1.3f && absf(s->echo_y - 0.9f - (p->y - 0.9f)) < 1.8f) {
+      s->echo = false;
+      for (int j = 0; j < MAXP; j++) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
+      ev(s, EV_ECHO, 1, 0, p->x, p->y - 0.9f);
+    }
+    /* pickups: those on screen are marked seen (the map shows them until taken), then the ones touched are taken */
+    if (i == 0)
+      for (int k = 0; k < s->w->nents; k++) {
+        const ent *e = &s->w->ents[k];
+        if (e->kind != EK_PICKUP || e->room != s->room || sim_pk_seen(s, e->id)) continue;
+        int ex = (int)floorf(e->x), ey = (int)roundf(e->y);
+        if (tile(s, ex, ey - 1) == T_SECRET) continue; /* (inside hidden rock) */
+        if (sim_in_view(s->w, s->room, p->x, p->y, e->x, e->y - 0.6f)) s->pk_seen[e->id >> 3] |= (uint8_t)(1 << (e->id & 7));
+      }
     /* pickups */
     for (int k = 0; k < s->w->nents; k++) {
       const ent *e = &s->w->ents[k];
-      if (e->kind != EK_PICKUP || e->room != s->room || sim_got(s, e->id)) continue;
+      if (e->kind != EK_PICKUP || e->room != s->room || sim_got(s, e->id) || s->trial_room == e->room || sim_trial_room(s, e->room)) continue;
       if (absf(e->x - p->x) < 1.1f && absf(e->y - 0.8f - (p->y - 0.9f)) < 1.6f) {
         s->got[e->id >> 3] |= (uint8_t)(1 << (e->id & 7));
         if (e->sub == PK_ABILITY) s->abilities |= e->arg;
@@ -662,8 +970,21 @@ void sim_step(sim *s, const pinput in[MAXP]) {
           if (e->sub == PK_HEALTH) s->p[j].hp_max++, s->p[j].hp = s->p[j].hp_max;
           if (e->sub == PK_ENERGY) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
         }
-        if (e->sub == PK_RELIC) s->relics++;
+        if (e->sub == PK_MAPSTONE && e->arg < 16) s->maps |= (uint16_t)(1u << e->arg);
+        if (e->sub == PK_LORE && e->arg < NLORE) s->lore[e->arg >> 3] |= (uint8_t)(1 << (e->arg & 7));
         ev(s, EV_PICKUP, e->sub, e->arg, e->x, e->y);
+        if (e->sub == PK_RELIC) { /* a relic: the next charm (a new move); past the last, a leaf or a measure */
+          int c = s->relics++;
+          if (c < CH_KINDS && !(g_rules_off & RULE_CHARMS)) {
+            s->charms |= CHARM_BIT(c);
+            if (c == CH_SECONDWIND) for (int j = 0; j < MAXP; j++) s->p[j].second_wind = true;
+            ev(s, EV_CHARM, c, 0, e->x, e->y);
+          } else
+            for (int j = 0; j < MAXP; j++) {
+              if (c & 1) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
+              else s->p[j].hp_max++, s->p[j].hp = s->p[j].hp_max;
+            }
+        }
       }
     }
     /* shrines: rest at one (up beside it): the save point, full health, its waystone lit */
@@ -673,14 +994,16 @@ void sim_step(sim *s, const pinput in[MAXP]) {
         if (e->kind == EK_SAVE && absf(e->x - p->x) < 1.8f && absf(e->y - p->y) < 1.2f) {
           s->save_ent = k;
           s->saves_lit[e->id >> 3] |= (uint8_t)(1 << (e->id & 7));
-          for (int j = 0; j < s->players; j++) s->p[j].hp = s->p[j].hp_max, s->p[j].en = s->p[j].en_max;
+          for (int j = 0; j < s->players; j++) s->p[j].hp = s->p[j].hp_max, s->p[j].en = s->p[j].en_max, s->p[j].second_wind = true;
+          memset(s->slain, 0, sizeof s->slain); /* (a rest wakes the city's creatures again) */
           ev(s, EV_SAVE, e->id & 255, e->id >> 8, e->x, e->y);
         }
       }
   }
   /* the room the camera shows follows player 1; player 2 is brought along */
   int r = w_room_at(s->w, s->p[0].x, s->p[0].y - 0.9f);
-  if (r >= 0 && r != s->room && !s->b.active) sim_enter_room(s, r);
+  if (r >= 0 && r != s->room && !s->b.active && s->trial_room < 0) sim_enter_room(s, r);
+  trial_update(s);
   for (int i = 1; i < s->players; i++) {
     player *p = &s->p[i];
     if (!p->active) continue;
@@ -717,10 +1040,11 @@ void sim_step(sim *s, const pinput in[MAXP]) {
     if (!h->enemy) {
       for (int k = 0; k < s->nen; k++) {
         enemy *e = &s->en[k];
-        if (!e->alive || !overlap(h->x, h->y, h->w, h->h, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw, EDEF[e->kind].hh)) continue;
-        e->hp = (int16_t)(e->hp - h->dmg), e->flash = 8, h->alive = 0;
-        if (e->hp <= 0) e->alive = 0, ev(s, EV_KILL, e->kind, 0, e->x, e->y);
-        else ev(s, EV_HIT, 1, 0, h->x, h->y);
+        if (!e->alive || !enemy_exposed(e) || !overlap(h->x, h->y, h->w, h->h, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw, EDEF[e->kind].hh)) continue;
+        h->alive = 0;
+        if (e->kind == EN_PUFF) { ev(s, EV_HIT, 2, 0, h->x, h->y); break; } /* (a spark glances off a puff) */
+        enemy_damage(s, e, h->dmg, h->x - h->vx, 6, 0);
+        s->hitstop = s->hitstop > 2 ? s->hitstop : 2;
         break;
       }
       if (h->alive && s->b.active && overlap(h->x, h->y, h->w, h->h, s->b.x, s->b.y - BDEF[s->b.idx].hh, BDEF[s->b.idx].hw, BDEF[s->b.idx].hh)) {
@@ -749,7 +1073,15 @@ void sim_step(sim *s, const pinput in[MAXP]) {
     for (int i = 0; i < s->nen; i++) {
       enemy *e = &s->en[i];
       if (!e->alive) continue;
-      bool harmless = e->kind == EN_FLYER && e->state == ES_REST; /* a moth flying home after its swoop */
+      bool harmless = (e->kind == EN_FLYER && e->state == ES_REST) || !enemy_exposed(e); /* a moth flying home; a burrower under the floor */
+      if (e->kind == EN_PUFF && e->state != ES_ACT) { /* a soft puff only bumps you away */
+        harmless = true;
+        if (overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw * 0.9f, EDEF[e->kind].hh * 0.9f) && p->state == PS_NORMAL) {
+          if (p->vy > 2 && p->y < e->y - EDEF[e->kind].hh) p->vy = -12, p->jump_rising = false, ev(s, EV_BOUNCE, k, 1, p->x, p->y); /* (onto it: a bounce) */
+          else p->vx = p->x < e->x ? -4.0f : 4.0f, p->recoil_t = 6;                                                                  /* (a soft bump) */
+        }
+      }
+      if (e->kind == EN_BURROWER && e->state == ES_ACT && e->t < 8 && overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, e->x, e->y - 1.2f, 0.8f, 1.2f)) hurt(s, p, 1, e->x); /* (the burst reaches up) */
       if (!harmless && overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, e->x, e->y - EDEF[e->kind].hh, EDEF[e->kind].hw * 0.85f, EDEF[e->kind].hh * 0.85f)) hurt(s, p, 1, e->x);
       float sx, sy, sw, shh;
       if (knight_spear(e, &sx, &sy, &sw, &shh) && overlap(p->x, p->y - PH * 0.5f, PW, PH * 0.5f, sx, sy, sw, shh)) hurt(s, p, 1, e->x);
@@ -774,7 +1106,7 @@ uint32_t sim_hash(const sim *s) {
   }
   for (int i = 0; i < s->nen; i++) h = mixf(h, s->en[i].x), h = mixf(h, s->en[i].y), h = mixf(h, (float)s->en[i].hp), h = mixf(h, (float)s->en[i].alive);
   h = mixf(h, s->b.x), h = mixf(h, s->b.y), h = mixf(h, (float)s->b.hp), h = mixf(h, (float)s->abilities), h = mixf(h, (float)s->room);
-  h = mixf(h, (float)s->tick), h = mixf(h, (float)s->bosses_down);
+  h = mixf(h, (float)s->tick), h = mixf(h, (float)s->bosses_down), h = mixf(h, (float)s->charms), h = mixf(h, (float)s->trial_room);
   return h;
 }
 
@@ -790,6 +1122,12 @@ void sim_save(const sim *s, save_state *o) {
   o->broken_n = (uint16_t)nseeds;
   memcpy(o->broken, seeds, sizeof(uint32_t) * (size_t)nseeds);
   o->play_ticks = s->tick;
+  o->charms = s->charms;
+  o->maps = s->maps;
+  memcpy(o->lore, s->lore, sizeof o->lore);
+  memcpy(o->pk_seen, s->pk_seen, sizeof o->pk_seen);
+  o->echo = s->echo, o->echo_x = s->echo_x, o->echo_y = s->echo_y;
+  memcpy(o->trials_done, s->trials_done, sizeof o->trials_done);
 }
 
 void sim_restore(sim *s, const save_state *in) {
@@ -806,5 +1144,11 @@ void sim_restore(sim *s, const save_state *in) {
     flood(s, idx % TW, idx / TW, kind, true);
   }
   s->tick = in->play_ticks;
+  s->charms = in->charms;
+  s->maps = in->maps;
+  memcpy(s->lore, in->lore, sizeof s->lore);
+  memcpy(s->pk_seen, in->pk_seen, sizeof in->pk_seen);
+  s->echo = in->echo != 0, s->echo_x = in->echo_x, s->echo_y = in->echo_y;
+  memcpy(s->trials_done, in->trials_done, sizeof in->trials_done);
   if (s->save_ent >= 0 && s->save_ent < s->w->nents) sim_teleport(s, s->w->ents[s->save_ent].x, s->w->ents[s->save_ent].y);
 }

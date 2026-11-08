@@ -65,18 +65,17 @@ enum {
   EK_START,
   EK_KINDS
 };
-/* pickup kinds (sub). arg: the ability bit (PK_ABILITY), the charm (PK_CHARM: CH_*), the move (PK_MOVE: MV_*), the region
- * (PK_MAPSTONE) */
-enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC, PK_CHARM, PK_MOVE, PK_MAPSTONE, PK_KINDS };
-/* charms: worn at a shrine, a few at a time (notches: two, and one more for every five relics). What each does is
- * in sim.h (CHARM_LINE). */
-enum { CH_WAYFINDER, CH_ECHO, CH_SWIFT, CH_EMBER, CH_LONGARM, CH_FEATHER, CH_THORNWALK, CH_HEARTH, CH_KINDS };
-/* moves found in the world (not gates: no place needs one). What each does is in sim.h (MOVE_LINE). */
-enum { MV_RISING, MV_SPIN, MV_SHOCK, MV_KINDS };
+/* pickup kinds (sub). arg: the ability bit (PK_ABILITY), the region (PK_MAPSTONE: its map), the tale (PK_LORE: a line
+ * of the old city's story, numbered in the order the world was made) */
+enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC, PK_MAPSTONE, PK_LORE, PK_KINDS };
 /* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
  * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
 enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_LANDMARK /* arg: the region */ };
-enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_KINDS };
+/* enemies, one idea each: the crawler charges along its floor, the spitter spits, the moth swoops to where you stood,
+ * the hopper leaps at you, the knight shields its front; the puff floats and only a strike from above hurts it (it is
+ * a step to bounce off), the dropper hangs from a ceiling and falls on whoever passes under, the burrower waits under
+ * the floor and bursts up where you stand (keep moving), the wisp-eye charges a beam along its row */
+enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_PUFF, EN_DROPPER, EN_BURROWER, EN_EYE, EN_KINDS };
 #define NBOSSES 6
 /* how a prop or a lamp is held: standing on the tile below, hanging from the tile above, on a wall beside it */
 enum { HOLD_FLOOR = 1, HOLD_CEIL = 2, HOLD_WALL_L = 4, HOLD_WALL_R = 8, HOLD_BACK = 16 /* on the back wall */ };
@@ -87,7 +86,7 @@ typedef struct ent {
   float x, y;         /* feet (pickups and enemies: bottom centre), or the point (anchors, lamps) */
 } ent;
 
-enum { RK_PLAIN, RK_SHAFT, RK_HALL, RK_SAVE, RK_ITEM, RK_BOSS, RK_GATE, RK_SECRET, RK_START };
+enum { RK_PLAIN, RK_SHAFT, RK_HALL, RK_SAVE, RK_ITEM, RK_BOSS, RK_GATE, RK_SECRET, RK_START, RK_PIECE /* a hand-shaped set piece: room.piece */ };
 /* what a set piece room is for: a view (a landmark, a reward seen far before it can be reached), a test of the
  * abilities together, a hidden find, a fight */
 enum { IN_NONE, IN_VISTA, IN_CHALLENGE, IN_SECRET, IN_THREAT, IN_KINDS };
@@ -116,6 +115,9 @@ typedef struct region_info {
   uint32_t sky, far, mid, near, ground, top, accent; /* palette 0xRRGGBB */
 } region_info;
 extern const region_info REGIONS[NREGIONS];
+/* the tablets of the old city's story found in hidden alcoves (regions.c) */
+#define NLORE 48
+extern const char *const LORE[NLORE];
 
 typedef struct world {
   uint8_t t[TH][TW];
