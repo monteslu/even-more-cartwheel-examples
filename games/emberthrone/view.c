@@ -189,6 +189,7 @@ void view_reset(void) {
   for (int i = 0; i < MAXA; i++) {
     if (RIG[i].rd) cw_ragdoll_destroy(RIG[i].rd);
     cw_pose_free(&RIG[i].pose);
+    if (RIG[i].made && RIG[i].trail.id && cw_node_valid(RIG[i].trail)) cw_node_free(RIG[i].trail); /* (the ribbons hang off the world, not the rig) */
   }
   memset(RIG, 0, sizeof RIG);
   rag_live = 0;
