@@ -124,12 +124,36 @@ with windows. Decals on top: wax along every ledge and coping (dark and glossy),
 walls, skid marks on the ground, each kept only where all four corners lie on its surface.
 
 The skaters are skinned glbs made by tools/chars/make-skaters.mjs (the brawler example's character generator, copied
-and given four skaters' outfits). src/pose.c poses them every frame from the board's state, no clips: crouch, tuck,
-lean, push phase and balance eased toward what the board does (a tenth of a second), the legs solved with two-bone IK
-so the feet stay planted on the deck through a crouch, a flip catching the board or a manual tipping it, a hand on the
-board for a grab. A flip turns the board under the rider about its own axes; the wheels turn with the speed. A bail is
-a ragdoll (src/rag.c, after the brawler's) tumbling over the park's triangles, presentation only; the camera follows
-the body from further back. A landing kicks up a puff of dust; a grind throws sparks.
+and given four skaters' outfits). src/pose.c poses them every frame from the board's state, no clips: per state it
+asks for where each foot stands on the deck and how it turns, how far the knees bend, where the hips sit and how far
+the pelvis, chest and head turn toward the nose, and eases the body toward it; the hips' height is solved from the
+knee bend wanted, and the legs (and a grab's hand) with two-bone IK onto the deck as it is drawn. The targets follow
+how skaters ride (coaching guides, ollie studies, a motion-capture set of a skater, measured):
+
+- **Stance**: side on, feet about shoulder width, the front foot just behind the front bolts turned 40 degrees toward
+  the nose, the back foot across the back bolts, knees bent about 50 degrees; the pelvis open 20 degrees toward the
+  nose, the chest 35, the head on round to 70 to look down the run; arms loose, the front one toward the nose.
+- **Push**: the front foot turns along the board and the body with it; the back foot steps down beside the deck on
+  the toe side, drives back past the tail while the front knee bends to 80 degrees, lifts and swings forward; arms
+  swing against the legs; after the last push the back foot comes back over the deck onto the tail.
+- **Carve and pump**: the body leans as far as the turn asks (atan(v w / g)), knees over the toes for a toe side turn,
+  hips back over the heels for a heel side one, the chest and head leading; a transition's curve bends the legs.
+- **Ollie**: the crouch winds up (knees to 100 degrees, the back foot onto the tail, the front foot back toward the
+  middle); the pop noses the board up 26 degrees about its back wheels with the tail on the ground a few frames, the
+  front foot drags up the grip and levels it by a fifth of a second, the knees pull up at the top, the legs stretch
+  for the landing and the knees take it (to over 100 degrees on a hard one) and come back up.
+- **Flips**: the front foot flicks off the nose (over the heel edge for the kickflip way, the toe edge the other) and
+  both feet lift while the board turns under them about its own axes; the back foot catches first.
+- **Grabs**: the knees pull the board up to the hand at the grab's place (nose, tail, toe or heel edge), the free arm
+  out or up. **Grinds**: knees bent over the grinding truck, arms out and seesawing with the balance. **Manuals**:
+  the hips over the rolling truck, that knee bent, the other leg straighter.
+- **Bails**: the body braces as it goes (knees bent, chin tucked, arms in), and a ragdoll (src/rag.c, after the
+  brawler's) tumbles from that pose over the park's triangles, presentation only; the camera follows the body from
+  further back.
+
+The wheels turn with the speed. A landing kicks up a puff of dust; a grind throws sparks. For judging the posing,
+tools/strips.sh lays frames of every state side by side (tools/strip.mjs: the native app paused and stepped on its
+debug channel, a scripted pad from tools/pads/ or a bot, SKATE_VIEWCAM to set the camera round the rider).
 
 The cameras ride low behind each skater along its run, pull back and widen the lens with speed (62 to 76 degrees),
 and in vert air stay down at the coping's height and look up at the rider, so the height shows. When the run turns
@@ -143,7 +167,7 @@ second, to the side it last swung to. They pull in when a wall is in the way. No
 | tests/skate-physics.mjs | the board against ramp physics; the naive solver as the control |
 | tests/skate-parks.mjs | nothing floats, every line skateable, the bots' routes between lines hold; four controls (a straight-line planner among them) and each park's bake made for its shape (a lifted piece as the control) |
 | tests/skate-soak.mjs | 30 game minutes at 1 to 4 players, every park; a NaN control |
-| tests/skate-feel.mjs | a person's twelve seconds on a pad: every trick lands, the camera never jerks, the feet stay on the deck; a mistimed flip as the control |
+| tests/skate-feel.mjs | a person's twelve seconds on a pad, and a bot on a rail and on a quarter pipe: every trick lands, the camera never jerks, the feet stay on the deck and stand where a skater's do in every state (each sole over the front bolts to the nose or the back bolts to the tail, across the deck's middle, on its top: measured on the posed skeleton); a mistimed flip and the feet together in the deck's middle as the controls |
 | tests/skate-gates.json | the auto cart on every host, frames and simulation state exact |
 | tests/skate-perf.mjs | the 890M at 1080p High, four-way split |
 | tests/skate-look.mjs | every park's chase-camera frames have contrast and are not washed out: mean luma 95 to 128, its spread 55 or more; two stops over as the control. The sunset sky does not band (40% or fewer of its pixels the colour of the one above; undithered as the control) |

@@ -797,7 +797,6 @@ static t3_quat qaxis(v3 ax, float a) {
   cw_sincos(a * 0.5f, &s, &c);
   return (t3_quat){ ax.x * s, ax.y * s, ax.z * s, c };
 }
-static float ease_io(float t) { t = clampf(t, 0, 1); return t * t * (3 - 2 * t); }
 
 /* the skater between ticks */
 static void interp(const skater *a, const skater *b, float al, v3 *p, v3 *f, v3 *u) {
@@ -814,32 +813,11 @@ static void interp(const skater *a, const skater *b, float al, v3 *p, v3 *f, v3 
 static void place_board(seat *s, const skater *k, v3 p, v3 f, v3 u, float t) {
   v3 side = vcross(f, u);
   t3_quat q = quat_basis(f, u, side);
-  /* tricks on the board itself, in its own frame about its middle */
+  /* tricks on the board itself (a flip, the ollie's pop, a tuck, a carve's tilt, a manual, a grind's tip): pose.c
+     works them out with the rider's body, so the feet and the deck agree (a bail's board lies on the ground) */
   t3_quat lq = { 0, 0, 0, 1 };
   v3 lp = V(0, 0, 0);
-  if (k->st == SK_AIR && k->flip >= 0 && k->flip_t < FLIPS[k->flip].len) {
-    float e = ease_io((float)k->flip_t / (float)FLIPS[k->flip].len);
-    const trick_def *d = &FLIPS[k->flip];
-    lq = qmul(qmul(qaxis(V(1, 0, 0), d->roll * 2 * PI_F * e), qaxis(V(0, 1, 0), d->yaw * 2 * PI_F * e)), qaxis(V(0, 0, 1), d->pitch * 2 * PI_F * e));
-    lp = V(0, 0.18f * cw_sin(e * PI_F) + 0.06f, 0); /* it pops up to the feet and comes back under them */
-    /* about the deck's middle, not its wheels' line: lp + c - q c */
-    v3 c = V(0, 0.07f, 0), qc = t3_vec3_apply_quat(c, lq);
-    lp = vadd(lp, vsub(c, qc));
-  }
-  if (k->st == SK_AIR) lp.y += rig_board_lift(&s->rig);
-  if (k->st == SK_ROLL && !k->manual) /* a carve tips the deck onto its edge, the way the rider leans */
-    lq = qmul(lq, qaxis(V(1, 0, 0), clampf(s->rig.s.lean, -0.5f, 0.5f) * 0.35f));
-  if (k->st == SK_ROLL && k->manual) { /* on two wheels: about the back (or front) axle */
-    float a = (k->manual_kind ? -1.0f : 1.0f) * (0.2f + 0.03f * k->mbal);
-    lq = qaxis(V(0, 0, 1), a);
-    lp = V(0.21f * (k->manual_kind ? 1.0f : -1.0f) * (1 - cw_cos(a)), 0.21f * fabsf(cw_sin(a)), 0);
-  }
-  if (k->st == SK_GRIND) {
-    /* the trucks on the rail: a nose or a tail run tips it; a glide turns it across (already in f) */
-    if (k->grind_kind == 1) lq = qaxis(V(0, 0, 1), -0.25f), lp = V(0, 0.06f, 0);
-    if (k->grind_kind == 2) lq = qaxis(V(0, 0, 1), 0.25f), lp = V(0, 0.06f, 0);
-    lp.y -= 0.03f;
-  }
+  if (k->st != SK_BAIL && s->rig.bound) lq = s->rig.board_q, lp = s->rig.board_p;
   (void)t;
   cw_node3d_set_position(s->root, p);
   cw_node3d_set_quaternion(s->root, q);
@@ -941,6 +919,17 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   s->look_k += ((s->blocked ? 1.0f : 0.0f) - s->look_k) * (1 - cw_exp(-dt * 4.0f));
   v3 look = vlerp(vadd(vadd(s->cam_at, vmul(s->cam_h, 4.0f)), V(0, 0.25f, 0)), vadd(s->cam_at, vmul(s->cam_h, 1.0f)), s->look_k);
   cw_node3d_look_at(VW.cam[i], look, V(0, 1, 0));
+  if (getenv("SKATE_VIEWCAM")) { /* development: the rider seen from a set angle (az degrees from behind the run, 90 its right; el; dist; fov) */
+    float az = 90, el = 8, dist = 3.2f, fov = 40;
+    sscanf(getenv("SKATE_VIEWCAM"), "%f,%f,%f,%f", &az, &el, &dist, &fov);
+    v3 c = vadd(p, V(0, 0.85f, 0)), back = vmul(s->cam_h, -1), right = vcross(s->cam_h, V(0, 1, 0));
+    float sa, ca, se, ce;
+    cw_sincos(az * 0.0174533f, &sa, &ca), cw_sincos(el * 0.0174533f, &se, &ce);
+    v3 dir = vadd(vadd(vmul(back, ca * ce), vmul(right, sa * ce)), V(0, se, 0));
+    cw_node3d_set_position(VW.cam[i], vmad(c, dir, dist));
+    cw_node3d_look_at(VW.cam[i], c, V(0, 1, 0));
+    cw_node_set(VW.cam[i], "fov", cw_val_float(fov));
+  }
   /* measurements: how fast the view turns (a jerk is a cut the eye cannot follow), how far it sits from the rider */
   v3 fwd = vnorm(vsub(look, s->cam_p));
   if (s->cam_fwd_ok && dt > 0) { float a = cw_acos(clampf(vdot(fwd, s->cam_fwd), -1, 1)) * 57.29578f; if (a > g_view_metrics.cam_turn_max) g_view_metrics.cam_turn_max = a; }
@@ -1001,6 +990,7 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
         p = vsub(c, vmul(u, 0.6f));
       }
     }
+    if (s->rig.bound) rig_pose(&s->rig, k, dt, t); /* the body, and the board's own placement under it */
     if (k->st == SK_BAIL) place_board(s, k, bp, bf, bu, t);
     else place_board(s, k, p, f, u, t);
     /* the wheels turn with the speed (8 cm across); a landing kicks up a puff of dust */
@@ -1021,8 +1011,11 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     cw_node3d_set_position(s->rider, rp);
     cw_node3d_set_quaternion(s->rider, q);
     if (s->rig.bound) {
-      rig_pose(&s->rig, k, dt, t);
       if (i == 0 && (k->st == SK_ROLL || k->st == SK_GRIND) && s->rig.foot_err > g_view_metrics.foot_err_max) g_view_metrics.foot_err_max = s->rig.foot_err, g_view_metrics.foot_err_state = k->st * 10 + (k->push_t > 0) + 2 * k->manual;
+      /* where the feet stand on the deck (over the trucks, across the middle, on top): the feel gate's measure */
+      int which;
+      float place = k->st != SK_BAIL ? rig_foot_place(&s->rig, &which) : 0;
+      if (i == 0 && place > g_view_metrics.foot_place_max) g_view_metrics.foot_place_max = place, g_view_metrics.foot_place_state = k->st * 100 + which * 10 + (k->push_t > 0) + 2 * k->manual;
       t3_mat4 m;
       t3_mat4_compose(&m, rp, q, V(1, 1, 1));
       rag_tick(i, k, &s->rig, s->rider, &m);

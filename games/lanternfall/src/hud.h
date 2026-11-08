@@ -5,11 +5,15 @@
 #include "cartwheel/render2d.h"
 #include "sim.h"
 
+#define CARD_CHARM 100
+#define CARD_KEEPSAKE 101 /* card_arg: the keepsake (0..); card_dye: a new scarf dye with it (0 none) */
+
 typedef struct hud_state {
   int banner_region;      /* the region whose name shows (-1 none) */
   float banner_t;
-  int card_kind, card_arg; /* the pickup card (kind 4: a charm, arg its CH_*) */
+  int card_kind, card_arg; /* the pickup card: a PK_* kind and its arg, or CARD_CHARM and the charm (CH_*) */
   float card_t;
+  int card_dye;
   bool map_open;
   bool menu_open;         /* the shrine: rest, or travel to another lit shrine */
   int menu_sel, menu_n;

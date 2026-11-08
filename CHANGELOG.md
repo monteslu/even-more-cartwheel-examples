@@ -1,5 +1,66 @@
 # Changelog
 
+## 0.9.0
+
+- **Lanternfall**, the combat round: a blow that lands holds the world still for a few ticks (longer for a kill or a
+  blow taken) and knocks the enemy back by its weight, a downward strike restores the dash, and the pad rumbles on
+  blows, kills, hurts, plunges and wardens. Four new enemies, each with one idea: the puff (only a blow from above
+  hurts it, and it bounces you), the dropper (falls on whoever passes under), the burrower (a ripple that follows you
+  along the floor, then bursts up) and the eye (charges a beam along its row). Each region has its own cast, and
+  creatures struck down stay down until a rest. Relics give charms in the order found (longer reach, a cutting dash,
+  a sprint, energy from kills, a faster mend, a higher pogo, a thorn ward, quicker strikes, a twin spark, a wider
+  plunge, a second wind). Item rooms lock as trials with two waves of guardians first. Wardens stagger at half health
+  and come back with a second phase. A fall leaves your lantern's flame where you fell, holding some energy to take
+  back. A dash can leave straight off a wall you cling to.
+- **Lanternfall**, the world round: hand-shaped set pieces among the rooms, a new order of abilities (the grapple line
+  third, climbing after the Brass Sentinel, the plunge in the Forge), 13 shrines, grapple shortcuts in four early
+  regions, cracked caches in plain sight, and keepsakes to find past the last charm. The map marks finds seen but not
+  yet reached, map stones, landmarks, region names and the gates by the ability each wants; map stones and tablets
+  show cards. Each warden's arena is laid out for it, and the opening room leads along its floor with lamps showing
+  the way.
+- **Lanternfall**, the painted look: every creature is painted in code with shaded forms, fur, chitin, scales and
+  glowing eyes, with a rim of light on top. The rock carries painted features (boulders, cracks, strata, fossils,
+  roots, crystals, ore, gears, shells, moss), each region has its own rock, values and accent, and every ledge in the
+  air hangs on chains or brackets or stands on posts. Painted props fill the rooms (lamplighter statues, garden
+  trees, crystal clusters, machines, shelves of books, mushrooms, ferns, grass and flowers that sway in the wind),
+  trees with bark and leaves stand in the background, arches carry masonry and ivy, and landmarks and tablets are
+  painted from the world's own props. The strike sweeps as a soft ribbon behind the lantern and the dash as a smear.
+  Nothing strobes: hits and hurts swell and fade.
+- **Ember Throne**: a new cast. All eight figures are rebuilt from CC0 base characters and fantasy outfits with
+  generated plate, helmets, crowns, horns, robes, coats, capes and masks, larger heads and hands, and baked skin.
+  Every figure has a rim light, foes' outfits are tinted by region, each figure picks its level of detail from its
+  size on screen, and feet are planted at each kind's ankle height.
+- **Destructo**: a level is judged once its world has gone still, never while the structure is still falling. Stars:
+  one for every crystal down, two within par, three within par with the structure brought down to its mark, and the
+  HUD shows the share down live. The last shot can be watched again as an instant replay that follows the shot and
+  turns slowly round the impact in slow motion. Free fire on the select screen (every structure, endless ammunition,
+  never judged), a party mode with steady hands, and powder kegs that set each other off. Grass, the sea drawn as
+  water, a dust plume that drifts downwind over a collapse, a mark on the ground where the structure came down, raw
+  insides on broken pieces and ambient occlusion from Medium up. Every light swells and fades instead of flashing.
+- **skate**: the riders move like skaters. Feet stand where skaters put them on the deck, the push drives the back
+  foot past the tail, carves lean as far as the turn asks, transitions load the legs, the ollie snaps the tail and
+  drags the front foot up the grip, flips flick off the nose while both feet lift, grabs pull the board up to the
+  hand, grinds and manuals sit over their truck, and a bail braces before the ragdoll takes over.
+- **towers**: nothing strobes: lightning is one fork that writhes and fades, flash lights, beams, coils and mortars
+  swell in and fade out, hit creeps warm and cool, and the core count glows instead of blinking. The third level
+  comes in two branches (arc, blizzard, prism and napalm on the second). Towers help each other: blasts shatter frozen
+  creeps, beams heat faster on slowed ones, lightning leaps farther off chilled ones. Each player has a storm to call
+  during a wave. Killed creeps tip over and sink with a coin rising, each wave's banner says what each player did,
+  tower levels show at a glance (halos and a crown), crowds stay readable against any ground, and cloud shadows drift
+  over the map.
+- **pinball**: nothing strobes: every light eases to what the rules want, pulsing lamps are slow smooth waves,
+  flashers rise, hold and fade and wait 1.3 s before firing again, a spinning spinner is drawn turning slowly, and the
+  dot display slides and brightens instead of blinking. Each table has its own modes, toy and wizard mode (Coral
+  Deep's creature, Star Foundry's magnet and forge ring, Neon Fair's high striker), with roving shots, hurry-ups,
+  target sweeps and two-ball modes, and five goals a table beyond the score, kept as stars. A painted backbox per
+  table, illustrated playfields, and the machine standing in a dim arcade room between the other two tables. The pad
+  rumbles for flips, coils, drains and jackpots. A ball that stops on a ramp's crest now rolls back instead of
+  balancing there for ever.
+- Engine v0.38.8: Lanternfall's flipped and turned painted parts are lit the way they face (the engine turns a 2D
+  sprite's normals with its rotation and flip), so each part is painted once instead of once per facing. Every game's
+  flash check now uses the engine's flash analyser (WCAG 2.3.1 and the Harding test's thresholds) with a strobe
+  control that must fail.
+
 ## 0.8.2
 
 - pinball: the flippers answer much faster: they move on the simulation step of the press, reach full stroke in

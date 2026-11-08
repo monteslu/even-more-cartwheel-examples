@@ -1,3 +1,2 @@
-[{"frame": 20, "buttons": ["south"]}, {"frame": 23}, {"frame": 40, "buttons": ["south"]}, {"frame": 43}, {"frame": 60, "buttons": ["start"]}, {"frame": 63},
- {"frame": 90, "buttons": ["south"]}, {"frame": 93},
+[{"frame": 20, "buttons": ["south"]}, {"frame": 23}, {"frame": 50, "buttons": ["south"]}, {"frame": 53},
  {"frame": 260, "buttons": ["l"]}, {"frame": 275}, {"frame": 480}]

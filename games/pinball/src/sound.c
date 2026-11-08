@@ -186,7 +186,11 @@ void sound_events(const game *g) {
     case FX_MULTIBALL: play(S_MULTIBALL, 0.9f, 1); break;
     case FX_MODE_START: play(S_MODE, 0.8f, 1); break;
     case FX_MODE_SHOT: play(S_CHIME, 0.7f, 1); break;
-    case FX_MODE_DONE: case FX_EXTRA: case FX_SKILL: play(S_FANFARE, 0.9f, 1); break;
+    case FX_MODE_DONE: case FX_EXTRA: case FX_SKILL: case FX_OBJECTIVE: case FX_WIZARD_END: play(S_FANFARE, 0.9f, 1); break;
+    case FX_WIZARD: play(S_MULTIBALL, 1.0f, 0.9f); break;
+    case FX_WIZARD_SHOT: play(S_JACKPOT, 0.9f, 1.1f); break;
+    case FX_TOY: play(g->fx[k].a == 3 ? S_CHIME : g->fx[k].a == 2 ? S_LOCK : S_RESET, 0.8f, g->fx[k].a == 3 ? 1.6f : 0.8f); break; /* risen, sunk, caught, the bell */
+    case FX_TOY_HIT: play(S_KICK, 0.9f, 0.7f); break;
     case FX_MODE_FAIL: play(S_FAIL, 0.7f, 1); break;
     case FX_TILT: play(S_TILT, 0.9f, 1); break;
     case FX_WARN: play(S_WARN, 0.8f, 1); break;

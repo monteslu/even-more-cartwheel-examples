@@ -26,3 +26,7 @@ standard+vcol+instbig+senv+icol+l2000+xcluster_plain
 standard+map+vcol+instbig+senv+atest+ds+icol+l2000+xcluster_plain
 standard+vcol+instbig+senv+icol+l2000+xcluster
 standard+map+vcol+instbig+senv+atest+ds+icol+l2000+xcluster
+standard+senv+ds+l2000+xwaterlow
+standard+map+vcol+shadow+senv+atest+ds+l2000+s100+xcluster_plain
+standard+map+vcol+shadow+senv+atest+ds+l2000+s100+xcluster
+standard+shadow+senv+ds+l2000+s100+xwater

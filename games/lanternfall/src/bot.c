@@ -599,7 +599,7 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     const route_step *list = b->np ? b->plan : b->steps;
     int lim = b->np ? b->np : b->n;
     int last = j;
-    while (last + 1 < lim && list[last + 1].move == 255 && list[last + 1].to / TW == list[j].to / TW) last++;
+    while (last + 1 < lim && !list[last].goal && list[last + 1].move == 255 && list[last + 1].to / TW == list[j].to / TW) last++; /* (never on past a goal: the way to a find and back crosses its own tiles) */
     for (int k = j; k <= last; k++)
       if (here == list[k].to) {
         if (b->np) b->pi = k + 1;

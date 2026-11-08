@@ -1,14 +1,15 @@
 /* lanternfall_rules: the combat rules measured through sim_step on a small test world (tests/lanternfall-rules.mjs
  * runs it, and its controls).
  *
- *   lanternfall_rules [--control hitstop|knockback|recoil|puff|slain|trial|phase|charms|echo]
+ *   lanternfall_rules [--control hitstop|knockback|recoil|puff|slain|trial|phase|charms|echo|keepsake]
  *
  * A control turns one rule off (g_rules_off): its check must then fail. Measured: a blow that lands holds the world
  * still (both sides), pushes the enemy away and the striker back; a puff gives only to a blow from above (and that
  * bounces you); creatures struck down stay down until a rest; an upgrade's room locks for its trial and its find
  * waits for the guardians; a warden staggers at half health and adds its second phase's move; a relic's charm (the
  * long wick) reaches what a plain strike cannot; a fall leaves your flame (a measure of energy) where you fell, and
- * touching it gives the measure back. Output: one line each, then "rules ok" or "rules FAIL". */
+ * touching it gives the measure back; a relic past the last charm is a keepsake (a story line, a scarf dye every third),
+ * never a leaf or a measure. Output: one line each, then "rules ok" or "rules FAIL". */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -239,6 +240,19 @@ static void charms(void) {
   check("charms", !plain && got && wick, b);
 }
 
+/* a relic past the last charm is a keepsake: a line of the story and, every third, a scarf dye; never a leaf or a measure */
+static void keepsake(void) {
+  fresh();
+  S.relics = CH_KINDS + KEEP_PER_DYE - 1; /* (every charm found, and two keepsakes) */
+  int hp0 = S.p[0].hp_max, en0 = S.p[0].en_max, dye0 = sim_scarf_dye(&S);
+  sim_teleport(&S, W.ents[E_RELIC].x, W.ents[E_RELIC].y);
+  idle(4);
+  char b[200];
+  snprintf(b, sizeof b, "relic %d: leaves %d -> %d, measures %d -> %d, keepsakes %d, scarf dye %d -> %d", CH_KINDS + KEEP_PER_DYE, hp0, S.p[0].hp_max, en0, S.p[0].en_max,
+           sim_keepsakes(&S), dye0, sim_scarf_dye(&S));
+  check("keepsake", S.relics == CH_KINDS + KEEP_PER_DYE && S.p[0].hp_max == hp0 && S.p[0].en_max == en0 && dye0 == 0 && sim_scarf_dye(&S) == 1, b);
+}
+
 /* a fall leaves your flame with a measure of energy; touching it gives it back */
 static void echo(void) {
   fresh();
@@ -261,10 +275,10 @@ static void echo(void) {
 }
 
 int main(int argc, char **argv) {
-  static const char *const NAMES[] = { "hitstop", "knockback", "recoil", "puff", "slain", "trial", "phase", "charms", "echo" };
+  static const char *const NAMES[] = { "hitstop", "knockback", "recoil", "puff", "slain", "trial", "phase", "charms", "echo", "keepsake" };
   for (int i = 1; i < argc; i++)
     if (!strcmp(argv[i], "--control") && i + 1 < argc)
-      for (int k = 0; k < 9; k++)
+      for (int k = 0; k < 10; k++)
         if (!strcmp(argv[i + 1], NAMES[k])) g_rules_off |= 1 << k;
   build();
   blow();
@@ -274,6 +288,7 @@ int main(int argc, char **argv) {
   phase();
   charms();
   echo();
+  keepsake();
   printf("rules %s\n", bad ? "FAIL" : "ok");
   return bad ? 1 : 0;
 }

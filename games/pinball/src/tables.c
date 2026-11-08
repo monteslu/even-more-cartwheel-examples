@@ -168,9 +168,33 @@ static int shot_add(const char *name, int arrow) {
   return T->nshot++;
 }
 
-static void mode_add(const char *name, const char *goal, int mask, int need, int seconds, int value) {
+/* a mode: how it plays (MK_*), the shots it lights, the hits it needs, its clock, its value, the balls it adds.
+ * PINBALL_RULES_ONE_SET builds every table on one shared set of lit-shot modes with no toy (the rule set the tables
+ * had before): pinball_rulecheck's control, which must fail. */
+static void mode_add(const char *name, const char *goal, int kind, int mask, int need, int seconds, int value, int balls) {
   if (T->nmode >= MAXMODE) return;
-  T->modes[T->nmode++] = (mode_def){ name, goal, mask, need, seconds, value };
+#ifdef PINBALL_RULES_ONE_SET
+  static const int K[4] = { MK_SHOTS, MK_SHOTS, MK_SHOTS, MK_ALL }, M[4] = { 0x11, 0x0a, 0x1f, 0x1f };
+  kind = K[T->nmode], mask = M[T->nmode], balls = 0;
+#endif
+  T->modes[T->nmode++] = (mode_def){ name, goal, mask, need, seconds, value, kind, balls };
+}
+
+/* the table's toy (game.h TOY_*): its element, and for the creature its body (a post, off until it rises), for the
+ * magnet its field (a sensor that pulls a ball toward its middle while on) */
+static void toy_add(int toy, float x, float y, int col, int lamp_shape, float lamp_size) {
+#ifdef PINBALL_RULES_ONE_SET
+  return;
+#endif
+  int el = mk_elem(EK_TOY, x, y, 90, 0, col);
+  T->toy = toy, T->toy_el = el;
+  if (toy == TOY_CREATURE) own(el, pb_add_circle(&T->W, x, y, 0.016f, 0.5f, 0.15f, SF_REPORT | SF_OFF, el));
+  if (toy == TOY_MAGNET) {
+    int s = pb_add_circle(&T->W, x, y, 0.065f, 0, 0, SF_SENSOR | SF_MAGNET | SF_OFF, el);
+    T->W.sh[s].kick = 4.0f; /* its pull */
+    own(el, s);
+  }
+  if (lamp_size > 0) T->el[el].lamp = mk_lamp(x, y, lamp_size, 0, lamp_shape, col);
 }
 
 static void plastic(int col, float z, const float (*p)[2], int n) {
@@ -353,10 +377,12 @@ static void coral_deep(void) {
   T->el[lo].shot = s_lo, T->el[lr].shot = s_lr, T->el[scoop].shot = s_sc, T->el[rr].shot = s_rr, T->el[ro].shot = s_ro;
   T->mode_hole = scoop, T->lock_hole = rr, T->jackpot_shot = s_lr;
   /* modes: started at the scoop */
-  mode_add("TIDE POOL", "SHOOT THE LIT ORBITS", 1 << s_lo | 1 << s_ro, 3, 35, 150000);
-  mode_add("PEARL DIVE", "SHOOT THE RAMPS", 1 << s_lr | 1 << s_rr, 3, 40, 200000);
-  mode_add("CURRENT", "SHOOT ANY LIT SHOT", 0x1f, 4, 40, 120000);
-  mode_add("LEVIATHAN", "ALL FIVE SHOTS", 0x1f, 5, 60, 300000);
+  mode_add("TIDE POOL", "CATCH THE MOVING SHOT", MK_ROVE, 1 << s_lo | 1 << s_lr | 1 << s_rr | 1 << s_ro, 3, 40, 150000, 0);
+  mode_add("PEARL DIVE", "RAMPS COLLECT THE PEARL", MK_HURRY, 1 << s_lr | 1 << s_rr, 2, 40, 200000, 0);
+  mode_add("CURRENT", "TWO BALLS: ANY LIT SHOT", MK_SHOTS, 0x1f, 4, 40, 120000, 1);
+  mode_add("LEVIATHAN", "HIT THE LEVIATHAN", MK_TOY, 0, 3, 50, 300000, 0);
+  T->wizard_name = "THE ABYSS", T->wizard_goal = "EVERY SHOT AND THE BEAST";
+  toy_add(TOY_CREATURE, -0.01f, 0.49f, 1, LS_CIRCLE, 0.012f);
   for (int i = 0; i < T->nmode; i++) T->mode_lamp[i] = mk_lamp(CX0 + ((float)i - 1.5f) * 0.03f, 0.43f, 0.0095f, 0, LS_STAR, i);
   for (int i = 0; i < 2; i++) T->lock_lamp[i] = mk_lamp(0.108f + ((float)i - 0.5f) * 0.022f, 0.44f, 0.008f, 0, LS_CIRCLE, 3);
   T->lock_lamp[2] = -1;
@@ -414,10 +440,12 @@ static void star_foundry(void) {
   int s_lo = shot_add("LEFT ORBIT", a_lo), s_cr = shot_add("CENTRE RAMP", a_cr), s_sc = shot_add("SCOOP", a_sc), s_ro = shot_add("RIGHT ORBIT", a_ro), s_sa = shot_add("SAUCER", a_sa);
   T->el[lo].shot = s_lo, T->el[cr].shot = s_cr, T->el[scoop].shot = s_sc, T->el[ro].shot = s_ro, T->el[sau].shot = s_sa;
   T->mode_hole = scoop, T->lock_hole = sau, T->jackpot_shot = s_cr;
-  mode_add("COLD START", "LIGHT THE FURNACE AT THE ORBITS", 1 << s_lo | 1 << s_ro, 3, 35, 160000);
-  mode_add("SUNPOUR", "CENTRE RAMP", 1 << s_cr, 3, 40, 250000);
-  mode_add("SHAPING", "ANY LIT SHOT", 0x1f, 4, 40, 120000);
-  mode_add("NOVA", "ALL FIVE SHOTS", 0x1f, 5, 60, 320000);
+  mode_add("COLD START", "HIT EVERY TARGET", MK_SWEEP, 0, 6, 45, 120000, 0);
+  mode_add("SUNPOUR", "RAMP AND SAUCER POUR", MK_HURRY, 1 << s_cr | 1 << s_sa, 2, 40, 250000, 0);
+  mode_add("SHAPING", "THE MAGNET AND THE ORBITS", MK_TOY, 1 << s_lo | 1 << s_ro, 4, 45, 160000, 0);
+  mode_add("NOVA", "TWO BALLS: ALL FIVE SHOTS", MK_ALL, 0x1f, 5, 60, 320000, 1);
+  T->wizard_name = "SUPERNOVA", T->wizard_goal = "EVERY SHOT AND THE MAGNET";
+  toy_add(TOY_MAGNET, -0.025f, 0.665f, 2, LS_STAR, 0.011f);
   for (int i = 0; i < T->nmode; i++) T->mode_lamp[i] = mk_lamp(CX0 + ((float)i - 1.5f) * 0.03f, 0.43f, 0.0095f, 0, LS_STAR, i);
   for (int i = 0; i < 3; i++) T->lock_lamp[i] = mk_lamp(-0.15f + (float)i * 0.016f, 0.69f + (float)i * 0.012f, 0.007f, 0, LS_CIRCLE, 2);
   T->mb_lamp = mk_lamp(CX0, 0.32f, 0.016f, 0, LS_SHIELD, 3);
@@ -470,10 +498,12 @@ static void neon_fair(void) {
   int s_lo = shot_add("LEFT ORBIT", a_lo), s_lr = shot_add("LEFT RAMP", a_lr), s_sc = shot_add("SCOOP", a_sc), s_rr = shot_add("RIGHT RAMP", a_rr), s_ro = shot_add("RIGHT ORBIT", a_ro);
   T->el[lo].shot = s_lo, T->el[lr].shot = s_lr, T->el[scoop].shot = s_sc, T->el[rr].shot = s_rr, T->el[ro].shot = s_ro;
   T->mode_hole = scoop, T->lock_hole = lr, T->jackpot_shot = s_rr;
-  mode_add("TICKET RUSH", "BOTH ORBITS", 1 << s_lo | 1 << s_ro, 3, 35, 150000);
-  mode_add("HIGH STRIKER", "THE RAMPS", 1 << s_lr | 1 << s_rr, 3, 40, 220000);
-  mode_add("GALLERY", "ANY LIT SHOT", 0x1f, 4, 40, 120000);
-  mode_add("LAST RIDE", "ALL FIVE SHOTS", 0x1f, 5, 60, 300000);
+  mode_add("TICKET RUSH", "CATCH THE MOVING SHOT", MK_ROVE, 1 << s_lo | 1 << s_lr | 1 << s_rr | 1 << s_ro, 3, 40, 150000, 0);
+  mode_add("HIGH STRIKER", "RAMPS: RING THE BELL", MK_TOY, 1 << s_lr | 1 << s_rr, 3, 45, 220000, 0);
+  mode_add("GALLERY", "HIT EVERY TARGET", MK_SWEEP, 0, 5, 40, 120000, 0);
+  mode_add("LAST RIDE", "TWO BALLS: ALL FIVE SHOTS", MK_ALL, 0x1f, 5, 60, 300000, 1);
+  T->wizard_name = "GRAND FINALE", T->wizard_goal = "EVERY SHOT, RING THE BELL";
+  toy_add(TOY_STRIKER, -0.165f, 1.0f, 2, LS_CIRCLE, 0);
   for (int i = 0; i < T->nmode; i++) T->mode_lamp[i] = mk_lamp(CX0 + ((float)i - 1.5f) * 0.03f, 0.43f, 0.0095f, 0, LS_STAR, i);
   for (int i = 0; i < 2; i++) T->lock_lamp[i] = mk_lamp(-0.147f + ((float)i - 0.5f) * 0.022f, 0.43f, 0.008f, 0, LS_CIRCLE, 0);
   T->lock_lamp[2] = -1;
@@ -496,6 +526,8 @@ void table_build(table *t, int which) {
   pb_init(&t->W);
   t->lock_lamp[2] = -1;
   t->kickback = -1;
+  t->toy_el = -1;
+  t->wizard_name = "WIZARD", t->wizard_goal = "EVERY SHOT";
   switch (which) {
   case 1: star_foundry(); break;
   case 2: neon_fair(); break;

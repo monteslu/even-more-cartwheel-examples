@@ -41,6 +41,9 @@ const ammo_info AMMO[NAMMO] = {
 #define CHARGE_R 4.6f
 #define CHARGE_IMPULSE 5200.0f
 #define CHARGE_ENERGY 260000.0f
+#define KEG_R 3.4f        /* a keg's blast: radius, ... */
+#define KEG_K 0.7f        /* ... and strength against a charge's */
+#define KEG_DELAY 7       /* ticks between the blasts of a chain */
 #define LAYER_GROUND 0
 #define LAYER_BLOCK 1
 #define LAYER_PROJ 2
@@ -125,6 +128,15 @@ void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour) {
   g->ban[g->nban++] = (banner){ blk, local, h, (uint8_t)colour, (uint8_t)(g->nban & 1) };
 }
 
+int game_add_keg(game *g, float x, float z) {
+  uint8_t was = g->paint_now;
+  g->paint_now = P_KEG;
+  int i = game_add_block(g, M_WOOD, v3(x, KEG_HALF + 0.004f, z), v3(KEG_HALF * 0.85f, KEG_HALF, KEG_HALF * 0.85f), 0);
+  g->paint_now = was;
+  if (i >= 0) g->b[i].keg = 1, g->b[i].hp *= 0.5f; /* a keg goes off at half a crate's knock */
+  return i;
+}
+
 int game_add_target(game *g, t3_vec3 c) {
   if (g->ntgt >= MAXTGT) return -1;
   int i = make_block(g, M_TARGET, c, v3(0.22f, 0.32f, 0.22f), (t3_quat){ 0, 0, 0, 1 }, v3(0, 0, 0), v3(0, 0, 0), 0, 0);
@@ -140,6 +152,11 @@ static void target_down(game *g, int t) {
   target_state *ts = &g->tgt[t];
   if (ts->down) return;
   ts->down = true, ts->down_tick = g->tick, ts->by_player = g->cur;
+  if (g->mode == MODE_PARTY && !g->P[g->cur].out) { /* party: the one who brought a crystal down is out */
+    int n = 0;
+    for (int p = 0; p < g->players; p++) n += g->P[p].out != 0;
+    g->P[g->cur].out = 1, g->P[g->cur].out_order = (int8_t)(n + 1);
+  }
   g->tgt_left--;
   g->P[g->cur].targets++;
   g->P[g->cur].score += 1000;
@@ -153,7 +170,8 @@ static void kill_block(game *g, int i) {
     g->tgt[k->target].blk = -1;
     target_down(g, k->target);
   }
-  if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); }
+  if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); if (k->target < 0) g->down_count++; }
+  if (k->tag && k->target < 0) g->vol_gone += k->vol;
   cw_body3d_destroy(k->body);
   k->alive = 0;
   g->nalive--;
@@ -169,6 +187,13 @@ static void break_block(game *g, int i, t3_vec3 dir) {
   t3_vec3 h = k->half;
   int mat = k->mat, gen = k->gen, paint = k->paint;
   float big = fmaxf(h.x, fmaxf(h.y, h.z));
+  if (k->keg) { /* a keg goes off: its blast waits its turn (a chain runs a blast at a time) */
+    if (g->npend < MAXPEND) g->pend_charge[g->npend] = 0, g->pend_at[g->npend++] = x.p;
+    if (g->blast_shell == 0 && g->pend_wait <= 0) g->pend_wait = 2;
+    g->broken++;
+    kill_block(g, i);
+    return;
+  }
   bool glass = MATS[mat].pieces == 0;
   ev_push(g, glass ? EV_SHATTER : EV_BREAK, mat, x.p, dir, big * 2, vlen(v), i);
   g->broken++;
@@ -263,6 +288,7 @@ void game_new(game *g, int level, int players, int mode) {
   g->rng = g->L->seed;
   level_build(g, g->L);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->muzzle = v3(0, 1.7f, g->L->range);
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
   g->ammo_sel = A_SHOT;
@@ -286,6 +312,10 @@ void game_settle(game *g, int ticks) {
   for (int t = 0; t < ticks; t++) cw_world3d_step(g->w, TICK);
   (void)none;
   g->state = st;
+  game_settle_finish(g);
+}
+
+void game_settle_finish(game *g) {
   /* where everything rests now is home */
   for (int i = 0; i < g->nb; i++)
     if (g->b[i].alive) g->b[i].home = cw_body3d_transform(g->b[i].body).p;
@@ -310,7 +340,8 @@ t3_vec3 game_block_pos(const game *g, int i) { return cw_body3d_transform(g->b[i
 void game_fire(game *g) {
   int a = g->ammo_sel;
   if (g->ammo[a] <= 0 || g->proj_live) return;
-  g->ammo[a]--;
+  if (!g->sandbox && g->mode != MODE_PARTY) g->ammo[a]--;
+  g->down_at_fire = g->down_count;
   t3_vec3 d = game_aim_dir(g);
   float sp = game_speed(g);
   cw_body3d_def bd = cw_body3d_default_def();
@@ -346,8 +377,9 @@ static void proj_end(game *g) {
 /* one shell of a blast: the blocks between the last shell's radius and this one's are pushed and harmed */
 static void blast_shell(game *g, int shell) {
   t3_vec3 at = g->blast_at;
-  float r0 = CHARGE_R * (float)(shell - 1) / BLAST_SHELLS, r1 = CHARGE_R * (float)shell / BLAST_SHELLS;
-  if (g->no_budget) r0 = 0, r1 = CHARGE_R;
+  float R = g->blast_r > 0 ? g->blast_r : CHARGE_R, K = g->blast_k > 0 ? g->blast_k : 1;
+  float r0 = R * (float)(shell - 1) / BLAST_SHELLS, r1 = R * (float)shell / BLAST_SHELLS;
+  if (g->no_budget) r0 = 0, r1 = R;
   cw_qshape3d q = cw_qshape3d_sphere(at, r1);
   static cw_shape3d hit[1024];
   cw_phys_filter f = cw_phys_filter_layers(1u << LAYER_BLOCK);
@@ -367,9 +399,9 @@ static void blast_shell(game *g, int shell) {
     float dist = vlen(vsub(p, at));
     if (g->b[i].blasted == (uint16_t)g->booms || (dist <= r0 && shell > 1)) continue; /* an earlier shell had it */
     g->b[i].blasted = (uint16_t)g->booms;
-    float k = 1 - dist / CHARGE_R;
+    float k = 1 - dist / R;
     if (k <= 0) continue;
-    k *= k;
+    k *= k * K;
     t3_vec3 dn = vscale(d, 1.0f / (l + 1e-4f));
     float mass = cw_body3d_mass(g->b[i].body);
     float imp = CHARGE_IMPULSE * k;
@@ -380,11 +412,43 @@ static void blast_shell(game *g, int shell) {
   for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s], false);
 }
 
+static void blast_begin(game *g, t3_vec3 at, float r, float k) {
+  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), r, 0, 0);
+  g->booms++;
+  g->blast_at = at, g->blast_r = r, g->blast_k = k;
+  blast_shell(g, 1);
+  g->blast_shell = g->no_budget ? 0 : 2;
+}
+
+/* the next keg of a chain, once the blast before has run out */
+static void kegs_go(game *g) {
+  if (g->npend == 0 || g->blast_shell != 0) return;
+  if (g->pend_wait > 0) { g->pend_wait--; return; }
+  t3_vec3 at = g->pend_at[0];
+  bool charge = g->pend_charge[0];
+  for (int i = 1; i < g->npend; i++) g->pend_at[i - 1] = g->pend_at[i], g->pend_charge[i - 1] = g->pend_charge[i];
+  g->npend--;
+  blast_begin(g, at, charge ? CHARGE_R : KEG_R, charge ? 1 : KEG_K);
+  g->pend_wait = KEG_DELAY;
+}
+
+void game_hit_block(game *g, int i, float e) {
+  if (i < 0 || i >= g->nb || !g->b[i].alive) return;
+  harm(g, i, e, v3(0, 1, 0), true);
+}
+
 static void detonate(game *g, t3_vec3 at) {
+  proj_end(g);
+  if (g->blast_shell != 0) { /* a keg's blast is running: the charge goes next */
+    if (g->npend < MAXPEND) {
+      for (int i = g->npend; i > 0; i--) g->pend_at[i] = g->pend_at[i - 1], g->pend_charge[i] = g->pend_charge[i - 1];
+      g->pend_at[0] = at, g->pend_charge[0] = 1, g->npend++, g->pend_wait = 0;
+    }
+    return;
+  }
   ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), CHARGE_R, 0, 0);
   g->booms++;
-  proj_end(g);
-  g->blast_at = at;
+  g->blast_at = at, g->blast_r = CHARGE_R, g->blast_k = 1;
   blast_shell(g, 1);
   g->blast_shell = g->no_budget ? 0 : 2;
 }
@@ -476,15 +540,68 @@ static void tally(game *g) {
     if (!k->alive || !k->tag || k->down || k->target >= 0) continue;
     t3_vec3 p = cw_body3d_transform(k->body).p;
     float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
-    if (vlen(vsub(p, k->home)) > lim) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); }
+    if (vlen(vsub(p, k->home)) > lim) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); g->down_count++; }
   }
+}
+
+/* the state itself, apart from the world it lives in (the world's own hash folds in body ids, which carry the
+ * world's index, so two worlds stepping the same never hash alike): every block slot, its pose's bits, the counters */
+uint32_t game_state_hash(const game *g) {
+  uint32_t h = hash32((uint32_t)g->tick * 0x9e3779b9u ^ (uint32_t)g->nb);
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    h = hash32(h ^ (uint32_t)k->alive ^ ((uint32_t)k->mat << 8) ^ ((uint32_t)k->gen << 16));
+    if (!k->alive) continue;
+    cw_xform3 x = cw_body3d_transform(k->body);
+    float f[7] = { x.p.x, x.p.y, x.p.z, x.q.x, x.q.y, x.q.z, x.q.w };
+    uint32_t u[7];
+    memcpy(u, f, sizeof u);
+    for (int j = 0; j < 7; j++) h = hash32(h ^ u[j]);
+  }
+  h = hash32(h ^ (uint32_t)g->shots ^ ((uint32_t)g->broken << 12) ^ ((uint32_t)g->tgt_left << 24));
+  for (int p = 0; p < g->players; p++) h = hash32(h ^ (uint32_t)g->P[p].score);
+  return h;
 }
 
 bool game_over(const game *g) { return g->state == GS_WON || g->state == GS_LOST; }
 
+/* a placed block standing away from home: more than its own size, and at least 0.6 m (the tally's rule) */
+static bool block_moved(const game *g, const block *k) {
+  t3_vec3 p = cw_body3d_transform(k->body).p;
+  float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
+  return vlen(vsub(p, k->home)) > lim;
+}
+
+float game_mark(const game *g) { return KIT_MARK[g->L->kind]; }
+
+float game_share(const game *g) {
+  if (g->vol_total <= 0) return 0;
+  float v = g->vol_gone;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (k->alive && k->tag && k->target < 0 && block_moved(g, k)) v += k->vol;
+  }
+  return fminf(1, v / g->vol_total);
+}
+
+/* The stars, given once the world is still (game_over is only true then):
+ *   1  every crystal is down
+ *   2  ... within par
+ *   3  ... and the structure is brought down (the level's mark of it, game_mark)
+ * The control (old_rules) is the rule before the fix: three for any clear within par, two within par + 2. */
 int game_stars(const game *g) {
-  if (g->state != GS_WON) return 0;
-  return g->shots <= g->L->par ? 3 : g->shots <= g->L->par + 2 ? 2 : 1;
+  if (g->state != GS_WON || g->mode == MODE_PARTY) return 0;
+  if (g->old_rules) return g->shots <= g->L->par ? 3 : g->shots <= g->L->par + 2 ? 2 : 1;
+  if (g->shots > g->L->par) return 1;
+  return g->judged_share >= game_mark(g) ? 3 : 2;
+}
+
+int game_result(const game *g) {
+  if (g->state == GS_LOST) return RES_LOST;
+  if (g->state != GS_WON) return RES_NONE;
+  if (g->mode == MODE_PARTY) return RES_PARTY;
+  if (g->old_rules) return RES_BROUGHT_DOWN;
+  return g->judged_share >= game_mark(g) ? RES_BROUGHT_DOWN : RES_CLEARED;
 }
 
 void game_step(game *g, const input *in) {
@@ -509,6 +626,7 @@ void game_step(game *g, const input *in) {
     blast_shell(g, g->blast_shell);
     g->blast_shell = g->blast_shell >= BLAST_SHELLS ? 0 : g->blast_shell + 1;
   }
+  kegs_go(g);
   int broke0 = g->broken;
   break_queued(g);
   g->breaks_tick = g->broken - broke0;
@@ -545,12 +663,31 @@ void game_step(game *g, const input *in) {
     if (!g->proj_live || (g->proj_hit_tick >= 0 && g->tick - g->proj_hit_tick > 40) || g->state_t > 60 * 6) g->state = GS_SETTLE, g->state_t = 0, g->settle_quiet = 0;
   } else if (g->state == GS_SETTLE) {
     int awake = st.awake_bodies - (g->proj_live ? 1 : 0);
-    g->settle_quiet = awake <= 2 ? g->settle_quiet + 1 : 0;
-    if (g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999;
-    if (g->settle_quiet > 20 || g->state_t > 60 * 9) {
+    g->settle_quiet = awake <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->settle_quiet + 1 : 0;
+    if (g->old_rules && g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999; /* the control: judged while it falls */
+    if (g->settle_quiet > SETTLE_QUIET || g->state_t > SETTLE_MAX) {
       proj_end(g);
       tally(g);
-      if (g->tgt_left == 0) g->state = GS_WON;
+      g->judged_awake = awake;
+      g->judged_share = game_share(g);
+      int in = 0;
+      if (g->mode == MODE_PARTY) { /* the turn: a strike for bringing nothing down; who is still in */
+        player_state *ps = &g->P[g->cur];
+        if (!ps->out && g->down_count == g->down_at_fire && ++ps->strikes >= PARTY_STRIKES) {
+          int n = 0;
+          for (int p = 0; p < g->players; p++) n += g->P[p].out != 0;
+          ps->out = 2, ps->out_order = (int8_t)(n + 1);
+        }
+        g->party_winner = -1;
+        for (int p = 0; p < g->players; p++) if (!g->P[p].out) in++, g->party_winner = p;
+        if (in != 1) g->party_winner = -1;
+      }
+      if (g->mode == MODE_PARTY && (in <= 1 || g->tgt_left == 0)) g->state = GS_WON; /* the party is over */
+      else if (g->mode == MODE_PARTY) {
+        g->state = GS_AIM;
+        do g->cur = (g->cur + 1) % g->players; while (g->P[g->cur].out);
+      } else if (g->sandbox) g->state = GS_AIM; /* free fire: never judged */
+      else if (g->tgt_left == 0) g->state = GS_WON;
       else if (ammo_left(g) == 0) g->state = GS_LOST;
       else {
         g->state = GS_AIM;

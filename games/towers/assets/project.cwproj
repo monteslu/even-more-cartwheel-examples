@@ -4,7 +4,7 @@ app = towers
 main_scene = scenes/main.cwscene
 app_id = org.cartwheel.towers
 ; gameplay actions: a cursor that hops between pads (stick or d-pad), the four face buttons as the build diamond
-; (north, west, east, south; on the keyboard I, J, L, K sit as a diamond), a shoulder to call the next wave; the
+; (north, west, east, south; on the keyboard I, J, L, K sit as a diamond), a shoulder to call the next wave, a trigger for the storm; the
 ; menus' (ui_*, pause) come from the engine's shell
 input.move_left = key:a, key:left, pad:left, axis:lx-
 input.move_right = key:d, key:right, pad:right, axis:lx+
@@ -15,6 +15,8 @@ input.act_w = key:j, pad:west
 input.act_e = key:l, pad:east
 input.act_s = key:k, key:space, pad:south
 input.call = key:q, pad:rshoulder, pad:lshoulder
+; each player's storm (a trigger): lightning down on the path round their cursor, then a cooldown
+input.power = key:e, axis:lt+@0.4, axis:rt+@0.4
 render.width = 1280
 render.height = 720
 render.msaa = 1
