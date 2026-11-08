@@ -1476,6 +1476,15 @@ static void paint_wardens(void) {
       el(1.15f, 1.35f, 0.75f, 0.85f, -0.4f, &lobe);
       el(2.45f, 1.35f, 0.75f, 0.85f, 0.4f, &lobe);
     }
+    { /* the muscle's fibres: fine dark ridges sweeping round each lobe */
+      pstyle fib = sty(0x4a1028, 0, 0, -0.15f, TX_NONE, 0, 0);
+      fib.alpha = 0.55f, fib.soft = 1.5f;
+      for (int i = 0; i < 18; i++) {
+        float side = i & 1 ? 1.0f : -1.0f, u = (float)(i / 2) / 8.0f, cx = 1.8f + side * (0.35f + 0.55f * u);
+        float fp[8] = { cx, 0.75f + 0.3f * u, cx + side * 0.35f, 1.4f, cx + side * 0.1f, 2.2f, 1.8f + side * 0.15f * u, 3.0f - 0.2f * u };
+        stk(fp, 4, 0.012f, 0.006f, &fib);
+      }
+    }
     pstyle cleft = sty(0x2a0612, 0, 0, -0.5f, TX_NONE, 0, 0);
     cleft.soft = 6, cleft.alpha = 0.8f;
     float cp[6] = { 1.8f, 0.6f, 1.75f, 1.3f, 1.8f, 2.0f };
