@@ -564,7 +564,7 @@ static void shadow_at(float x, float z, float r, float strength) {
 static void sync_creeps(const sim *s, float time) {
   static int cnt[CK_KINDS][MB_MAXF];
   memset(cnt, 0, sizeof cnt);
-  int drawn = 0, nelite = 0;
+  int drawn = 0;
   static const float RATE[CK_KINDS] = { 2.6f, 1.5f, 2.4f, 1.8f, 1.4f, 1.0f, 1.2f, 0.9f };
   static const float SIZE[CK_KINDS] = { 0.9f, 1.05f, 1.1f, 1.0f, 1.15f, 1.45f, 1.15f, 1.65f }; /* small swarms, fat bloaters, big ogres */
   for (int i = 0; i < MAXE; i++) {
@@ -601,8 +601,7 @@ static void sync_creeps(const sim *s, float time) {
     }
     t3_instanced_mesh_set_color_at(im, n, c);
     if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.55f);
-    if (e->boss) ring(e->x, 0.06f, e->y, 1.6f, (t3_color){ 2.4f, 0.5f, 0.45f }); /* the elites stand in a ring of their colour */
-    else if (e->kind == CK_OGRE && nelite++ < 96) cw_splats_add(V.glows, (t3_vec3){ e->x, 0, e->y }, 2.2f, 2.2f, 0, 0, (t3_color){ 1.0f, 0.2f, 0.25f }, 0.55f);
+    if (e->boss) ring(e->x, 0.06f, e->y, 1.6f, (t3_color){ 2.4f, 0.5f, 0.45f }); /* a boss stands in a ring of its colour */
     else if (e->kind != CK_SKITTER && ((i & 1) == 0 || s->nenemies < 1200)) shadow_at(e->x, e->y, 0.3f * sc, 0.4f); /* (the swarm casts none) */
     drawn++;
   }

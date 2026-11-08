@@ -344,8 +344,10 @@ static void pick_update(void) {
   }
 }
 
+static int g_ticks; /* fixed ticks run since the last frame drew: the view's clock and the effects run on them */
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
+  g_ticks++;
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   if (cw_shell_join_press()) {} /* (players_changed adds them) */
@@ -704,8 +706,12 @@ static void render(void *u, double alpha) {
   cw_shell_screen sc = cw_shell_screen_now();
   g_fx_level = CW_MAX(0, cw_gfx_effective(CW_GFX_EFFECTS) - 1);
   if (G.built) {
+    /* the view's clock runs with the game's ticks, not with frames drawn: a frame drawn twice (a fast display, a
+     * pause, the debugger's step) shows the same moment, so nothing animates faster than the game runs */
     static float t;
-    t += 1.0f / 60.0f;
+    int ticks = CW_MIN(g_ticks, 8);
+    g_ticks = 0;
+    t += (float)ticks / 60.0f;
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.S, G.camera, (float)w / (float)h);
@@ -724,7 +730,7 @@ static void render(void *u, double alpha) {
     { CW_PROFILE_SCOPE("towers.view_sync"); view_sync(&G.S, t, show); }
     G.t_view += (wall() - t0) * 1000;
     t0 = wall();
-    { CW_PROFILE_SCOPE("towers.fx"); fx_events(&G.S); if (sc == CW_SHELL_PLAY || !G.in_match) fx_tick(&G.S, t); }
+    { CW_PROFILE_SCOPE("towers.fx"); fx_events(&G.S); if (sc == CW_SHELL_PLAY || !G.in_match) for (int k = 0; k < ticks; k++) fx_tick(&G.S, t); }
     G.t_fx += (wall() - t0) * 1000;
     view_stats vs = view_get_stats();
     G.drawn = vs.creeps_drawn;

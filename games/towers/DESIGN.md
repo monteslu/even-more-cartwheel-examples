@@ -140,7 +140,7 @@ The effects (fx.c, view.c):
   its wisp), and a coin rises off it. Each wave's banner says what each player did in the wave before it (kills and
   damage), in their colours.
 - The crowd's edge takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
-  the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring, an ogre in a red glow;
+  the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring;
   tests/towers-crowd.mjs holds the crowd off its ground on every theme.
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters
   ice shards off each creep it catches; the tower's reach glows faintly on the ground.
