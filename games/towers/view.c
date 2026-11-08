@@ -270,7 +270,7 @@ static void kind_load(int k) {
     e->mesh.base.render_order = 1;
     kv->edge[f] = e;
   }
-  kv->edge_mat = em;
+  kv->edge_mat = kv->edge[0] ? em : NULL; /* (kept only while an edge mesh holds it: the swarm has none, and its material is freed below) */
   t3_release(em), t3_release(m);
 }
 
