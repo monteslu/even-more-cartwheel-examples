@@ -1194,9 +1194,8 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
   if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
-  /* the terrain out of the picture: its node moved far down (the terrain follows its node every tick; Terrain3D ignores
-   * visible, so NOTERRAIN moves it too) */
-  if (getenv("ADV_PROBE_TERRAINAWAY") || getenv("ADV_PROBE_NOTERRAIN")) { cw_node tn = cw_node_get(W_root, "World/Terrain"); t3_vec3 p = cw_node3d_position(tn); p.y -= 5000; cw_node3d_set_position(tn, p); }
+  /* the terrain out of the picture (with the grass and stones it carries) */
+  if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
@@ -1209,6 +1208,7 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOTERRAINSHADOW")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "cast_shadow", cw_val_bool(false));
   if (getenv("ADV_PROBE_SHADOW1")) cw_node_set(W_sun, "shadow_cascades", cw_val_int(1)), cw_node_set(W_sun, "shadow_distance", cw_val_float(28));
   if (getenv("ADV_PROBE_SHADOWNEAR")) cw_node_set(W_sun, "shadow_distance", cw_val_float(26));
+  if (getenv("ADV_PROBE_SHADOW32")) cw_node_set(W_sun, "shadow_distance", cw_val_float(32));
   if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
   if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
   if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "energy", cw_val_float(0));

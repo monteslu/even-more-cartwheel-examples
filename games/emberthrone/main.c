@@ -476,7 +476,7 @@ static void render(void *u, double alpha) {
       int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
       fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
       for (int k = 0; k < np; k++)
-        if (pst[k].ran && (pst[k].gpu_ms_avg > 0.02f || pst[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
+        if (pst[k].gpu_ms_avg > 0.005f || pst[k].cpu_ms_avg > 0.3f) fprintf(stderr, " %s=%.2f/%.2f/%.2f%s", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg, pst[k].gpu_ms, pst[k].ran ? "" : "~");
       fprintf(stderr, "\n");
       fflush(stderr);
       G.t_sim = G.t_view = G.t_frame = 0, G.t_n = 0;
