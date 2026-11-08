@@ -80,8 +80,10 @@ static void add_pop(jw_fx *f, float x, float y, int64_t v, float power, int step
 
 static void add_rays(jw_fx *f, float x, float y, float power, const float *c) {
   if (f->nrays >= JW_MAX_RAYS) memmove(f->rays, f->rays + 1, sizeof(jw_rays) * (JW_MAX_RAYS - 1)), f->nrays--;
-  f->seed = f->seed * 1664525u + 1013904223u;
-  f->rays[f->nrays++] = (jw_rays){ x, y, 0, power, c[0], c[1], c[2], f->seed };
+  /* the rays' pattern from where and when they are (the bursts' generator is left alone: the shower falls where it
+   * always has) */
+  uint32_t h = (uint32_t)(x * 7.0f) * 2654435761u ^ (uint32_t)(y * 13.0f) * 40503u ^ (uint32_t)(f->time * 60.0f) * 2246822519u;
+  f->rays[f->nrays++] = (jw_rays){ x, y, 0, power, c[0], c[1], c[2], h ^ (h >> 15) };
 }
 
 void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
@@ -149,17 +151,15 @@ void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
     }
     case JW_EV_SETTLE:
       if (e->a >= 4) {
-        /* the climax: a slow swell of warm light over the whole board, a fan of rays, a sweep of light and a shower
-         * round the frame */
+        /* the climax: a slow swell of warm light through every stone, a sweep of brilliance and a shower round the
+         * frame (the velvet stays dark: the board reads while it plays) */
         f->sweep_t = 0;
         f->finale_t = 0, f->finale_steps = e->a, f->finale_gain = e->c;
         f->finales++;
         rumble(f, 1.0f, 600);
         if (!no_light) {
           float k = 1.0f + 0.15f * fminf((float)(e->a - 4), 4.0f);
-          add_light(f, (jw_fx_light){ JW_BX + 5 * JW_CELL, JW_BY + 4 * JW_CELL, 520.0f, 1.0f * k, 0.80f * k, 0.55f * k, 820.0f, 70.0f, 1, 0, 0.32f, 0.45f, 0 });
-          const float c[3] = { 1.0f, 0.86f, 0.62f };
-          add_rays(f, JW_BX + 5 * JW_CELL, JW_BY + 4 * JW_CELL, 6.0f, c);
+          add_light(f, (jw_fx_light){ JW_BX + 5 * JW_CELL, JW_BY + 4 * JW_CELL, 520.0f, 1.0f * k, 0.80f * k, 0.55f * k, 820.0f, 70.0f, 2, 0, 0.32f, 0.45f, 0 }); /* the stones only: the board brightens, the velvet stays dark behind it */
         }
       }
       f->warmth_target = 0;
@@ -206,7 +206,7 @@ void jw_fx_events(jw_fx *f, const jw_game *g, float dt) {
     f->seed = f->seed * 1664525u + 1013904223u;
     float u = (float)(f->seed >> 8) / 16777216.0f;
     float x = JW_BX + f->sweep_t * 10 * JW_CELL, y = JW_BY + u * 8 * JW_CELL;
-    f->bursts[f->nbursts++] = (jw_burst_draw){ kinds[(f->seed >> 3) % 6], x, y, 0, 1.4f, f->seed };
+    f->bursts[f->nbursts++] = (jw_burst_draw){ kinds[(f->seed >> 3) % 6], x, y, 0, 1.4f, f->seed, true };
   }
 }
 

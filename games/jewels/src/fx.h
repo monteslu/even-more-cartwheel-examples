@@ -13,7 +13,7 @@
  *
  * Cascades: a counter that builds a step at a time, a streak of light from one cleared group to the next, the room
  * warming and brightening step by step, and when a cascade of four steps or more comes to rest a climax: a slow swell
- * of warm light over the whole board, a fan of rays, a sweep of light, a shower round the frame and the pad's longest
+ * of warm light through every stone, a sweep of brilliance across them (the velvet stays dark), a shower round the frame and the pad's longest
  * rumble. Never screen shake.
  *
  * No strobe: every light swells and fades (a smoothstep rise, an exponential fall), so no region of the screen

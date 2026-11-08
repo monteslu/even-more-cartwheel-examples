@@ -37,6 +37,7 @@ typedef struct jw_burst_draw {
   float x, y, t;          /* where, and seconds since it broke */
   float power;            /* 1: a plain three; more for big groups and deep cascades */
   uint32_t seed;
+  bool shower;            /* one of the climax's shower round the frame (it leaves no dust) */
 } jw_burst_draw;
 
 typedef struct jw_ring_draw { float x, y, t, power, r, g, b; } jw_ring_draw;

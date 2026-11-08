@@ -65,13 +65,13 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
   the stones beside it see it as a lamp in the room their facets are traced against: the facets that face it flash
   in its colour, and its small hot core, split by dispersion like the studio's lamps, throws fire in them. The shards
   catch it too. Where the stone stood an afterglow of its colour lies on the velvet for a moment. The lights of the
-  moment are added up at a quarter of the canvas for the velvet; each stone takes the four that reach it most.
+  moment are added up at a quarter of the canvas for the velvet; each stone takes the two that reach it most.
 - **The effects** scale with the clear: cells, run length, crossings (an L, a T) and the step of a cascade set each
   clear's power, and power sets the lights, the shards (fragments of the stone, traced like it, each with a short
   trail), the sparks and a dust of sparkles that lingers, a ring across the velvet that bends the picture as it
   passes (a shockwave), rays of light from the bigger clears, the pad's rumble and the size of the score. A cascade
   builds a counter, links its groups with streaks of light, and warms and brightens the room step by step; four steps
-  or more end in a climax: a slow swell of warm light over the whole board, a fan of rays, a sweep of light, a
+  or more end in a climax: a slow swell of warm light through every stone, a sweep of brilliance across them, a
   shower round the frame and the pad's longest rumble, and the finale's word on the panel. Nothing strobes: every light
   swells and fades smoothly and sparkles twinkle slowly (`tests/jewels-flash.mjs` holds the worst case to the
   photosensitivity thresholds). Everything fades within about a second.

@@ -355,7 +355,7 @@ static void draw_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, int cut, gem_
   cw_pass_uniform4f(p, "u_q", (float)q.sub, (float)q.bounces, q.waves > 1 ? 1.0f : 0.0f, getenv("JEWELS_DEBUG_LEAK") ? 1.0f : 0.0f);
   /* a little light scattered in the body of the coloured stones (none in the diamond): every stone reads as its
    * colour at any tilt, even where its facets look out at the dark */
-  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.04f : cut == 3 ? 0.09f : (cut == 0 || cut == 4) ? 0.07f : 0.05f);
+  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.04f : cut == 3 ? 0.13f : cut == 4 ? 0.11f : cut == 0 ? 0.10f : 0.05f);
   cw_pass_uniform4f(p, "u_jit", ctx->jitter[0], ctx->jitter[1], 0, 0);
   cw_pass_bind_texture(0, R.studio_tex ? R.studio_tex : R.dummy_tex);
   if (!R.wg) cw_pass_uniform1i(p, "u_t0", 0);
@@ -571,7 +571,7 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
     /* the dust lingers longer than the sparks */
     int nd = (int)(12 + 6 * bu->power);
     if (nd > 40) nd = 40;
-    if (bu->t > 1.5f || dust_left <= 0 || fx_off("dust")) continue;
+    if (bu->t > 1.5f || dust_left <= 0 || bu->shower || fx_off("dust")) continue;
     if (nd > dust_left) nd = dust_left;
     dust_left -= nd;
     cw_pass_uniform4f(R.spark, "u_kind", 4, (float)nd, 0, 0);
