@@ -1,7 +1,7 @@
 [
   {
     "name": "emberthrone-journey",
-    "note": "emberthrone_auto: the bot rests at the first shrine, walks the meadow road north and fights the raiders on it (lock on, combos, rolls, a heavy). Everything named is simulation (the bot reads only the rules' state), so every host agrees on it. The control is one frame short.",
+    "note": "emberthrone_auto: the bot rests at the first shrine, walks the meadow road north and fights the raiders on it (lock on, combos, rolls, a heavy; every landed blow holds the world and asks the pad for rumble: game.held, game.rumbles). Everything named is simulation (the bot reads only the rules' state), so every host agrees on it. The control is one frame short.",
     "app": "emberthrone_auto",
     "frames": 1800,
     "maxGt16": 0.4,
@@ -17,6 +17,8 @@
       "player.stamina",
       "player.x",
       "player.z",
+      "game.held",
+      "game.rumbles",
       "game.hash"
     ],
     "hosts": [
@@ -47,14 +49,16 @@
         0
       ],
       "player.x": [
-        15058,
+        15171,
         0
       ],
       "player.z": [
-        16572,
+        16717,
         0
       ],
-      "game.hash": 3314161746
+      "game.held": 24,
+      "game.rumbles": 8,
+      "game.hash": 1328664920
     }
   },
   {
