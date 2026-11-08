@@ -146,7 +146,7 @@ static void build_steps(jw_cut *c, const outline *o, float girdle, const step *c
     z += cs[s].width * tanf(RAD(cs[s].angle));
     w += cs[s].width;
   }
-  plane(c, 0, 0, 1, z); /* the table */
+  if (nc > 0) plane(c, 0, 0, 1, z); /* the table (a mixed cut adds its own crown) */
   w = 0, z = -g;
   for (int s = 0; s < np; s++) {
     for (int i = 0; i < ns; i++) facet(c, RAD(ps[s].angle), psis[i], hs[i] - w, z, false);
@@ -155,6 +155,25 @@ static void build_steps(jw_cut *c, const outline *o, float girdle, const step *c
   }
 }
 
+
+/* a brilliant's crown alone on any outline, for the mixed cuts: a table, n bezels, each with two upper girdle halves,
+ * and n stars between them (angles in degrees; phase: the first bezel's azimuth) */
+static void crown_brilliant(jw_cut *c, const outline *o, float girdle, float crown, float table, float star_drop, float upper_rise, int n,
+                            float phase) {
+  float g = girdle * 0.5f, step = 360.0f / (float)n;
+  float zt = g + (1 - table) * tanf(RAD(crown));
+  plane(c, 0, 0, 1, zt);
+  for (int k = 0; k < n; k++) {
+    float psi = RAD(phase + step * (float)k);
+    facet(c, RAD(crown), psi, support(o, psi), g, true);
+    for (int s = -1; s <= 1; s += 2) {
+      float q = psi + RAD(step * 0.25f) * (float)s;
+      facet(c, RAD(crown + upper_rise), q, support(o, q), g, true);
+    }
+    float qs = psi + RAD(step * 0.5f);
+    facet(c, RAD(crown - star_drop), qs, support(o, qs) * table, zt, true);
+  }
+}
 /* a brilliant's pavilion alone on any outline: n mains, each with two lower girdle halves, from the girdle's bottom
  * edge (phase: the first main's azimuth); for the mixed cuts, under a stepped crown */
 static void pavilion_brilliant(jw_cut *c, const outline *o, float girdle, float angle, float rise, int n, float phase) {
@@ -247,7 +266,7 @@ void jw_cuts_build(void) {
   memset(jw_cuts, 0, sizeof jw_cuts);
   jw_cut *c;
 
-  /* 1 ruby: a princess, set on its point (a square turned 45 degrees), stepped chevrons below */
+  /* 1 ruby: a princess, set on its point (a square turned 45 degrees), a brilliant crown, stepped chevrons below */
   c = &jw_cuts[0];
   c->name = "princess", c->stone = "ruby";
   {
@@ -259,15 +278,15 @@ void jw_cuts_build(void) {
       xy[i * 2] = (x - y) * 0.70711f, xy[i * 2 + 1] = (x + y) * 0.70711f;
     }
     outline_poly(&o, xy, 8);
-    step crown[] = { { 40, 0.10f }, { 27, 0.13f } };
     step pav[] = { { 62, 0.05f } };
-    build_steps(c, &o, 0.03f, crown, 2, pav, 1);
-    pavilion_brilliant(c, &o, 0.03f, 41.5f, 3.0f, 8, 0);
-    pavilion_brilliant(c, &o, 0.03f, 44.0f, 4.0f, 8, 22.5f);
+    build_steps(c, &o, 0.03f, NULL, 0, pav, 1); /* the sides and the keel; a brilliant crown over them breaks the face into chevrons */
+    crown_brilliant(c, &o, 0.03f, 34, 0.55f, 12, 8, 8, 0);
+    pavilion_brilliant(c, &o, 0.03f, 42.5f, 3.0f, 8, 0);
+    pavilion_brilliant(c, &o, 0.03f, 44.5f, 4.0f, 8, 22.5f);
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.762f, 0.018f, 1.6f, 0.06f, 4.2f, 3.4f, 0.80f, 0.04f, 0.06f);
+  optics(c, 1.762f, 0.018f, 1.6f, 0.22f, 3.0f, 2.2f, 0.80f, 0.04f, 0.07f);
 
   /* 2 topaz: a trillion, point up, clipped corners */
   c = &jw_cuts[1];
@@ -285,12 +304,12 @@ void jw_cuts_build(void) {
     step crown[] = { { 38, 0.12f }, { 24, 0.10f } };
     step pav[] = { { 56, 0.05f } };
     build_steps(c, &o, 0.03f, crown, 2, pav, 1);
-    pavilion_brilliant(c, &o, 0.03f, 41.0f, 3.0f, 6, 90);
-    pavilion_brilliant(c, &o, 0.03f, 43.5f, 3.5f, 6, 120);
+    pavilion_brilliant(c, &o, 0.03f, 48.5f, 3.0f, 6, 90);
+    pavilion_brilliant(c, &o, 0.03f, 50.0f, 3.5f, 6, 120);
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.62f, 0.014f, 1.5f, 0.02f, 0.45f, 2.2f, 1.0f, 0.55f, 0.06f);
+  optics(c, 1.62f, 0.014f, 1.5f, 0.03f, 0.55f, 2.6f, 1.0f, 0.52f, 0.05f);
 
   /* 3 emerald: the emerald cut, a tall rectangle with cut corners, three steps above and below: a hall of mirrors */
   c = &jw_cuts[2];
@@ -305,17 +324,17 @@ void jw_cuts_build(void) {
   }
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.577f, 0.014f, 1.4f, 3.2f, 0.85f, 1.25f, 0.02f, 0.5f, 0.12f);
+  optics(c, 1.577f, 0.014f, 1.4f, 2.4f, 0.42f, 0.95f, 0.02f, 0.5f, 0.16f);
 
   /* 4 sapphire: a pear, point up, brilliant-cut */
   c = &jw_cuts[3];
   c->name = "pear", c->stone = "sapphire";
   outline_pear(&o);
-  build_brilliant(c, &o, &(brilliant){ .crown = 34, .pavilion = 41, .table = 0.55f, .girdle = 0.03f, .star_drop = 12, .upper_rise = 8,
+  build_brilliant(c, &o, &(brilliant){ .crown = 34, .pavilion = 42.5f, .table = 0.55f, .girdle = 0.03f, .star_drop = 12, .upper_rise = 8,
                                        .lower_rise = 2.5f, .girdle_n = 24, .phase = 112.5f });
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.766f, 0.018f, 1.6f, 0.7f, 0.35f, 0.03f, 0.10f, 0.25f, 0.95f);
+  optics(c, 1.766f, 0.018f, 1.6f, 1.3f, 0.6f, 0.07f, 0.06f, 0.20f, 0.95f);
 
   /* 5 amethyst: a marquise, lying across */
   c = &jw_cuts[4];
@@ -325,17 +344,17 @@ void jw_cuts_build(void) {
                                        .lower_rise = 2.5f, .girdle_n = 24, .phase = 0 });
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 1.544f, 0.013f, 1.5f, 0.3f, 1.1f, 0.1f, 0.36f, 0.06f, 0.62f);
+  optics(c, 1.544f, 0.013f, 1.5f, 0.4f, 1.35f, 0.18f, 0.40f, 0.05f, 0.70f);
 
   /* 6 diamond: the round brilliant, Tolkowsky's proportions (crown 34.5, pavilion 40.75, table 53%) */
   c = &jw_cuts[5];
   c->name = "round brilliant", c->stone = "diamond";
   outline_circle(&o);
   build_brilliant(c, &o, &(brilliant){ .crown = 34.5f, .pavilion = 40.75f, .table = 0.53f, .girdle = 0.03f, .star_drop = 13, .upper_rise = 7.5f,
-                                       .lower_rise = 1.5f, .girdle_n = 16, .phase = 0 });
+                                       .lower_rise = 1.5f, .girdle_n = 32, .phase = 0 });
   finish(c);
   size_for(c, outline_area(&o));
-  optics(c, 2.417f, 0.044f, 1.0f, 0.012f, 0.012f, 0.016f, 0.9f, 0.92f, 0.95f);
+  optics(c, 2.417f, 0.044f, 1.8f, 0.012f, 0.012f, 0.016f, 0.9f, 0.92f, 0.95f);
 
   /* 7 the shard: an irregular fragment for the bursts (unit size; the burst scales it) */
   c = &jw_cuts[JW_CUT_SHARD];

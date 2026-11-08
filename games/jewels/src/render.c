@@ -30,12 +30,13 @@ static struct {
   uint64_t frame_no;
   bool wg;
   bool tray_dirty;
-  unsigned present, tray, gem[JW_NCUTS], under, spark, ring, mark, glint_pre, glint_streak, glint_add;
+  unsigned present, tray, gem[JW_NCUTS], under, spark, ring, mark, glint[5];
   bool built, failed;
   jw_render_stats st;
-  unsigned caustic_tex, dummy_tex;
+  unsigned caustic_tex, dummy_tex, studio_tex;
   float *caustic; /* the bake, RGBA float, 6 kinds side by side */
-  int bake_kind, bake_row;
+  int bake_kind, bake_row, studio_row;
+  float *studio; /* the stones' studio map (shaders.c), baked in rows */
 } R;
 
 #define CAUSTIC_N 128
@@ -157,18 +158,15 @@ static bool build(void) {
   src = jw_shader_mark(R.wg, &vs);
   R.mark = R.wg ? cw_pass_program_wgsl("jw_mark", src) : cw_pass_program_vs("jw_mark", vs, src);
   free(src), free(vs), vs = NULL;
-  for (int i = 0; i < 3; i++) {
+  for (int i = 0; i < 5; i++) {
     vs = NULL;
     src = jw_shader_glint(R.wg, i, &vs);
-    static const char *names[] = { "jw_glint_pre", "jw_glint_streak", "jw_glint_add" };
-    unsigned pr = R.wg ? cw_pass_program_wgsl(names[i], src) : vs ? cw_pass_program_vs(names[i], vs, src) : cw_pass_program(names[i], src);
+    static const char *names[] = { "jw_glint_down", "jw_glint_block", "jw_glint_tile", "jw_glint_apart", "jw_glint_star" };
+    R.glint[i] = R.wg ? cw_pass_program_wgsl(names[i], src) : vs ? cw_pass_program_vs(names[i], vs, src) : cw_pass_program(names[i], src);
     free(vs), vs = NULL;
-    if (i == 0) R.glint_pre = pr;
-    else if (i == 1) R.glint_streak = pr;
-    else R.glint_add = pr;
     free(src);
   }
-  R.failed = !R.present || !R.tray || !R.under || !R.spark || !R.mark || !R.glint_pre || !R.glint_streak || !R.glint_add;
+  R.failed = !R.present || !R.tray || !R.under || !R.spark || !R.mark || !R.glint[0] || !R.glint[1] || !R.glint[2] || !R.glint[3] || !R.glint[4];
   for (int k = 0; k < JW_NCUTS; k++) R.failed |= !R.gem[k];
   if (R.failed) cw_error("jewels: a shader failed to build (see above)");
   return !R.failed;
@@ -306,8 +304,10 @@ static void draw_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, int cut, gem_
   cw_pass_uniform4f(p, "u_q", (float)q.sub, (float)q.bounces, q.waves > 1 ? 1.0f : 0.0f, getenv("JEWELS_DEBUG_LEAK") ? 1.0f : 0.0f);
   /* a little light scattered in the body of the coloured stones (none in the diamond): every stone reads as its
    * colour at any tilt, even where its facets look out at the dark */
-  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.05f : (cut == 3 || cut == 4) ? 0.16f : 0.13f);
+  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.04f : cut == 3 ? 0.09f : (cut == 0 || cut == 4) ? 0.07f : 0.05f);
   cw_pass_uniform4f(p, "u_jit", ctx->jitter[0], ctx->jitter[1], 0, 0);
+  cw_pass_bind_texture(0, R.studio_tex ? R.studio_tex : R.dummy_tex);
+  if (!R.wg) cw_pass_uniform1i(p, "u_t0", 0);
   gem_flashes(p, &x);
   cw_pass_draw(6);
 }
@@ -465,38 +465,41 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
 
 /* ── the star glints ─────────────────────────────────────────────────── */
 
-/* the star glints: the brightest light at a quarter of the canvas (whatever the output's size, so the spokes cost and
- * reach the same at 4K), six spokes from it, added over the board in the scene's own target */
+/* the star glints (shaders.c): the picture at half the canvas, its peaks found block by block into tiles of 60 canvas
+ * pixels (at most one star a tile, none close to a brighter one), then each star drawn over the board at full
+ * resolution in the scene's own target */
+#define GLINT_THRESHOLD (getenv("JEWELS_GLINT_T") ? (float)atof(getenv("JEWELS_GLINT_T")) : 105.0f) /* development: JEWELS_GLINT_T */
+static void glint_stage(cw_pass_ctx *ctx, int i, const cw_rt *dst, unsigned src) {
+  cw_pass_bind_target(ctx, dst);
+  cw_pass_use(R.glint[i]);
+  cw_pass_bind_texture(0, src);
+  if (!R.wg) cw_pass_uniform1i(R.glint[i], "u_t0", 0);
+}
 static void glints(cw_pass_ctx *ctx) {
   if (!ctx->scene || !ctx->scene->tex) return;
-  int w = 480, h = 270;
-  const cw_rt *a = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false), *b = cw_pass_rt(ctx, w, h, CW_RT_RGBA16F, false);
-  if (!a || !b) return;
+  const cw_rt *a = cw_pass_rt(ctx, 960, 540, CW_RT_RGBA16F, false), *b = cw_pass_rt(ctx, 160, 90, CW_RT_RGBA16F, false);
+  const cw_rt *c = cw_pass_rt(ctx, 32, 18, CW_RT_RGBA16F, false), *d = cw_pass_rt(ctx, 32, 18, CW_RT_RGBA16F, false);
+  if (!a || !b || !c || !d) return;
   cw_pass_set_blend(CW_PASS_BLEND_NONE);
-  cw_pass_bind_target(ctx, a);
-  cw_pass_use(R.glint_pre);
-  cw_pass_bind_texture(0, ctx->scene->tex);
-  if (!R.wg) cw_pass_uniform1i(R.glint_pre, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_pre, "u_px", 1.0f / (float)ctx->scene->w, 1.0f / (float)ctx->scene->h, 5.0f, 0);
+  glint_stage(ctx, 0, a, ctx->scene->tex);
+  cw_pass_uniform4f(R.glint[0], "u_px", 1.0f / (float)ctx->scene->w, 1.0f / (float)ctx->scene->h, 0, 0);
   cw_pass_fullscreen();
-  cw_pass_bind_target(ctx, b);
-  cw_pass_use(R.glint_streak);
-  cw_pass_bind_texture(0, a->tex);
-  if (!R.wg) cw_pass_uniform1i(R.glint_streak, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_streak, "u_px", 1.0f / (float)w, 1.0f / (float)h, 1.0f, 0.2f + 0.05f * sinf((float)R.f.time * 0.07f));
+  glint_stage(ctx, 1, b, a->tex);
   cw_pass_fullscreen();
-  cw_pass_bind_target(ctx, ctx->scene);
+  glint_stage(ctx, 2, c, b->tex);
+  cw_pass_uniform4f(R.glint[2], "u_px", GLINT_THRESHOLD, 0, 0, 0);
+  cw_pass_fullscreen();
+  glint_stage(ctx, 3, d, c->tex);
+  cw_pass_uniform4f(R.glint[3], "u_px", 0, 16.0f, 32, 18); /* stars closer than 32 canvas px: the brighter one */
+  cw_pass_fullscreen();
+  glint_stage(ctx, 4, ctx->scene, d->tex);
   cw_pass_set_blend(CW_PASS_BLEND_ADD);
-  cw_pass_use(R.glint_add);
-  cw_pass_bind_texture(0, b->tex);
-  if (!R.wg) cw_pass_uniform1i(R.glint_add, "u_t0", 0);
-  cw_pass_uniform4f(R.glint_add, "u_view", (float)ctx->width, (float)ctx->height, 1.0f / (float)ctx->width, 1.0f / (float)ctx->height);
-  cw_pass_uniform4f(R.glint_add, "u_rect", 30, 20, 1314, 1060);
-  cw_pass_uniform4f(R.glint_add, "u_px", 0, 0, 0.38f, 0);
+  cw_pass_uniform4f(R.glint[4], "u_view", (float)ctx->width, (float)ctx->height, 1.0f / (float)ctx->width, 1.0f / (float)ctx->height);
+  cw_pass_uniform4f(R.glint[4], "u_rect", 30, 20, 1314, 1060);
+  cw_pass_uniform4f(R.glint[4], "u_px", 1.6f, 1.0f, 0.21f, GLINT_THRESHOLD);
   cw_pass_draw(6);
   cw_pass_set_blend(CW_PASS_BLEND_NONE);
-  cw_pass_rt_release(ctx, a);
-  cw_pass_rt_release(ctx, b);
+  cw_pass_rt_release(ctx, a), cw_pass_rt_release(ctx, b), cw_pass_rt_release(ctx, c), cw_pass_rt_release(ctx, d);
 }
 
 /* ── the caustic bake ────────────────────────────────────────────────── */
@@ -520,7 +523,15 @@ bool jw_render_bake_step(void) {
     R.caustic = calloc((size_t)CAUSTIC_N * 6 * CAUSTIC_N * 4, sizeof(float));
     R.bake_kind = 0, R.bake_row = 0;
   }
-  if (R.bake_kind >= 6) return true;
+  if (R.bake_kind >= 6) {
+    /* then the studio the stones see, 64 rows a step */
+    const int H = JW_STUDIO_N + 2;
+    if (!R.studio) R.studio = malloc((size_t)JW_STUDIO_N * H * 4 * sizeof(float));
+    if (R.studio_row >= H) return true;
+    jw_studio_rows(R.studio, R.studio_row, 64);
+    R.studio_row += 64;
+    return R.studio_row >= H;
+  }
   const jw_cut *c = &jw_cuts[R.bake_kind];
   float *img = R.caustic + (size_t)R.bake_kind * CAUSTIC_N * 4;
   bake_ctx b = { img, -c->zmin * 0.82f, 0, { -jw_key_dir[0], -jw_key_dir[1], -jw_key_dir[2] } };
@@ -563,27 +574,28 @@ bool jw_render_bake_step(void) {
     R.bake_kind++;
   }
   if (R.bake_kind < 6) return false;
-  /* soften: the key is a softbox, not a point */
+  /* soften: the key is a softbox, not a point (the light lightly, keeping its rays; the shadow more) */
   int W = CAUSTIC_N * 6, H = CAUSTIC_N;
   float *tmp = malloc((size_t)W * H * 4 * sizeof(float));
   for (int pass = 0; pass < 2; pass++) {
     memcpy(tmp, R.caustic, (size_t)W * H * 4 * sizeof(float));
     for (int y = 0; y < H; y++)
       for (int x = 0; x < W; x++)
-        for (int ch = 0; ch < 4; ch++) {
+        for (int ch = pass ? 3 : 0; ch < 4; ch++) {
+          int rad = pass ? 2 : 1;
           float s = 0, n = 0;
-          for (int dy = -2; dy <= 2; dy++)
-            for (int dx = -2; dx <= 2; dx++) {
+          for (int dy = -rad; dy <= rad; dy++)
+            for (int dx = -rad; dx <= rad; dx++) {
               int xx = x + dx, yy = y + dy;
               if (yy < 0 || yy >= H || xx / CAUSTIC_N != x / CAUSTIC_N || xx < 0 || xx >= W) continue;
-              float wgt = (3.0f - (float)abs(dx)) * (3.0f - (float)abs(dy));
+              float wgt = ((float)rad + 1 - (float)abs(dx)) * ((float)rad + 1 - (float)abs(dy));
               s += tmp[(yy * W + xx) * 4 + ch] * wgt, n += wgt;
             }
           R.caustic[(y * W + x) * 4 + ch] = s / n;
         }
   }
   free(tmp);
-  return true;
+  return false; /* the studio next */
 }
 
 static void upload_caustics(void) {
@@ -610,9 +622,35 @@ static void upload_caustics(void) {
   free(half), free(flip);
 }
 
+/* float to IEEE half, rounded to nearest, signed */
+static uint16_t to_half(float v) {
+  uint32_t b;
+  memcpy(&b, &v, 4);
+  uint16_t s = (uint16_t)((b >> 16) & 0x8000);
+  float a = fabsf(v);
+  if (!(a >= 6.1035e-5f)) return s; /* zero, tiny, NaN */
+  if (a >= 65504.0f) return (uint16_t)(s | 0x7bff);
+  memcpy(&b, &a, 4);
+  b += 0x1000; /* round the dropped 13 bits */
+  int e = (int)((b >> 23) & 255) - 127 + 15;
+  if (e >= 31) return (uint16_t)(s | 0x7bff);
+  return (uint16_t)(s | (e << 10) | ((b >> 13) & 0x3ff));
+}
+
+static void upload_studio(void) {
+  const int W = JW_STUDIO_N, H = JW_STUDIO_N + 2;
+  if (R.studio_tex || !R.studio || R.studio_row < H) return;
+  uint16_t *half = malloc((size_t)W * H * 4 * sizeof(uint16_t));
+  for (size_t i = 0; i < (size_t)W * H * 4; i++) half[i] = to_half(R.studio[i]);
+  R.studio_tex = cw_pass_texture_new(W, H, CW_RT_RGBA16F, half);
+  free(half);
+  free(R.studio), R.studio = NULL;
+}
+
 static void upload_exec(cw_pass_ctx *ctx, void *u) {
   (void)ctx, (void)u;
   upload_caustics();
+  upload_studio();
 }
 
 void jw_render_init(jw_frame_fn fn, void *user) {

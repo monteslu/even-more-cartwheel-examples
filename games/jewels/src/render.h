@@ -4,8 +4,7 @@
  *   "jw_tray"   OPAQUE 0   the backdrop, the walnut and gold frames, the velvet cushions, the panel and its button
  *   "jw_gems"   OPAQUE 10  each stone's shadow and caustic on the velvet, then the stones, ray traced per pixel
  *                          through their facet planes, then the shards and sparks of the bursts, the rings, the
- *                          cursor, the held jewel and the hint
- *   "jw_glint"  POST 320   star glints: the brightest pixels spread along six spokes, tinted by wavelength
+ *                          cursor, the held jewel and the hint, then the star glints where facets flash a hot lamp
  *
  * The world: the tray is the plane z = 0, x right and y up, in canvas pixels about the canvas centre (a 1920 x 1080
  * canvas: a point on the tray at canvas (px, py) is world (px - 960, 540 - py, 0)). The camera looks down from

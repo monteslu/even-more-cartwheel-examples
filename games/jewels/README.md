@@ -38,18 +38,27 @@ The game draws in its own passes in the engine's render pipeline, the same on GL
   inside it leaves through the nearest plane it is heading out of: no mesh, no acceleration structure. Each pixel's
   ray is refracted in, then bounced: Fresnel at every face, total internal reflection past the critical angle,
   absorption along the path (thick parts deep, edges bright), and at every exit the light that leaves is looked up
-  in a studio of soft boxes, strips and small hot lamps around a dark zenith where the viewer stands (the dark half
-  of a cut stone's contrast pattern).
+  in a studio of soft boxes, strips and three hundred small hot lamps around a dark zenith where the viewer stands
+  (the dark half of a cut stone's contrast pattern). The room and its boxes are baked once into a map of the sky the
+  stones read with one fetch an exit, its texels naming the nearest lamp, which is then worked out exactly. Each
+  kind's pavilion is cut for its stone's index and its absorption is set so it deepens where the stone is thick and
+  goes pale where light leaves straight; the princess has a brilliant crown over its stepped sides, so its face breaks
+  into chevrons.
 - **Fire without noise.** At each exit the spectrum fans out between the directions of 400 and 700 nm light; where
   that arc crosses one of the studio's small lamps, the wavelength that lands on it is found analytically and the
   lamp is seen in that colour, with the share of the spectrum that lands on it. The idle rock of each stone (a few
   degrees on its own slow rhythm) sweeps facets across the lamps: the scintillation of a real stone.
-- **Glints** are six-spoked, tinted toward the colours of a diffraction spike at their tips, from the brightest
-  pixels only, with a tight glow; the frame is never hazy.
-- **The tray**: midnight velvet with a seat pressed into it for each stone (its sheen rises on the seat's walls),
-  gold studs where four seats meet, a walnut frame with a gold bead, the panel's plaques pressed into the same velvet,
-  each stone's shadow and the caustic light it throws on the velvet (traced on the CPU at load through the same
-  facets, coloured by wavelength).
+- **Glints** come only where a facet flashes a hot lamp: the traced picture is searched for its brightest points,
+  one at most in each patch of the board and none beside a brighter one, and a star is drawn exactly where the
+  highlight is, at full resolution: four fine spokes and four short ones in the highlight's own colour, longer for a
+  brighter flash. As a stone rocks its facets sweep across the lamps, so a star flares and fades in a fraction of a
+  second and a handful are lit across the board at a time.
+- **The tray**: tufted midnight velvet, a covered button where four cells meet and a soft dish pressed in for each
+  stone, its pile shaded with a sheen that grows toward grazing (the dish walls and the folds glow, the flats stay
+  dark) and broad patches where the pile lies another way; each stone's shadow, and the coloured light the stone lets
+  through pooled in it (traced on the CPU at load through the same facets, coloured by wavelength). The frames are
+  lacquered walnut (wandering growth rings, latewood and streaks, open pores, the room in the lacquer where the edge
+  turns) with a hairline of gold inlaid and a gold bead; the panel is the same velvet with plaques in fine gold rims.
 - **The effects** scale with the clear: cells, run length, crossings (an L, a T) and the step of a cascade set each
   clear's power, and power sets the shards (fragments of the stone, traced like it), the sparks, the flash that
   lights the stones round it, a ring across the velvet, the pad's rumble and the size of the score. A cascade builds

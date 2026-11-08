@@ -523,7 +523,7 @@ static bool warmup(void *u) {
   }
   if (!G.baked) {
     for (int i = 0; i < 4 && !G.baked; i++) G.baked = jw_render_bake_step();
-    { static int steps; cw_loading_set(++steps, 70, CW_LOAD_TEXTURES); }
+    { static int steps; cw_loading_set(++steps, 22, CW_LOAD_TEXTURES); }
     return G.baked;
   }
   return true;
@@ -534,7 +534,7 @@ static void init(void *u) {
   cw_project_load_input();
   G.left = cw_action_find("move_left"), G.right = cw_action_find("move_right"), G.up = cw_action_find("move_up"), G.down = cw_action_find("move_down");
   G.pick = cw_action_find("pick"), G.hint = cw_action_find("hint");
-  serif = cw_font_load("fonts/Cinzel.ttf", NULL);
+  serif = cw_font_load("fonts/Cinzel.ttf", &(cw_font_desc){ .sdf_padding = 10 }); /* room for the outlines over the board */
   sans = cw_ui_font_sans();
   cw_prompt_set_font(sans);
   cw_shell_init(&(cw_shell_desc){ .title = "JEWELS", .subtitle = "a calm match-three", .max_players = 1, .game_save_size = sizeof(save_data),
