@@ -99,13 +99,17 @@ int main(int argc, char **argv) {
           for (int j = 0; j < S.nen; j++) ne += S.en[j].alive;
           printf("T %.1f room %d kind %d region %d enemies %d%s\n", sec, S.room, rm->kind, rm->region, ne, seen_kind[rm->kind] ? "" : " NEWKIND");
           seen_kind[rm->kind] = 1;
+          static uint8_t seen_foe[EN_KINDS];
+          for (int j = 0; j < S.nen; j++)
+            if (S.en[j].alive && !seen_foe[S.en[j].kind]) seen_foe[S.en[j].kind] = 1, printf("T %.1f newfoe %d 0\n", sec, S.en[j].kind);
         }
       }
       for (int k = 0; k < S.nev; k++) {
         const event *e = &S.ev[k];
         const char *nm = e->kind == EV_KILL ? "kill" : e->kind == EV_PICKUP ? "pickup" : e->kind == EV_SAVE ? "shrine" : e->kind == EV_SECRET ? "secret"
                          : e->kind == EV_BOSS_START ? "warden" : e->kind == EV_BOSS_DOWN ? "warden_down" : e->kind == EV_HURT ? "hurt" : e->kind == EV_DIE ? "die"
-                         : e->kind == EV_BREAK ? "break" : e->kind == EV_ENEMY_TELL ? "tell" : e->kind == EV_HIT ? "hit" : NULL;
+                         : e->kind == EV_BREAK ? "break" : e->kind == EV_ENEMY_TELL ? "tell" : e->kind == EV_HIT ? "hit" : e->kind == EV_CHARM ? "charm"
+                         : e->kind == EV_TRIAL ? "trial" : e->kind == EV_TRIAL_DONE ? "trial_done" : e->kind == EV_BOSS_PHASE ? "phase" : NULL;
         if (nm) printf("T %.1f %s %d %d\n", sec, nm, e->a, e->b);
       }
     }

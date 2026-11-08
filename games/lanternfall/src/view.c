@@ -1553,6 +1553,14 @@ void view_draw(const sim *s, float t) {
     }
   }
   draw_pickups(s, t, x0, x1, y0, y1);
+  if (s->echo && s->echo_x > x0 - 2 && s->echo_x < x1 + 2 && s->echo_y > y0 - 3 && s->echo_y < y1 + 3) { /* your flame where you fell */
+    float fl = 0.8f + 0.2f * sinf(t * 11) + 0.1f * sinf(t * 23), ey = s->echo_y - 1.0f + sinf(t * 2) * 0.1f;
+    glowing(3.2f);
+    cw_vec2 fp[4] = { v2(s->echo_x, ey - 0.55f * fl), v2(s->echo_x + 0.22f, ey), v2(s->echo_x, ey + 0.2f), v2(s->echo_x - 0.22f, ey) };
+    cw_r2d_polygon(fp, 4, rgba(0.55f, 0.9f, 1, 1));
+    glowing(1);
+    light(s->echo_x, ey, 6, rgba(0.5f, 0.85f, 1, 1), 0.9f * fl, false);
+  }
   shot_lights(s);
   cw_r2d_use_layer(L_ACTORS);
   for (int i = 0; i < s->nen; i++)
@@ -1705,6 +1713,7 @@ void view_events(const sim *s) {
     case EV_TRIAL: rock_dirty = true, flash_t = 0.4f, flash_c = rgba(1, 0.5f, 0.3f, 0.18f); break;
     case EV_TRIAL_WAVE: burst(e->x, e->y, 30, 8, 0.8f, 0.4f, rgba(1, 0.5f, 0.35f, 1), true, 0); break;
     case EV_TRIAL_DONE: rock_dirty = true, flash_t = 0.6f, flash_c = rgba(1, 0.95f, 0.75f, 0.25f); break;
+    case EV_ECHO: burst(e->x, e->y - (e->a ? 0 : 1.0f), 40, 5, 1.0f, 0.4f, rgba(0.55f, 0.9f, 1, 1), true, -1); break;
     case EV_CHARM: burst(e->x, e->y - 0.9f, 60, 7, 1.2f, 0.45f, rgba(0.85f, 0.6f, 1, 1), true, -1); break;
     case EV_BOSS_HIT: burst(e->x, e->y, 10, 6, 0.35f, 0.35f, rgba(1, 0.9f, 0.7f, 1), true, 0); break;
     case EV_BOSS_DOWN:

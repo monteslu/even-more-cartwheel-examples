@@ -157,7 +157,7 @@ typedef struct boss {
 enum { /* game events, for sound and effects */
   EV_STRIKE, EV_HIT, EV_KILL, EV_BOLT, EV_HURT, EV_DIE, EV_PICKUP, EV_SAVE, EV_ROOM, EV_BREAK, EV_SECRET, EV_BOSS_START,
   EV_BOSS_TELL, EV_BOSS_ACT, EV_BOSS_HIT, EV_BOSS_DOWN, EV_SHOT, EV_SHOT_HIT, EV_DOOR, EV_SEAL, EV_ENEMY_TELL, EV_BOUNCE,
-  EV_MEND, EV_CHARM, EV_TRIAL, EV_TRIAL_WAVE, EV_TRIAL_DONE, EV_BOSS_PHASE, EV_PARRY, EV_KINDS
+  EV_MEND, EV_ECHO, EV_CHARM, EV_TRIAL, EV_TRIAL_WAVE, EV_TRIAL_DONE, EV_BOSS_PHASE, EV_PARRY, EV_KINDS
 };
 typedef struct event { uint8_t kind, a, b, c; float x, y; } event;
 
@@ -191,9 +191,15 @@ typedef struct sim {
   uint32_t charms;            /* CH_* bits */
   int trial_room, trial_wave, trial_t; /* a trial: an upgrade's room locks and its guardians come in waves (-1 none) */
   uint8_t trials_done[MAXROOMS / 8];
-  uint8_t slain[MAXENTS / 8]; /* the world's enemies struck down: they stay down until you rest at a shrine (or fall) */
+  uint8_t slain[MAXENTS / 8];
+  bool echo;                  /* a fall leaves your lantern's flame where you fell: a measure of energy stays with it */
+  float echo_x, echo_y;       /* (until you go back and touch it; a second fall moves it to the new place) */ /* the world's enemies struck down: they stay down until you rest at a shrine (or fall) */
   bool held_jump[MAXP], held_attack[MAXP], held_dash[MAXP], held_shoot[MAXP], held_grapple[MAXP]; /* presses during a hold */
 } sim;
+
+/* rules tools/rules.c can turn off, one at a time, for its controls (0 in the game) */
+enum { RULE_HITSTOP = 1, RULE_KNOCKBACK = 2, RULE_RECOIL = 4, RULE_PUFF = 8, RULE_SLAIN = 16, RULE_TRIAL = 32, RULE_PHASE = 64, RULE_CHARMS = 128, RULE_ECHO = 256 };
+extern int g_rules_off;
 
 void sim_init(sim *s, const world *w, int players);
 void sim_step(sim *s, const pinput in[MAXP]);
@@ -218,6 +224,8 @@ typedef struct save_state {
   uint32_t play_ticks;
   uint32_t charms;
   uint8_t trials_done[MAXROOMS / 8];
+  uint8_t echo;
+  float echo_x, echo_y;
 } save_state;
 void sim_save(const sim *s, save_state *out);
 void sim_restore(sim *s, const save_state *in);
