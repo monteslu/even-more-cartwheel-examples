@@ -28,5 +28,6 @@ node tests/gate.mjs --gates-file skate-gates.json
 node tests/skate-perf.mjs      # the 890M at 1080p High, four-way split
 node tests/skate-look.mjs      # each park's frames: contrast, not washed out; the sunset sky does not band
 node tests/skate-cam.mjs       # the chase camera back behind the rider after vert air
+node tests/skate-flash.mjs     # eight seconds of the bots through the engine's flash check (WCAG 2.3.1); an 8 Hz strobe must fail
 node games/skate/tools/bake.mjs # rebake every park's lightmap (after a park changes shape)
 ```

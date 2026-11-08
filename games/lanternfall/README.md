@@ -41,10 +41,10 @@ node tests/lanternfall-world.mjs     # the world is current and proven (rewards 
 node tests/lanternfall-feel.mjs      # jump heights, coyote time, jump buffer, the dash off a wall, the sprint, with controls
 node tests/lanternfall-rules.mjs     # the hold after a blow, knockback, trials, warden phases, charms, with controls
 node tests/lanternfall-soak.mjs      # the bot clears the game (every pickup, every warden), one player and two, two runs each; a NaN must be caught
-node tests/lanternfall-flash.mjs     # a warden fight frame by frame: no large-area flash, none past 3 a second, no red flashing; a blink must fail
+node tests/lanternfall-flash.mjs     # a warden fight, every frame, through the engine's flash check (WCAG 2.3.1); a 5 Hz blink and an 8 Hz strobe must fail
 node tests/lanternfall-look.mjs      # frames of eight regions: value, contrast, a complementary accent; a flattened grade must fail
 node tests/lanternfall-creatures.mjs # every creature painted with colour and fine detail at game scale; the old flat shapes must fail
-node tests/lanternfall-flashes.mjs   # every creature struck fast, the heroes hurt: no 48-pixel cell flashes past 3 a second; hit flashes must fail
+node tests/lanternfall-flashes.mjs   # every creature struck fast, the heroes hurt: the engine's flash check, again on regions a 24th of the screen; hit flashes must fail
 node tests/gate.mjs --gates-file lanternfall-gates.json   # GL and WebGPU, frames and state across hosts
 node tests/lanternfall-perf.mjs      # 1080p High on the test GPU
 ```

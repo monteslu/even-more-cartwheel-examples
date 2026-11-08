@@ -57,9 +57,9 @@ reaches the core costs it health; hold the core through the last wave to take th
 - `node tests/towers-perf.mjs`: the perf gate (GPU time a frame at 1920x1080 High on GL and WebGPU, with controls).
 - `node tests/towers-soak.mjs`: 30 game minutes of bots at one to four players with checks every tick
   (`TOWERS_BOT_BRANCH=0|1|2`: the bots take the A branch, the B branch, or each in turn).
-- `node tests/towers-flash.mjs`: the photosensitivity check (no strobe: WCAG 2.3.1's general and red flash
-  thresholds over every tick of the busiest scenes, and no small flicker either; controls: the old flickering effects,
-  `TOWERS_STROBE_CONTROL=1`, and a 10 Hz blink).
+- `node tests/towers-flash.mjs`: the photosensitivity check (no strobe: the engine's flash check, WCAG 2.3.1's general
+  and red flash thresholds, over every tick of the busiest scenes, and the effects again on regions a 24th of the
+  screen; controls: the old flickering effects, `TOWERS_STROBE_CONTROL=1`, and an 8 Hz strobe).
 - `node tests/towers-crowd.mjs`: a wave-18 crowd stands off its ground and parts into bodies on every theme
   (control: the old dark ink on the snowfields, `TOWERS_OLD_INK=1`).
 - `node tests/towers-shots.mjs <dir>`: the look check's frames (`--mask` for the edge masks).

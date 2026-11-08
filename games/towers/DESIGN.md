@@ -219,11 +219,11 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
 ## Photosensitivity
 
 `tests/towers-flash.mjs` captures every tick of four seconds of the perf bench (map 26, every pad at the third
-level, both branches, 2400 creeps) and of the volcano at wave 18, and measures them against WCAG 2.3.1's general and
-red flash thresholds: no 4% region of the screen over 3 flashes in a second, no more than 4.7% of the screen whose
-pixels flash over 3 times in a second, and (stricter than the guideline, for small effects) almost no pixel that
-flashes twice inside 12 ticks. Its controls must fail: the old effects (TOWERS_STROBE_CONTROL) and a 10 Hz blink over
-a quarter of the screen.
+level, both branches, 2400 creeps) and of the volcano at wave 18, and measures them with the engine's flash check
+(WCAG 2.3.1's general and red flash thresholds over a sixth of the screen, small lights switching together, regular
+flicker from 3.5 Hz). The effects alone (the crowd hidden) are held to the same bounds again on regions a 24th of
+the screen, stricter than the guideline, for small effects. Its controls must fail: the old effects
+(TOWERS_STROBE_CONTROL) and the engine's 8 Hz full-screen strobe over every capture.
 
 ## Feel
 

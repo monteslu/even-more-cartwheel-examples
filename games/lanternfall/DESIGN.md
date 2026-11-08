@@ -253,13 +253,13 @@ over them.
 
 **Nothing strobes.** No wash of colour ever covers the screen; a strike's sweep is a soft ribbon, the dash a faint smear; a struck creature takes a pale tint that eases off over
 its flash ticks, a hurt hero a soft shimmer that swells and fades about twice a second, a tell's eye one swell per
-tell, the marks of a warden's rain a slow swell; impact stars are small and fade. `tests/lanternfall-flash.mjs` draws a
-warden fight frame by frame and follows every ninth of the screen through time against the photosensitive flash
-thresholds (general and red): no block may flash at all, none past three a second; a quarter of the screen blinking at
-5 Hz must fail. `tests/lanternfall-flashes.mjs` follows every creature closer: a second of every enemy and every warden
-struck every ten ticks with their tells and attacks running, and both heroes hurt, striking and mending, in cells of 48
-pixels: none may flash more than three times a second; the same scenes drawn with full white hit flashes and the old
-blink must fail.
+tell, the marks of a warden's rain a slow swell; impact stars are small and fade. `tests/lanternfall-flash.mjs` captures
+every frame of three seconds of a warden fight and measures it with the engine's flash check (WCAG 2.3.1's general and
+red flash thresholds over a sixth of the screen, small lights switching together, regular flicker); a quarter of the
+screen blinking at 5 Hz and an 8 Hz full-screen strobe must fail. `tests/lanternfall-flashes.mjs` follows every
+creature closer: two seconds of every enemy and every warden struck every ten ticks with their tells and attacks
+running, and both heroes hurt, striking and mending, held to the same bounds again on regions a 24th of the screen; the
+same scenes drawn with full white hit flashes and the old blink must fail.
 
 ## The bot
 
