@@ -264,6 +264,25 @@ static void camera_step(const input *in) {
     static float ad, ap, ay;
     if (art < 0) art = getenv("ADV_CAM_DIST") != NULL, ad = art ? (float)atof(getenv("ADV_CAM_DIST")) : 0, ap = getenv("ADV_CAM_PITCH") ? (float)atof(getenv("ADV_CAM_PITCH")) : -0.2f, ay = getenv("ADV_CAM_YAW") ? (float)atof(getenv("ADV_CAM_YAW")) : 0;
     if (art) S.cam_dist_want = ad, S.cam_pitch = ap, S.cam_yaw = wrapf(S.a[0].yaw + CW_PI + ay);
+    /* ADV_CAM_KIND: frame the nearest living actor of that kind instead (character close-ups), ADV_CAM_H the height
+     * looked at in metres above its feet (default 1.5) */
+    static int ck = -2;
+    static float ch;
+    if (ck == -2) ck = getenv("ADV_CAM_KIND") ? atoi(getenv("ADV_CAM_KIND")) : -1, ch = getenv("ADV_CAM_H") ? (float)atof(getenv("ADV_CAM_H")) : 1.5f;
+    if (art && ck >= 0) {
+      const actor *best = NULL;
+      float bd = 1e9f;
+      for (int i = 0; i < MAXA; i++) {
+        const actor *a = &S.a[i];
+        if (!alive(a) || a->kind != ck) continue;
+        float d = dist2(pos(a).x, pos(a).z, c.x, c.z);
+        if (d < bd) bd = d, best = a;
+      }
+      if (best) {
+        tx = pos(best).x, ty = pos(best).y + ch, tz = pos(best).z;
+        S.cam_yaw = wrapf(best->yaw + CW_PI + ay), S.cam_dist_want = ad;
+      }
+    }
   }
   /* the view direction and the wanted position */
   float sp = cw_sin(S.cam_pitch), cp = cw_cos(S.cam_pitch), sy = cw_sin(S.cam_yaw), cyw = cw_cos(S.cam_yaw);

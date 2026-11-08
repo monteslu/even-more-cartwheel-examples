@@ -464,6 +464,7 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(G.camera, (float)alpha, (float)w / (float)h);
+    view_lod(G.camera, h);
     t3_vec3 p = cw_node3d_position(G.camera);
     if (G.cam_n >= 2 && S.tick > 2 && S.state == GS_PLAY) {
       float jx = p.x - 2 * G.cam_p[0].x + G.cam_p[1].x, jy = p.y - 2 * G.cam_p[0].y + G.cam_p[1].y, jz = p.z - 2 * G.cam_p[0].z + G.cam_p[1].z;
