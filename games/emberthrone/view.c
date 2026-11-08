@@ -215,8 +215,8 @@ static void rig_make(int i, int kind) {
     cw_node_set(r->light, "range", cw_val_float(4 * GEN_SCALE[kind]));
     cw_node3d_set_position(r->light, (t3_vec3){ 0, 1.3f * GEN_SCALE[kind], 0.5f });
   }
-  /* the blade's ribbon: the heroes and the bosses */
-  if (kind <= K_WARDEN || IS_BOSS(kind)) {
+  /* the blade's ribbon: the heroes and the bosses (ADV_PROBE_NOTRAIL: none, the look probe) */
+  if ((kind <= K_WARDEN || IS_BOSS(kind)) && !getenv("ADV_PROBE_NOTRAIL")) {
     r->trail = cw_node_new("Trail3D", "Blade");
     cw_node_add_child(V_world, r->trail);
     bool boss = IS_BOSS(kind);
@@ -295,13 +295,15 @@ bool view_init_step(cw_node root, int *done, int *total) {
       t3_release(m);
       cw_node_set(V_shock[i], "visible", cw_val_bool(false));
     }
-    { /* the shield (a round of planks with an iron rim: a disc facing forward) and the slingers' stones */
+    { /* the shield (a board of planks held up facing forward) and the slingers' stones */
       /* (the world's own wood and stone: the programs the gates and doors already draw with) */
       extern t3_material *world_material(int mt, float tint);
-      t3_geometry *g = t3_cylinder_geometry_new(0.38f, 0.38f, 0.07f, 20, 1, false);
+      /* boxes: the world's materials are normal mapped, and the box geometry carries what that needs (a cylinder drew
+       * black) */
+      t3_geometry *g = t3_box_geometry_new(0.66f, 0.07f, 0.74f, 1, 1, 1);
       SHIELD_MESH = t3_mesh_new(g, world_material(MT_WOOD, 1));
       t3_release(g);
-      g = t3_icosahedron_geometry_new(0.09f, 1);
+      g = t3_box_geometry_new(0.15f, 0.13f, 0.14f, 1, 1, 1);
       STONE_MESH = t3_mesh_new(g, world_material(MT_STONE, 1));
       t3_release(g);
       for (int i = 0; i < MAXSTONE; i++) {
@@ -542,7 +544,7 @@ void view_fixed(void) {
       float g = GEN_SCALE[a->kind];
       cw_node3d_set_position(r->shield, up ? (t3_vec3){ -0.2f * g, 1.12f * g, 0.42f * g } : (t3_vec3){ -0.42f * g, 0.75f * g, 0.05f * g });
       cw_node3d_set_rotation(r->shield, up ? (t3_vec3){ CW_PI / 2, 0, 0 } : (t3_vec3){ CW_PI / 2, -CW_PI / 2 + 0.3f, 0.2f });
-      cw_node_set(r->shield, "visible", cw_val_bool(a->state != ST_DEAD || !r->rd));
+      cw_node_set(r->shield, "visible", cw_val_bool(near && a->state != ST_DEAD)); /* (dropped with the body) */
     }
     /* a blow's hit-stop holds every clip with the world */
     if ((g_held_now || S.hitstop > 0) && a->state != ST_DEAD) cw_node_set(r->anim, "speed_scale", cw_val_float(0));
