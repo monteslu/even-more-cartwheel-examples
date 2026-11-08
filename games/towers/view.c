@@ -55,6 +55,9 @@ static struct {
   t3_instanced_mesh *portal, *portal_glow, *shell, *shell_glow;
   t3_instanced_mesh *beam_core, *beam_glow, *bolt_core, *bolt_glow, *column;
   t3_instanced_mesh *ring;      /* flat rings on the ground: the cursors, the ranges */
+  t3_instanced_mesh *halo;      /* a tower's level at a glance: glowing rings round it (one at II, two and a crown at III) */
+  uint8_t lvl_seen[MAXT];       /* each slot's tower level as last drawn, and frames since it rose (the upgrade's lift) */
+  int up_t[MAXT];
   t3_instanced_mesh *marker;    /* the cursors' markers: a bobbing diamond over the slot */
   t3_instanced_mesh *glint;     /* the pools' surface: glints of the sky on the water, bubbles of light on the lava */
   float glint_c[GLINT_C][3];    /* where they may show: points on the pools (x, z, how deep) */
@@ -387,6 +390,11 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       V.ring = imesh("Rings", geo_colored(g, 1, 1, 1), m, 64);
       V.ring->mesh.base.render_order = 10;
     }
+    { /* the level halos: a thin glowing torus, laid flat */
+      t3_geometry *g = t3_torus_geometry_new(1.0f, 0.07f, 6, 32, 6.2831853f);
+      t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
+      V.halo = imesh("LevelHalos", geo_colored(g, 1, 1, 1), mat_glow(), MAXT * 3);
+    }
     { /* a cursor's marker: a squat diamond (an octahedron) floating over its slot */
       t3_geometry *g = t3_octahedron_geometry_new(0.42f, 0);
       t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 1.4f, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 } });
@@ -453,6 +461,8 @@ void view_map(const sim *s) {
   for (int k = 0; k < MAXT; k++) V.beam[k] = (beamv){ .tgt = -1, .ray = { -1, -1 } };
   for (int i = 0; i < 8; i++) V.beam_light_slot[i] = -1;
   memset(V.hit, 0, sizeof V.hit);
+  memset(V.lvl_seen, 0, sizeof V.lvl_seen);
+  for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
   { /* the crowd's edge in the value opposite the ground: dark ink on the pale and middling grounds, a pale rim of the
      * kind's hue on the dark basalt and the violet vale, so a late crowd parts into bodies on every theme */
     bool dark = (V.theme == MP_THEME_VOLCANO || V.theme == MP_THEME_CRYSTAL) && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
@@ -629,6 +639,7 @@ static void sync_towers(const sim *s, float time) {
   static const float TOP[3] = { 1.0f, 1.25f, 1.5f };
   int nb[TK_KINDS][3] = { { 0 } }, nh[TK_KINDS][3] = { { 0 } }, npad = 0, nbeam = 0;
   bool lit_seen[8] = { false };
+  int nhalo = 0;
   for (int k = 0; k < s->m.nslot; k++) {
     float x = mp_wx(&s->m, s->m.slot[k].x), z = mp_wz(&s->m, s->m.slot[k].y);
     const tower *t = &s->tw[k];
@@ -647,11 +658,14 @@ static void sync_towers(const sim *s, float time) {
       }
       npad++;
     }
-    if (!t->alive) continue;
+    if (!t->alive) { V.lvl_seen[k] = 0; continue; }
     int L = CW_CLAMP(t->level, 1, 3) - 1, kd = t->kind;
     partv *b = &V.base[kd], *h = &V.head[kd];
     int fb = CW_MIN(L, b->n - 1), fh = CW_MIN(L, h->n - 1);
     float grow = t->age < 20 ? 0.3f + 0.7f * (float)t->age / 20.0f : 1.0f; /* rising out of the pad */
+    if (t->level > V.lvl_seen[k] && V.lvl_seen[k] > 0) V.up_t[k] = 0; /* an upgrade: it lifts and settles over half a second */
+    V.lvl_seen[k] = t->level;
+    if (V.up_t[k] < 30) grow *= 1.0f + 0.16f * cw_sin(3.14159265f * (float)V.up_t[k]++ / 30.0f);
     const float *tc = TCOL[kd];
     float pulse = 1.0f;
     /* the bolt's coil and the mortar's mouth charge up before a shot and cool after it: one smooth swell a shot (the
@@ -684,6 +698,16 @@ static void sync_towers(const sim *s, float time) {
       t3_instanced_mesh_set_color_at(h->surf[fh], n, (t3_color){ gl.r * V.tint[kd][1].r, gl.g * V.tint[kd][1].g, gl.b * V.tint[kd][1].b });
       if (h->glow[fh]) put(h->glow[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->glow[fh], n, glc);
       if (h->trim[fh]) put(h->trim[fh], n, x, hy, z, yaw, grow * TSC), t3_instanced_mesh_set_color_at(h->trim[fh], n, lin(pc[0], pc[1], pc[2]));
+    }
+    if (V.halo && t->level >= 2 && nhalo + 3 <= MAXT * 3) { /* its level at a glance: a ring round the base at II; at III a second, and a crown turning over the head in its branch's hue */
+      float base = MP_GROUND_H + PAD_H, k2 = 0.55f + 0.45f * cw_smoothstep(0, 30, (float)V.up_t[k]);
+      t3_color hc = { glc.r * 0.5f * k2 / pulse, glc.g * 0.5f * k2 / pulse, glc.b * 0.5f * k2 / pulse };
+      put_s(V.halo, nhalo, x, base + 0.35f * TSC * grow, z, 0, 0.62f * TSC, 1, 0.62f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
+      if (t->level >= 3) {
+        put_s(V.halo, nhalo, x, base + 0.7f * TSC * grow, z, 0, 0.56f * TSC, 1, 0.56f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
+        float cy = hy + 0.95f * TSC * grow + 0.05f * cw_sin(time * 1.5f + (float)k);
+        put_s(V.halo, nhalo, x, cy, z, time * 0.6f, 0.38f * TSC, 2.2f, 0.38f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, (t3_color){ hc.r * 1.6f, hc.g * 1.6f, hc.b * 1.6f });
+      }
     }
     /* a shadow cast away from the sun (north-west light: south-east of the tower), and the tower's glow on the ground */
     cw_splats_add(V.shadows, (t3_vec3){ x + 0.5f, 0, z + 0.45f }, 2.4f, 1.8f, 0.6f, 0, (t3_color){ 1, 1, 1 }, 0.75f);
@@ -774,6 +798,7 @@ static void sync_towers(const sim *s, float time) {
       done(V.head[kd].surf[l], nh[kd][l]), done(V.head[kd].glow[l], nh[kd][l]), done(V.head[kd].trim[l], nh[kd][l]);
     }
   done(V.pad, npad), done(V.pad_glow, npad), done(V.pad_trim, npad);
+  done(V.halo, nhalo);
   done(V.beam_core, nbeam), done(V.beam_glow, nbeam);
   int tw = 0;
   for (int k = 0; k < s->m.nslot; k++) tw += s->tw[k].alive;
