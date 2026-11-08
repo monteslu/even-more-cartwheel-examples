@@ -16,6 +16,7 @@
 #include "cartwheel/ragdoll.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/resource.h"
+#include "cartwheel/rim_light.h"
 #include "cartwheel/scene_file.h"
 #include "game.h"
 
@@ -23,7 +24,7 @@ bool g_hide_hud;
 
 typedef struct rig {
   bool made;
-  int kind;
+  int kind, region; /* region: the foe's colours (tint_outfit) */
   cw_node root, model, anim, feet, light, flask;
   t3_object *inst;
   const char *clip;
@@ -65,6 +66,8 @@ static const cw_ragdoll_part PARTS[] = {
 
 /* the scale each model was generated at (tools/chars/make-characters.mjs SPECS scale): ragdoll radii follow it */
 static const float GEN_SCALE[K_KINDS] = { 1.02f, 1.06f, 1.0f, 1.3f, 1.08f, 1.75f, 1.5f, 1.95f };
+/* the ankle above the sole at that scale's 1 (tools/chars/out/cc0/<name>.json, FootL): the feet sit on the ground */
+static const float ANKLE[K_KINDS] = { 0.068f, 0.086f, 0.085f, 0.086f, 0.088f, 0.086f, 0.068f, 0.086f };
 
 static void shadows(t3_object *o) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = !(o->name && !strncmp(o->name, "Hair", 4)), o->receive_shadow = true;
@@ -73,6 +76,52 @@ static void shadows(t3_object *o) {
 static void cast_shadows(t3_object *o, bool on) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = on && !(o->name && !strncmp(o->name, "Hair", 4));
   for (int i = 0; i < o->child_count; i++) cast_shadows(o->children[i], on);
+}
+/* the foes wear their region's colours: the painted outfit tinted (one material per kind and region, cloned from the
+ * file's), so a raider of the marsh is not a raider of the canyon */
+static const t3_color REGION_TINT[RG_COUNT] = {
+  [RG_MEADOW] = { 1.0f, 1.0f, 1.0f }, [RG_CANYON] = { 1.18f, 0.92f, 0.68f }, [RG_MARSH] = { 0.7f, 1.0f, 1.08f },
+  [RG_KEEP] = { 1.22f, 0.72f, 0.66f }, [RG_HEIGHTS] = { 0.84f, 0.96f, 1.2f }, [RG_UNDER] = { 1.08f, 0.9f, 0.74f },
+  [RG_SPIRE] = { 0.96f, 1.06f, 0.88f }, [RG_WOOD] = { 0.9f, 0.82f, 1.18f },
+};
+static t3_material *TINTED[K_KINDS][RG_COUNT];
+static void tint_outfit(t3_object *o, int kind, int region) {
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
+    t3_mesh *m = (t3_mesh *)o;
+    for (int k = 0; k < m->material_count; k++) {
+      t3_material *mat = m->materials[k];
+      if (!mat || !mat->name || strcmp(mat->name, "outfit_outfit")) continue;
+      t3_material **t = &TINTED[kind][region];
+      if (!*t) {
+        *t = t3_material_clone(mat);
+        t3_color c = REGION_TINT[region];
+        (*t)->color = (t3_color){ mat->color.r * c.r, mat->color.g * c.g, mat->color.b * c.b };
+      }
+      t3_retain(*t);
+      t3_release(m->materials[k]);
+      m->materials[k] = *t;
+    }
+  }
+  for (int i = 0; i < o->child_count; i++) tint_outfit(o->children[i], kind, region);
+}
+/* a thin rim of light round each figure (cartwheel/rim_light.h, on every preset): it separates them from busy ground
+ * at play distance and fades at arm's length; warm on the heroes, a cold edge on the foes, the bosses' their own
+ * colour. Per material: the file's materials are shared by every instance of a kind (and the foes' tinted clones),
+ * so each gets its rim once. */
+static void rim(t3_object *o, int kind) {
+  static const t3_color C[K_KINDS] = { { 1, 0.82f, 0.55f }, { 1, 0.82f, 0.55f }, { 0.75f, 0.85f, 1 }, { 0.75f, 0.85f, 1 }, { 0.75f, 0.85f, 1 },
+                                       { 0.7f, 1, 0.45f }, { 0.75f, 0.6f, 1 }, { 1, 0.55f, 0.25f } };
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
+    t3_mesh *m = (t3_mesh *)o;
+    for (int k = 0; k < m->material_count; k++) {
+      t3_material *mat = m->materials[k];
+      if (!mat || cw_rim_light_get(mat, NULL) || (mat->name && !strncmp(mat->name, "eye", 3))) continue;
+      cw_rim_light_desc d = cw_rim_light_default();
+      d.color = C[kind], d.strength = kind <= K_WARDEN ? 0.7f : 0.55f, d.power = 3.2f, d.near = 4, d.far = 14, d.close = 0.2f;
+      cw_rim_light_apply(mat, &d);
+    }
+  }
+  for (int i = 0; i < o->child_count; i++) rim(o->children[i], kind);
 }
 static t3_object *weapon_obj(const char *name) {
   static const char *const W[] = { "sword", "maul", "cleaver", "spear", "bigaxe" };
@@ -94,6 +143,7 @@ static void rig_make(int i, int kind) {
   rig *r = &RIG[i];
   memset(r, 0, sizeof *r);
   r->kind = kind;
+  r->region = S.a[i].region;
   if (!RES_KIND[kind].id) {
     char p[48];
     snprintf(p, sizeof p, "models/%s.glb", KIND[kind].model);
@@ -104,6 +154,8 @@ static void rig_make(int i, int kind) {
   t3_object *inst = cw_gltf_instantiate(RES_KIND[kind]);
   if (!inst) return;
   shadows(inst);
+  if (kind >= K_RAIDER && kind <= K_LANCER) tint_outfit(inst, kind, CW_CLAMP(S.a[i].region, 0, RG_COUNT - 1));
+  rim(inst, kind);
   char nm[24];
   snprintf(nm, sizeof nm, "Rig%d", i);
   r->root = cw_node_new("Node3D", nm);
@@ -126,7 +178,7 @@ static void rig_make(int i, int kind) {
   cw_node_set(r->feet, "legs", cw_val_string("UpperLegL,LowerLegL,FootL;UpperLegR,LowerLegR,FootR"));
   cw_node_set(r->feet, "pelvis", cw_val_string("Hips"));
   cw_node_set(r->feet, "collision_mask", cw_val_int(1));
-  cw_node_set(r->feet, "foot_height", cw_val_float(0.08f * GEN_SCALE[kind]));
+  cw_node_set(r->feet, "foot_height", cw_val_float(ANKLE[kind] * GEN_SCALE[kind]));
   cw_node_set(r->feet, "max_step_down", cw_val_float(0.55f * GEN_SCALE[kind]));
   cw_node_set(r->feet, "ray_up", cw_val_float(0.6f * GEN_SCALE[kind]));
   /* the weapon in the right fist */
@@ -286,7 +338,7 @@ void view_fixed(void) {
       if (r->made && !a->used) r->still = false;
       continue;
     }
-    if (!r->made || r->kind != a->kind) {
+    if (!r->made || r->kind != a->kind || (a->kind >= K_RAIDER && a->kind <= K_LANCER && r->region != a->region)) {
       if (r->made && cw_node_valid(r->root)) cw_node_free(r->root);
       rig_make(i, a->kind);
       if (!r->made) continue;
@@ -409,6 +461,15 @@ void view_camera(cw_node cam, float alpha, float aspect) {
   CAM_ASPECT = aspect;
   cw_value v;
   CAM_FOV = cw_node_get_prop(cam, "fov", &v) && v.f > 1 ? (float)v.f : 60;
+}
+/* the figures' level of detail: cwpack simplifies each mesh (half and a quarter of the triangles); a figure draws the
+ * coarsest level whose error stays under a pixel and a half on the screen (a foe across a courtyard, a boss from the
+ * far side of its ring) */
+void view_lod(cw_node cam, int height) {
+  const t3_camera *c = cw_camera3d_t3(cam);
+  if (!c) return;
+  for (int i = 0; i < MAXA; i++)
+    if (RIG[i].made && RIG[i].inst) cw_gltf_instance_auto_lod(RIG[i].inst, c, (float)height, 1.5f);
 }
 bool view_screen(t3_vec3 w, float *u, float *v) {
   t3_vec3 f = CAM_F, up = { 0, 1, 0 };
