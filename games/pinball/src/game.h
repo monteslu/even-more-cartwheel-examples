@@ -226,6 +226,8 @@ typedef struct game {
   int bell_t;              /* ticks since the bell rang (drawn) */
   int toy_hits, magnet_grabs, bells, wizards_total, toy_events;
   bool practice;           /* practice: the ball always comes back (no score kept) */
+  int objectives;          /* the table's goals met this game (bits, NOBJ of them) */
+  int ball_modes;          /* modes started on this ball (a goal) */
   /* messages for the dot display */
   int msg, msg_t, msg_len;
   char msg_a[32], msg_b[32];
@@ -243,7 +245,7 @@ enum {
   FX_FLIP, FX_FLIP_DOWN, FX_POP, FX_SLING, FX_TARGET, FX_DROP, FX_DROP_RESET, FX_SPIN, FX_ROLLOVER, FX_RAMP_IN, FX_RAMP_DONE,
   FX_HOLE, FX_KICKOUT, FX_LAUNCH, FX_DRAIN, FX_WALL, FX_BALLS, FX_JACKPOT, FX_MULTIBALL, FX_MODE_START, FX_MODE_SHOT, FX_MODE_DONE,
   FX_MODE_FAIL, FX_EXTRA, FX_TILT, FX_WARN, FX_SAVE, FX_KICKBACK, FX_LOCK, FX_LANES, FX_BONUS_TICK, FX_GAME_OVER, FX_SKILL,
-  FX_NUDGE, FX_FLASH, FX_START, FX_PLUNGER_PULL, FX_WIZARD, FX_WIZARD_SHOT, FX_WIZARD_END, FX_TOY, FX_TOY_HIT, FX_HURRY
+  FX_NUDGE, FX_FLASH, FX_START, FX_PLUNGER_PULL, FX_WIZARD, FX_WIZARD_SHOT, FX_WIZARD_END, FX_TOY, FX_TOY_HIT, FX_HURRY, FX_OBJECTIVE
 };
 
 void game_new(game *g, int table_id, int players, uint32_t seed);
@@ -257,7 +259,10 @@ const char *fmt_score(int64_t v, char *buf, int cap); /* 1,234,560 */
 void game_test_event(game *g, int ev_kind, int tag, float speed);
 void game_test_start_mode(game *g, int m);
 void game_test_light_wizard(game *g);
-bool game_shot_lit(const game *g, int s); /* is this shot lit for the running mode or the wizard mode? */
+bool game_shot_lit(const game *g, int s);
+/* each table's goals beyond the score (met in a game, kept as stars in the save) */
+#define NOBJ 5
+const char *game_objective(const table *T, int i); /* is this shot lit for the running mode or the wizard mode? */
 
 /* bot.c: the self-playing input (the auto cart, the soak) */
 void bot_input(const game *g, input *in, uint32_t *rng);

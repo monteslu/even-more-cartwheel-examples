@@ -46,6 +46,7 @@ typedef struct save_data {
   hs_entry best[NTABLES][5];
   int32_t last_table, last_players;
   int32_t played;          /* a game has been started (the first start defaults to one player, not practice) */
+  int32_t stars[NTABLES];  /* each table's goals ever met (bits) */
 } save_data;
 
 #define FLH 24
@@ -368,6 +369,12 @@ static void fixed_update(void *u, double dt) {
 #endif
     sound_events(&G.g);
     rumble_events(&G.g);
+    if ((G.g.objectives & ~save()->stars[G.g.table_id]) != 0) { /* a goal met for the first time: a star kept */
+      save()->stars[G.g.table_id] |= G.g.objectives;
+#if !defined(PINBALL_AUTOPILOT)
+      cw_shell_save_commit();
+#endif
+    }
     music_level(G.g.multiball ? 3 : G.g.mode >= 0 ? 2 : G.g.state == GS_PLAY ? 1 : 0);
     /* the spinners tick as their plates turn */
     for (int i = 0; i < G.g.T.nel; i++) {
@@ -747,13 +754,22 @@ static void hud_select(cw_vec2 cs, float u) {
   }
   ry += text(T->wizard_name, rx, ry, 28 * u, tcol(T->th.col[2], 1.7f, 1), CW_ALIGN_CENTER).height;
   ry += text("all four played: the wizard mode", rx, ry, 22 * u, rgba(0.85f, 0.85f, 0.9f, 1), CW_ALIGN_CENTER).height + 28 * u;
-  ry += text("BEST SCORES", rx, ry, 34 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 12 * u;
+  /* its goals: a star for each one ever met */
+  ry += text("GOALS", rx, ry, 30 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 6 * u;
+  for (int i = 0; i < NOBJ; i++) {
+    bool met = save()->stars[G.sel_table] >> i & 1;
+    float gw = measure(game_objective(T, i), 22 * u).width;
+    cw_r2d_circle(cw_v2(rx - gw * 0.5f - 18 * u, ry + 13 * u), 8 * u, 5, met ? tcol(T->th.col[2], 1.6f, 1) : rgba(0.3f, 0.3f, 0.35f, 1));
+    ry += text(game_objective(T, i), rx, ry, 22 * u, rgba(1, 1, 1, met ? 0.95f : 0.6f), CW_ALIGN_CENTER).height + 4 * u;
+  }
+  ry += 20 * u;
+  ry += text("BEST SCORES", rx, ry, 30 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 8 * u;
   const hs_entry *hb = save()->best[G.sel_table];
   for (int i = 0; i < 5; i++) {
     char sc[32], line[64];
     if (hb[i].score > 0) snprintf(line, sizeof line, "%d  %.3s  %s", i + 1, hb[i].name, fmt_score(hb[i].score, sc, sizeof sc));
     else snprintf(line, sizeof line, "%d  ---", i + 1);
-    ry += text(line, rx, ry, 30 * u, rgba(1, 1, 1, hb[i].score > 0 ? 0.95f : 0.5f), CW_ALIGN_CENTER).height + 6 * u;
+    ry += text(line, rx, ry, 26 * u, rgba(1, 1, 1, hb[i].score > 0 ? 0.95f : 0.5f), CW_ALIGN_CENTER).height + 4 * u;
   }
 }
 

@@ -39,6 +39,7 @@
 #define MAGNET_GRAB 0.026f      /* how near the magnet's middle a ball is caught */
 #define BELL_AT 0.7f            /* the striker's strength that rings the bell */
 
+static void objective(game *g, int i, bool met);
 static void fx(game *g, int kind, int a, float v) {
   if (g->nfx >= 64) return;
   g->fx[g->nfx].kind = (uint8_t)kind, g->fx[g->nfx].a = (int16_t)a, g->fx[g->nfx].v = v;
@@ -216,7 +217,7 @@ static void mode_begin(game *g, int m) {
   fx(g, FX_MODE_START, m, 1);
 }
 
-static void mode_start(game *g) { mode_begin(g, cur(g)->mode_next % g->T.nmode); }
+static void mode_start(game *g) { mode_begin(g, cur(g)->mode_next % g->T.nmode); g->ball_modes++; }
 
 static void wizard_light_check(game *g) {
   player_state *p = cur(g);
@@ -356,6 +357,7 @@ static void shot_made(game *g, int s) {
     say(g, MSG_JACKPOT, "JACKPOT", "", g->jackpot_value, SEC(2.5f));
     fx(g, FX_JACKPOT, 0, 1);
     g->jackpot_value *= 2;
+    objective(g, 2, g->mb_t < SEC(30));
   }
   /* the ramps light the lock (three of them, then one per lock) */
   if (!g->multiball && !g->wizard && !p->lock_lit && T->el[T->lock_hole].shot != s) {
@@ -522,6 +524,30 @@ static void striker_tick(game *g) {
     if (g->puck_h >= 1) g->puck_h = 1, g->puck_v = -fabsf(g->puck_v) * 0.3f;
     if (g->puck_h <= 0) g->puck_h = 0, g->puck_v = 0;
   }
+}
+
+/* ── goals ───────────────────────────────────────────────────────────── */
+
+const char *game_objective(const table *T, int i) {
+  static const char *const COMMON[NOBJ] = { "SCORE 1,000,000 IN A GAME", "START TWO MODES ON ONE BALL", "A JACKPOT IN MULTIBALL'S FIRST 30 SECONDS", "", "PLAY THE WIZARD MODE" };
+  if (i != 3) return COMMON[i];
+  return T->toy == TOY_CREATURE ? "HIT THE LEVIATHAN 3 TIMES IN A GAME" : T->toy == TOY_MAGNET ? "3 MAGNET CATCHES IN A GAME"
+       : T->toy == TOY_STRIKER ? "RING THE BELL 5 TIMES IN A GAME" : "MAKE 10 RAMPS IN A GAME";
+}
+
+static void objective(game *g, int i, bool met) {
+  if (!met || (g->objectives >> i & 1) || g->practice || g->tilted) return;
+  g->objectives |= 1 << i;
+  say(g, MSG_BIG, "GOAL MET", game_objective(&g->T, i), 0, SEC(2.5f));
+  fx(g, FX_OBJECTIVE, i, 1);
+}
+
+static void objectives_tick(game *g) {
+  const table *T = &g->T;
+  objective(g, 0, cur(g)->score >= 1000000);
+  objective(g, 1, g->ball_modes >= 2);
+  objective(g, 3, T->toy == TOY_CREATURE ? g->toy_hits >= 3 : T->toy == TOY_MAGNET ? g->magnet_grabs >= 3 : T->toy == TOY_STRIKER ? g->bells >= 5 : g->ramps_made >= 10);
+  objective(g, 4, g->wizard);
 }
 
 /* ── switch events ───────────────────────────────────────────────────── */
@@ -721,7 +747,7 @@ static void next_ball(game *g) {
   p = cur(g);
   p->bonus = 0, p->bonus_x = 1;
   g->tilted = false, g->tilt_warn = 0, g->tilt_meter = 0;
-  g->mode = -1, g->multiball = false, g->combo_t = 0, g->wizard = false, g->serve_left = 0, g->rove_shot = -1;
+  g->mode = -1, g->multiball = false, g->combo_t = 0, g->wizard = false, g->serve_left = 0, g->rove_shot = -1, g->ball_modes = 0;
   for (int f = 0; f < g->W.nfl; f++) g->W.fl[f].on = true;
   for (int bank = 0; bank < g->T.ndrop_banks; bank++) drop_reset(g, bank);
   g->state = GS_PLUNGE, g->state_t = 0;
@@ -901,6 +927,7 @@ void game_step(game *g, const input *in) {
     if (g->state_t == SEC(2)) score(g, g->tilted ? 0 : (int64_t)p->bonus * p->bonus_x);
     if (g->state_t > SEC(2.7f)) next_ball(g);
   }
+  objectives_tick(g);
   lamps_update(g);
   for (int i = 0; i < PB_MAXB; i++) {
     const pb_ball *b = &g->W.b[i];

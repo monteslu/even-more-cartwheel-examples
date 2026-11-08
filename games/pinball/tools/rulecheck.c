@@ -211,7 +211,9 @@ int main(void) {
       if (g.W.b[i].state != BS_OFF) g.W.b[i].state = BS_OFF, game_test_event(&g, EV_DRAIN, -1, 1.0f);
     g.practice = true;
     game_test_event(&g, EV_HOLE, g.T.mode_hole, 0.5f);
+    g.practice = false; /* goals count only outside practice (the wizard mode's ball save holds the balls) */
     steps(&g, 60 * 5);
+    g.practice = true;
     int first, n = lit_count(&g, &first);
     snprintf(d, sizeof d, "started at the scoop (%d), %d balls up, %d of %d shots lit", g.wizard, g.balls_in_play, n, g.T.nshot);
     check(g.wizard && g.balls_in_play >= 4 && n == g.T.nshot, t, g.T.wizard_name, d);
@@ -229,6 +231,21 @@ int main(void) {
       if (g.W.b[i].state != BS_OFF) g.W.b[i].state = BS_OFF, game_test_event(&g, EV_DRAIN, -1, 1.0f);
     snprintf(d, sizeof d, "ended at one ball (%d), modes played reset (%d), wizards %d", g.wizard, g.P[0].modes_played, g.P[0].wizards);
     check(!g.wizard && g.P[0].modes_played == 0 && g.P[0].wizards == 1, t, g.T.wizard_name, d);
+    snprintf(d, sizeof d, "the wizard mode met its goal (goals %x)", g.objectives);
+    check(g.objectives >> 4 & 1, t, "goals", d);
+    /* two modes started at the scoop on one ball: a goal */
+    start(&g, t);
+    g.practice = false, g.ball_save_t = 60 * 90; /* the ball save keeps this one ball in play */
+    int before = g.objectives;
+    g.P[0].mode_lit = true;
+    game_test_event(&g, EV_HOLE, g.T.mode_hole, 0.5f);
+    int m1 = g.mode;
+    for (int k = 0; k < 200 && g.mode >= 0; k++) g.ball_save_t = 600, steps(&g, 60); /* it runs out */
+    g.P[0].mode_lit = true;
+    game_test_event(&g, EV_HOLE, g.T.mode_hole, 0.5f);
+    steps(&g, 2);
+    snprintf(d, sizeof d, "two modes on one ball (%d, then %d): goals %x to %x", m1, g.mode, before, g.objectives);
+    check(m1 >= 0 && g.mode >= 0 && !(before >> 1 & 1) && (g.objectives >> 1 & 1), t, "goals", d);
   }
   bool differ = memcmp(kinds[0], kinds[1], sizeof kinds[0]) && memcmp(kinds[0], kinds[2], sizeof kinds[0]) && memcmp(kinds[1], kinds[2], sizeof kinds[0]);
   check(differ && toys[0] != toys[1] && toys[1] != toys[2] && toys[0] != toys[2], -1, "tables", "each plays its own modes and toy");
