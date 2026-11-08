@@ -114,7 +114,7 @@ static void burst(cw_node n, float x, float y, float z, float dx, float dy, floa
 static const char *const HIT[] = { "amount", "10", "lifetime", "0.32", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.05", "spread", "80", "speed_min", "2", "speed_max", "6.5",
   "gravity", "vec3(0, -8, 0)", "draw_mode", "STRETCHED", "stretch", "0.04", "size", "0.05",
-  "color_ramp", "\"0 1 0.92 0.6 1, 1 1 0.4 0.1 0\"", "energy", "6", "blend", "ADD", NULL };
+  "color_ramp", "\"0 1 0.92 0.6 0.6, 0.15 1 0.92 0.6 1, 1 1 0.4 0.1 0\"", "energy", "4", "blend", "ADD", NULL };
 /* electric sparks: blue-white, quick, at each creep a bolt strikes */
 static const char *const SPARK[] = { "amount", "9", "lifetime", "0.25", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.1", "spread", "180", "speed_min", "3", "speed_max", "8",
@@ -596,7 +596,7 @@ void fx_tick(const sim *s, float time) {
     const tower *t = &s->tw[k];
     if (!t->alive || t->kind != TK_BEAM || t->tgt < 0 || !s->e[t->tgt].alive) continue;
     const creep *e = &s->e[t->tgt];
-    if ((FX.tick + (uint32_t)k) % (lvl >= 2 ? 3u : 5u) == 0) burst(FX.hit, e->x, 0.7f, e->y, t->x - e->x, 0.6f, t->y - e->y);
+    if ((FX.tick + (uint32_t)k) % (lvl >= 2 ? 7u : 10u) == 0) burst(FX.hit, e->x, 0.7f, e->y, t->x - e->x, 0.6f, t->y - e->y); /* (a spray, not a sparkle: a burst every 20 Hz at one spot read as a flicker) */
     if (lvl >= 1 && (FX.tick + (uint32_t)k) % 7 == 0) burst(FX.haze, e->x, 0.8f, e->y, 0, 1, 0);
   }
   /* heat shimmering over the lava: now and then over a point of a pool off its shallows */

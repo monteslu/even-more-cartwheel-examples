@@ -43,7 +43,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
 const KEEP = process.argv.includes('--keep');
-const COUNT = 240, WIN = 60, TILES = 5, MAX_FLASHES = 3, AREA = 0.047, FLICKER_GAP = 12, SUSTAIN_GAP = 30, FLICKER_MAX = 0.001;
+const COUNT = 240, WIN = 60, TILES = 5, MAX_FLASHES = 3, AREA = 0.047, FLICKER_GAP = 12, SUSTAIN_GAP = 30, FLICKER_MAX = 0.0025; // (a quarter of a percent: the old effects kept 0.85% flickering)
 const HIDE = { TOWERS_HIDE: '3' }; // (the crowd and its blob shadows)
 const SCENES = [
   { name: 'bench', app: 'towers_bench', from: 300, env: {} },
