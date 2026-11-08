@@ -90,27 +90,31 @@ static bool in_view(const game *g, int t, t3_vec3 at) {
 static void plan(game *g, bot_state *b) {
   int t = -1;
   for (int i = 0; i < g->ntgt; i++) if (!g->tgt[i].down) { t = i; break; }
-  if (g->mode == MODE_PARTY) { /* steady hands: a plain shot at the block farthest from every crystal still standing */
-    float best = -1;
+  if (g->mode == MODE_PARTY) { /* steady hands: a heavy ball at the block nearest the launcher that stands well clear
+                                * of every crystal still up (the front of the structure, far from what must not fall) */
+    float best = 1e9f;
     int pick = -1;
-    for (int i = 0; i < g->nb; i++) {
-      const block *k = &g->b[i];
-      if (!k->alive || !k->tag || k->target >= 0 || k->down || k->keg) continue;
-      t3_vec3 p = cw_body3d_transform(k->body).p;
-      float near = 1e9f;
-      for (int c = 0; c < g->ntgt; c++) {
-        if (g->tgt[c].down || g->tgt[c].blk < 0) continue;
-        t3_vec3 q = g->tgt[c].home;
-        float d = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z);
-        if (d < near) near = d;
+    for (int pass = 0; pass < 2 && pick < 0; pass++)
+      for (int i = 0; i < g->nb; i++) {
+        const block *k = &g->b[i];
+        if (!k->alive || !k->tag || k->target >= 0 || k->down || k->keg) continue;
+        t3_vec3 p = cw_body3d_transform(k->body).p;
+        float near = 1e9f;
+        for (int c = 0; c < g->ntgt; c++) {
+          if (g->tgt[c].down || g->tgt[c].blk < 0) continue;
+          t3_vec3 q = g->tgt[c].home;
+          float d = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z);
+          if (d < near) near = d;
+        }
+        if (pass == 0 && near < 3.0f * 3.0f) continue; /* the second pass takes any block */
+        float dx = p.x - g->muzzle.x, dz = p.z - g->muzzle.z;
+        float score = dx * dx + dz * dz + p.y * 4 + hashf((uint32_t)i * 2654435761u + (uint32_t)g->shots) * 20;
+        if (score < best) best = score, pick = i;
       }
-      near += hashf((uint32_t)i * 2654435761u + (uint32_t)g->shots) * 2; /* not always the same block */
-      if (near > best) best = near, pick = i;
-    }
     if (pick < 0) return;
     b->plan_tgt = 0;
-    b->want_ammo = pick_ammo(g, A_SHOT);
-    b->want_power = 0.7f, b->lob = false;
+    b->want_ammo = pick_ammo(g, A_HEAVY);
+    b->want_power = 1.0f, b->lob = false;
     b->aim_at = cw_body3d_transform(g->b[pick].body).p;
     b->solved = false;
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;

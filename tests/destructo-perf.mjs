@@ -43,7 +43,7 @@ function run(gpu, extra = {}) {
   const from = wins.findIndex((w) => w.broken >= 100);
   const col = from >= 0 ? wins.slice(from) : [];
   const g = col.map((w) => w.gpu).filter((v) => v > 0).sort((a, b) => a - b);
-  return { status: r.status, gpu: g.length ? g[g.length >> 1] : NaN, wins: col.length, broken: Math.max(0, ...wins.map((w) => w.broken)),
+  return { status: r.status, all: col.map((w) => w.gpu), gpu: g.length ? g[g.length >> 1] : NaN, wins: col.length, broken: Math.max(0, ...wins.map((w) => w.broken)),
     awake: Math.max(0, ...wins.map((w) => w.awake)), inst: Math.max(0, ...wins.map((w) => w.inst)), phys: Math.max(0, ...col.map((w) => w.phys)),
     skipped: /in none of the app's program tables|not in any program table/.test(err), passes: col.length ? col[col.length >> 1].passes : '' };
 }
@@ -51,7 +51,7 @@ function run(gpu, extra = {}) {
 let bad = 0;
 const check = (name, r, bound, mustFail = false) => {
   const within = r.status === 0 && !r.skipped && r.broken >= 100 && r.wins >= 2 && r.gpu > 0 && r.gpu <= bound;
-  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}) over ${r.wins} collapse windows, ${r.broken} blocks broken, ${r.awake} awake at most, ${r.inst} blocks drawn, physics ${r.phys.toFixed(2)} ms a tick at worst, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}) over ${r.wins} collapse windows, ${r.broken} blocks broken, ${r.awake} awake at most, ${r.inst} blocks drawn, physics ${r.phys.toFixed(2)} ms a tick at worst, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''} (windows: ${(r.all || []).map((v) => v.toFixed(2)).join(' ')})`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);

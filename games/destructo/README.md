@@ -84,7 +84,8 @@ speed the break did not use and goes on through.
   palms, two species a setting, swaying in the wind; a column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
   under the ground at load so no effect compiles its programs mid-game; a plume of dust that hangs over a collapse,
   drifts downwind and thins over about ten seconds; the ground marked where the structure came down; broken pieces
-  showing their raw inside; sounds made in code.
+  showing their raw inside; grass on green ground round the yard; the sea under the headland as the engine's water;
+  sounds made in code.
 - No strobing. Every light swells over a tenth of a second or more and eases out, never steps or flickers; the
   explosion kit's own flash light is off (it starts at its peak and flickers). No screen shake: the pad rumbles.
 
@@ -136,7 +137,7 @@ collapse: about 2.3 ms a step at worst over the collapse windows.
 | `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
 | `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep |
 | `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
-| `node tests/destructo-flash.mjs` | Great Keep's blast frame by frame against the flash thresholds (WCAG 2.3.1): no ninth of the screen flashes at all, no region more than 3 times a second, red too (control: a 10 Hz wash) |
+| `node tests/destructo-flash.mjs` | Great Keep's blast frame by frame against the flash thresholds (WCAG 2.3.1): no ninth of the screen blinks (a change of 0.1 relative luminance and back within a third of a second), no region flashes more than 3 times a second, red too (control: a 10 Hz wash) |
 | `node tests/destructo-perf.mjs` | the GPU frame at 1920x1080 on High during a castle's collapse, GL and WebGPU, on the 890M |
 | `node tests/destructo-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms, natively and in the cart on romdev |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) |
