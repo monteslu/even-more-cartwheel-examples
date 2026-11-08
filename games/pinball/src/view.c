@@ -230,8 +230,8 @@ static void build_toy(const game *g) {
     cw_node3d_set_position(V.toy_ring, tw(e->x, e->y, 0.034f));
     gb r = { 0 };
     gb_band(&r, 0, -0.004f, 0, 0.004f, 0.026f, 0.033f, 36);
-    for (int k = 0; k < 8; k++) { /* teeth */
-      float a = (float)k * CW_PI / 4.0f;
+    for (int k = 0; k < 6; k++) { /* teeth */
+      float a = (float)k * CW_PI / 3.0f;
       gb_box(&r, cosf(a) * 0.036f, 0, sinf(a) * 0.036f, 0.004f, 0.003f, 0.004f, -a);
     }
     V.ring_mat = std_mat(th->col[0][0] * 0.5f + 0.2f, th->col[0][1] * 0.5f + 0.15f, th->col[0][2] * 0.5f + 0.1f, 0.3f, 0.85f);
@@ -356,11 +356,7 @@ static void cabinet_body(cw_node parent, float x0, float dz, const float *wood, 
   for (int s = -1; s <= 1; s += 2)
     for (int e = 0; e < 2; e++) gb_cyl(&b, x0 + (float)s * 0.26f, FLOOR_Y, e ? zb - 0.04f : zt + 0.04f, -0.36f, 0.018f, 10, false);
   piece(parent, "CabinetBody", gb_geometry(&b), std_mat(wood[0] * 0.7f, wood[1] * 0.7f, wood[2] * 0.7f, 0.5f, 0), false);
-  gb t = { 0 }; /* a lit stripe along each side, the machine's trim */
-  for (int s = -1; s <= 1; s += 2) gb_box(&t, x0 + (float)s * 0.303f, -0.1f, zc, 0.002f, 0.012f, hl * 0.92f, 0);
-  t3_material *m = t3_mesh_basic_material_new(0xffffff);
-  m->color = (t3_color){ stripe[0] * 0.9f, stripe[1] * 0.9f, stripe[2] * 0.9f };
-  piece(parent, "CabinetTrim", gb_geometry(&t), m, false);
+  (void)stripe;
 }
 
 /* the machine standing in a dim arcade: its own body and legs, a carpet, two other machines either side glowing, and
@@ -789,7 +785,7 @@ void view_sync(const game *g, float alpha, float dt) {
     const pb_ball *b = &g->W.b[i];
     if (b->state == BS_OFF) { cw_node3d_set_position(V.ball[i], tw(0, -5, 0)); continue; }
     float x = b->pwx + (b->wx - b->pwx) * alpha, y = b->pwy + (b->wy - b->pwy) * alpha, z = b->pwz + (b->wz - b->pwz) * alpha;
-    if (b->state == BS_HELD && b->held_tag == T->toy_el && T->toy == TOY_MAGNET) z = 0.006f + 0.002f * sinf(V.t * 9); /* in the magnet's grip */
+    if (b->state == BS_HELD && b->held_tag == T->toy_el && T->toy == TOY_MAGNET) z = 0.006f + 0.002f * sinf(V.t * 3); /* in the magnet's grip */
     cw_node3d_set_position(V.ball[i], tw(x, y, z + PB_R));
   }
   /* flippers */

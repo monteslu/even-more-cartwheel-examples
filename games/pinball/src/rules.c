@@ -468,7 +468,8 @@ static void magnet_tick(game *g) {
     if (armed && g->magnet_ball < 0) g->W.sh[e->shape + k].flags &= (uint8_t)~SF_OFF;
     else g->W.sh[e->shape + k].flags |= SF_OFF;
   }
-  g->magnet_spin_v += ((armed ? 4.0f : 0.6f) + (g->magnet_ball >= 0 ? 10.0f : 0) - g->magnet_spin_v) * 0.03f;
+  /* the ring turns slowly (its teeth pass a point under once a second at most: nothing flickers) */
+  g->magnet_spin_v += ((armed ? 0.5f : 0.15f) + (g->magnet_ball >= 0 ? 0.5f : 0) - g->magnet_spin_v) * 0.03f;
   g->magnet_spin += g->magnet_spin_v * TICK;
   if (g->magnet_cool > 0) g->magnet_cool--;
   if (g->magnet_ball >= 0) {
