@@ -577,7 +577,8 @@ void view_build(const game *g) {
     case EK_SPINNER: {
       gb b = { 0 };
       gb_box(&b, 0, -0.008f, 0, e->w * 0.45f, 0.008f, 0.0008f, 0);
-      t3_material *m = std_mat(0.9f, 0.9f, 0.92f, 0.15f, 1);
+      /* brushed, not a mirror: a mirror plate turning catches the light in sharp glints */
+      t3_material *m = std_mat(0.7f, 0.7f, 0.72f, 0.55f, 0.6f);
       cw_node n = piece(V.table, "Spinner", gb_geometry(&b), m, true);
       cw_node3d_set_position(n, tw(e->x, e->y, 0.024f));
       V.part[i] = n;
