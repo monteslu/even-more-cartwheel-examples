@@ -12,6 +12,7 @@ void creatures_init(void);
 /* into the current (lit) layer */
 void creature_enemy(const enemy *e, int region, float t);
 void creature_boss(const boss *b, int region, float t);
+void creature_hero(const player *p, int i, int region, float t); /* the hooded lamplighter, player i */
 /* the deaths of the tick (EV_KILL, EV_BOSS_DOWN): remnants that fall apart and burn out */
 void creatures_events(const sim *s, int region);
 void creatures_tick(float dt);

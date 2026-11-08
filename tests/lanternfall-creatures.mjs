@@ -8,6 +8,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readPng } from './lanternfall-look.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BIN = [join(ROOT, 'build/native/project/games/lanternfall'), join(ROOT, 'build/native/games/lanternfall')].find((d) => existsSync(join(d, 'lanternfall_auto')));
@@ -35,6 +36,7 @@ const painted = [];
 function shot(out, env, gpu = 'gl') {
   const e = { ...process.env, CW_FRAMES: String(env.frames || 90), CW_WARMUP_SPREAD: '0', SDL_AUDIODRIVER: 'dummy', CW_RENDER_SCALE: String(env.scale || 1.5),
     CW_SCREENSHOT: out, CW_GPU: gpu, LANTERNFALL_IDLE: '1', LANTERNFALL_NO_HUD: '1', ...env.vars };
+  if (env.play) delete e.LANTERNFALL_IDLE; /* (the bot plays) */
   return new Promise((ok) => {
     const p = spawn(join(BIN, 'lanternfall_auto'), [], { env: e, stdio: ['ignore', 'ignore', 'pipe'] });
     let err = '';
@@ -52,7 +54,13 @@ export function sheets(pick) {
   S['enemies-near-b'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.0', LANTERNFALL_SHOWCASE_ROWS: '2,3' } };
   S['enemies-4k'] = { scale: 3, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e' } };
   for (let f = 0; f < 4; f++) S[`enemies-motion-${f}`] = { frames: 90 + f * 5, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.0', LANTERNFALL_SHOWCASE_ROWS: '0,1' } };
+  S['enemies-r0-empty'] = { vars: { ...S['enemies-r0'].vars, LANTERNFALL_SHOWCASE_EMPTY: '1' } };
+  S['wardens-s0-empty'] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: '0', LANTERNFALL_SHOWCASE_EMPTY: '1' } };
   for (let st = 0; st < 4; st++) S[`wardens-s${st}`] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: String(st) } };
+  S['heroes'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h' } };
+  S['heroes-near'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h', LANTERNFALL_SHOWCASE_ZOOM: '2.2' } };
+  S['heroes-4k'] = { scale: 3, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h', LANTERNFALL_SHOWCASE_ZOOM: '2.2' } };
+  for (const f of [700, 1300, 1900, 2400]) S[`play-${f}`] = { play: true, frames: f, vars: {} };
   for (let i = 0; i < 6; i++) S[`warden${i}-near`] = { vars: { LANTERNFALL_ROOM: room([3, 2, 4, 5, 7, 12][i] ?? 0), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_ONLY: String(i), LANTERNFALL_SHOWCASE_ZOOM: '1.8', LANTERNFALL_SHOWCASE_STATE: '1' } };
   return S;
 }
@@ -63,12 +71,79 @@ if (!dir) {
   mkdirSync(dir, { recursive: true });
   const pick = rooms();
   for (let r = 0; r < 13; r++) if (pick[r] === undefined) pick[r] = pick[0];
-  const only = opt('--only');
-  const list = Object.entries(sheets(pick)).filter(([n]) => !only || n.includes(only));
+  /* the check needs four sheets and the same four with the old flat shapes; --capture draws every sheet */
+  const CHECK = ['enemies-r0', 'enemies-r0-empty', 'wardens-s0', 'wardens-s0-empty'];
+  const only = opt('--only'), all = sheets(pick);
+  const list = Object.entries(all).filter(([n]) => (argv.includes('--capture') ? !only || n.includes(only) : CHECK.includes(n)));
+  if (!argv.includes('--capture')) {
+    mkdirSync(join(dir, 'flat'), { recursive: true });
+    for (const n of CHECK) list.push([`flat/${n}`, { ...all[n], vars: { ...all[n].vars, LANTERNFALL_CREATURES_FLAT: '1' } }]);
+  }
   for (let i = 0; i < list.length; i += 2)
     await Promise.all(list.slice(i, i + 2).map(([n, s]) => shot(join(dir, `${n}.png`), s, opt('--gpu') || 'gl')));
   console.log(`captured ${list.length} sheets into ${dir}; creatures painted in ${painted.length ? Math.min(...painted) : '?'} to ${painted.length ? Math.max(...painted) : '?'} ms`);
   if (argv.includes('--capture')) process.exit(0);
 }
-const files = readdirSync(dir).filter((f) => f.endsWith('.png'));
-console.log(`${files.length} sheets in ${dir}`);
+/* ── the measurement: each creature's own pixels (the sheet against the same frame with no creature in it), in the
+ * game-scale sheets (1080p): how many distinct colours (4 bits a channel) and how much fine detail (the mean absolute
+ * difference of luma from its 3 x 3 neighbourhood, inside the creature) it is painted with. Bounds: 120 colours and
+ * 4 levels of detail for every enemy in every state and every warden. CONTROL, which must fail: the old flat shapes
+ * (LANTERNFALL_CREATURES_FLAT). */
+const KINDS = ['crawler', 'spitter', 'moth', 'hopper', 'knight'], WARDENS = ['Moss Warden', 'Glass Mantis', 'Brass Sentinel', 'Tide Serpent', 'Sky Warden', 'Heart of Thorns'];
+function boxes(kind) {
+  const T = 60, out = [];
+  if (kind === 'e')
+    for (let r = 0; r < 4; r++)
+      for (let k = 0; k < 5; k++) {
+        const x = 960 + (k - 2) * 3 * T, y = 540 + ((r - 1.5) * 2.5 + 1 - (k === 2 ? 0.5 : 0)) * T;
+        out.push({ name: `${KINDS[k]} ${['idle', 'tell', 'act', 'hurt'][r]}`, x0: x - 1.4 * T, x1: x + 1.4 * T, y0: y - 2.6 * T, y1: y + 0.3 * T });
+      }
+  else
+    for (let i = 0; i < 6; i++) {
+      const x = 960 + ((i % 3) - 1) * 9.5 * T, y = 540 + (Math.floor(i / 3) * 8 - 2) * T;
+      out.push({ name: WARDENS[i], x0: x - 3.2 * T, x1: x + 3.2 * T, y0: y - 5.8 * T, y1: y + 0.5 * T });
+    }
+  return out;
+}
+export function measureCreature(a, b, box) {
+  const { w, px } = a, q = b.px, x0 = Math.max(1, Math.round(box.x0)), x1 = Math.min(w - 2, Math.round(box.x1)), y0 = Math.max(1, Math.round(box.y0)), y1 = Math.min(a.h - 2, Math.round(box.y1));
+  const on = (x, y) => { const k = (y * w + x) * 3; return Math.abs(px[k] - q[k]) + Math.abs(px[k + 1] - q[k + 1]) + Math.abs(px[k + 2] - q[k + 2]) > 30; };
+  const L = (x, y) => { const k = (y * w + x) * 3; return 0.2126 * px[k] + 0.7152 * px[k + 1] + 0.0722 * px[k + 2]; };
+  const cols = new Set();
+  let n = 0, det = 0, nd = 0;
+  for (let y = y0; y <= y1; y++)
+    for (let x = x0; x <= x1; x++) {
+      if (!on(x, y)) continue;
+      n++;
+      const k = (y * w + x) * 3;
+      cols.add((px[k] >> 4) << 8 | (px[k + 1] >> 4) << 4 | px[k + 2] >> 4);
+      let all = true, s = 0;
+      for (let j = -1; j <= 1 && all; j++) for (let i = -1; i <= 1; i++) { if (!on(x + i, y + j)) { all = false; break; } s += L(x + i, y + j); }
+      if (all) det += Math.abs(L(x, y) - s / 9), nd++;
+    }
+  return { n, colours: cols.size, detail: nd ? det / nd : 0 };
+}
+function judge(dirA, tag) {
+  let bad = 0;
+  for (const [sheet, kind] of [['enemies-r0', 'e'], ['wardens-s0', 'b']]) {
+    const a = readPng(join(dirA, `${sheet}.png`)), b = readPng(join(dirA, `${sheet}-empty.png`));
+    for (const box of boxes(kind)) {
+      const m = measureCreature(a, b, box), fail = m.n < 400 || m.colours < 120 || m.detail < 4;
+      if (fail) bad++;
+      if (tag === 'art') console.log(`${fail ? 'FAIL' : 'ok  '} ${box.name.padEnd(16)} ${String(m.n).padStart(6)} px  ${String(m.colours).padStart(4)} colours  detail ${m.detail.toFixed(1)}`);
+    }
+  }
+  return bad;
+}
+const need = ['enemies-r0', 'enemies-r0-empty', 'wardens-s0', 'wardens-s0-empty'];
+let failed = 0;
+if (need.every((n) => existsSync(join(dir, `${n}.png`)))) {
+  failed += judge(dir, 'art');
+  const flat = join(dir, 'flat');
+  if (need.every((n) => existsSync(join(flat, `${n}.png`)))) {
+    const caught = judge(flat, 'control');
+    if (caught >= 20) console.log(`ok   control: ${caught} of 26 old flat creatures fail`);
+    else { console.log(`CONTROL PASSED (a failure): only ${caught} of 26 old flat creatures fail`); failed++; }
+  } else { console.log(`no control frames in ${flat}`); failed++; }
+} else console.log(`${need.join(', ')} are needed in ${dir} to measure`), failed++;
+process.exit(failed ? 1 : 0);

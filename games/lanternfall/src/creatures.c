@@ -128,7 +128,7 @@ static void flush(void) {
     if (g != cur) glowing(g), cur = g;
     cw_sprite s = Q[i].s;
     if (fl > 0) { /* the hurt flash: white; the death flash: embers */
-      cw_color fc = D.die > D.flash ? (cw_color){ 1, 0.55f, 0.25f, 1 } : (cw_color){ 1, 1, 1, 1 };
+      cw_color fc = D.die > D.flash ? (cw_color){ 1, 0.55f, 0.25f, 1 } : (cw_color){ 1, 0.95f, 0.85f, 1 };
       s.color = (cw_color){ fc.r, fc.g, fc.b, s.color.a };
       if (Q[i].glow > 0) s.color = Q[i].s.color;
     }
@@ -139,6 +139,32 @@ static void flush(void) {
   cw_r2d_set_flash(0);
 #endif
   nq = 0;
+}
+
+/* The hurt flash, never a strobe: each creature's tint swells toward warm white quickly (0.06 s) and fades slowly
+ * (0.35 s), so hits closer together than that hold a steady tint instead of pulsing; it never passes 0.4 of the way
+ * (a tint, not a white silhouette), and a creature is small on screen. Keyed by the creature's address (the sim's
+ * arrays do not move). */
+static struct { const void *k; float lvl, t; } HURT[96];
+static float hurt_level(const void *key, bool hit, float t) {
+  static int strobe = -1; /* LANTERNFALL_STROBE_CONTROL (the flash check's control): the raw full flash of every hit */
+  if (strobe < 0) strobe = getenv("LANTERNFALL_STROBE_CONTROL") != NULL;
+  if (strobe) return hit ? 1 : 0;
+  int i = 0, free_ = -1;
+  for (; i < 96; i++) {
+    if (HURT[i].k == key) break;
+    if (free_ < 0 && (!HURT[i].k || t - HURT[i].t > 2)) free_ = i;
+  }
+  if (i == 96) {
+    if (!hit || free_ < 0) return 0;
+    i = free_, HURT[i].k = key, HURT[i].lvl = 0, HURT[i].t = t;
+  }
+  float dt = t - HURT[i].t;
+  dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
+  HURT[i].t = t;
+  if (hit) HURT[i].lvl += (0.4f - HURT[i].lvl) * fminf(1, dt / 0.06f);
+  else HURT[i].lvl = fmaxf(0, HURT[i].lvl - dt * 0.4f / 0.35f);
+  return HURT[i].lvl;
 }
 
 /* halos for the additive layer (creatures_fx) */
@@ -668,7 +694,7 @@ static void draw_moth(const enemy *e, float t, float tk) {
   float flare = tell ? fminf(1, tk * 1.5f) : 0;
   float cy = -0.45f;
   float pitch = tell ? -0.25f * flare : act ? 0.35f : sinf(t * 1.7f + e->x) * 0.06f;
-  float flap = sinf(t * (tell ? 34 : act ? 10 : 15) + e->x);
+  float flap = sinf(t * (tell ? 12 : act ? 10 : 15) + e->x);
   /* wing angle from the body's up: open (tell) high and held, swept back in the swoop */
   float wa = tell ? -1.15f - flare * 0.25f + flap * 0.08f : act ? 0.55f + flap * 0.1f : -0.55f + flap * 0.55f;
   float wsy = tell ? 1.05f : act ? 0.65f : 0.75f + 0.25f * fabsf(flap);
@@ -773,7 +799,7 @@ void creature_enemy(const enemy *e, int region, float t) {
   float f = e->facing_left ? -1.0f : 1.0f;
   int tl = enemy_tell_ticks(e->kind);
   float tk = e->state == ES_TELL ? fminf(1, (float)e->t / (float)(tl > 0 ? tl : 30)) : 0;
-  begin(e->x, e->y, f, e->flash > 0 ? fminf(1, (float)e->flash / 6) : 0, region, (uint32_t)e->ent * 31u + e->kind);
+  begin(e->x, e->y, f, hurt_level(e, e->flash > 0, t), region, (uint32_t)e->ent * 31u + e->kind);
   switch (e->kind) {
   case EN_CRAWLER: draw_crawler(e, region, t, tk); break;
   case EN_SPITTER: draw_spitter(e, t, tk); break;
@@ -1477,7 +1503,7 @@ void creature_boss(const boss *b, int region, float t) {
   float f = b->facing_left ? -1.0f : 1.0f;
   float tk = b->state == ES_TELL ? fminf(1, (float)b->t / (float)boss_tell_ticks(b->move)) : 0;
   float die = D.die;
-  begin(b->x, b->y, f, b->flash > 0 ? fminf(1, (float)b->flash / 5) : 0, region, 900u + b->idx);
+  begin(b->x, b->y, f, D.die > 0 ? 0 : hurt_level(b, b->flash > 0, t), region, 900u + b->idx);
   D.die = die;
   static const float SCALE[NBOSSES] = { 1.15f, 1.15f, 1, 1, 1.4f, 1 }; /* (to fill each one's body) */
   D.s = SCALE[b->idx];
@@ -1578,11 +1604,207 @@ void creatures_fx(const sim *s, float t) {
 
 #include <stdio.h>
 #include <time.h>
+/* ═════════════════════════ the hero: the hooded lamplighter ═════════════════════════
+ * A long coat and a cape in the player's colour, a deep hood with a face in its shadow (two bright eyes, the chin
+ * and nose caught by the lantern's light), a scarf, a satchel, boots; a lamplighter's pole with a brass hook at its
+ * tip from which the lantern hangs and swings. */
+static struct hero_parts { part thigh, shin, coat, cape, hood, tip, arm, fore, hand, staff, lantern, scarf; } H[MAXP];
+
+static void paint_hero(int i) {
+  static const uint32_t CLOAK[MAXP][3] = { { 0x23808c, 0x0a2a34, 0x7ad8d8 }, { 0xa04a8a, 0x3a1030, 0xf0a0d8 } };
+  pstyle cloth = sty(CLOAK[i][0], CLOAK[i][1], CLOAK[i][2], 0.6f, TX_CLOTH, 0.035f, 0.8f);
+  cloth.ink = 1.3f, cloth.rim = 0.45f, cloth.shadow = 0.35f, cloth.shadow_r = 7, cloth.seed = 500 + (uint32_t)i;
+  pstyle under = sty(0x3a3448, 0x14101c, 0x8a80a0, 0.6f, TX_CLOTH, 0.03f, 0.7f);
+  under.ink = 1.2f, under.rim = 0.3f;
+  pstyle leather = sty(0x5a3a26, 0x1e120a, 0xb08058, 0.7f, TX_SKIN, 0.025f, 0.5f);
+  leather.ink = 1.2f, leather.spec = 0.35f, leather.gloss = 0.4f, leather.rim = 0.3f;
+  pstyle brass = sty(0xd8a848, 0x5a3a10, 0xfff0b0, 0.7f, TX_METAL, 0.02f, 0.5f);
+  brass.spec = 0.9f, brass.gloss = 0.8f, brass.ink = 1;
+  cv(0.3f, 0.5f);
+  cap(0.15f, 0.05f, 0.15f, 0.44f, 0.1f, 0.085f, &under);
+  H[i].thigh = done(0.15f, 0.05f, 2.5f);
+  cv(0.4f, 0.52f);
+  cap(0.15f, 0.04f, 0.15f, 0.3f, 0.085f, 0.075f, &under);
+  float bt[12] = { 0.06f, 0.24f, 0.25f, 0.24f, 0.28f, 0.4f, 0.37f, 0.44f, 0.36f, 0.5f, 0.05f, 0.5f };
+  poly(bt, 6, 0.02f, &leather);
+  cap(0.06f, 0.27f, 0.25f, 0.27f, 0.02f, 0.02f, &brass);
+  H[i].shin = done(0.15f, 0.04f, 2.5f);
+  cv(0.8f, 0.95f);
+  float ct[16] = { 0.24f, 0.06f, 0.56f, 0.06f, 0.62f, 0.4f, 0.66f, 0.88f, 0.48f, 0.82f, 0.38f, 0.9f, 0.2f, 0.85f, 0.16f, 0.4f };
+  poly(ct, 8, 0.04f, &cloth);
+  pstyle fold = cloth;
+  fold.alpha = 0.5f, fold.dome = -0.2f, fold.ink = 0, fold.shadow = 0, fold.base = pc_hex(CLOAK[i][1]), fold.soft = 4;
+  float f1[6] = { 0.32f, 0.5f, 0.3f, 0.7f, 0.28f, 0.86f };
+  stk(f1, 3, 0.012f, 0.02f, &fold);
+  float f2[6] = { 0.5f, 0.5f, 0.52f, 0.7f, 0.55f, 0.84f };
+  stk(f2, 3, 0.012f, 0.02f, &fold);
+  pstyle trim = brass;
+  trim.base = pc_hex(0xe8c070), trim.tex = TX_CLOTH;
+  float tr[6] = { 0.48f, 0.08f, 0.5f, 0.45f, 0.52f, 0.85f };
+  stk(tr, 3, 0.018f, 0.018f, &trim);
+  cap(0.18f, 0.52f, 0.62f, 0.5f, 0.04f, 0.04f, &leather); /* the belt */
+  el(0.5f, 0.51f, 0.045f, 0.045f, 0, &brass);
+  float sp[6] = { 0.56f, 0.1f, 0.4f, 0.3f, 0.22f, 0.5f };
+  stk(sp, 3, 0.022f, 0.022f, &leather); /* the satchel's strap */
+  el(0.22f, 0.62f, 0.12f, 0.1f, 0, &leather);
+  H[i].coat = done(0.4f, 0.55f, 2.5f);
+  cv(1.0f, 1.15f);
+  float cp[16] = { 0.62f, 0.04f, 0.86f, 0.06f, 0.8f, 0.5f, 0.66f, 1.1f, 0.44f, 1.02f, 0.26f, 1.1f, 0.1f, 0.98f, 0.4f, 0.4f };
+  pstyle cape = cloth;
+  cape.base = pc_scale(pc_hex(CLOAK[i][0]), 0.8f), cape.tex_dir = 0.3f;
+  poly(cp, 8, 0.05f, &cape);
+  H[i].cape = done(0.75f, 0.06f, 2);
+  cv(0.75f, 0.72f);
+  float hd[14] = { 0.12f, 0.42f, 0.18f, 0.16f, 0.38f, 0.06f, 0.6f, 0.14f, 0.68f, 0.42f, 0.58f, 0.66f, 0.2f, 0.66f };
+  pstyle hood = cloth;
+  hood.dome = 0.9f;
+  poly(hd, 7, 0.06f, &hood);
+  pstyle dark = sty(0x0e0c16, 0x05040a, 0x2a2434, 0.2f, TX_NONE, 0, 0);
+  dark.soft = 3;
+  el(0.5f, 0.42f, 0.15f, 0.19f, 0.15f, &dark);
+  pstyle skin = sty(0xd8a080, 0x6a3a30, 0xffd8b8, 0.6f, TX_SKIN, 0.02f, 0.3f);
+  skin.soft = 3, skin.alpha = 0.85f;
+  skin.alpha = 0.5f;
+  el(0.63f, 0.45f, 0.02f, 0.03f, 0, &skin); /* the tip of the nose in the lantern's light */
+  pstyle eye = sty(0xfff0b0, 0xffb040, 0xffffff, 0.5f, TX_NONE, 0, 0);
+  eye.em = 1;
+  el(0.52f, 0.39f, 0.03f, 0.036f, 0, &eye);
+  el(0.6f, 0.39f, 0.027f, 0.033f, 0, &eye);
+  pstyle rim = trim;
+  float hr[8] = { 0.38f, 0.2f, 0.62f, 0.2f, 0.7f, 0.42f, 0.6f, 0.66f };
+  stk(hr, 4, 0.016f, 0.016f, &rim);
+  H[i].hood = done(0.38f, 0.62f, 2.5f);
+  cv(0.5f, 0.3f);
+  lf(0.45f, 0.2f, 0.05f, 0.1f, 0.08f, -0.04f, &hood);
+  H[i].tip = done(0.45f, 0.2f, 2);
+  cv(0.22f, 0.4f);
+  cap(0.11f, 0.05f, 0.11f, 0.34f, 0.08f, 0.065f, &cloth);
+  H[i].arm = done(0.11f, 0.05f, 2.5f);
+  cv(0.22f, 0.38f);
+  cap(0.11f, 0.04f, 0.11f, 0.3f, 0.065f, 0.07f, &cloth);
+  cap(0.11f, 0.26f, 0.11f, 0.3f, 0.075f, 0.075f, &trim);
+  H[i].fore = done(0.11f, 0.04f, 2.5f);
+  cv(0.16f, 0.16f);
+  el(0.08f, 0.08f, 0.06f, 0.055f, 0, &leather);
+  H[i].hand = done(0.08f, 0.08f, 2.5f);
+  if (i) { /* the pole, the lantern and the scarf are the same for both */
+    H[i].staff = H[0].staff, H[i].lantern = H[0].lantern, H[i].scarf = H[0].scarf;
+    H[i].scarf = H[0].scarf;
+    return;
+  }
+  cv(1.7f, 0.26f);
+  pstyle wood = sty(0x7a5434, 0x2a1a10, 0xc8a070, 0.6f, TX_BARK, 0.02f, 0.6f);
+  wood.ink = 1.1f;
+  cap(0.04f, 0.13f, 1.5f, 0.13f, 0.032f, 0.026f, &wood);
+  float hk[8] = { 1.45f, 0.13f, 1.62f, 0.1f, 1.66f, 0.2f, 1.6f, 0.24f };
+  stk(hk, 4, 0.026f, 0.018f, &brass); /* the hook */
+  cap(0.42f, 0.13f, 0.5f, 0.13f, 0.04f, 0.04f, &leather);
+  H[0].staff = done(0.46f, 0.13f, 2.5f);
+  cv(0.36f, 0.52f);
+  pstyle glass = sty(0xffe8a0, 0xffa030, 0xffffff, 0.3f, TX_NONE, 0, 0);
+  glass.em = 1;
+  el(0.18f, 0.3f, 0.1f, 0.13f, 0, &glass);
+  cap(0.08f, 0.16f, 0.28f, 0.16f, 0.03f, 0.03f, &brass);
+  cap(0.08f, 0.44f, 0.28f, 0.44f, 0.035f, 0.035f, &brass);
+  for (int k = 0; k < 3; k++) cap(0.09f + 0.09f * (float)k, 0.16f, 0.09f + 0.09f * (float)k, 0.44f, 0.012f, 0.012f, &brass);
+  pstyle ring = brass;
+  ring.dome = 0.4f;
+  el(0.18f, 0.08f, 0.05f, 0.05f, 0, &ring);
+  el(0.18f, 0.12f, 0.06f, 0.035f, 0, &brass);
+  H[0].lantern = done(0.18f, 0.04f, 2.5f);
+  cv(0.66f, 0.2f);
+  pstyle sc = sty(0xe8c070, 0x7a5020, 0xfff0c0, 0.4f, TX_CLOTH, 0.02f, 0.7f);
+  sc.ink = 1, sc.rim = 0.3f;
+  float sv[8] = { 0.6f, 0.08f, 0.4f, 0.1f, 0.22f, 0.08f, 0.04f, 0.12f };
+  stk(sv, 4, 0.05f, 0.03f, &sc);
+  H[0].scarf = done(0.6f, 0.08f, 2);
+}
+
+static float hero_run[16], hero_swing[16], hero_swing_v[16]; /* (per player; the showcase uses more slots) */
+void creature_hero(const player *p, int i, int region, float t) {
+  if (!p->active) return;
+  const struct hero_parts *h = &H[i % MAXP];
+  i &= 15;
+  bool blink = p->invuln > 0; /* (after a hurt: the hero is drawn faded, steadily; never blinking) */
+  float f = p->facing_left ? -1.0f : 1.0f;
+  float sp = fabsf(p->vx) / RUN;
+  if (p->on_ground) hero_run[i] += fabsf(p->vx) * DT * 1.35f;
+  float ph = hero_run[i];
+  bool air = !p->on_ground && p->state != PS_SWIM;
+  begin(p->x, p->y, f, 0, region, 700u + (uint32_t)i);
+  if (blink) D.alpha = 0.55f;
+  if (blink && getenv("LANTERNFALL_STROBE_CONTROL") && ((p->invuln / 4) & 1)) D.flash = 1; /* (the control: the old blink) */
+  rim_k = 0.6f;
+  float bob = p->on_ground ? fabsf(sinf(ph * 3.1416f)) * 0.07f * sp : 0;
+  float lean = p->state == PS_DASH ? 0.35f : air ? -p->vy * 0.008f : sp * 0.16f;
+  if (p->state == PS_CLING) lean = -0.1f;
+  float hipy = -0.86f - bob;
+  /* the lantern swings on its hook: a damped pendulum pushed by the body's motion */
+  float acc = -p->vx * 0.02f * f + (air ? p->vy * 0.004f : 0);
+  hero_swing_v[i] += (-hero_swing[i] * 0.06f - hero_swing_v[i] * 0.08f + acc * 0.02f);
+  hero_swing[i] += hero_swing_v[i];
+  /* the cape and scarf behind, swept back by speed and lifted by falling */
+  float sweep = 0.25f + sp * 0.55f + (p->state == PS_DASH ? 0.6f : 0) + sinf(t * 7 + ph * 2) * 0.06f, lift = air ? -p->vy * 0.012f : 0;
+  cw_vec2 nk = rot2(0.02f, -0.62f, lean);
+  put(&h->cape, nk.x - 0.05f, hipy + nk.y + 0.02f, sweep * 0.9f + lift, 1, 1 - lift * 0.3f);
+  put(&h->scarf, nk.x - 0.02f, hipy + nk.y + 0.05f, sweep * 0.5f - 0.2f + sinf(t * 9 + ph) * 0.12f, 1 + sp * 0.3f, 1);
+  /* legs: the run cycle, tucked in the air, splayed when clinging */
+  for (int k = 0; k < 2; k++) {
+    float side = k ? 1.0f : -1.0f, a1, a2;
+    if (p->state == PS_CLING) a1 = -(0.5f + side * 0.3f), a2 = 0.4f;
+    else if (p->state == PS_SWIM) a1 = sinf(t * 6 + side * 1.5f) * 0.4f, a2 = -0.3f;
+    else if (air) a1 = -((p->vy < 0 ? 0.6f : 0.2f) + side * 0.25f), a2 = p->vy < 0 ? 1.0f : 0.4f;
+    else {
+      float c = ph * 3.1416f + side * 1.5708f;
+      a1 = -sinf(c) * 0.75f * sp;
+      a2 = 0.15f + fmaxf(0, cosf(c)) * 0.9f * sp;
+    }
+    cw_color c = k ? white(1) : dark(0.62f);
+    putk(&h->thigh, 0.02f * side, hipy, a1, 1, 1, c);
+    cw_vec2 kn = rot2(0, 0.4f, a1);
+    putk(&h->shin, 0.02f * side + kn.x, hipy + kn.y, a1 + a2, 1, 1, c);
+  }
+  /* the arm and the pole; a strike sweeps it through an arc */
+  /* the pole's turn (0 points forward, -1.57 straight up): carried up and forward, the lantern out in front of the
+   * face; a strike sweeps it through the strike's arc (forward: from over the shoulder down through the front; up:
+   * from the front to overhead; down: from the front to below); held straight up while mending */
+  float sa = p->state == PS_CLING ? -1.9f : -0.95f + sinf(ph * 3.1416f) * 0.18f * sp + (air ? p->vy * 0.006f : 0);
+  if (p->atk_t > 0) {
+    float k = 1 - (float)p->atk_t / 14.0f;
+    k = 1 - (1 - k) * (1 - k); /* (fast through, easing at the end) */
+    sa = p->atk_dir == 1 ? -0.4f - k * 2.2f : p->atk_dir == 2 ? -0.6f + k * 2.0f : -2.3f + k * 2.9f;
+  }
+  if (p->mend_t > 0) sa = -1.57f;
+  put(&h->coat, 0, hipy + 0.02f, lean, 1, 1);
+  float hr = lean * 0.5f + (air ? -p->vy * 0.004f : 0);
+  cw_vec2 hd = rot2(0.06f, -0.68f, lean);
+  put(&h->tip, hd.x - 0.08f, hipy + hd.y - 0.05f, -sweep * 0.5f - lift * 0.5f + sinf(t * 6) * 0.08f, 1, 1);
+  put(&h->hood, hd.x, hipy + hd.y, hr, 1, 1);
+  cw_vec2 sh = rot2(0.04f, -0.52f, lean);
+  float sx = sh.x, sy = hipy + sh.y;
+  /* the arm points between the pole and straight down (0 hangs down, negative swings forward), raised when mending */
+  float ua = p->mend_t > 0 ? -2.6f : 0.45f * sa - 0.707f, fa = ua - 0.35f;
+  put(&h->arm, sx, sy, ua, 1, 1);
+  cw_vec2 el = rot2(0, 0.3f, ua);
+  put(&h->fore, sx + el.x, sy + el.y, fa, 1, 1);
+  cw_vec2 hn = rot2(0, 0.28f, fa);
+  float hx = sx + el.x + hn.x, hy = sy + el.y + hn.y;
+  put(&h->staff, hx, hy, sa, 1, 1);
+  cw_vec2 tip = rot2(1.2f, 0, sa);
+  float lx = hx + tip.x, ly = hy + tip.y + 0.02f;
+  putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, 3.0f, white(1), true);
+  put(&h->hand, hx, hy, 0, 1, 1);
+  flush();
+  cw_vec2 lw = W(lx, ly + 0.28f);
+  view_light(lw.x, lw.y, 8, (cw_color){ 1, 0.85f, 0.6f, 1 }, 0.55f, true);
+}
+
 void creatures_init(void) {
   struct timespec a, b;
   clock_gettime(CLOCK_MONOTONIC, &a);
   paint_enemies();
   paint_wardens();
+  for (int i = 0; i < MAXP; i++) paint_hero(i);
   clock_gettime(CLOCK_MONOTONIC, &b);
   if (getenv("LANTERNFALL_BENCH") || getenv("LANTERNFALL_SHOWCASE")) fprintf(stderr, "lanternfall: creatures painted in %.0f ms\n", (double)(b.tv_sec - a.tv_sec) * 1e3 + (double)(b.tv_nsec - a.tv_nsec) * 1e-6);
 }

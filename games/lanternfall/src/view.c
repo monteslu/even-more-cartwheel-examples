@@ -1021,7 +1021,7 @@ static float run_phase[MAXP];
 static void draw_hero(const sim *s, int i, float t) {
   const player *p = &s->p[i];
   if (!p->active) return;
-  bool blink = p->invuln > 0 && ((p->invuln / 4) & 1);
+  bool blink = p->invuln > 0; /* (steady: never blinking) */
   float f = p->facing_left ? -1.0f : 1.0f;
   float x = p->x, y = p->y;
   float sp = fabsf(p->vx) / RUN;
@@ -1097,7 +1097,7 @@ static void draw_enemy(const enemy *e, int region, float t) {
   float tk = tell ? (float)e->t / 30.0f : 0;
   cw_color hot = rgba(1, 0.42f, 0.25f, 1), shell = mixc(rgba(0.55f, 0.2f, 0.45f, 1), hexc(g->accent, 1), 0.2f);
   if (e->flash > 0) shell = mixc(shell, rgba(1, 1, 1, 1), 0.7f);
-  cw_color eye = tell ? mixc(rgba(1, 0.9f, 0.4f, 1), rgba(1, 1, 1, 1), 0.5f + 0.5f * sinf(t * 30)) : rgba(1, 0.85f, 0.35f, 1);
+  cw_color eye = tell ? mixc(rgba(1, 0.9f, 0.4f, 1), rgba(1, 1, 1, 1), 0.5f + 0.2f * sinf(t * 4)) : rgba(1, 0.85f, 0.35f, 1);
   switch (e->kind) {
   case EN_CRAWLER: {
     float rear = tell ? fminf(1, tk * 2) * 0.35f : 0;
@@ -1253,11 +1253,11 @@ static void draw_tells(const sim *s, float t) {
   const boss *b = &s->b;
   if (!b->active || b->state != ES_TELL) return;
   float tk = (float)b->t / (float)boss_tell_ticks(b->move);
-  float pulse = 0.55f + 0.45f * sinf(t * 18);
+  float pulse = 0.8f + 0.2f * sinf(t * 4.5f); /* (a slow swell, under one a second: never a flicker) */
   switch (b->move) {
   case BM_RAIN:
     for (int i = 0; i < b->nmarks; i++) {
-      cw_r2d_rect((cw_rect){ b->marks[i] - 0.45f, b->floor_y - 0.12f, 0.9f, 0.12f }, rgba(1, 0.4f, 0.3f, 0.6f * pulse));
+      cw_r2d_rect((cw_rect){ b->marks[i] - 0.45f, b->floor_y - 0.12f, 0.9f, 0.12f }, rgba(1, 0.62f, 0.3f, 0.6f * pulse));
       glow(b->marks[i], b->ay0 + 0.8f, 0.9f, rgba(1, 0.6f, 0.4f, 0.7f * tk));
     }
     break;
@@ -1445,7 +1445,7 @@ static int showcase_mode(void) {
   static int m = -1;
   if (m < 0) {
     const char *e = getenv("LANTERNFALL_SHOWCASE");
-    m = !e ? 0 : e[0] == 'b' ? 2 : 1;
+    m = !e ? 0 : e[0] == 'b' ? 2 : e[0] == 'h' ? 3 : 1;
   }
   return m;
 }
@@ -1453,11 +1453,29 @@ static float showcase_zoom(void) {
   const char *e = getenv("LANTERNFALL_SHOWCASE_ZOOM");
   return e ? (float)atof(e) : 1;
 }
+/* LANTERNFALL_SHOWCASE_EMPTY: the same frame with no creature in it (the creature check's background) */
+static bool showcase_empty(void) { return getenv("LANTERNFALL_SHOWCASE_EMPTY") != NULL; }
 static void draw_showcase(int region, float t) {
   int mode = showcase_mode(), r0 = 0, r1 = 3;
   const char *rows = getenv("LANTERNFALL_SHOWCASE_ROWS");
   if (rows) sscanf(rows, "%d,%d", &r0, &r1);
   int tick = (int)(t * 60);
+  if (mode == 3) { /* the heroes: standing, running, rising, a strike, mending; player 1 above, player 2 below */
+    for (int i = 0; i < MAXP; i++)
+      for (int k = 0; k < 5; k++) {
+        player p = { .active = 1, .on_ground = 1, .state = PS_NORMAL, .facing_left = (uint8_t)(k == 4) };
+        p.x = g_cam.position.x + ((float)k - 2) * 3.0f, p.y = g_cam.position.y + (float)i * 3.2f;
+        if (k == 1) p.vx = RUN;
+        if (k == 2) p.on_ground = 0, p.vy = -12;
+        if (k == 3) p.atk_t = (int16_t)(4 + tick % 10), p.atk_dir = 0;
+        if (k == 4) p.mend_t = 30;
+        if (k == 0) p.invuln = (int16_t)(60 - tick % 59); /* (just hurt: drawn faded) */
+        if (k == 0) light(p.x - 1.2f, g_cam.position.y, 9, rgba(1, 0.85f, 0.6f, 1), 0.2f, true);
+        if (flat_creatures() || showcase_empty()) continue;
+        creature_hero(&p, k * 2 + i, region, t); /* (slot k * 2 + i: player i's colours, its own pendulum) */
+      }
+    return;
+  }
   if (mode == 1) {
     float sx = 3.0f, sy = 2.5f;
     int nr = r1 - r0 + 1;
@@ -1470,10 +1488,10 @@ static void draw_showcase(int region, float t) {
         if (k == EN_FLYER) e.y -= 0.5f;
         e.state = r == 1 ? ES_TELL : r == 2 ? ES_ACT : ES_IDLE;
         e.t = (int16_t)(r == 1 ? 10 + tick % 20 : tick % 40);
-        if (r == 3) e.flash = 8, e.state = ES_REST;
+        if (r == 3) e.flash = (int16_t)(tick % 10 < 8 ? 8 - tick % 10 : 0), e.state = ES_REST; /* (struck every 10 ticks: faster than one player can) */
         e.hx = e.x, e.hy = e.y, e.vx = e.x + 2, e.vy = e.y;
         if (r == r0) light(e.x - 1.2f, g_cam.position.y, 9, rgba(1, 0.85f, 0.6f, 1), 0.3f, true); /* (one lantern per column) */
-        enemy_art(&e, region, t);
+        if (!showcase_empty()) enemy_art(&e, region, t);
         VS.enemies++;
       }
   } else {
@@ -1492,9 +1510,9 @@ static void draw_showcase(int region, float t) {
       b.move = (uint8_t)(mv >= 0 ? mv : FIRST[i]);
       b.state = (uint8_t)(st == 1 ? ES_TELL : st == 2 ? ES_ACT : ES_REST);
       b.t = (int16_t)(st == 1 ? boss_tell_ticks(b.move) * 2 / 3 : tick % 30);
-      if (st == 3) b.flash = 6;
+      if (st == 3) b.flash = (int16_t)(tick % 10 < 6 ? 6 - tick % 10 : 0);
       light(b.x - 3.5f, b.y - 2.5f, 10, rgba(1, 0.85f, 0.6f, 1), 0.3f, true);
-      boss_art(&b, region, t);
+      if (!showcase_empty()) boss_art(&b, region, t);
     }
   }
 }
@@ -1588,7 +1606,8 @@ void view_draw(const sim *s, float t) {
       const ent *a = s->pw.anchors[p->anchor];
       limb(v2(p->x, p->y - 1.1f), v2(a->x, a->y), 0.04f, 0.04f, rgba(1, 0.9f, 0.6f, 1));
     }
-    draw_hero(s, i, t);
+    if (flat_creatures()) draw_hero(s, i, t);
+    else creature_hero(&s->p[i], i, region, t);
   }
   /* effects: additive glows and particles over the lit scene */
   cw_r2d_use_layer(L_FX);
@@ -1662,11 +1681,8 @@ void view_draw(const sim *s, float t) {
   cw_r2d_use_layer(L_FRAME);
   draw_framing(s, t);
 #endif
-  /* a warden's tell or a pickup: a brief wash of colour */
-  if (flash_t > 0) {
-    cw_r2d_use_layer(L_HUD);
-    cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(flash_c.r, flash_c.g, flash_c.b, flash_c.a * flash_t));
-  }
+  /* (no washes of colour over the whole screen: nothing in the game flashes; a tell or a pickup shows where it is) */
+  (void)flash_c;
   double te0 = now_ms();
   cw_r2d_end();
   VS.end_ms = (float)(now_ms() - te0), VS.submit_ms = (float)(te0 - tv0);
