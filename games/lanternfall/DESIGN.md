@@ -22,9 +22,29 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
   | tide charm | a flooded passage from floor to ceiling (without the charm the cold pushes you back out) |
   | grapple line | a 24-tile chasm under a beam of anchors |
   | the seal | the heart's doors, open once five wardens have fallen |
-- **Set pieces** per region: the warden's arena with its prize behind a sealed far door, item rooms, save shrines,
-  side branches behind a later ability's gate (the upgrades that reward backtracking), and hidden walls (a strike
-  breaks them) with relics behind.
+- **Set pieces** per region: the warden's arena with its prize behind a sealed far door, item rooms, save shrines
+  (thirteen in all), side branches behind a later ability's gate (the upgrades that reward backtracking), and hidden
+  walls (a strike breaks them) with relics behind.
+- **Hand-shaped rooms** (`src/pieces.h`, drawn as text and mirrored to face their door) are laid into every region,
+  each for a purpose:
+  | purpose | rooms |
+  |---|---|
+  | a view | the region's landmark (a beacon on a plinth, marked on the map) with its map stone by the door, on a way through |
+  | a reward in plain sight | a shelf six tiles up (the second jump), past an eleven-tile thorn pit under a low roof (the dash), on a sheer pillar (wall climbing), in a vault under a cracked lid (the plunge), behind a wall of deep water (the tide charm), on an island high over thorns under anchors (the grapple line) |
+  | a challenge | a wall, then a thorn pit under a low roof (second jump and dash together); a spire to climb, then a leap over thorns |
+  | a threat | an ambush: walkers on the floor, spitters on ledges, a moth, the reward past them |
+  The rewards in plain sight sit in the regions found early, so each one is seen long before the ability that reaches
+  it, and every return trip has something waiting.
+- **Shortcuts**: gate rooms inside the early regions, so each ability cuts a corner through ground already walked (the
+  grapple line has one in each of five regions).
+- **Hidden alcoves**: about a room in four has one: a face of hidden rock against a wall with no door, or a low mound
+  out in the room, with a tablet of the old city's story inside (forty-eight lines, `LORE` in `src/regions.c`); some
+  mounds are stone boxes with a cracked lid and the tablet in sight inside, for the plunge on the way back.
+- **Warden arenas** have a flat floor (the wardens move along it) and one-way ledges laid out for each warden: low
+  ones a single jump reaches for the Moss Warden, two tiers for the Brass Sentinel, high ground over the Tide
+  Serpent's dives, anchors under the Sky Warden's roof, a climb of ledges round the Heart of Thorns.
+- **No blind drops**: a thorn pit never lies at the foot of a tall room (a fall from its top would meet it out of view),
+  no trapdoor leads down into a gate of thorns, and a step by a wall runs into it (no slot left beside it).
 - A **spine** of cells joins every doorway a region needs, branches grow off it, and the cells are cut into rooms of
   one to three cells, joined by doors in a spanning tree plus a few loops.
 - Each room is **carved**: walls, door openings, ledges under doors above the floor, ladders of one-way ledges up to
@@ -40,8 +60,12 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
   halls in Glasswater and the Tidal Halls are flooded: wading pools from wall to wall.
 
 The abilities come in this order: the spark (ranged, at the start), the second jump (behind the Moss Warden), the dash
-(behind the Glass Mantis), wall climbing, the plunge (behind the Brass Sentinel), the tide charm (behind the Tide
-Serpent), the grapple line. The Sky Warden is the fifth beacon; the Heart of Thorns is the end.
+(behind the Glass Mantis), the grapple line (in Mirelight Fen), wall climbing (behind the Brass Sentinel), the plunge
+(in the Ember Forge), the tide charm (behind the Tide Serpent). The Sky Warden is the fifth beacon; the Heart of
+Thorns is the end.
+
+The finds: health (heart leaves), energy (lantern oil), relics (each of the first eleven a charm), a map stone in each
+region's view room (its rooms show on the map before you see them) and the tablets of the story.
 
 ## The proof
 
@@ -54,12 +78,21 @@ land on the same tile. It proves, stage by stage from the start with no abilitie
 - every place reached at a stage can get back to the start at that stage (no soft lock);
 - every pickup and every warden is reached;
 - every gate room's far half cannot be reached with only the abilities that come before its own, and can with it;
-- every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says (nothing floats).
+- every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says (nothing floats);
+- see before reach: every ability reaches two or more rewards that were on screen at an earlier stage (the camera's
+  own rule: 32 x 18 tiles round the player inside the room's walls; a reward inside hidden rock is not seen);
+- shortcuts: every ability opens a gate whose two sides were both reached before it;
+- set pieces: every region has a hand-shaped room, and the walk reaches it;
+- blind drops: no move falls into thorns below where it left the ground that were on screen neither as it left nor
+  at the top of its flight (any tile of the thorns' run along their row on screen counts).
 
 It writes the bot's route (`assets/route.bin`): the moves from the start through every pickup, shrine and warden,
-the Heart of Thorns last of all.
-`tests/lanternfall-world.mjs` checks both shipped files are current, and runs five broken worlds that must each fail
-for their own reason.
+the Heart of Thorns last of all. The route keeps out of the Heartwood until five wardens have fallen, and goes on with
+the next stage's moves once it takes a new way to move.
+`tests/lanternfall-world.mjs` checks both shipped files are current, and runs nine broken worlds that must each fail
+for their own reason: the grapple gates' anchors taken out, two prizes swapped, a pit dug by the start, a lamp lifted
+off its ceiling, a wall gate lowered, the set pieces' rewards taken out, thorns beside the landing under trapdoors, a
+region's set pieces forgotten, the gates inside a region walled up.
 
 ## Movement
 
@@ -124,9 +157,12 @@ warden's stagger and second phase, the first charm, the flame.
 ## Saves, travel, the map
 
 Up beside a shrine rests there: full health, a save, and the shrine's waystone lit; the shrine's menu travels to any
-lit shrine. The save keeps abilities, finds, the walls and floors broken, the wardens fallen, the rooms seen. Back
-opens the map: every room seen, its doors, the finds in it (a dot until taken, a ring after), the shrines, the
-wardens, you.
+lit shrine. The save keeps abilities, finds, the walls and floors broken, the wardens fallen, the rooms seen, the finds
+seen, the map stones and tablets. Back opens the map, which fills in as you go: every room seen (and, faint, the rooms
+of a region whose map stone you hold), its doors, a ring across each gate, each region's landmark and name, the
+shrines, the wardens, you, and the finds you have seen: a dot in a pulsing ring while not yet reached (a reward seen
+across a gap waits there for the ability that reaches it), a faint ring once taken. Finds never seen stay off the map.
+Its foot counts rooms, finds, finds seen but not yet reached, tablets and beacons.
 
 ## Two players
 
