@@ -399,7 +399,8 @@ static void break_world(int n) {
 static bool grounded(const ent *e) {
   int x = (int)floorf(e->x), y = (int)roundf(e->y);
   if (e->kind == EK_ANCHOR) return t_solid(w_tile(&W, x, (int)floorf(e->y) - 1)) || t_solid(w_tile(&W, x, (int)floorf(e->y) - 2));
-  if (e->kind == EK_ENEMY && e->sub == EN_FLYER) return true;
+  if (e->kind == EK_ENEMY && (e->sub == EN_FLYER || e->sub == EN_PUFF)) return true; /* (they fly) */
+  if (e->kind == EK_ENEMY && e->sub == EN_DROPPER) return t_solid(w_tile(&W, x, (int)floorf(e->y) - 2)) && !t_solid(w_tile(&W, x, (int)floorf(e->y) - 1)); /* (its thread from the ceiling) */
   if (e->kind == EK_START) return t_solid(w_tile(&W, x, y));
   if (e->hold & HOLD_FLOOR) return t_solid(w_tile(&W, x, y)) && !t_solid(w_tile(&W, x, y - 1));
   if (e->hold & HOLD_CEIL) return t_solid(w_tile(&W, x, y - 1)) && !t_solid(w_tile(&W, x, y));

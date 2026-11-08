@@ -74,22 +74,52 @@ Measured by `tools/feel.c` (`tests/lanternfall-feel.mjs`), each with a control t
 | run jump | 7.1 tiles; with the second jump 10.8 |
 | dash | 4.8 tiles in 10 ticks, once per airtime |
 | ceiling corners | a head that clips a corner is carried round it |
+| dash off a wall | 4.8 tiles straight off a wall you cling to (climbing and the dash chain) |
+| sprint (a charm) | a dash held on into the run keeps going at 1.45x; a jump keeps the speed |
 
-Wall climbing clings when you hold toward a wall in the air, climbs on up and down, and goes over the top. The plunge
+Wall climbing clings when you hold toward a wall in the air, climbs on up and down, goes over the top, and the dash
+throws you straight off it. The plunge
 is down + dash in the air. In deep water the tide charm swims; without it the cold sends you back to the last firm
 ground. The grapple line catches the nearest anchor overhead, swings, reels on up and down, and lets go with a jump.
 
 ## Combat
 
-A strike (west) in front, up or down (in the air; a downward strike bounces off what it hits, thorns too), and cuts
-small thrown things out of the air. The spark (north) costs energy; strikes refill it and it creeps back on its own.
+A strike (west) in front, up or down (in the air; a downward strike bounces off what it hits, thorns too, and gives the
+dash back), and cuts small thrown things out of the air. A blow that lands holds the whole world still a moment (4
+ticks, 6 for a kill, 7 for a blow taken: both sides feel it), throws the enemy back about a tile (further for a kill,
+less for a knight, never off its ledge) and pushes you back a little; presses made during the hold are kept. Each blow,
+kill, hurt and plunge rumbles the pad; the camera never shakes. The spark (north) costs energy; strikes refill it and it creeps back on its own.
 Down + spark on the ground mends a leaf of health for two energy. Enemies show their tells: the crawler rears up
 before it charges, the spitter swells, the moth's wings flare before it swoops, the hopper crouches, the knight raises
-its spear (and turns strikes from the front with its shield). A strike breaks off an attack in progress.
+its spear (and turns strikes from the front with its shield). A strike breaks off an attack in progress. Four more,
+one idea each: the puff drifts, soft (a touch bumps you, landing on it bounces you), then every puff swells and
+bristles with thorns on one shared breath; only a strike from above hurts it. The dropper hangs from a ceiling,
+shivers when you pass under, falls and bursts, then lies stunned. The burrower is a ripple of dust under the floor that
+follows you, stops, and bursts up where it stopped; then it is out and open to blows. The eye charges while a line
+shows the row it will burn, then burns it.
+
+Each region has its own cast of four kinds (worldgen.c `CAST`). Creatures struck down stay down until you rest at a
+shrine or fall. An item room that holds an upgrade (not a warden's prize) is a **trial**: its doors lock once you are
+inside, two waves of the region's guardians come for you, and the find is yours once they fall.
+
+**Charms.** Each relic found gives the next charm, in this order: the long wick (the strike reaches further), the
+cutting dash (the dash hurts what it passes and nothing touches you in it), the runner's stride (a held dash runs on
+as a sprint), ember harvest (kills fill energy), swift mend, updraft (a higher bounce), thorn ward (a blow taken bursts
+out), quick hand, twin spark, quake (the plunge's shock reaches twice as far), second wind (once a rest, a killing blow
+leaves a leaf). Relics past the eleventh give a leaf or a measure.
+
+**A fall** leaves your lantern's flame at your last firm ground, holding a measure of your energy: go back and touch it
+to take the measure back (a second fall moves it).
 
 Wardens use a shared set of moves, each with a tell long enough to read (never under 26 ticks): a charge, a leap that
 sends ground waves, a volley (the Moss Warden lobs spores at glowing marks), rain from marked spots, a sweep along the
 floor (jump it) or at head height (stay down), a dive at a marked point, summoned helpers, eruptions at marked spots.
+At half health a warden staggers (open to blows for a moment, its shots cleared), then fights its second phase: one
+more move in its rotation and every third move chained straight into the next.
+
+`tools/rules.c` (`tests/lanternfall-rules.mjs`) measures these rules on a small test world, each with a control that
+turns the rule off and must fail: the hold, knockback, recoil, the puff, creatures staying down, the trial, the
+warden's stagger and second phase, the first charm, the flame.
 
 ## Saves, travel, the map
 

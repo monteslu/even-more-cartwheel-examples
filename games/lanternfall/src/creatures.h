@@ -8,6 +8,7 @@
 #include "cartwheel/render2d.h"
 #include "sim.h"
 
+#define EN_KINDS_PAINTED EN_KINDS /* (the kinds painted; a kind added after them keeps its placeholder shapes until it is) */
 void creatures_init(void);
 /* into the current (lit) layer */
 void creature_enemy(const enemy *e, int region, float t);

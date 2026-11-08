@@ -6,7 +6,8 @@
  * Measured: the height of a held jump and of a tapped one (variable height), the run's jump distance, the second
  * jump's height, the dash's reach, the coyote window (a jump pressed n ticks after running off a ledge still
  * jumps), the jump buffer (a jump pressed n ticks before landing jumps on landing), the turn-round time, the climb
- * speed. Output: one "name value" line each, then "feel ok" or "feel FAIL". */
+ * speed, a dash off a wall (climbing and the dash chain), the sprint a held dash runs into with its charm (and the
+ * plain run without it). Output: one "name value" line each, then "feel ok" or "feel FAIL". */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,7 +15,7 @@
 
 #include "../src/sim.h"
 
-extern int g_coyote, g_jbuf;
+extern int g_coyote, g_jbuf, g_wall_dash, g_sprint;
 extern float g_grav_cut;
 
 static uint8_t T[TH][TW];
@@ -127,6 +128,43 @@ static float dash_reach(bool air) {
   return p.x - x0;
 }
 
+/* jump at a tall wall, cling to it, then dash off it: how far the dash carries back from the wall */
+static float wall_dash(void) {
+  flat();
+  for (int y = FLOOR - 30; y < FLOOR; y++) T[y][104] = T_SOLID;
+  player p = spawn(101.5f, AB_DJUMP | AB_DASH | AB_CLIMB);
+  pinput in = { 0 };
+  bool clung = false;
+  for (int t = 0; t < 60 && !clung; t++) {
+    memset(&in, 0, sizeof in);
+    in.mx = 1, in.jump = t == 0, in.jump_held = true;
+    player_step(&p, &in, &PWD);
+    clung = p.state == PS_CLING;
+  }
+  if (!clung) return -1;
+  float x0 = p.x;
+  memset(&in, 0, sizeof in);
+  in.dash = true;
+  player_step(&p, &in, &PWD);
+  for (int t = 0; t < DASH_T + 1; t++) memset(&in, 0, sizeof in), player_step(&p, &in, &PWD);
+  return x0 - p.x;
+}
+
+/* with the sprint charm: dash along the ground holding the dash and the direction; the speed a second later */
+static float sprint_speed(bool charm) {
+  flat();
+  player p = spawn(100.5f, AB_DASH);
+  PWD.charms = charm ? CHARM_BIT(CH_SPRINT) : 0;
+  pinput in = { 0 };
+  for (int t = 0; t < 70; t++) {
+    memset(&in, 0, sizeof in);
+    in.mx = 1, in.dash = t == 0, in.dash_held = true;
+    player_step(&p, &in, &PWD);
+  }
+  PWD.charms = 0;
+  return p.vx;
+}
+
 static int turn_ticks(void) {
   flat();
   player p = spawn(100.5f, 0);
@@ -154,6 +192,8 @@ int main(int argc, char **argv) {
       if (!strcmp(c, "coyote")) g_coyote = 0;
       else if (!strcmp(c, "buffer")) g_jbuf = 0;
       else if (!strcmp(c, "cut")) g_grav_cut = GRAV_UP; /* letting go no longer cuts the jump */
+      else if (!strcmp(c, "walldash")) g_wall_dash = 0;     /* no dash off a wall */
+      else if (!strcmp(c, "sprint")) g_sprint = 0;          /* the charm's sprint never starts */
     }
   float d_full, d_tap, d_dj, d_still;
   float h_full = jump(0, 60, 0, 0, &d_still);
@@ -181,6 +221,9 @@ int main(int argc, char **argv) {
   check("coyote_ticks", (float)(coyote + 1), 5, 7);
   check("buffer_ticks", (float)buffer, 6, 9);
   check("turn_ticks", (float)turn_ticks(), 6, 14);
+  check("wall_dash", wall_dash(), 3.5f, 6.0f);
+  check("sprint_speed", sprint_speed(true), RUN * 1.35f, RUN * 1.5f);
+  check("run_speed_no_charm", sprint_speed(false), RUN * 0.95f, RUN * 1.05f);
   printf("feel %s\n", bad ? "FAIL" : "ok");
   return bad ? 1 : 0;
 }

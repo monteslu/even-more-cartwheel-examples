@@ -103,7 +103,32 @@ static void glowing(float k) {
 #endif
 }
 /* the frame out: a rim of light behind every part (shifted up: light from above), then the parts in order */
+/* LANTERNFALL_SHOWCASE_MASK (the creature check): every part a flat magenta silhouette, no rim, halo, light or mote, so
+ * the check knows which pixels are the creature's own */
+static bool mask_mode(void) {
+  static int m = -1;
+  if (m < 0) m = getenv("LANTERNFALL_SHOWCASE_MASK") != NULL;
+  return m;
+}
 static void flush(void) {
+  if (mask_mode()) {
+    glowing(1);
+#ifdef LANTERNFALL_R2D_V2
+    cw_r2d_set_emissive(1);
+    cw_r2d_set_flash(1);
+#endif
+    for (int i = 0; i < nq; i++) {
+      cw_sprite s = Q[i].s;
+      s.color = (cw_color){ 1, 0, 1, s.color.a > 0.5f ? 1 : s.color.a };
+      cw_r2d_sprite(&s);
+    }
+#ifdef LANTERNFALL_R2D_V2
+    cw_r2d_set_emissive(0);
+    cw_r2d_set_flash(0);
+#endif
+    nq = 0;
+    return;
+  }
   if (D.alpha > 0.05f && rim_k > 0) {
     glowing(1.25f);
 #ifdef LANTERNFALL_R2D_V2
@@ -141,8 +166,8 @@ static void flush(void) {
   nq = 0;
 }
 
-/* The hurt flash, never a strobe: each creature's tint swells toward warm white quickly (0.06 s) and fades slowly
- * (0.35 s), so hits closer together than that hold a steady tint instead of pulsing; it never passes 0.4 of the way
+/* The hurt flash, never a strobe: each creature's tint swells toward warm white quickly (0.1 s) and fades slowly
+ * (0.7 s), so hits closer together than that hold a steady tint instead of pulsing; it never passes 0.4 of the way
  * (a tint, not a white silhouette), and a creature is small on screen. Keyed by the creature's address (the sim's
  * arrays do not move). */
 static struct { const void *k; float lvl, t; } HURT[96];
@@ -162,9 +187,16 @@ static float hurt_level(const void *key, bool hit, float t) {
   float dt = t - HURT[i].t;
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
   HURT[i].t = t;
-  if (hit) HURT[i].lvl += (0.4f - HURT[i].lvl) * fminf(1, dt / 0.06f);
-  else HURT[i].lvl = fmaxf(0, HURT[i].lvl - dt * 0.4f / 0.35f);
+  if (hit) HURT[i].lvl += (0.4f - HURT[i].lvl) * fminf(1, dt / 0.1f);
+  else HURT[i].lvl = fmaxf(0, HURT[i].lvl - dt * 0.4f / 0.7f);
   return HURT[i].lvl;
+}
+
+static void cr_light(float x, float y, float r, cw_color c, float e, bool sh) {
+  if (!mask_mode()) view_light(x, y, r, c, e, sh);
+}
+static void cr_emit(float x, float y, float vx, float vy, float life, float size, cw_color c, bool add, float grav) {
+  if (!mask_mode()) view_emit(x, y, vx, vy, life, size, c, add, grav);
 }
 
 /* halos for the additive layer (creatures_fx) */
@@ -172,7 +204,7 @@ typedef struct halo { float x, y, r; cw_color c; } halo;
 static halo HL[96];
 static int nhl;
 static void halo_at(float lx, float ly, float r, cw_color c) {
-  if (nhl < 96 && c.a > 0.01f && D.die <= 0) {
+  if (nhl < 96 && c.a > 0.01f && D.die <= 0 && !mask_mode()) {
     cw_vec2 w = W(lx, ly);
     HL[nhl++] = (halo){ w.x, w.y, r, c };
   }
@@ -198,6 +230,10 @@ static struct {
   part fwing, hwing, spot, thorax, abdo, mhead, mant, mleg;             /* moth */
   part tbody, teye, throat, thigh, shin, tfoot, arm;                    /* hopper */
   part kthigh, kshin, tabard, torso, helm, plume, cloak, shield, karm, spear, pennant, pauldron; /* knight */
+  part puff, pcore, pspike, peye;                                       /* thistle puff */
+  part drip, dcap;                                                      /* drip bulb */
+  part mound, whead, wjaw;                                              /* burrower */
+  part stalk, eball, elid, ebase;                                       /* lantern eye */
   part growth[NMAT];                                                    /* what grows on a back, by region */
 } E;
 
@@ -420,7 +456,7 @@ static void paint_enemies(void) {
     el(0.14f, 0.12f, 0.02f, 0.016f, 0, &sh);
     E.teye = done(0.16f, 0.17f, 3);
     cv(0.5f, 0.4f);
-    pstyle th = sty(0xff7040, 0xb02810, 0xffd0a0, 0.6f, TX_VEINS, 0.04f, 0.6f);
+    pstyle th = sty(0xff7040, 0xb02810, 0xffd0a0, 0.6f, TX_VEINS, 0.02f, 1.0f);
     th.em = 0.6f, th.ink = 1.2f, th.spec = 0.6f, th.gloss = 0.7f;
     el(0.25f, 0.2f, 0.2f, 0.15f, 0, &th);
     E.throat = done(0.25f, 0.06f, 3);
@@ -550,6 +586,137 @@ static void paint_enemies(void) {
     stk(pt, 3, 0.016f, 0.016f, &gold);
     E.pauldron = done(0.25f, 0.16f, 3);
   }
+  /* ── thistle puff: a ball of pale down round a dark seed core, thorns hidden in it ── */
+  {
+    cv(1.3f, 1.3f);
+    pstyle down = sty(0xe2d2f2, 0x7a6aa0, 0xfff8ff, 0.7f, TX_FUR, 0.014f, 1.0f);
+    down.soft = 6, down.rim = 0.5f, down.tex_dir = 0.8f;
+    el(0.65f, 0.65f, 0.55f, 0.55f, 0, &down);
+    pstyle tuft = down;
+    tuft.alpha = 0.8f, tuft.soft = 4;
+    static const uint32_t TUFT[3] = { 0xc8b0f0, 0xf4e0b0, 0xf0b0cc }; /* (lilac, cream, rose: the down is not one white) */
+    for (int i = 0; i < 14; i++) { /* tufts round the edge: a ragged, soft outline */
+      float a = (float)i / 14 * 6.2832f;
+      tuft.base = pc_hex(TUFT[i % 3]), tuft.seed = 90 + (uint32_t)i;
+      lf(0.65f + cosf(a) * 0.38f, 0.65f + sinf(a) * 0.38f, 0.65f + cosf(a) * 0.62f, 0.65f + sinf(a) * 0.62f, 0.06f, 0.02f, &tuft);
+    }
+    E.puff = done(0.65f, 0.65f, 1.5f);
+    cv(0.8f, 0.8f);
+    pstyle core = sty(0x5a3a5a, 0x1a0a1c, 0xa070a0, 0.9f, TX_CHITIN, 0.03f, 0.7f);
+    core.ink = 1.5f, core.spec = 0.4f;
+    el(0.4f, 0.4f, 0.3f, 0.3f, 0, &core);
+    E.pcore = done(0.4f, 0.4f, 3);
+    cv(0.55f, 0.16f);
+    pstyle th = sty(0xd85a50, 0x5a1420, 0xffb0a0, 0.6f, TX_CHITIN, 0.02f, 0.4f);
+    th.ink = 1.2f, th.spec = 0.6f, th.gloss = 0.6f;
+    lf(0.02f, 0.08f, 0.53f, 0.08f, 0.055f, 0, &th);
+    E.pspike = done(0.02f, 0.08f, 3);
+    cv(0.16f, 0.16f);
+    pstyle ey = sty(0x2a1830, 0x0a0410, 0x8a70a0, 0.8f, TX_NONE, 0, 0);
+    ey.spec = 1, ey.gloss = 0.9f, ey.ink = 1;
+    el(0.08f, 0.08f, 0.06f, 0.07f, 0, &ey);
+    pstyle gl = sty(0xffffff, 0, 0, 0.5f, TX_NONE, 0, 0);
+    gl.em = 0.8f;
+    el(0.065f, 0.06f, 0.018f, 0.018f, 0, &gl);
+    E.peye = done(0.08f, 0.08f, 3);
+  }
+  /* ── drip bulb: a glassy sac of glowing sap on a silk thread, a ring of little legs at its top ── */
+  {
+    cv(1.0f, 1.1f);
+    pstyle sac = sty(0x6a9a3a, 0x1e3a10, 0xd8ff90, 0.9f, TX_VEINS, 0.025f, 1.0f);
+    sac.ink = 1.6f, sac.spec = 0.8f, sac.gloss = 0.8f, sac.rim = 0.4f;
+    float bp[12] = { 0.5f, 0.12f, 0.78f, 0.35f, 0.88f, 0.7f, 0.5f, 1.02f, 0.12f, 0.7f, 0.22f, 0.35f };
+    poly(bp, 6, 0.2f, &sac);
+    pstyle sap = sty(0xe8ff70, 0x90c020, 0xffffd0, 0.3f, TX_VEINS, 0.05f, 0.5f);
+    sap.em = 0.9f, sap.alpha = 0.8f, sap.soft = 8;
+    el(0.5f, 0.72f, 0.26f, 0.2f, 0, &sap);
+    pstyle spot = sty(0x2a4a14, 0x0a1a04, 0x5a8a30, 0.2f, TX_SKIN, 0.02f, 0.8f);
+    spot.alpha = 0.75f, spot.soft = 2;
+    for (int i = 0; i < 18; i++) el(0.25f + hsh(i, 62) * 0.5f, 0.25f + hsh(i, 63) * 0.4f, 0.025f + hsh(i, 64) * 0.03f, 0.02f + hsh(i, 65) * 0.025f, 0, &spot);
+    pstyle streak = sty(0xf0ffe0, 0, 0, 0.2f, TX_NONE, 0, 0);
+    streak.alpha = 0.6f, streak.spec = 1;
+    float sk[6] = { 0.32f, 0.3f, 0.26f, 0.5f, 0.3f, 0.68f };
+    stk(sk, 3, 0.02f, 0.01f, &streak);
+    pstyle bub = sty(0xffffff, 0, 0, 0.4f, TX_NONE, 0, 0);
+    bub.em = 0.5f, bub.alpha = 0.7f;
+    for (int i = 0; i < 4; i++) el(0.38f + 0.08f * (float)i, 0.62f + hsh(i, 61) * 0.15f, 0.025f, 0.025f, 0, &bub);
+    E.drip = done(0.5f, 0.12f, 3);
+    cv(0.8f, 0.4f);
+    pstyle cap = sty(0x3a2a20, 0x10080a, 0x8a6a50, 0.8f, TX_CHITIN, 0.02f, 0.5f);
+    cap.ink = 1.2f, cap.spec = 0.4f;
+    el(0.4f, 0.14f, 0.2f, 0.1f, 0, &cap);
+    for (int i = 0; i < 6; i++) {
+      float a = 0.35f + (float)i * 0.48f, lp[6] = { 0.4f, 0.14f, 0.4f + cosf(a) * 0.22f, 0.12f + sinf(a) * 0.1f, 0.4f + cosf(a) * 0.36f, 0.28f + sinf(a) * 0.08f };
+      stk(lp, 3, 0.02f, 0.008f, &cap);
+    }
+    E.dcap = done(0.4f, 0.1f, 3);
+  }
+  /* ── burrower: clods of earth heaving over it; out, a stone-plated head of jaws ── */
+  {
+    cv(1.6f, 0.6f);
+    pstyle clod = sty(0x6a5038, 0x2a1c10, 0xb09070, 0.7f, TX_STONE, 0.03f, 0.8f);
+    clod.ink = 1.2f, clod.shadow = 0.4f;
+    for (int i = 0; i < 9; i++) el(0.2f + 0.15f * (float)i, 0.42f - sinf((float)i / 8 * 3.14f) * 0.18f, 0.1f + hsh(i, 71) * 0.06f, 0.07f + hsh(i, 72) * 0.04f, hsh(i, 73), &clod);
+    static const uint32_t PEB[6] = { 0x8a8a84, 0xb08a50, 0x5a4a3a, 0xc8b8a0, 0x9a5a3a, 0x6a7a4a };
+    for (int i = 0; i < 22; i++) {
+      pstyle pb = sty(PEB[i % 6], 0, 0, 0.8f, TX_STONE, 0.015f, 0.6f);
+      pb.ink = 1, pb.seed = 120 + (uint32_t)i;
+      el(0.15f + hsh(i, 74) * 1.3f, 0.45f - hsh(i, 75) * 0.25f, 0.03f + hsh(i, 76) * 0.03f, 0.025f + hsh(i, 77) * 0.02f, 0, &pb);
+    }
+    E.mound = done(0.8f, 0.55f, 3);
+    cv(1.5f, 1.3f);
+    pstyle plate = sty(0x7a7068, 0x2a2420, 0xd0c8b8, 0.9f, TX_STONE, 0.05f, 0.8f);
+    plate.ink = 2, plate.rim = 0.45f, plate.shadow = 0.5f, plate.shadow_r = 10;
+    pstyle flesh = sty(0x8a3a40, 0x3a1018, 0xd88080, 0.6f, TX_SKIN, 0.03f, 0.5f);
+    flesh.ink = 1.4f;
+    el(0.75f, 0.85f, 0.55f, 0.45f, 0, &flesh);
+    for (int i = 0; i < 4; i++) {
+      float a = 3.4f + (float)i * 0.75f, cx = 0.75f + cosf(a) * 0.38f, cy = 0.9f + sinf(a) * 0.42f;
+      el(cx, cy, 0.26f, 0.2f, a + 1.57f, &plate);
+    }
+    pstyle eye = sty(0xffb040, 0xc05010, 0xffffc0, 0.8f, TX_NONE, 0, 0);
+    eye.em = 1, eye.spec = 1;
+    el(1.05f, 0.62f, 0.05f, 0.04f, 0, &eye);
+    el(0.92f, 0.56f, 0.04f, 0.035f, 0, &eye);
+    E.whead = done(0.75f, 1.25f, 3);
+    cv(0.8f, 0.3f);
+    pstyle tooth = sty(0xf0e8d8, 0x8a7a68, 0xffffff, 0.6f, TX_NONE, 0, 0);
+    tooth.ink = 1, tooth.spec = 0.5f;
+    for (int i = 0; i < 5; i++) lf(0.1f + 0.15f * (float)i, 0.26f, 0.12f + 0.15f * (float)i, 0.02f, 0.04f, 0, &tooth);
+    E.wjaw = done(0.4f, 0.26f, 3);
+  }
+  /* ── lantern eye: a great glassy eye on a fleshy stalk, lids of bark, a ring of leaves at its foot ── */
+  {
+    cv(0.4f, 1.1f);
+    pstyle st = sty(0x6a4a3a, 0x24140c, 0xb08870, 0.7f, TX_BARK, 0.03f, 0.6f);
+    st.ink = 1.3f, st.rim = 0.35f;
+    float sp[8] = { 0.2f, 1.05f, 0.16f, 0.7f, 0.24f, 0.35f, 0.2f, 0.05f };
+    stk(sp, 4, 0.11f, 0.07f, &st);
+    E.stalk = done(0.2f, 1.04f, 3);
+    cv(1.0f, 0.4f);
+    pstyle lv = sty(0x4a6a2a, 0x18280c, 0x9ac050, 0.5f, TX_VEINS, 0.04f, 0.5f);
+    lv.ink = 1.2f;
+    lf(0.5f, 0.32f, 0.05f, 0.15f, 0.08f, 0.04f, &lv);
+    lf(0.5f, 0.32f, 0.95f, 0.15f, 0.08f, -0.04f, &lv);
+    lf(0.5f, 0.32f, 0.3f, 0.05f, 0.06f, 0.02f, &lv);
+    E.ebase = done(0.5f, 0.32f, 2.5f);
+    cv(0.95f, 0.95f);
+    pstyle wh = sty(0xf0e8e0, 0x9a8078, 0xffffff, 1.0f, TX_VEINS, 0.04f, 0.4f);
+    wh.ink = 1.8f, wh.spec = 1, wh.gloss = 0.9f;
+    el(0.47f, 0.47f, 0.42f, 0.42f, 0, &wh);
+    pstyle ir = sty(0xffb030, 0xd04a10, 0xffffa0, 0.6f, TX_GLASS, 0.03f, 0.5f);
+    ir.em = 0.9f, ir.spec = 1, ir.gloss = 1;
+    el(0.62f, 0.47f, 0.22f, 0.24f, 0, &ir);
+    pstyle pu = sty(0x100404, 0, 0, 0.3f, TX_NONE, 0, 0);
+    el(0.66f, 0.47f, 0.05f, 0.15f, 0, &pu);
+    E.eball = done(0.47f, 0.47f, 3);
+    cv(1.05f, 0.55f);
+    pstyle lid = sty(0x5a3a2a, 0x1a0c08, 0xa07860, 0.8f, TX_BARK, 0.03f, 0.7f);
+    lid.ink = 1.8f, lid.rim = 0.4f, lid.shadow = 0.5f;
+    float lp[14] = { 0.04f, 0.5f, 0.12f, 0.2f, 0.4f, 0.05f, 0.7f, 0.06f, 0.95f, 0.2f, 1.02f, 0.5f, 0.52f, 0.36f };
+    poly(lp, 7, 0.03f, &lid);
+    E.elid = done(0.52f, 0.5f, 3);
+  }
   /* ── what grows on a back, by the region's material ── */
   for (int m = 0; m < NMAT; m++) {
     cv(0.7f, 0.42f);
@@ -657,7 +824,7 @@ static void draw_crawler(const enemy *e, int region, float t, float tk) {
   }
   if (act && ((int)(t * 60) % 5) == 0 && D.die <= 0) {
     cw_vec2 w = W(-0.6f, 0);
-    view_emit(w.x, w.y - 0.05f, -D.f * 1.5f, -0.8f, 0.45f, 0.35f, (cw_color){ 0.85f, 0.8f, 0.72f, 0.35f }, false, 1);
+    cr_emit(w.x, w.y - 0.05f, -D.f * 1.5f, -0.8f, 0.45f, 0.35f, (cw_color){ 0.85f, 0.8f, 0.72f, 0.35f }, false, 1);
   }
 }
 
@@ -698,7 +865,7 @@ static void draw_moth(const enemy *e, float t, float tk) {
   /* wing angle from the body's up: open (tell) high and held, swept back in the swoop */
   float wa = tell ? -1.15f - flare * 0.25f + flap * 0.08f : act ? 0.55f + flap * 0.1f : -0.55f + flap * 0.55f;
   float wsy = tell ? 1.05f : act ? 0.65f : 0.75f + 0.25f * fabsf(flap);
-  float spot = tell ? 1.3f + 1.7f * flare : 1.2f;
+  float spot = tell ? 1.2f + 0.9f * flare : 1.15f;
   for (int side = -1; side <= 1; side += 2) { /* the far side's wings first (behind the body), a little darker */
     float sd = (float)side, k = side < 0 ? 0.62f : 1;
     cw_color c = { D.tint.r * k, D.tint.g * k, D.tint.b * k, 1 };
@@ -707,7 +874,7 @@ static void draw_moth(const enemy *e, float t, float tk) {
     putx(&E.fwing, rx, ry, fa, 1, wsy, side < 0, 0, c, true);
     /* the eyespot's blaze, where the spot sits on the turned wing */
     cw_vec2 sp = rot2(0.56f * sd, -0.19f * wsy, fa);
-    putg(&E.spot, rx + sp.x, ry + sp.y, 0, 0.6f + flare * 0.9f, 0.6f + flare * 0.9f, spot, (0.35f + 0.65f * flare) * k);
+    putg(&E.spot, rx + sp.x, ry + sp.y, 0, 0.55f + flare * 0.35f, 0.55f + flare * 0.35f, spot, (0.35f + 0.5f * flare) * k);
     if (tell) halo_at(rx + sp.x, ry + sp.y, 0.3f + 0.6f * flare, (cw_color){ 0.4f, 0.9f, 1, 0.45f * flare });
   }
   for (int k = 0; k < 3; k++) put(&E.mleg, 0.04f, cy + 0.05f, 1.2f + (float)k * 0.25f + sinf(t * 4 + (float)k) * 0.1f, 1, 1);
@@ -738,7 +905,8 @@ static void draw_hopper(const enemy *e, int region, float t, float tk) {
       put(&E.growth[region_material(region)], -0.1f, by - 0.62f * sq, pitch, 0.9f, 0.9f);
       float sw = tell ? 1 + crouch * 0.6f : 1 + sinf(t * 5.5f) * 0.06f;
       float ga = tell ? 0.35f + 0.65f * crouch : 0.25f;
-      putx(&E.throat, 0.38f, by - 0.3f * sq, pitch, sw, sw, false, 1 + 2.5f * ga, white(1), true);
+      put(&E.throat, 0.38f, by - 0.3f * sq, pitch, sw, sw);
+      putx(&E.sac, 0.4f, by - 0.18f * sq, 0, 0.35f * sw, 0.28f * sw, false, 1 + 1.6f * ga, (cw_color){ 1, 0.55f, 0.45f, 0.25f + 0.5f * ga }, false); /* (the glow inside the sac) */
       float blink = fmodf(t + e->x * 0.37f, 3.7f) < 0.12f ? 0.15f : 1;
       put(&E.teye, 0.3f, by - 0.74f * sq, pitch, 1, blink);
       putk(&E.teye, 0.1f, by - 0.76f * sq, pitch, 0.85f, blink * 0.85f, dark(0.8f));
@@ -795,6 +963,73 @@ static void draw_knight(const enemy *e, float t, float tk) {
   if (tell) halo_at(handx + cosf(spear_a) * 1.95f, handy + sinf(spear_a) * 1.95f, 0.35f + 0.35f * raise, (cw_color){ 1, 1, 0.85f, 0.6f * raise });
 }
 
+static void draw_puff(const enemy *e, float t, float tk) {
+  bool tell = e->state == ES_TELL, spiky = e->state == ES_ACT;
+  float cy = -0.55f, bris = spiky ? 1 : tell ? tk : 0;
+  float fluff = 1 + (tell ? tk * 0.2f : spiky ? -0.12f : 0.04f * sinf(t * 3 + e->x));
+  put(&E.pcore, 0, cy, 0, 0.9f + 0.3f * bris, 0.9f + 0.3f * bris);
+  for (int k = 0; k < 10; k++) { /* the thorns: hidden in the down, pushing out through the tell, bristling after */
+    float a = (float)k * 0.628f + t * 0.5f, l = 0.25f + 0.75f * bris;
+    put(&E.pspike, cosf(a) * 0.25f, cy + sinf(a) * 0.25f, a, l, 0.6f + 0.4f * bris);
+  }
+  putk(&E.puff, 0, cy, sinf(t * 0.7f) * 0.1f, fluff, fluff, (cw_color){ 1, 1, 1, spiky ? 0.55f : 1 });
+  for (int k = 0; k < 2; k++) put(&E.peye, 0.17f + 0.17f * (float)k, cy - 0.08f, 0, 1 - 0.15f * (float)k, 1);
+  if (tell) halo_at(0, cy, 0.6f + 0.5f * tk, (cw_color){ 1, 0.55f, 0.5f, 0.3f * tk });
+}
+
+static void draw_dropper(const enemy *e, float t, float tk) {
+  bool tell = e->state == ES_TELL, fall = e->state == ES_ACT, stunned = e->state == ES_REST && e->t < 90;
+  float shake = tell ? sinf(t * 40) * 0.05f * tk : 0;
+  if (e->state == ES_IDLE || tell || (e->state == ES_REST && e->t >= 90)) { /* the silk thread up to the ceiling */
+    cw_vec2 a = { e->x, e->hy - 1.65f }, b = { e->x + D.f * shake, e->y - 0.95f };
+    cw_r2d_line(a, b, 0.035f, (cw_color){ 0.85f, 0.85f, 0.78f, 0.75f });
+  }
+  float sx = stunned ? 1.18f : fall ? 0.88f : 1 + 0.03f * sinf(t * 2 + e->x), sy = stunned ? 0.78f : fall ? 1.15f : 1 - 0.03f * sinf(t * 2 + e->x);
+  float top = stunned ? -0.86f : -0.98f;
+  put(&E.dcap, shake, top, 0, 1, 1);
+  put(&E.drip, shake, top + 0.02f, sinf(t * 1.3f) * 0.05f, sx, sy);
+  if (tell) putg(&E.sac, shake, top + 0.45f, 0, 0.55f + 0.2f * tk, 0.45f + 0.15f * tk, 1.2f + 1.3f * tk, 0.35f + 0.5f * tk); /* (the sap brightening inside) */
+  if (stunned) /* (dazed: three motes circling slowly) */
+    for (int k = 0; k < 3; k++) {
+      float a = t * 2.5f + (float)k * 2.1f;
+      halo_at(cosf(a) * 0.35f, -1.05f + sinf(a) * 0.08f, 0.12f, (cw_color){ 1, 1, 0.7f, 0.6f });
+    }
+  if (tell) halo_at(0, -0.4f, 0.5f + 0.4f * tk, (cw_color){ 0.85f, 1, 0.4f, 0.4f * tk });
+}
+
+static void draw_burrower(const enemy *e, float t, float tk) {
+  bool out = (e->aux & 1) != 0, tell = e->state == ES_TELL;
+  if (!out) { /* a heave of earth over it, rising as it closes in */
+    float k = tell ? 0.55f + 0.45f * tk : 0.35f;
+    put(&E.mound, 0, 0.05f, sinf(t * 7) * 0.04f * k, 1.0f + 0.3f * k, 0.8f + 0.8f * k);
+    if (((int)(t * 60) % (tell ? 4 : 9)) == 0 && D.die <= 0) {
+      cw_vec2 w = W((hsh((int)(t * 60), 3) - 0.5f) * 1.0f, -0.1f);
+      cr_emit(w.x, w.y, (hsh((int)(t * 60), 4) - 0.5f) * 2, -1.5f - 1.5f * k, 0.5f, 0.2f, (cw_color){ 0.55f, 0.45f, 0.35f, 0.7f }, false, 12);
+    }
+    return;
+  }
+  float rise = e->state == ES_ACT ? fminf(1, (float)e->t / 4.0f) : 1, open = e->state == ES_ACT ? 0.5f : 0.12f + 0.06f * sinf(t * 2);
+  put(&E.mound, 0, 0.08f, 0, 1.1f, 0.6f);
+  put(&E.whead, 0, 0.1f, sinf(t * 1.8f) * 0.04f, 1, rise);
+  put(&E.wjaw, 0.05f, -0.92f * rise, -open, 1, 1);          /* the upper teeth, opening up */
+  put(&E.wjaw, 0.05f, -0.88f * rise, open, 1, -1);          /* the lower, turned over */
+}
+
+static void draw_eye(const enemy *e, float t, float tk) {
+  bool tell = e->state == ES_TELL, rest = e->state == ES_REST;
+  float sway = sinf(t + e->x) * 0.05f;
+  put(&E.stalk, 0, 0, sway, 1, 1);
+  put(&E.ebase, 0, -0.02f, 0, 1, 1);
+  cw_vec2 top = rot2(0, -1.04f, sway);
+  float ex = top.x, ey = top.y - 0.12f;
+  float blink = fmodf(t * 0.5f + e->x * 0.13f, 3.1f) < 0.08f ? 0.1f : 1;
+  float open = tell ? 0.75f + 0.25f * tk : rest ? 0.45f : 0.6f * blink;
+  putx(&E.eball, ex, ey, 0, 1, 1, false, tell ? 1.05f + 0.9f * tk : 0, tell ? white(1) : D.tint, true);
+  put(&E.elid, ex, ey - 0.08f - 0.3f * open, 0, 1, 1);           /* the upper lid */
+  put(&E.elid, ex, ey + 0.08f + 0.3f * open, 0, 1, -1);          /* the lower lid, turned over */
+  if (tell) halo_at(ex + 0.15f, ey, 0.5f + 0.6f * tk, (cw_color){ 1, 0.6f, 0.25f, 0.45f * tk });
+}
+
 void creature_enemy(const enemy *e, int region, float t) {
   float f = e->facing_left ? -1.0f : 1.0f;
   int tl = enemy_tell_ticks(e->kind);
@@ -805,7 +1040,11 @@ void creature_enemy(const enemy *e, int region, float t) {
   case EN_SPITTER: draw_spitter(e, t, tk); break;
   case EN_FLYER: draw_moth(e, t, tk); break;
   case EN_HOPPER: draw_hopper(e, region, t, tk); break;
-  default: draw_knight(e, t, tk); break;
+  case EN_KNIGHT: draw_knight(e, t, tk); break;
+  case EN_PUFF: draw_puff(e, t, tk); break;
+  case EN_DROPPER: draw_dropper(e, t, tk); break;
+  case EN_BURROWER: draw_burrower(e, t, tk); break;
+  default: draw_eye(e, t, tk); break;
   }
   flush();
 }
@@ -1146,9 +1385,9 @@ static void paint_wardens(void) {
   }
   /* ── 4 the Sky Warden ── */
   {
-    pstyle plume = sty(0xe4e6f2, 0x7a80a8, 0xffffff, 0.7f, TX_FEATHER, 0.05f, 0.8f);
+    pstyle plume = sty(0xe4e6f2, 0x6a70a0, 0xffffff, 0.7f, TX_FEATHER, 0.035f, 1.0f);
     plume.ink = 1.8f, plume.rim = 0.5f, plume.shadow = 0.35f, plume.shadow_r = 12;
-    pstyle warm = sty(0xf0d8b0, 0x9a7a5a, 0xffffff, 0.5f, TX_FEATHER, 0.035f, 0.7f);
+    pstyle warm = sty(0xf0d8b0, 0x8a6a4a, 0xffffff, 0.5f, TX_FEATHER, 0.025f, 1.0f);
     warm.soft = 5;
     pstyle dark = sty(0x4a4e6a, 0x1a1a2a, 0x9a9ac0, 0.5f, TX_FEATHER, 0.04f, 0.8f);
     dark.ink = 1.5f;
@@ -1219,7 +1458,7 @@ static void paint_wardens(void) {
     }
     B.hroots = done(2.4f, 0.95f, 3);
     cv(3.6f, 3.8f);
-    pstyle flesh = sty(0x9a3a58, 0x3a0a20, 0xf090a8, 1.0f, TX_VEINS, 0.12f, 0.8f);
+    pstyle flesh = sty(0x9a3a58, 0x3a0a20, 0xf090a8, 1.0f, TX_VEINS, 0.06f, 1.0f);
     flesh.ink = 2.2f, flesh.rim = 0.4f, flesh.shadow = 0.4f, flesh.shadow_r = 18, flesh.spec = 0.45f, flesh.gloss = 0.55f, flesh.em = 0.15f;
     { /* the heart's outline (the classic curve), then its two lobes swelling inside it */
       float hp[96];
@@ -1406,7 +1645,7 @@ static void boss_brass(const boss *b, float t, float tk) {
   }
   if (((int)(t * 60) % 9) == 0 && D.die <= 0) {
     cw_vec2 w = W(sp.x, hipy + sp.y);
-    view_emit(w.x, w.y, -D.f * 0.4f, -1.6f, 1.6f, 0.9f, (cw_color){ 0.55f, 0.5f, 0.48f, 0.35f }, false, -0.6f);
+    cr_emit(w.x, w.y, -D.f * 0.4f, -1.6f, 1.6f, 0.9f, (cw_color){ 0.55f, 0.5f, 0.48f, 0.35f }, false, -0.6f);
   }
 }
 
@@ -1520,7 +1759,7 @@ void creature_boss(const boss *b, int region, float t) {
   if (D.die <= 0) {
     static const uint32_t GLOW[NBOSSES] = { 0xd6ff6a, 0xbff6ff, 0xffd060, 0x8affe6, 0xffe6a0, 0xffb060 };
     float hw = boss_hw(b->idx), hh = boss_hh(b->idx);
-    view_light(b->x + f * hw * 1.5f, b->y - hh * 2, 8, pc_hex(GLOW[b->idx]), 0.3f + tk * 0.5f, false);
+    cr_light(b->x + f * hw * 1.5f, b->y - hh * 2, 8, pc_hex(GLOW[b->idx]), 0.3f + tk * 0.5f, false);
   }
   D.die = 0;
 }
@@ -1562,7 +1801,7 @@ void creatures_tick(float dt) {
     float sz = r->is_boss ? 2.5f : 0.7f;
     for (int n = 0; n < (r->is_boss ? 4 : 1); n++) {
       float a = pn_hash((int)(r->age * 977) + n, i, 3) * 6.28f, d = pn_hash((int)(r->age * 977) + n, i, 4) * sz;
-      view_emit(x + cosf(a) * d, y + sinf(a) * d * 0.7f, (pn_hash(n, i, 5) - 0.5f) * 1.5f, -1.5f - 2 * k, 0.8f, 0.22f, (cw_color){ 1, 0.6f + 0.3f * k, 0.3f, 0.9f }, true, -1);
+      cr_emit(x + cosf(a) * d, y + sinf(a) * d * 0.7f, (pn_hash(n, i, 5) - 0.5f) * 1.5f, -1.5f - 2 * k, 0.8f, 0.22f, (cw_color){ 1, 0.6f + 0.3f * k, 0.3f, 0.9f }, true, -1);
     }
     i++;
   }
@@ -1587,7 +1826,11 @@ void creatures_draw_remnants(float t) {
     case EN_SPITTER: draw_spitter(&e, t, 0); break;
     case EN_FLYER: draw_moth(&e, t, 0); break;
     case EN_HOPPER: draw_hopper(&e, r->region, t, 0); break;
-    default: draw_knight(&e, t, 0); break;
+    case EN_KNIGHT: draw_knight(&e, t, 0); break;
+    case EN_PUFF: draw_puff(&e, t, 0); break;
+    case EN_DROPPER: draw_dropper(&e, t, 0); break;
+    case EN_BURROWER: draw_burrower(&e, t, 0); break;
+    default: draw_eye(&e, t, 0); break;
     }
     flush();
   }
@@ -1792,11 +2035,11 @@ void creature_hero(const player *p, int i, int region, float t) {
   put(&h->staff, hx, hy, sa, 1, 1);
   cw_vec2 tip = rot2(1.2f, 0, sa);
   float lx = hx + tip.x, ly = hy + tip.y + 0.02f;
-  putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, 3.0f, white(1), true);
+  putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, p->atk_t > 0 ? 1.6f : 3.0f, white(1), true); /* (dimmer as it sweeps: no streak of light) */
   put(&h->hand, hx, hy, 0, 1, 1);
   flush();
   cw_vec2 lw = W(lx, ly + 0.28f);
-  view_light(lw.x, lw.y, 8, (cw_color){ 1, 0.85f, 0.6f, 1 }, 0.55f, true);
+  cr_light(lw.x, lw.y, 8, (cw_color){ 1, 0.85f, 0.6f, 1 }, 0.55f, true);
 }
 
 void creatures_init(void) {
