@@ -1701,7 +1701,7 @@ void view_events(const sim *s) {
       break;
     case EV_HIT:
       burst(e->x, e->y, e->a == 0 ? 16 : 8, e->a == 0 ? 8 : 5, 0.3f, 0.3f, e->a == 2 ? rgba(0.8f, 0.85f, 1, 1) : rgba(1, 0.85f, 0.6f, 1), true, 0);
-      if (e->a == 0) emit(e->x, e->y, 0, 0, 0.12f, 1.6f, rgba(1, 1, 1, 0.9f), 0, true, 0); /* (the impact star) */
+      if (e->a == 0) emit(e->x, e->y, 0, 0, 0.14f, 2.4f, rgba(1, 1, 1, 1), 0, true, 0); /* (the impact star) */
       break;
     case EV_PARRY: burst(e->x, e->y, 12, 7, 0.25f, 0.25f, rgba(0.9f, 0.95f, 1, 1), true, 0), emit(e->x, e->y, 0, 0, 0.1f, 1.2f, rgba(0.8f, 0.9f, 1, 1), 0, true, 0); break;
     case EV_BOSS_PHASE:
