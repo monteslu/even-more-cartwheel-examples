@@ -37,6 +37,15 @@
   never judged), a party mode with steady hands, and powder kegs that set each other off. Grass, the sea drawn as
   water, a dust plume that drifts downwind over a collapse, a mark on the ground where the structure came down, raw
   insides on broken pieces and ambient occlusion from Medium up. Every light swells and fades instead of flashing.
+  A cannonball now strikes with a burst that crushes and drives back the blocks around it, so every level can be
+  cleared with ordinary aim; the aim path runs all the way to the structure's face, and par is retuned to a steady player's
+  shots. In co-op any pad plays any turn, and in versus and party any pad can play a seat left idle for eight seconds of
+  its turn. A new check has eight simulated players, aiming from what the screen shows with a person's aim error and
+  reaction time, clear every level with its ammunition.
+- **jewels**: bigger clears. Every cleared stone gives off light, and the stones around it are lit by it; the velvet
+  keeps a soft afterglow where a clear was. Clears throw shards, dust, rays and a shockwave, and the room warms as a
+  cascade escalates, ending in a sweep at its climax. Fixed: the emerald cut's flat top no longer fills white when
+  one lamp lines up with it, and the finale's word sits in the panel instead of a band over the board.
 - **skate**: the riders move like skaters. Feet stand where skaters put them on the deck, the push drives the back
   foot past the tail, carves lean as far as the turn asks, transitions load the legs, the ollie snaps the tail and
   drags the front foot up the grip, flips flick off the nose while both feet lift, grabs pull the board up to the
