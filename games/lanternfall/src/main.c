@@ -5,7 +5,8 @@
  *   lanternfall_bench  the perf gate's scene: a warden fight in a lamp-lit arena with both players (carts read no
  *                   environment, so the scene is chosen at build time)
  * Environment (development, native): LANTERNFALL_ROOM=n starts in room n; LANTERNFALL_ABILITIES=hex grants abilities;
- * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art). */
+ * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art);
+ * LANTERNFALL_MAP_AT=n opens the map at play frame n. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -288,6 +289,11 @@ static void fixed_update(void *u, double dt) {
   if (H.trial_t > 0) H.trial_t -= (float)DT;
   if (S.won) H.won_t += (float)DT;
 #ifndef LANTERNFALL_AUTOPILOT
+  { /* LANTERNFALL_MAP_AT=n (development, stills of the map): the map opens at play frame n */
+    static int map_at = -1, frames;
+    if (map_at < 0) map_at = getenv("LANTERNFALL_MAP_AT") ? atoi(getenv("LANTERNFALL_MAP_AT")) : 0;
+    if (map_at && ++frames == map_at) H.map_open = true;
+  }
   /* the map and the shrine's menu hold the game still */
   if (cw_action_just_pressed(0, G.map) && !H.menu_open) { H.map_open = !H.map_open; sfx(SFX_MAP, 0.5f); return; }
   if (H.map_open) {

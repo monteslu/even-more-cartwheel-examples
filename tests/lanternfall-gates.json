@@ -29,16 +29,16 @@
       "vsGl": 0.5
     },
     "expect": {
-      "game.tick": 2364,
-      "game.room": 29,
-      "game.abilities": 1,
-      "game.pickups": 1,
+      "game.tick": 2362,
+      "game.room": 145,
+      "game.abilities": 0,
+      "game.pickups": 0,
       "game.bosses": 0,
       "player.hp": 5,
-      "player.x100": 94361,
-      "player.y100": 10500,
-      "bot.step": 99,
-      "game.hash": 3618051465
+      "player.x100": 97209,
+      "player.y100": 10300,
+      "bot.step": 56,
+      "game.hash": 3385978521
     }
   },
   {
@@ -72,9 +72,9 @@
       "game.tick": 439,
       "game.room": 28,
       "player.hp": 5,
-      "player.x100": 104889,
+      "player.x100": 107912,
       "player.y100": 12400,
-      "game.hash": 2321842753
+      "game.hash": 2838897798
     }
   }
 ]
