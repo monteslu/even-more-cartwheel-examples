@@ -46,6 +46,7 @@ static struct {
   int nflash;
   pb_lights L;               /* every light's level (lights.c: swells and fades, never a blink) */
   float drop_z[MAXEL];
+  float spin_draw[MAXEL];    /* a spinner's drawn turn */
   /* the toys */
   cw_node toy, toy_head, toy_ring, puck, bell;
   t3_material *toy_mat, *eye_mat, *ring_mat, *bell_mat;
@@ -807,7 +808,10 @@ void view_sync(const game *g, float alpha, float dt) {
     } else if (e->kind == EK_SPINNER) {
       float a = e->ang * CW_PI / 180.0f; /* the plate turns about the line across the lane */
       t3_vec3 ax = { cosf(a), 0, -sinf(a) };
-      float s = sinf(e->spin * 0.5f), c = cosf(e->spin * 0.5f);
+      /* drawn turning at most 0.6 turns a second: a plate whirling faster would flash its face at the player many
+       * times a second (the rules count the real turns; the sound ticks them) */
+      V.spin_draw[i] += cw_clampf(e->spin_v, -3.8f, 3.8f) * dt;
+      float s = sinf(V.spin_draw[i] * 0.5f), c = cosf(V.spin_draw[i] * 0.5f);
       t3_quat qa = { ax.x * s, ax.y * s, ax.z * s, c }, qy = { 0, sinf(a * 0.5f), 0, cosf(a * 0.5f) };
       cw_node3d_set_quaternion(V.part[i], t3_quat_multiply(qa, qy));
     } else if (e->kind == EK_POP && V.part_mat[i]) {
