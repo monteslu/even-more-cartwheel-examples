@@ -21,11 +21,12 @@ skaters; `tools/make-art.sh` makes the launcher art from the game's own frames.
 
 ```sh
 node tests/skate-physics.mjs   # the board against ramp physics (a naive solver as the control)
-node tests/skate-parks.mjs     # nothing floats, every line skateable (three controls)
+node tests/skate-parks.mjs     # nothing floats, every line skateable, the bots' routes hold (four controls)
 node tests/skate-soak.mjs      # 30 game minutes at 1 to 4 players
 node tests/skate-feel.mjs      # a person's twelve seconds on a pad: tricks land, the camera and the feet hold
 node tests/gate.mjs --gates-file skate-gates.json
 node tests/skate-perf.mjs      # the 890M at 1080p High, four-way split
-node tests/skate-look.mjs      # each park's frames: contrast, not washed out
+node tests/skate-look.mjs      # each park's frames: contrast, not washed out; the sunset sky does not band
+node tests/skate-cam.mjs       # the chase camera back behind the rider after vert air
 node games/skate/tools/bake.mjs # rebake every park's lightmap (after a park changes shape)
 ```

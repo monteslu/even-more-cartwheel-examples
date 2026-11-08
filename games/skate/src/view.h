@@ -16,6 +16,8 @@ typedef struct tex_set { t3_texture *map, *normal, *rough, *ao; } tex_set;
 bool tex_warm(int kind); /* a band of rows of texture set `kind`; true when it is made */
 const tex_set *tex_get(int kind);
 void tex_apply(t3_material *m, int kind, float normal_scale, float ao_intensity);
+#define DITHER_K 0.03f /* the sky dither's depth: its mean is 1 - DITHER_K, its spread twice that (a pixel blends a few texels: about half that) */
+t3_texture *tex_dither(void); /* the sky's dither noise (gfx.c) */
 /* the scenery's own texture sets, after the park's (scenery.c) */
 enum { TEX_SAND = MAT_KINDS, TEX_FACADE, TEX_FACADE_LIT, TEX_CURTAIN, TEX_CORRUGATED, TEX_LUMBER, TEX_GROUND, TEX_WATER, TEX_SKYLINE, TEX_DECALS, TEX_FOLIAGE, TEX_PINECARD, TEX_CLOUD, TEX_KINDS };
 extern const float MAT_TILE_M[TEX_KINDS];

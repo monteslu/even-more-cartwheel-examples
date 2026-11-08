@@ -1,0 +1,13 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    { "path": "shot-1.jpg", "label": "A board of six cut stones in midnight velvet seats: the score, the best and the moves on the panel beside it" },
+    { "path": "shot-2.jpg", "label": "A cascade going on by itself: shards of the cleared stones, a ring across the velvet and the counter building" },
+    { "path": "shot-3.jpg", "label": "The bench's long cascade: big clears break into traced shards and sparks while the room warms" },
+    { "path": "shot-4.jpg", "label": "Later in a game: princess, trillion, emerald cut, pear, marquise and round brilliant stones in their velvet seats" }
+  ]
+}

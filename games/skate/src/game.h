@@ -371,7 +371,16 @@ void sim_step(sim *S, const input in[MAXP]);
 const char *sim_goal_text(const sim *S, int g, char *out, size_t cap);
 uint32_t sim_hash(const sim *S);
 
+/* ── where a bot can skate (nav.c): the route planner's grid ───────── */
+extern bool g_nav_ignore_walls; /* the route check's control */
+int nav_cell(const park *k, v3 p);  /* the skateable cell a rider at p is in (-1 none) */
+void nav_flood(const park *k, int src); /* every cell's route cost from src */
+float nav_dist(const park *k, int c);   /* the last flood's cost to c (1e30 unreachable) */
+int nav_route(const park *k, int dst, int *out, int cap); /* the last flood's route to dst, from its source's end */
+v3 nav_point(const park *k, int c);     /* a cell's middle, on its floor */
+
 /* ── the bot (bot.c): skates lines through the same input a pad gives ── */
+#define BOT_ROUTE 160
 typedef struct bot {
   int line;        /* the line it is on (-1 picking) */
   int phase, t, stuck;
@@ -384,6 +393,12 @@ typedef struct bot {
   int skill;     /* 0 casual .. 2 sharp */
   int popped, crouching, link_pops, link_crouch;
   bool mistake;
+  /* the route to the next line's start (skated, not a press of back) */
+  int route[BOT_ROUTE], route_n, route_i, route_end; /* cells; the end cell the planner aimed at */
+  float route_left, route_best; /* metres still to go; the least it has been */
+  int route_best_t, last_line;
+  int rides, hikes, route_fails; /* starts reached on the board; by back (no way there on wheels); routes given up */
+  int since_hike;
 } bot;
 void bot_init(bot *b, uint32_t seed, int skill);
 void bot_tick(bot *b, const sim *S, int i, input *in);

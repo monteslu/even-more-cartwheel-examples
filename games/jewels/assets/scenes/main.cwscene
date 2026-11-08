@@ -1,0 +1,11 @@
+[scene format=1]
+
+; jewels' scene: a camera only. The game draws the tray, the stones and the effects in its own render passes
+; (src/render.c); the engine's post chain (bloom, the tone curve) follows them.
+[node name="Main" type="Node3D"]
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 0, 10)
+fov = 30
+near = 0.1
+far = 100

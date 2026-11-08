@@ -98,6 +98,24 @@ readable wind-ups and three bosses; hearts, stamina charms, keys and a maul
 that breaks cracked stone open new routes. A bot plays the whole game in CI,
 nothing floats, and every region passes a look check.
 
+### jewels
+
+![jewels: cut stones in velvet seats on a midnight tray, a cascade breaking stones into shards](docs/screenshots/jewels.jpg)
+
+A calm, untimed match-three for one player, readable from a couch (working
+title): swap two neighbouring stones to line up three or more. The board never
+moves unless the player moves it; an illegal swap springs back and costs
+nothing, the hint is free, a board with no move left reshuffles itself, and
+cascades resolve slowly enough to follow. Six kinds of stone, each its own cut
+and silhouette as well as its own colour (a princess, a trillion, an emerald
+cut, a pear, a marquise and a round brilliant), ray traced per pixel through
+their facet planes with Fresnel at every face, total internal reflection,
+absorption through the body and spectral fire, in a studio of soft boxes and
+small hot lamps. Clears break the stones into traced shards, and the effects
+grow with the size of a clear and each step of a cascade. Pad, touch and mouse
+are equal paths. The rules are checked move for move against the original Lua
+game.
+
 More games are on the way.
 
 ## Building
@@ -108,6 +126,16 @@ scripts/build.sh          # build/native and build/cart-wgpu (the carts)
 ```
 
 `AGENTS.md` has the test commands and the rules for showing controls.
+
+Every cart's manifest says which version it is, and the build works it out
+from the checkout (the engine's `cw_add_app`): a build of a `v*` tag is that
+version (`0.9.0`), any other build the last tag plus the commit
+(`0.9.0-dev.g1a2b3c4`), so a cart built locally or from `main` is never taken
+for a release. Pushing a `v*` tag builds the carts again at the tag, checks
+that every one carries the tag's version (`tests/cart-version.mjs`), and
+publishes them as a GitHub release, its notes taken from
+[CHANGELOG.md](CHANGELOG.md). The tagged commit must have a green run on
+`main`.
 
 ## License
 

@@ -634,6 +634,8 @@ static bool roll_sub(skater *s, const park *k, const input *in, float dt) {
   float ang = cw_acos(c);
   /* a crest: the normal tips forward, toward the run (a concave foot tips it back) */
   bool convex = sp > 2.5f && vdot(vsub(n2, n), vmul(s->v, 1.0f / sp)) > 0;
+  /* (not a surface that rises out of the one it is on: onto a ramp's foot from its side is a step up, not a lip) */
+  if (vdot(vsub(h.p, np), n) > 0.01f) convex = false;
   if (convex && ang > CONVEX_BREAK) { /* the surface falls away: off the lip */
     s->p = np;
     takeoff(s, n);
