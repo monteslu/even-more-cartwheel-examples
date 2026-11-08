@@ -174,6 +174,7 @@ static bool place_link_gate(int o, int n, int g) {
     static const int DX[4] = { -1, 1, 0, 0 }, DY[4] = { 0, 0, -1, 1 };
     int d = rint_(0, 3), ox = x + DX[d], oy = y + DY[d];
     if (o == n && d >= 2) continue; /* (a shortcut inside a region: its doors at the floor, beside it) */
+    if ((g == G_DASH || g == G_GRAPPLE) && d == 2) continue; /* (no trapdoor down into a room of thorns) */
     if (!cell_port(ox, oy, o)) continue;
     /* the new half: beside (2x1) or below (1x2, a cracked floor needs the old side on top) */
     int nx, ny;
@@ -191,6 +192,7 @@ static bool place_link_gate(int o, int n, int g) {
       if (!cell_port(px, py, n)) continue;
       if (g == G_POUND && dd == 2) continue;
       if (o == n && dd >= 2) continue;
+      if ((g == G_DASH || g == G_GRAPPLE) && dd == 2) continue;
       pick = dd;
       break;
     }
@@ -965,7 +967,7 @@ void world_generate(world *w, uint32_t seed) {
     for (int b = 0; b < 3 && p->branch_gate[b]; b++) { /* a gate, and an upgrade behind it */
       piece_room br[2] = { { 0, 0, 2, 1, RK_GATE }, { 2, 0, 1, 1, RK_ITEM } };
       if (p->branch_gate[b] == G_POUND) br[0] = (piece_room){ 0, 0, 1, 2, RK_GATE }, br[1] = (piece_room){ 1, 1, 1, 1, RK_ITEM };
-      if (place_piece(r, br, 2, rooms, &ex, &ey) >= 0) {
+      if (place_piece_f(r, br, 2, rooms, &ex, &ey, p->branch_gate[b] == G_DASH || p->branch_gate[b] == G_GRAPPLE) >= 0) { /* (no trapdoor into thorns) */
         W->rooms[rooms[0]].gate = (uint8_t)p->branch_gate[b];
         room *g = &W->rooms[rooms[0]];
         /* the entry door is on the first cell's side (place_piece chose it): that cell is the old half */

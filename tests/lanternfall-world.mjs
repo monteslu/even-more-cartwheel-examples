@@ -3,10 +3,14 @@
 //            lanternfall_check writes for it (the shipped files are never stale)
 //   proven   lanternfall_check passes on the shipped world: the abilities come in their order, no place reached can be
 //            stranded (no soft lock), every pickup and warden is reached, every gate holds without its ability and
-//            opens with it, nothing floats
+//            opens with it, nothing floats, every ability reaches two or more rewards already seen on screen, every
+//            ability opens a gate between places already reached (a shortcut), every region has a set piece, no
+//            drop falls into thorns that were out of view
 //   controls worlds broken on purpose, each of which must fail for its own reason: the grapple gates' anchors taken
 //            out (pickups never reached), the second jump and dash prizes swapped (the order), a pit dug by the start
-//            (a soft lock), a lamp lifted off its ceiling (floating), a wall gate lowered to one jump (the gate leaks)
+//            (a soft lock), a lamp lifted off its ceiling (floating), a wall gate lowered to one jump (the gate leaks),
+//            the set pieces' rewards taken out (nothing seen before reach), thorns laid beside trapdoor landings (blind
+//            drops), a region's set pieces forgotten, the gates inside a region walled up (no shortcuts)
 // Run: node tests/lanternfall-world.mjs   (after TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check)
 import { spawnSync } from 'node:child_process';
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -45,6 +49,10 @@ const controls = [
   [3, [], /FAIL softlock/, 'a pit by the start with no way out'],
   [4, ['--only', 'grounded'], /FAIL grounded/, 'a lamp lifted off its ceiling'],
   [5, ['--only', 'gates'], /FAIL gates/, 'a wall gate lowered to one jump'],
+  [6, [], /FAIL see before reach/, 'the set pieces\' rewards taken out'],
+  [7, [], /FAIL blind drops/, 'thorns beside the landing under trapdoors'],
+  [8, [], /FAIL set pieces/, 'a region with its set pieces forgotten'],
+  [9, [], /FAIL shortcuts/, 'the gates inside a region walled up'],
 ];
 for (const [n, extra, why, what] of controls) {
   const r = run(['lanternfall_check', join(ASSETS, 'world.bin'), '--threads', threads, '--break', String(n), ...extra]);
