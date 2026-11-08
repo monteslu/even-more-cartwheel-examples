@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.2
+
+- pinball: the flippers answer much faster: they move on the simulation step of the press, reach full stroke in
+  about 24 ms and drop back in 28 ms, and the ball is drawn on the same step as the flippers instead of one behind.
+  The flippers stay live until a tilt, through the drain and the bonus count, so a ball that has slipped past them
+  can still be saved. The face buttons flip (west and east) and the south button flips both once the ball is in
+  play; the prompts show them.
+- jewels: a second look round. Each stone is cut and coloured against real gems (ruby with dark quarters and cross
+  flashes, golden citrine, royal sapphire), glints come only from real highlights and twinkle as the stones turn,
+  the tray is tufted velvet with a soft dish under each stone and the light each stone throws pooled in its shadow,
+  and the frame is lacquered walnut with gold inlay. It also draws faster.
+
 ## 0.8.1
 
 - Engine v0.38.3. Every cart now carries its real version in its manifest: a release cart says this release's

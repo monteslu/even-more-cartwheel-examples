@@ -69,7 +69,11 @@ enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC }; /* pickup kinds (sub), with
 /* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
  * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
 enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE };
-enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_KINDS };
+/* enemies, one idea each: the crawler charges along its floor, the spitter spits, the moth swoops to where you stood,
+ * the hopper leaps at you, the knight shields its front; the puff floats and only a strike from above hurts it (it is
+ * a step to bounce off), the dropper hangs from a ceiling and falls on whoever passes under, the burrower waits under
+ * the floor and bursts up where you stand (keep moving), the wisp-eye charges a beam along its row */
+enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_PUFF, EN_DROPPER, EN_BURROWER, EN_EYE, EN_KINDS };
 #define NBOSSES 6
 /* how a prop or a lamp is held: standing on the tile below, hanging from the tile above, on a wall beside it */
 enum { HOLD_FLOOR = 1, HOLD_CEIL = 2, HOLD_WALL_L = 4, HOLD_WALL_R = 8, HOLD_BACK = 16 /* on the back wall */ };

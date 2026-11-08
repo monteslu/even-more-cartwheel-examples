@@ -23,6 +23,7 @@ typedef struct bot {
   int wiggle;
   int prog_i, prog_t; /* the step it last gained and the ticks since */
   uint32_t seed;
+  int trial_room, trial_i; /* a trial's room and the route step the bot entered it at (to go back for the find) */
 } bot;
 
 bool bot_load(bot *b, const void *bytes, size_t len, uint32_t world_hash);

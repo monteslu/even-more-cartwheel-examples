@@ -15,6 +15,7 @@ bool bot_load(bot *b, const void *bytes, size_t len, uint32_t hash) {
   b->n = (int)h[2];
   b->last_tile = -1;
   b->seed = 99;
+  b->trial_room = -1;
   return true;
 }
 
@@ -30,6 +31,12 @@ static bool node_ok(const sim *s, int x, int y) {
     if (t_solid(a) || a == T_SPIKE) return false;
   }
   return true;
+}
+
+/* firm to walk over (a hidden floor holds until it is struck) */
+static bool walk_ok(const sim *s, int x, int y) {
+  if (node_ok(s, x, y)) return true;
+  return w_in(x, y) && y >= 3 && s->t[y][x] == T_SECRET && !t_solid(s->t[y - 1][x]) && !t_solid(s->t[y - 2][x]);
 }
 
 /* walk to x on the current surface: true when there and still */
@@ -108,8 +115,49 @@ static bool secret_near(const sim *s, const player *p) {
   return false;
 }
 
+/* what the bot can fight with an ordinary blow: not a burrower under the floor, not a puff (only from above), not a
+ * dropper on its ceiling */
+static bool plain_target(const enemy *e) {
+  if (!e->alive || e->kind == EN_PUFF) return false;
+  if (e->kind == EN_BURROWER && !(e->aux & 1)) return false;
+  if (e->kind == EN_DROPPER && (e->state == ES_IDLE || e->state == ES_TELL)) return false;
+  return true;
+}
+
+/* the newer threats: a burrower's ripple under you, a dropper shivering overhead, an eye about to burn, a puff in the way */
+static bool dodge_new(const sim *s, const player *p, pinput *in) {
+  for (int i = 0; i < s->nen; i++) {
+    const enemy *e = &s->en[i];
+    if (!e->alive) continue;
+    float dx = e->x - p->x, dy = (e->y - enemy_hh(e->kind)) - (p->y - 0.9f);
+    if (e->kind == EN_BURROWER && e->state == ES_TELL && fabsf(dx) < 2.6f && fabsf(e->y - p->y) < 0.6f && p->on_ground) {
+      float dir = dx > 0 ? -1.0f : 1.0f; /* step off the ripple, along firm floor */
+      int y = (int)roundf(p->y);
+      if (!node_ok(s, (int)floorf(p->x + dir * 1.5f), y)) dir = -dir;
+      in->mx = (int8_t)dir;
+      return true;
+    }
+    if (e->kind == EN_DROPPER && e->state == ES_TELL && fabsf(dx) < 1.9f && p->on_ground) {
+      float dir = dx > 0 ? -1.0f : 1.0f;
+      if (!node_ok(s, (int)floorf(p->x + dir * 2.0f), (int)roundf(p->y))) dir = -dir;
+      in->mx = (int8_t)dir;
+      return true;
+    }
+    if (e->kind == EN_EYE && e->state == ES_TELL && e->t >= enemy_tell_ticks(EN_EYE) - 8 && fabsf(dy) < 1.4f && (dx < 0) == !e->facing_left && fabsf(dx) < 16 && p->on_ground) {
+      in->jump = in->jump_held = true; /* over the beam */
+      return true;
+    }
+    if (e->kind == EN_PUFF && fabsf(dx) < 1.3f && dy > 0.2f && dy < 2.4f && !p->on_ground && p->atk_cd == 0 && p->vy > -4) {
+      in->my = 1, in->attack = true; /* down on it: it bounces you */
+      return true;
+    }
+  }
+  return false;
+}
+
 /* strike what is close in front, break a hidden wall the route leans on */
 static bool strike_near(const sim *s, const player *p, pinput *in) {
+  if (dodge_new(s, p, in)) return true;
   /* a hidden wall at hand: strike it open (the route may run through it) */
   for (int dx = -2; dx <= 2; dx++)
     for (int dy = 0; dy <= 2; dy++) { /* (the floor under the feet, the wall beside the body) */
@@ -164,7 +212,7 @@ static bool strike_near(const sim *s, const player *p, pinput *in) {
     /* it swoops to the spot you stood on when its wings flared: off that spot (on firm ground), then strike it as it
      * comes past or rests */
     float aim = fabsf(e->vx - p->x);
-    if (p->on_ground && aim < 1.6f) {
+    if (p->on_ground && aim < 1.6f && p->hp <= 2) {
       int y = (int)roundf(p->y);
       for (int k = 0; k < 2; k++) {
         float dir = (k == 0) == (dx > 0) ? -1.0f : 1.0f, tx = e->vx + dir * 2.6f;
@@ -180,7 +228,7 @@ static bool strike_near(const sim *s, const player *p, pinput *in) {
   /* then strike what is close, or shoot what is in line further off */
   for (int i = 0; i < s->nen; i++) {
     const enemy *e = &s->en[i];
-    if (!e->alive) continue;
+    if (!plain_target(e)) continue;
     float dx = e->x - p->x, dy = (e->y - enemy_hh(e->kind)) - (p->y - 0.9f);
     if (fabsf(dx) < 2.5f && fabsf(dy) < 1.7f) {
       bool facing = (dx < 0) == (bool)p->facing_left;
@@ -236,7 +284,7 @@ static bool hunt(const sim *s, const player *p, pinput *in) {
   float bd = 1e9f;
   for (int i = 0; i < s->nen; i++) {
     const enemy *e = &s->en[i];
-    if (!e->alive) continue;
+    if (!plain_target(e)) continue;
     float dx = e->x - p->x, dy = (e->y - enemy_hh(e->kind)) - (p->y - 0.9f);
     if (fabsf(dx) > (e->kind == EN_SPITTER ? 14 : 9) || fabsf((e->y) - p->y) > 0.6f) continue; /* on this floor only */
     if (e->kind == EN_FLYER) continue;
@@ -248,7 +296,7 @@ static bool hunt(const sim *s, const player *p, pinput *in) {
   /* only along firm floor: never walk off a ledge or into thorns to reach it */
   int y = (int)roundf(p->y);
   for (float x = p->x; dir > 0 ? x < tx : x > tx; x += dir * 0.5f)
-    if (!node_ok(s, (int)floorf(x), y)) return false;
+    if (!walk_ok(s, (int)floorf(x), y)) return false;
   walk_to(p, tx, in);
   if (fabsf(best->x - p->x) < 2.6f && ((best->x < p->x) == (bool)p->facing_left) && p->atk_cd == 0) in->attack = true;
   return true;
@@ -286,7 +334,7 @@ static void fight(bot *b, const sim *s, const player *p, pinput *in) {
   if (w->state == ES_TELL && w->move != BM_SWEEP_HIGH && w->move != BM_SUMMON) danger = true; /* never stand in reach while it winds up */
   if (w->state == ES_TELL || w->state == ES_ACT) {
     int tell = boss_tell_ticks(w->move);
-    if (w->hp * 2 < w->hp_max) tell = tell * 4 / 5 < 26 ? 26 : tell * 4 / 5; /* (the second phase tells faster, as the sim does) */
+    if (w->phase > 0) tell = tell * 4 / 5 < 26 ? 26 : tell * 4 / 5; /* (the second phase tells faster, as the sim does) */
     switch (w->move) {
     case BM_SWEEP_LOW:
       if (w->state == ES_TELL && w->t >= tell - 3 && p->on_ground) in->jump = true;
@@ -377,6 +425,7 @@ static void fight(bot *b, const sim *s, const player *p, pinput *in) {
 
 void bot_follow(const sim *s, int pi, pinput *out) {
   memset(out, 0, sizeof *out);
+  if (s->hitstop > 0) return;
   const player *p = &s->p[pi], *lead = &s->p[0];
   float dx = lead->x - p->x;
   if (strike_near(s, p, out)) return;
@@ -387,7 +436,20 @@ void bot_follow(const sim *s, int pi, pinput *out) {
 
 void bot_input(bot *b, const sim *s, int pi, pinput *in) {
   memset(in, 0, sizeof *in);
+  if (s->hitstop > 0) return; /* (the world holds still: nothing to do, and the move's ticks must not run on) */
   const player *p = &s->p[pi];
+  /* a trial's room: remember the step it was entered at; once the guardians fall, go back for the find */
+  if (s->room >= 0 && b->trial_room != s->room && sim_trial_room(s, s->room)) b->trial_room = s->room, b->trial_i = b->i;
+  if (b->trial_room >= 0 && s->trial_room < 0 && !sim_trial_room(s, b->trial_room)) {
+    bool left = false;
+    for (int k = 0; k < s->w->nents; k++) {
+      const ent *e = &s->w->ents[k];
+      if (e->kind == EK_PICKUP && e->room == b->trial_room && !sim_got(s, e->id)) left = true;
+    }
+    if (left && s->room == b->trial_room) b->i = b->trial_i, b->mode = B_RECOVER, b->np = 0;
+    b->trial_room = -1;
+  }
+  if (s->trial_room >= 0) b->ignore = 0, b->prog_t = 0; /* (a trial is fought out) */
   if (!b->steps || b->i >= b->n) {
     if (s->b.active) fight(b, s, p, in);
     return;
@@ -499,7 +561,7 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     for (int i = 0; i < s->nen; i++) {
       const enemy *e = &s->en[i];
       float dx = e->x - p->x, dy = (e->y - enemy_hh(e->kind)) - (p->y - 0.9f);
-      if (e->alive && fabsf(dx) < 1.6f && dy < -0.5f && dy > -3.4f && p->atk_cd == 0) in->my = -1, in->attack = true;
+      if (e->alive && e->kind != EN_PUFF && fabsf(dx) < 1.6f && dy < -0.5f && dy > -3.4f && p->atk_cd == 0) in->my = -1, in->attack = true;
     }
     return;
   }
@@ -517,6 +579,19 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
     }
   }
   if (!b->ignore && p->on_ground && p->state == PS_NORMAL && (strike_near(s, p, in) || hunt(s, p, in))) return;
+  if (s->trial_room >= 0 && p->on_ground && p->state == PS_NORMAL) { /* a trial: go to the guardians (the doors are shut) */
+    const enemy *best = NULL;
+    for (int i = 0; i < s->nen; i++)
+      if (plain_target(&s->en[i]) && (!best || fabsf(s->en[i].x - p->x) < fabsf(best->x - p->x))) best = &s->en[i];
+    if (best) {
+      float tx = best->x + (best->x > p->x ? -1.8f : 1.8f);
+      int y = (int)roundf(p->y);
+      bool firm = node_ok(s, (int)floorf(p->x + (tx > p->x ? 1.0f : -1.0f)), y);
+      if (firm) walk_to(p, tx, in);
+      else if (fabsf(best->x - p->x) < 2.4f && p->atk_cd == 0) in->attack = true, in->my = best->y - enemy_hh(best->kind) < p->y - 2.6f ? -1 : 0;
+      return;
+    }
+  }
   const route_step *st = b->np ? &b->plan[b->pi] : &b->steps[b->i];
   int here = tile_of(p);
   if (st->move == 255) { /* walking: run on along every walking step on this row */
@@ -541,6 +616,11 @@ void bot_input(bot *b, const sim *s, int pi, pinput *in) {
   if (b->waited < 600 && !b->ignore)
     for (int i = 0; i < s->nen; i++) {
       const enemy *e = &s->en[i];
+      if (e->alive && e->kind == EN_PUFF && fabsf(e->x - p->x) < 8 && fabsf(e->y - p->y) < 8 && (int)(s->tick % PUFF_CYCLE) > 30) {
+        b->waited++; /* a puff near the way: go just after it goes soft (it stays soft a good while) */
+        return;
+      }
+      if (!plain_target(e) || e->kind == EN_EYE) continue; /* (an eye stays put: it does not block a move) */
       bool spit_soon = e->kind == EN_SPITTER && (e->state == ES_TELL || e->t > 45) && fabsf(e->x - p->x) < 13 && fabsf(e->y - p->y) < 13;
       bool fly_near = careful && e->kind == EN_FLYER && fabsf(e->x - p->x) < 10 && fabsf(e->y - p->y) < 14 && e->state != ES_REST;
       if (e->alive && (spit_soon || fly_near || (e->kind != EN_SPITTER && fabsf(e->x - p->x) < 7 && fabsf(e->y - p->y) < 6))) {

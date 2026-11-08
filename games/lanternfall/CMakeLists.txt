@@ -7,6 +7,8 @@
 #   lanternfall_check    proves the world: completable in ability order, no soft locks, every pickup, the gates, nothing
 #                     floating; writes assets/route.bin (native only)
 #   lanternfall_feel     measures the movement: jump heights, distances, coyote time, jump buffer (native only)
+#   lanternfall_rules    measures the combat rules: the hold after a blow, knockback, the puff, trials, phases,
+#                     charms, the flame left where you fall, each with a control (native only)
 #   lanternfall_soak     the rules and the bot with no window and no GPU (native only)
 set(EX_SIM src/sim.c src/player.c src/reach.c src/bot.c src/world.c src/regions.c)
 set(EX_SRC src/main.c src/view.c src/art.c src/hud.c src/audio.c ${EX_SIM})
@@ -31,6 +33,9 @@ if(NOT CW_CART)
   add_executable(lanternfall_feel tools/feel.c src/player.c src/world.c src/regions.c)
   target_compile_definitions(lanternfall_feel PRIVATE LANTERNFALL_NO_ENGINE=1)
   target_link_libraries(lanternfall_feel PRIVATE m)
+  add_executable(lanternfall_rules tools/rules.c src/sim.c src/player.c src/world.c src/regions.c)
+  target_compile_definitions(lanternfall_rules PRIVATE LANTERNFALL_NO_ENGINE=1)
+  target_link_libraries(lanternfall_rules PRIVATE cartwheel)
   add_executable(lanternfall_soak src/soak.c ${EX_SIM})
   target_compile_definitions(lanternfall_soak PRIVATE LANTERNFALL_NO_ENGINE=1)
   target_link_libraries(lanternfall_soak PRIVATE cartwheel)

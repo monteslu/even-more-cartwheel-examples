@@ -1,7 +1,7 @@
 [
   {
     "name": "lanternfall-auto",
-    "note": "lanternfall_auto: the bot plays from the start for 2400 ticks along the checker's route through the real input struct (the spark's shrine, the first rooms of the Lantern Gate, enemies cleared on the way). Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "note": "lanternfall_auto: the bot plays from the start for 2400 frames along the checker's route through the real input struct (the spark's shrine, the first rooms of the Lantern Gate, enemies cleared on the way). Everything named is simulation, so every host agrees on it. A blow that lands holds the game still a few frames, so the tick runs behind the frame count. The control is one frame short.",
     "app": "lanternfall_auto",
     "frames": 2400,
     "maxGt16": 0.5,
@@ -29,16 +29,16 @@
       "vsGl": 0.5
     },
     "expect": {
-      "game.tick": 2400,
+      "game.tick": 2328,
       "game.room": 104,
       "game.abilities": 0,
       "game.pickups": 0,
       "game.bosses": 0,
-      "player.hp": 4,
-      "player.x100": 90987,
+      "player.hp": 5,
+      "player.x100": 91250,
       "player.y100": 8800,
       "bot.step": 59,
-      "game.hash": 1177849990
+      "game.hash": 229783394
     }
   },
   {
@@ -74,7 +74,7 @@
       "player.hp": 5,
       "player.x100": 104889,
       "player.y100": 7000,
-      "game.hash": 3737673241
+      "game.hash": 2981659201
     }
   }
 ]
