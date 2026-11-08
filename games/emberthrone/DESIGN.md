@@ -126,9 +126,10 @@ region's colours (the outfit's material tinted per kind and region).
   still, a quarter or fewer one who keeps moving), waiting foes circling to the player's back (half or more of the blows
   come from beyond the shoulder), a boss spent after a big blow and chaining blows in its later phase, the flask's sip
   for a beaten group, the lurker, rumble on a hit. Controls: each rule off in turn, and its own check must fail.
-- `tests/emberthrone-flash.mjs`: no strobing. Two seconds of the Tidecaller's fight from its busiest moment, frame by
-  frame, against WCAG 2.3.1 and the Harding thresholds: no ninth of the screen may flash at all, no 1/144 of it more
-  than 3 times (general or red) in a second. Control: the same frames under a 10 Hz white wash must fail.
+- `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
+  every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
+  just before its busiest moment (its phase roar). Controls: each under the engine's 8 Hz strobe, and the fight under
+  the game's own 10 Hz white wash, must fail.
 - `tests/emberthrone-gates.json`: the bot's first 30 seconds (it rests, crosses the hollow, fights the raiders on the road
   and reaches the canyon shrine) and a scripted pad run (Start, Start, the road, the lock, three cuts, a roll, a heavy, a
   drink) with its control. Both agree to the bit across native GL, native WebGPU and the cart on romdev's WebGPU host.
@@ -139,7 +140,8 @@ region's colours (the outfit's material tinted per kind and region).
   halves run as two suites (`--no-control`, `--control-only`) to keep each hold of the GPU suite lock short.
 - `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 1383 scattered stones on the ground (worst 0 cm).
   Control: one tree lifted half a metre must be caught.
-- `tests/emberthrone-look.mjs` (frames from tools/capture-look.sh): each region's play frame is mid-key (mean luma 100
+- `tests/emberthrone-look.mjs` (frames from tools/capture-look.sh, five per region spread over its fight, judged on
+  their median: one frame is one moment of a fight): each region's play is mid-key (mean luma 100
   to 125), has real contrast (luma deviation 55 or more, local contrast 13 or more), a complementary accent and a
   saturation in range. Control: the frames flattened halfway to their mean must fail.
 - `tests/emberthrone-text.json` (the engine's tools/check-text.mjs): the HUD at the readable floor on three screens.

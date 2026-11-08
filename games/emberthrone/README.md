@@ -62,11 +62,11 @@ through them); after their biggest blows they stand spent for a moment, open to 
 | `tools/make-world-assets.mjs` | the terrain layers, building textures, props, the trees and glowcaps (leaf cards), the cloud layer and the contrast grade |
 | `tools/survey.sh` | the program table from software GL runs (off the shared GPU) |
 | `tools/swshot.sh` | a screenshot on software GL |
-| `tools/capture-look.sh` | one play frame from each region, for the look check |
+| `tools/capture-look.sh` | five play frames from each region spread over its fight, for the look check (`LOOK_REGIONS` takes some regions) |
 
 Tests: `node tests/emberthrone-rules.mjs` (the combat feel on the real rules, each rule with a control that must fail),
-`node tests/emberthrone-flash.mjs` (a boss fight frame by frame against the photosensitive flash thresholds, with a
-strobing control that must fail), `node tests/emberthrone-soak.mjs` (the whole game on software GL, with a control that must fail),
+`node tests/emberthrone-flash.mjs` (the journey and a boss fight every frame against the photosensitive flash thresholds, with
+strobing controls that must fail), `node tests/emberthrone-soak.mjs` (the whole game on software GL, with a control that must fail),
 `node tests/emberthrone-grounding.mjs` (no floating props, with a control that must fail),
 `node tests/emberthrone-perf.mjs` (1080p High on the 890M, GL and WebGPU), `node tests/emberthrone-look.mjs out/look` (each
 region mid-key, with real contrast and more than one hue family, with a control that must fail), and the gates in
