@@ -2,7 +2,10 @@
 // after game on every table, 1 to 4 players: 60 game minutes a table at one player and 30 at each of 2, 3 and 4.
 // Each run must exit 0 with "soak ok", find no trap in a table's geometry (a free ball still for 8 seconds: "STUCK"),
 // play real pinball (at least 15 seconds a ball on average, the bot flipping, ramps made, a mode started), and keep
-// resident memory within 5% of the first minute. The control puts a NaN into a ball and the checks must catch it.
+// resident memory within 5% of the first minute. Then each table again with its toy kept busy (PINBALL_SOAK_TOYS: the
+// toy mode restarted whenever no mode runs, the wizard mode every fourth time): no trap, no ball held 10 s, no ball
+// through the risen creature, and the toy working (the creature hit, the magnet catching, the bell ringing). The
+// controls put a NaN into a ball, and a ball inside the risen creature: the checks must catch both.
 // Run: node tests/pinball-soak.mjs [--quick]   (--quick: 10 minutes a run)
 import { spawnSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
@@ -37,6 +40,26 @@ for (const table of [0, 1, 2])
     const line = `table ${table}, ${players} player${players > 1 ? 's' : ''}, ${minutes} min: ${tot ? `${tot[1]} games, mean ball ${tot[3]} s, ${tot[4]} flips/min, ${tot[5]} ramps, ${tot[6]} modes` : '?'}`;
     if (why.length) { bad++; console.log(`FAIL ${line}\n     ${why.join('; ')}`); } else console.log(`ok   ${line}`);
   }
+for (const table of [0, 1, 2]) {
+  const minutes = quick ? 10 : 30;
+  const r = run(minutes, 1, table, { PINBALL_SOAK_TOYS: '1' });
+  const out = r.stdout || '';
+  const toy = /toys: (\d+) events, (\d+) hits, (\d+) magnet catches, (\d+) bells, (\d+) wizard modes, longest hold ([\d.]+) s/.exec(out);
+  const why = [];
+  if (r.status !== 0 || !/soak ok/.test(out)) why.push(`status ${r.status}: ${(out.match(/soak FAIL.*/g) || []).slice(0, 2).join(' | ')}`);
+  if ((out.match(/STUCK/g) || []).length) why.push(`traps: ${(out.match(/STUCK.*/g) || []).slice(0, 3).join(' | ')}`);
+  if (!toy) why.push('no toy totals');
+  else {
+    const works = [+toy[2], +toy[3], +toy[4]][table];
+    if (works < 10) why.push(`the toy worked ${works} times`);
+    if (+toy[5] < 1) why.push('no wizard mode');
+  }
+  const line = `table ${table} toys, ${minutes} min: ${toy ? `${toy[1]} toy events, ${toy[2]} toy hits, ${toy[3]} magnet catches, ${toy[4]} bells, ${toy[5]} wizard modes, longest hold ${toy[6]} s` : '?'}`;
+  if (why.length) { bad++; console.log(`FAIL ${line}\n     ${why.join('; ')}`); } else console.log(`ok   ${line}`);
+}
+const c2 = run(5, 1, 0, { PINBALL_SOAK_TOYS: '1', PINBALL_SOAK_INJECT: '2' });
+if (c2.status === 1 && /inside the creature/.test(c2.stdout)) console.log('ok   control: a ball inside the risen creature is caught');
+else { bad++; console.log(`CONTROL PASSED (a failure): a ball inside the creature went unseen (status ${c2.status})`); }
 const c = run(5, 1, 0, { PINBALL_SOAK_INJECT: '1' });
 if (c.status === 1 && /soak FAIL/.test(c.stdout)) console.log('ok   control: an injected NaN is caught');
 else { bad++; console.log(`CONTROL PASSED (a failure): the injected NaN went unseen (status ${c.status})`); }

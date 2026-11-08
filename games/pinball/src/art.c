@@ -153,9 +153,58 @@ static void pattern(const table *T) {
   }
 }
 
+/* each table's illustration, painted under the inserts at half strength: the creature coiling up through the reef,
+ * the forge ring round its new sun over the magnet with the pour running down, the fair's wheel lit over the flippers */
+static void illustration(const table *T) {
+  const theme *th = &T->th;
+  if (th->pattern == 0) {
+    col3 body = scl(C(th->col[1]), 0.32f), plate = scl(C(th->col[1]), 0.7f), eye = scl(C(th->col[2]), 1.6f);
+    float px = 0, py = 0;
+    for (int i = 0; i <= 160; i++) {
+      float t = (float)i / 160.0f;
+      float x = -0.17f + t * 0.2f + sinf(t * 9.0f) * 0.075f * (1 - t * 0.5f), y = 0.33f + t * 0.36f;
+      float r = 0.018f - t * 0.007f;
+      disc(x, y, r, body, 0.55f);
+      if (i % 5 == 0) ring(x, y, r * 0.75f, r, plate, 0.45f);
+      px = x, py = y;
+    }
+    disc(px + 0.012f, py + 0.008f, 0.02f, body, 0.6f);
+    disc(px + 0.02f, py + 0.012f, 0.004f, eye, 0.8f);
+    for (int k = 0; k < 12; k++) { /* a shoal */
+      float x = -0.2f + (float)(hsh(k, 4, 9) & 1023) / 1023.0f * 0.4f, y = 0.72f + (float)(hsh(k, 5, 9) & 1023) / 1023.0f * 0.2f;
+      disc(x, y, 0.0045f, scl(C(th->col[0]), 0.6f), 0.5f);
+      float tri[3][2] = { { x - 0.004f, y }, { x - 0.011f, y + 0.004f }, { x - 0.011f, y - 0.004f } };
+      poly((const float (*)[2])tri, 3, scl(C(th->col[0]), 0.6f), 0.5f);
+    }
+  } else if (th->pattern == 1) {
+    float cx = -0.025f, cy = 0.665f;
+    disc(cx, cy, 0.05f, scl(C(th->col[2]), 0.9f), 0.35f);
+    ring(cx, cy, 0.062f, 0.075f, scl(C(th->col[0]), 0.5f), 0.55f);
+    for (int k = 0; k < 16; k++) {
+      float a = (float)k / 16 * 6.2832f;
+      stroke(cx + cosf(a) * 0.075f, cy + sinf(a) * 0.075f, cx + cosf(a) * 0.086f, cy + sinf(a) * 0.086f, 0.004f, scl(C(th->col[0]), 0.5f), 0.55f, 0.001f);
+    }
+    for (int i = 0; i < 40; i++) { /* the pour */
+      float t = (float)i / 40;
+      disc(cx + 0.03f + sinf(t * 3) * 0.02f, cy - 0.08f - t * 0.2f, 0.007f - t * 0.003f, scl(C(th->col[0]), 1.0f), 0.4f);
+    }
+  } else {
+    float cx = -0.017f, cy = 0.35f, r = 0.085f;
+    col3 steel = scl(C(th->col[3]), 0.55f), bulb = scl(C(th->col[2]), 1.3f);
+    ring(cx, cy, r - 0.003f, r, steel, 0.6f), ring(cx, cy, r * 0.5f - 0.002f, r * 0.5f, steel, 0.5f);
+    for (int k = 0; k < 12; k++) {
+      float a = (float)k / 12 * 6.2832f;
+      stroke(cx, cy, cx + cosf(a) * r, cy + sinf(a) * r, 0.0012f, steel, 0.5f, 0.0008f);
+      disc(cx + cosf(a) * r, cy + sinf(a) * r, 0.004f, bulb, 0.7f);
+    }
+    stroke(cx, cy, cx - 0.05f, cy - 0.12f, 0.0025f, steel, 0.5f, 0.001f), stroke(cx, cy, cx + 0.05f, cy - 0.12f, 0.0025f, steel, 0.5f, 0.001f);
+  }
+}
+
 uint8_t *art_paint(const table *T, int *w, int *h) {
   buf = malloc(sizeof(col3) * AW * AH);
   pattern(T);
+  illustration(T);
   const theme *th = &T->th;
   /* the shots marked in paint: a wedge of the shot's colour behind each arrow, pointing up its lane */
   for (int s = 0; s < T->nshot; s++) {
