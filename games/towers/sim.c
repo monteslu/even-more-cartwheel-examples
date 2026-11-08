@@ -590,9 +590,33 @@ static void build(sim *s, int i, int slot, int kind) {
   ev(s, EV_BUILD, x, y, 0, 0, kind, i);
 }
 
+float sim_power_damage(int wave) { return 60.0f + 9.0f * (float)CW_MAX(wave - 1, 0); }
+/* the storm: lightning down on everything round the cursor's pad (bosses take it but are never stunned) */
+static void power(sim *s, int i) {
+  player *p = &s->p[i];
+  if (p->power_cd > 0 || p->slot < 0) return;
+  float x = mp_wx(&s->m, s->m.slot[p->slot].x), y = mp_wz(&s->m, s->m.slot[p->slot].y);
+  static int buf[MAXE];
+  int n = creeps_near(s, x, y, POWER_R, buf, MAXE);
+  p->power_cd = POWER_CD;
+  ev(s, EV_POWER, x, y, POWER_R, 0, i, (int)CW_MIN(n, 255));
+  float dmg = sim_power_damage(s->wave);
+  int k0 = s->kills;
+  for (int j = 0; j < n; j++) {
+    creep *e = &s->e[buf[j]];
+    if (!e->alive) continue;
+    if (j < 14) ev(s, EV_ZAP, x, y, e->x, e->y, 3, 200); /* (b 200: a bolt from the sky) */
+    if (!e->boss) e->stun = CW_MAX(e->stun, POWER_STUN);
+    damage(s, buf[j], dmg, -1, false);
+  }
+  p->kills += s->kills - k0; /* (the storm's kills are the player's) */
+}
+
 static void player_step(sim *s, int i, const input *in) {
   player *p = &s->p[i];
   if (!p->active) return;
+  if (p->power_cd > 0) p->power_cd--;
+  if (in->power && s->state == ST_PLAY) power(s, i);
   if (!sim_slot_mine(s, i, p->slot)) p->slot = nearest_mine(s, i, p->slot >= 0 ? mp_wx(&s->m, s->m.slot[p->slot].x) : 0, p->slot >= 0 ? mp_wz(&s->m, s->m.slot[p->slot].y) : 0);
   if (p->slot < 0) return;
   /* the hop: on a press, then again every 9 ticks after 18 held */

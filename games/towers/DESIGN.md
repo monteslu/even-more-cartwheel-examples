@@ -76,6 +76,7 @@ whole map on one screen, a fixed camera per map.
 | on a tower of yours: change its aim (first, strongest, last) | north | I |
 | on a tower of yours: sell (hold) | west | J |
 | call the next wave early (gold for the time left) | either shoulder | Q |
+| the storm: lightning down round the cursor (every 30 s) | either trigger | E |
 | pause | Start | Escape |
 
 - The build diamond is drawn round the cursor where the buttons sit: the tower each face button builds, with its
@@ -89,6 +90,10 @@ whole map on one screen, a fixed camera per map.
 - Shares: one player owns every pad; two split the map into a left and a right band, three into three bands, four
   into quarters, each balanced by how much path its pads reach (the map check holds them within 30%). A player who
   joins mid-map takes a share of the empty pads; towers stay with whoever built them.
+- The storm is something to do during the wave, for every player: lightning comes down on every creep within 5.5 m
+  of the cursor's pad (60 a creep, 9 more each wave, through no armour), stunning all but bosses for half a second;
+  then it charges for 30 seconds (a bar under the player's panel, "storm" with its button when ready). Its kills are
+  the player's. The bots use it on fifteen creeps or a boss.
 - Players join at any time with the join button on a free pad (the engine's shell).
 
 ## Towers

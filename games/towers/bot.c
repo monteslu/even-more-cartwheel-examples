@@ -42,6 +42,20 @@ void towers_bot(const sim *s, int i, input *in) {
     goal = bu, act = A_S;
     if (s->tw[bu].level == 2 && (g_bot_branch == 1 || (g_bot_branch == 2 && bu % 2))) act = A_E;
   }
+  { /* the storm, when a crowd stands round the cursor (fifteen creeps or a boss) */
+    int near = 0;
+    bool boss = false;
+    if (p->power_cd == 0 && p->slot >= 0) {
+      float x = mp_wx(&s->m, s->m.slot[p->slot].x), y = mp_wz(&s->m, s->m.slot[p->slot].y);
+      for (int k = 0; k < MAXE && near < 15; k++) {
+        const creep *e = &s->e[k];
+        if (!e->alive) continue;
+        float dx = e->x - x, dy = e->y - y;
+        if (dx * dx + dy * dy < POWER_R * POWER_R) near++, boss |= e->boss;
+      }
+    }
+    if (near >= 15 || boss) in->power = true;
+  }
   /* the next wave early when the field is quiet and nothing is to be bought (the first bot calls) */
   if (i == 0 && s->wave >= 2 && s->next_t > 600 && s->nenemies == 0 && s->core_hp == CORE_HP && goal < 0) in->wave = (s->tick / 30) % 2 == 0;
   if (goal < 0) return;

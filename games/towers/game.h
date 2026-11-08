@@ -39,13 +39,19 @@ const char *sim_branch_does(int kind, int branch); /* a few words: what it does 
 const char *sim_aim_name(int a);
 
 enum { EV_BUILD, EV_UPGRADE, EV_SELL, EV_NOGOLD, EV_HOP, EV_AIM, EV_ZAP, EV_FROST, EV_FREEZE, EV_MORTAR, EV_BOOM, EV_HIT, EV_KILL, EV_LEAK, EV_SPLIT,
-       EV_WAVE, EV_CALL, EV_WON, EV_LOST, EV_HEAL, EV_SPAWN, EV_BEAM_ON, EV_FIRE, EV_STUN };
+       EV_WAVE, EV_CALL, EV_WON, EV_LOST, EV_HEAL, EV_SPAWN, EV_BEAM_ON, EV_FIRE, EV_STUN, EV_POWER };
 /* event fields: a, b small ints, x y where, z w a direction or a second point (each emitter says) */
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 /* a player's input this tick: the held direction (-1, 0, 1 each way), the four face buttons pressed this tick (A_*),
  * the west button held (selling takes a hold), and the call-the-next-wave button pressed */
-typedef struct input { int8_t dx, dy; bool act[A_KINDS]; bool sell_held; bool wave; } input;
+typedef struct input { int8_t dx, dy; bool act[A_KINDS]; bool sell_held; bool wave, power; } input;
+/* each player's storm (the trigger): lightning down on everything within POWER_R of their cursor's pad, then a cooldown
+ * (DESIGN.md, players and controls) */
+#define POWER_R 5.5f
+#define POWER_CD 1800 /* ticks */
+#define POWER_STUN 30
+float sim_power_damage(int wave); /* a storm's strike on each creep */
 
 typedef struct player {
   bool active;
@@ -53,6 +59,7 @@ typedef struct player {
   int8_t hx, hy;            /* the direction held last tick */
   int hold, sell_t;         /* ticks the direction has been held; ticks the sell button has been held */
   int kills, spent, built;
+  int power_cd; /* ticks until the storm is ready again */
   float dmg;
 } player;
 

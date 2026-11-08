@@ -55,7 +55,7 @@ static struct {
   int banner_t, banner_kind;
   int kills0[MAXP], wave_kills[MAXP]; /* each player's kills when the last wave came, and in the wave before it (the banner's line) */
   float dmg0[MAXP], wave_dmg[MAXP];
-  cw_action move[4], act[A_KINDS], call;
+  cw_action move[4], act[A_KINDS], call, power;
   cw_node camera;
   int lm_frames;
   int pick_held[MAXP];
@@ -240,6 +240,7 @@ static void init(void *u) {
   for (int i = 0; i < 4; i++) G.move[i] = cw_action_find(names[i]);
   G.act[A_N] = cw_action_find("act_n"), G.act[A_W] = cw_action_find("act_w"), G.act[A_E] = cw_action_find("act_e"), G.act[A_S] = cw_action_find("act_s");
   G.call = cw_action_find("call");
+  G.power = cw_action_find("power");
   cw_shell_init(&(cw_shell_desc){ .title = "TOWERS", .subtitle = "hold the core together", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .players_changed = players_changed,
                                   .sound = shell_sound, .screen_changed = shell_screen });
@@ -318,6 +319,7 @@ static void read_input(input in[MAXP]) {
     for (int a = 0; a < A_KINDS; a++) in[i].act[a] = cw_action_just_pressed(i, G.act[a]);
     in[i].sell_held = cw_action_pressed(i, G.act[A_W]);
     in[i].wave = cw_action_just_pressed(i, G.call);
+    in[i].power = cw_action_just_pressed(i, G.power);
 #endif
   }
 }
@@ -368,6 +370,7 @@ static void fixed_update(void *u, double dt) {
     const event *e = &G.S.ev[k];
     switch (e->kind) {
     case EV_ZAP: if (e->b == 0) play(snd_zap, 0.25f); break;
+    case EV_POWER: play(snd_boom, 0.6f), play(snd_zap, 0.6f); break;
     case EV_FROST: play(snd_frost, e->b ? 0.4f : 0.22f); break;
     case EV_BEAM_ON: play(snd_beam, 0.2f); break;
     case EV_MORTAR: play(snd_mortar, 0.35f); break;
@@ -560,6 +563,17 @@ static void hud_player(int i, float u, cw_vec2 cs) {
   cw_r2d_circle(cw_v2(cx, cy), 10 * u, 20, rgba(1, 0.8f, 0.25f, 1)); /* a coin */
   cw_r2d_circle(cw_v2(cx, cy), 6 * u, 20, rgba(1, 0.92f, 0.55f, 1));
   text(g, cx + 16 * u, y + (h - gm.height) * 0.5f, 36 * u, rgba(1, 0.92f, 0.6f, 1), CW_ALIGN_LEFT);
+  { /* the storm: ready (its button) or charging (a bar filling under the panel) */
+    float by = bottom ? y - 6 * u : y + h + 6 * u;
+    if (p->power_cd <= 0) {
+      float glow = 0.85f + 0.15f * cw_sin((float)G.S.tick * 0.05f); /* (a slow glow, never a blink) */
+      pill("{power} storm", i, right ? x + w : x, by, right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f, bs, rgba(0.75f * glow, 0.85f * glow, 1, 1), rgba(0.02f, 0.03f, 0.06f, 0.72f));
+    } else {
+      float k = 1.0f - (float)p->power_cd / (float)POWER_CD, bh = 8 * u, bx = x, bt = bottom ? by - bh : by;
+      cw_r2d_rect(cw_rect_make(bx, bt, w, bh), rgba(0.02f, 0.03f, 0.06f, 0.72f));
+      cw_r2d_rect(cw_rect_make(bx, bt, w * k, bh), rgba(0.45f, 0.6f, 1, 0.9f));
+    }
+  }
 }
 
 static void hud(void) {
