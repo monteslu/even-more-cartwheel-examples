@@ -395,6 +395,8 @@ static void ball_path_substep(pb_world *w, int bi, float h) {
   b->sv += a * h;
   float fr = P->friction * h;
   b->sv = b->sv > fr ? b->sv - fr : b->sv < -fr ? b->sv + fr : 0;
+  /* stopped where the path is level (a ramp's crest): a real ball never balances there; it rolls back the way it came */
+  if (b->sv == 0 && fabsf(a) * h <= fr) b->sv = -0.05f;
   b->s += b->sv * h;
   if (b->s >= P->len) { /* made it */
     pb_path_at(P, P->len, p3, tn);

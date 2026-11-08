@@ -97,7 +97,7 @@ int main(int argc, char **argv) {
             break;
           }
         }
-        bool parked = b->state != BS_FREE || (b->x > 0.219f && b->y < 0.08f);
+        bool parked = b->state == BS_HELD || (b->state == BS_FREE && b->x > 0.219f && b->y < 0.08f); /* a ball on a ramp counts */
         float dx = b->x - last_x[i], dy = b->y - last_y[i];
         if (parked || dx * dx + dy * dy > 0.003f * 0.003f) still[i] = 0, last_x[i] = b->x, last_y[i] = b->y;
         else if (++still[i] == 8 * 60) {
@@ -107,6 +107,10 @@ int main(int argc, char **argv) {
           g.W.b[i].vx += 0.4f, g.W.b[i].vy += 0.6f;
           still[i] = 0;
         }
+      }
+      if (getenv("PINBALL_SOAK_DEBUG") && gt % (60 * 60) == 0) {
+        printf("debug: table %d game %d min %d: state %d balls %d mode %d wizard %d serve %d mb %d toy_up %d plunge %.2f launch_was %d armed %d\n", tb, games, gt / 3600, g.state, g.balls_in_play, g.mode, g.wizard, g.serve_left, g.multiball, g.toy_up, g.plunge, g.launch_was, g.pull_armed);
+        for (int i = 0; i < PB_MAXB; i++) if (g.W.b[i].state != BS_OFF) printf("   ball %d st %d at %.3f %.3f v %.3f %.3f\n", i, g.W.b[i].state, g.W.b[i].x, g.W.b[i].y, g.W.b[i].vx, g.W.b[i].vy);
       }
       if (t == 3600) first_rss = rss_kb();
       if (first_rss && t % (3600 * 5) == 0) printf("rss %ld kB (first minute %ld)\n", rss_kb(), first_rss);
