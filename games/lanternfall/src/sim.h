@@ -16,6 +16,8 @@
 #define MAXEN 48
 #define MAXSHOTS 96
 #define MAXEV 128
+#define PUFF_CYCLE 210 /* the puffs' breath: soft for PUFF_SOFT ticks, swelling 30, thorny the rest */
+#define PUFF_SOFT 120
 
 /* the player's body: feet at (x, y), PW half wide, PH tall */
 #define PW 0.38f
@@ -54,6 +56,7 @@ typedef struct pinput {
   int8_t mx, my;           /* -1, 0, 1 (my -1 = up) */
   bool jump, jump_held;    /* jump went down this tick / is held */
   bool attack, shoot, dash, grapple, interact;
+  bool dash_held;          /* the dash is held (with the sprint charm a held dash runs on as a sprint) */
 } pinput;
 
 enum { PS_NORMAL, PS_CLING, PS_DASH, PS_POUND, PS_SWIM, PS_GRAPPLE, PS_HURT, PS_DEAD };
@@ -74,12 +77,15 @@ typedef struct player {
   int16_t hp, hp_max, en, en_max, en_frac;
   uint32_t ev;             /* PE_* this tick */
   float land_v;
+  bool sprint;             /* sprinting (the charm): faster, and a jump keeps the speed */
+  bool second_wind;        /* the second wind charm is ready (until a rest) */
+  int16_t recoil_t;        /* a strike that landed pushes you back a little (both sides feel the hit) */
 } player;
 
 enum { /* player events */
   PE_JUMP = 1 << 0, PE_DJUMP = 1 << 1, PE_WALLJ = 1 << 2, PE_DASH = 1 << 3, PE_LAND = 1 << 4, PE_POUND_START = 1 << 5,
   PE_POUND_LAND = 1 << 6, PE_SPLASH = 1 << 7, PE_STROKE = 1 << 8, PE_GRAPPLE = 1 << 9, PE_RELEASE = 1 << 10,
-  PE_HAZARD = 1 << 11, PE_COLD = 1 << 12, PE_CLING = 1 << 13, PE_MANTLE = 1 << 14, PE_DROP = 1 << 15,
+  PE_HAZARD = 1 << 11, PE_COLD = 1 << 12, PE_CLING = 1 << 13, PE_MANTLE = 1 << 14, PE_DROP = 1 << 15, PE_SPRINT = 1 << 16,
 };
 
 /* what the body moves through: the tiles (with the broken and opened ones) and the anchors */
@@ -88,7 +94,25 @@ typedef struct pworld {
   const ent *anchors[64];
   int nanchors;
   uint32_t abilities;
+  uint32_t charms;  /* CH_* bits: the relics' gifts that change how you move (the checker plays with none) */
 } pworld;
+
+/* charms: each relic found gives the next of these, in this order (a new way to move or fight, not a number) */
+enum {
+  CH_REACH,      /* long wick: the strike reaches further */
+  CH_DASHSTRIKE, /* the dash cuts through what it passes and nothing touches you while it lasts */
+  CH_SPRINT,     /* hold the dash and it runs on as a sprint: faster, and a jump keeps the speed */
+  CH_HARVEST,    /* every kill fills a measure of energy */
+  CH_SWIFTMEND,  /* the mend takes half as long */
+  CH_UPDRAFT,    /* a downward strike bounces you higher */
+  CH_THORNWARD,  /* a hit you take bursts out at everything near */
+  CH_QUICK,      /* strikes come faster */
+  CH_TWINSPARK,  /* the spark flies through what it hits */
+  CH_QUAKE,      /* the plunge's shock reaches twice as far and hits harder */
+  CH_SECONDWIND, /* once a rest, a killing blow leaves you a leaf instead */
+  CH_KINDS
+};
+#define CHARM_BIT(c) (1u << (c))
 
 void player_spawn(player *p, float x, float y);
 /* one tick of movement; returns the tile index (y * TW + x) a plunge landed on (for the caller to break), or -1 */
@@ -114,6 +138,7 @@ typedef struct enemy {
   float x, y, vx, vy, hx, hy; /* hx, hy: home */
   int16_t ent;                /* the world entity it came from */
   int16_t aux;
+  float kb;                   /* knockback speed (tiles a second, along x), bleeding off */
 } enemy;
 
 enum { BM_CHARGE, BM_LEAP, BM_VOLLEY, BM_RAIN, BM_SWEEP_LOW, BM_SWEEP_HIGH, BM_DIVE, BM_SUMMON, BM_PILLARS, BM_KINDS };
@@ -132,7 +157,7 @@ typedef struct boss {
 enum { /* game events, for sound and effects */
   EV_STRIKE, EV_HIT, EV_KILL, EV_BOLT, EV_HURT, EV_DIE, EV_PICKUP, EV_SAVE, EV_ROOM, EV_BREAK, EV_SECRET, EV_BOSS_START,
   EV_BOSS_TELL, EV_BOSS_ACT, EV_BOSS_HIT, EV_BOSS_DOWN, EV_SHOT, EV_SHOT_HIT, EV_DOOR, EV_SEAL, EV_ENEMY_TELL, EV_BOUNCE,
-  EV_MEND, EV_KINDS
+  EV_MEND, EV_CHARM, EV_TRIAL, EV_TRIAL_WAVE, EV_TRIAL_DONE, EV_BOSS_PHASE, EV_PARRY, EV_KINDS
 };
 typedef struct event { uint8_t kind, a, b, c; float x, y; } event;
 
@@ -162,6 +187,12 @@ typedef struct sim {
   int door_lock[8][3];        /* boss fight: door openings closed (x, y, len | vertical << 8) */
   int ndoor_lock;
   pworld pw;
+  int hitstop;                /* ticks the world holds still after a blow lands (both sides feel it) */
+  uint32_t charms;            /* CH_* bits */
+  int trial_room, trial_wave, trial_t; /* a trial: an upgrade's room locks and its guardians come in waves (-1 none) */
+  uint8_t trials_done[MAXROOMS / 8];
+  uint8_t slain[MAXENTS / 8]; /* the world's enemies struck down: they stay down until you rest at a shrine (or fall) */
+  bool held_jump[MAXP], held_attack[MAXP], held_dash[MAXP], held_shoot[MAXP], held_grapple[MAXP]; /* presses during a hold */
 } sim;
 
 void sim_init(sim *s, const world *w, int players);
@@ -185,6 +216,8 @@ typedef struct save_state {
   uint16_t broken_n;
   uint32_t broken[256];       /* broken / opened tile regions, by a tile index each (flood-filled on load) */
   uint32_t play_ticks;
+  uint32_t charms;
+  uint8_t trials_done[MAXROOMS / 8];
 } save_state;
 void sim_save(const sim *s, save_state *out);
 void sim_restore(sim *s, const save_state *in);
@@ -196,5 +229,9 @@ float boss_hh(int idx);
 int boss_tell_ticks(int move);
 extern const char *const ABILITY_NAME[NABILITIES];
 extern const char *const BOSS_NAME[NBOSSES];
+extern const char *const CHARM_NAME[CH_KINDS];
+extern const char *const CHARM_LINE[CH_KINDS];
+int enemy_tell_ticks(int kind);
+bool sim_trial_room(const sim *s, int room); /* a room whose guardians must fall before its upgrade can be taken */
 
 #endif

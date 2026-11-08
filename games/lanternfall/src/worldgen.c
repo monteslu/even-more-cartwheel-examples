@@ -681,15 +681,38 @@ static void populate(int ri) {
       }
   }
   if (rm->kind != RK_PLAIN && rm->kind != RK_SHAFT && rm->kind != RK_HALL) return;
-  /* enemies: ground walkers on long floors, spitters on ledges, flyers in the air */
+  /* enemies: each region has its own cast (four kinds, the first two commonest), so a new region means new fights:
+   * ground walkers on long floors, spitters and eyes on ledges, moths and puffs in the air, droppers on ceilings */
+  static const uint8_t CAST[NREGIONS][4] = {
+    [R_GATE] = { EN_CRAWLER, EN_FLYER, EN_SPITTER, EN_PUFF },     [R_ROOTWAY] = { EN_CRAWLER, EN_PUFF, EN_SPITTER, EN_FLYER },
+    [R_GLASS] = { EN_DROPPER, EN_HOPPER, EN_FLYER, EN_EYE },      [R_FEN] = { EN_BURROWER, EN_SPITTER, EN_PUFF, EN_HOPPER },
+    [R_CLOCK] = { EN_EYE, EN_KNIGHT, EN_DROPPER, EN_CRAWLER },    [R_TIDAL] = { EN_PUFF, EN_BURROWER, EN_SPITTER, EN_FLYER },
+    [R_STAR] = { EN_EYE, EN_FLYER, EN_BURROWER, EN_KNIGHT },      [R_SKY] = { EN_FLYER, EN_PUFF, EN_KNIGHT, EN_EYE },
+    [R_ARCHIVE] = { EN_KNIGHT, EN_DROPPER, EN_EYE, EN_FLYER },    [R_FORGE] = { EN_CRAWLER, EN_EYE, EN_BURROWER, EN_KNIGHT },
+    [R_FROST] = { EN_DROPPER, EN_HOPPER, EN_KNIGHT, EN_BURROWER }, [R_BLOOM] = { EN_HOPPER, EN_PUFF, EN_BURROWER, EN_SPITTER },
+    [R_HEART] = { EN_KNIGHT, EN_BURROWER, EN_EYE, EN_FLYER },
+  };
   int ne = rm->w * rm->h + rint_(0, 1) + (region >= R_CLOCK);
   for (int k = 0; k < ne; k++) {
     int x = rint_(X0 + 8, X0 + Wd - 9), y = surface_at(ri, x);
     if (y < 0) continue;
-    int kind = (int)(rnd() % EN_KINDS);
-    if (region == R_GATE || region == R_ROOTWAY) kind = (int)(rnd() % 3);
-    if (kind == EN_FLYER) add_ent(EK_ENEMY, EN_FLYER, 0, 0, ri, (float)x + 0.5f, (float)(y - 5));
-    else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, (uint8_t)kind, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    uint32_t r4 = rnd() % 10u;
+    int kind = CAST[region][r4 < 4 ? 0 : r4 < 7 ? 1 : r4 < 9 ? 2 : 3];
+    if (kind == EN_PUFF) { /* a puff drifts in open air, clear of anywhere to stand (its thorny breath must not sit on a ledge) */
+      int hy = y - 6;
+      bool open = true;
+      for (int yy = hy - 3; yy <= hy + 4 && open; yy++)
+        for (int xx = x - 5; xx <= x + 5 && open; xx++) open = tile(xx, yy) == T_EMPTY;
+      if (!open) kind = EN_FLYER;
+      else { add_ent(EK_ENEMY, EN_PUFF, 0, 0, ri, (float)x + 0.5f, (float)hy); continue; }
+    }
+    if (kind == EN_FLYER) add_ent(EK_ENEMY, (uint8_t)kind, 0, 0, ri, (float)x + 0.5f, (float)(y - 5));
+    else if (kind == EN_DROPPER) { /* on the ceiling over the floor, with room to fall */
+      int cy = y - 4;
+      while (cy > Y0 + 1 && !t_solid(tile(x, cy - 1))) cy--;
+      if (y - cy >= 5 && t_solid(tile(x, cy - 1))) add_ent(EK_ENEMY, EN_DROPPER, 0, HOLD_CEIL, ri, (float)x + 0.5f, (float)cy + 1.0f);
+      else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, EN_CRAWLER, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
+    } else if (t_solid(tile(x, y))) add_ent(EK_ENEMY, (uint8_t)kind, 0, HOLD_FLOOR, ri, (float)x + 0.5f, (float)y);
   }
 }
 

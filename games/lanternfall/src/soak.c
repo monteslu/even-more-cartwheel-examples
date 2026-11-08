@@ -81,10 +81,33 @@ int main(int argc, char **argv) {
         printf(" bot mode %d step %d atkcd %d facing %d\n", B.mode, B.i, S.p[0].atk_cd, S.p[0].facing_left);
       }
     if (getenv("LANTERNFALL_SOAK_TRACE") && tick < atoi(getenv("LANTERNFALL_SOAK_TRACE")) && tick > (getenv("LANTERNFALL_SOAK_FROM") ? atoi(getenv("LANTERNFALL_SOAK_FROM")) : 0)) {
-      for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < 6) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
+      for (int j = 0; j < S.nen; j++) if (S.en[j].alive && fabsf(S.en[j].x - S.p[0].x) < (getenv("LANTERNFALL_SOAK_FAR") ? 40 : 6)) printf("   en%d k%d st%d t%d %.2f,%.2f\n", j, S.en[j].kind, S.en[j].state, S.en[j].t, S.en[j].x, S.en[j].y);
       const route_step *st = &B.steps[B.i < B.n ? B.i : B.n - 1];
-      printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump);
+      printf("t%ld mode %d mv %d t %d ph %d mend %d hp %d en %d step %d (%d,%d -> %d,%d mv %d) np %d p %.2f,%.2f v %.2f,%.2f g%d st%d in mx%d j%d a%d my%d cd%d hs%d\n", tick, B.mode, B.mv, B.t, B.phase, S.p[0].mend_t, S.p[0].hp, S.p[0].en, B.i, st->from % TW, st->from / TW, st->to % TW, st->to / TW, st->move, B.np, S.p[0].x, S.p[0].y, S.p[0].vx, S.p[0].vy, S.p[0].on_ground, S.p[0].state, in[0].mx, in[0].jump, in[0].attack, in[0].my, S.p[0].atk_cd, S.hitstop);
       if (S.b.active) printf("   boss st%d mv%d t%d x %.2f y %.2f\n", S.b.state, S.b.move, S.b.t, S.b.x, S.b.y);
+    }
+    if (getenv("LANTERNFALL_SOAK_TIMELINE")) { /* the moments a player notices, by game second (the diagnosis) */
+      static uint8_t seen_room[MAXROOMS], seen_kind[16];
+      static int last_room = -1;
+      double sec = (double)tick / 60.0;
+      if (S.room != last_room && S.room >= 0) {
+        last_room = S.room;
+        const room *rm = &W.rooms[S.room];
+        if (!seen_room[S.room]) {
+          seen_room[S.room] = 1;
+          int ne = 0;
+          for (int j = 0; j < S.nen; j++) ne += S.en[j].alive;
+          printf("T %.1f room %d kind %d region %d enemies %d%s\n", sec, S.room, rm->kind, rm->region, ne, seen_kind[rm->kind] ? "" : " NEWKIND");
+          seen_kind[rm->kind] = 1;
+        }
+      }
+      for (int k = 0; k < S.nev; k++) {
+        const event *e = &S.ev[k];
+        const char *nm = e->kind == EV_KILL ? "kill" : e->kind == EV_PICKUP ? "pickup" : e->kind == EV_SAVE ? "shrine" : e->kind == EV_SECRET ? "secret"
+                         : e->kind == EV_BOSS_START ? "warden" : e->kind == EV_BOSS_DOWN ? "warden_down" : e->kind == EV_HURT ? "hurt" : e->kind == EV_DIE ? "die"
+                         : e->kind == EV_BREAK ? "break" : e->kind == EV_ENEMY_TELL ? "tell" : e->kind == EV_HIT ? "hit" : NULL;
+        if (nm) printf("T %.1f %s %d %d\n", sec, nm, e->a, e->b);
+      }
     }
     if (inject && tick == 3600) S.p[0].vx = NAN;
     for (int i = 0; i < S.players; i++) {
@@ -113,7 +136,8 @@ int main(int argc, char **argv) {
       flat_minutes = B.i == last_i ? flat_minutes + 1 : 0;
       last_i = B.i;
       if (flat_minutes >= 4) {
-        printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f)\n", B.i, S.room, S.p[0].x, S.p[0].y);
+        printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f; trial %d wave %d t %d; boss %d)\n", B.i, S.room, S.p[0].x, S.p[0].y, S.trial_room, S.trial_wave, S.trial_t, S.b.active);
+        for (int j = 0; j < S.nen; j++) if (S.en[j].alive) printf("  enemy %d kind %d state %d at %.1f,%.1f hp %d\n", j, S.en[j].kind, S.en[j].state, S.en[j].x, S.en[j].y, S.en[j].hp);
         for (int y = (int)S.p[0].y - 8; y <= (int)S.p[0].y + 5; y++) {
           for (int x = (int)S.p[0].x - 20; x <= (int)S.p[0].x + 20; x++) putchar(x == (int)S.p[0].x && y == (int)S.p[0].y - 1 ? '@' : " #=^~%?BS"[w_tile(&W, x, y) == S.t[y][x] ? S.t[y][x] : S.t[y][x]]);
           printf(" %d\n", y);
