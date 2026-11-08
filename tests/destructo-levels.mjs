@@ -12,6 +12,8 @@
 //   replay    the instant replay of the level's last shot (the level made again and stepped with the inputs the bot
 //             gave, src/replay.c) ends on the same state as the live game where it was judged: every block's pose to
 //             the bit, the counters, the scores
+//   kegs      two powder kegs 1.6 m apart, the first set off: the second goes off too (a chain of two blasts);
+//             control: 8 m apart, one blast only
 //   marks     each kit's mark is reachable: the bot (which aims at crystals, not at a collapse) brings at least one
 //             level of every kit that far down within par
 // Controls, each must fail its check: the result rules before the fix (judged 1.5 s after the last crystal fell,
@@ -37,7 +39,7 @@ const checks = (r) => ({
   replay: r.replay === 1,
   result: r.judged_awake <= 10 && r.share_after - r.share_judged <= 0.02 && (!r.stars3 || r.share_after >= r.mark - 0.005) && (r.result !== 1 || r.share_after >= r.mark - 0.005),
 });
-const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
+const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.kegs} kegs, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
 let bad = 0;
 const all = run([]);
 const kits = {};
@@ -59,5 +61,13 @@ for (const [ctl, check] of [['float', 'floats'], ['rest', 'rest'], ['solve', 'so
   const r = run(['--control', ctl])[0];
   if (!checks(r)[check]) console.log(`ok   control (${ctl}) fails its ${check} check as it must: ${describe(r)}`);
   else { bad++; console.log(`CONTROL PASSED (a failure): ${ctl}: ${describe(r)}`); }
+}
+{
+  const [chain, apart] = run(['--kegs']);
+  const ok = chain.booms >= 2 && chain.kegs_left === 0, cok = apart.booms === 1 && apart.kegs_left === 1;
+  if (!ok) bad++;
+  if (!cok) bad++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} kegs ${chain.kegs_gap} m apart: ${chain.booms} blasts, ${chain.kegs_left} kegs left`);
+  console.log(`${cok ? 'ok   control fails as it must:' : 'CONTROL PASSED (a failure):'} kegs ${apart.kegs_gap} m apart: ${apart.booms} blasts, ${apart.kegs_left} kegs left`);
 }
 process.exit(bad ? 1 : 0);

@@ -55,6 +55,7 @@ typedef struct block {
   bool down;         /* counted as brought down (score) */
   bool queued;       /* out of strength, waiting its turn to break (the fracture queue) */
   uint16_t blasted;  /* the charge (game.booms) that last pushed it */
+  uint8_t keg;       /* a powder keg: when it breaks it goes off like a smaller charge (and may set off the next) */
 } block;
 
 typedef struct target_state {
@@ -66,7 +67,7 @@ typedef struct target_state {
 
 /* paints the level builder gives blocks (the look only) */
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
-       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_COUNT };
+       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
 #define MAXBANNER 24
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
@@ -150,6 +151,12 @@ typedef struct game {
   /* a charge's blast runs outward over a few ticks, a shell a tick */
   t3_vec3 blast_at;
   int blast_shell;   /* the next shell, 0 when no blast is running */
+  float blast_r, blast_k; /* the running blast's radius and strength (a charge: CHARGE_R and 1; a keg: smaller) */
+  /* kegs set off and waiting their blast (a chain goes off one after another, a few ticks apart) */
+#define MAXPEND 16
+  t3_vec3 pend_at[MAXPEND];
+  uint8_t pend_charge[MAXPEND]; /* a charge that went off during a keg's blast (a charge's size, not a keg's) */
+  int npend, pend_wait;
   int breaks_tick, made_tick; /* this tick's breaks and bodies made (stats) */
   int settle_quiet;
   /* stats */
@@ -208,6 +215,11 @@ int game_result(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);
 int game_add_target(game *g, t3_vec3 centre);
+/* a powder keg standing on the ground at (x, z) (levels.c places them against the structure) */
+int game_add_keg(game *g, float x, float z);
+#define KEG_HALF 0.32f
+/* harm block i by energy e (J) the way a hit does (tests: set off a keg) */
+void game_hit_block(game *g, int i, float e);
 /* a banner on block blk, its pole foot at local (block frame), h tall */
 void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour);
 void game_fire(game *g);

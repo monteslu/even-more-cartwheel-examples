@@ -463,6 +463,11 @@ static void hud_play(cw_vec2 cs, float u) {
   float mx = x + 260 * u, mw = 150 * u, my = y + 148 * u;
   cw_r2d_round_rect(cw_rect_make(mx, my, mw, 10 * u), 5 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
   cw_r2d_round_rect(cw_rect_make(mx, my, mw * fminf(1, share / mark), 10 * u), 5 * u, 6, share >= mark ? GOLD : rgba(0.9f, 0.75f, 0.5f, 0.9f));
+  if (g->shots == 0 && g->state == GS_AIM) { /* the first look at a level with kegs: what the red ones do */
+    bool kegs = false;
+    for (int i = 0; i < g->nb && !kegs; i++) kegs = g->b[i].alive && g->b[i].keg;
+    if (kegs) text("The red kegs go off when hit, and set off the next", x + 6 * u, y + 204 * u, 23 * u, rgba(1, 0.6f, 0.45f, 1), CW_ALIGN_LEFT);
+  }
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
     float rx = cs.x - 28 * u - 330 * u, ry = 24 * u;

@@ -19,6 +19,8 @@
  *            rules before the fix (judged 1.5 s after the last crystal fell, stars by shots alone) on Stone Giant
  *            (level 24, judged while it falls) and Garden Wall (level 3, three stars with the wall standing); each must
  *            fail its check
+ *   destructo_levelcheck --kegs   two kegs 1.6 m apart in level 1's yard, the first set off: the second must go off
+ *            too (a chain); the control, 8 m apart, must not
  *   replay   the level's last shot replayed from the shadow game (replay.c: the level made again and stepped with the
  *            logged inputs) ends on the live game's judged hash. Control (--control replay, level 1): the replay's
  *            last shot fired 3 milliradians off must end on another hash */
@@ -90,7 +92,8 @@ static void check(int level, const char *control) {
   int nfloat = floating(&G, &first);
   int first_over = -1, nover = overlapping(&G, &first_over);
   if (getenv("LC_DEBUG") && first >= 0) { t3_vec3 p = cw_body3d_transform(G.b[first].body).p; fprintf(stderr, "first float %d %s at %.3f %.3f %.3f half %.3f %.3f %.3f\n", first, MATS[G.b[first].mat].name, p.x, p.y, p.z, G.b[first].half.x, G.b[first].half.y, G.b[first].half.z); }
-  int blocks = G.nalive;
+  int blocks = G.nalive, nkegs = 0;
+  for (int i = 0; i < G.nb; i++) nkegs += G.b[i].alive && G.b[i].keg;
   /* settle, then rest */
   static t3_vec3 p0[MAXBLK];
   for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 };
@@ -192,16 +195,36 @@ static void check(int level, const char *control) {
   }
   float share_after = vol_all > 0 ? vol_down / vol_all : 0;
   printf("{\"judged_awake\":%d,\"share_judged\":%.4f,\"share_after\":%.4f,\"result\":%d,\"stars3\":%d,\"mark\":%.3f,\"replay\":%d,\"replay_ticks\":%d,", judged_awake, share_judged, share_after, result, stars == 3, game_mark(&G), replay_match(), replay_ticks);
-  printf("\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"control\":\"%s\",\"blocks\":%d,\"targets\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"first_over\":%d,"
+  printf("\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"control\":\"%s\",\"blocks\":%d,\"kegs\":%d,\"targets\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"first_over\":%d,"
          "\"settle_move_mm\":%.2f,\"settle_worst\":\"%s %d y%.2f\",\"broken_settle\":%d,\"drift_mm\":%.3f,\"worst\":%d,\"awake_end\":%d,\"targets_moved\":%d,"
          "\"solved\":%s,\"shots\":%d,\"par\":%d,\"stars\":%d,\"bot_ticks\":%d,\"broken\":%d,\"fragments\":%d,\"max_awake\":%d,\"step_ms_max\":%.2f}\n",
-         level, G.L->name, G.L->kind, control ? control : "", blocks, G.ntgt, nfloat, first, nover, first_over, settle_move * 1000, settle_worst >= 0 ? MATS[G.b[settle_worst].mat].name : "", settle_worst, settle_worst >= 0 ? p0[settle_worst].y : 0.0f, broken_settle, drift * 1000, worst, awake, tdown,
+         level, G.L->name, G.L->kind, control ? control : "", blocks, nkegs, G.ntgt, nfloat, first, nover, first_over, settle_move * 1000, settle_worst >= 0 ? MATS[G.b[settle_worst].mat].name : "", settle_worst, settle_worst >= 0 ? p0[settle_worst].y : 0.0f, broken_settle, drift * 1000, worst, awake, tdown,
          G.state == GS_WON ? "true" : "false", G.shots, G.L->par, stars, ticks, G.broken, G.fragments, max_awake, step_max);
   fflush(stdout);
 }
 
+/* kegs: two powder kegs in level 1's yard, gap metres apart; the first is set off; how many blasts follow */
+static void kegs(float gap) {
+  game_new(&G, 0, 1, MODE_COOP);
+  int a = game_add_keg(&G, 7.0f, 6.0f);
+  game_add_keg(&G, 7.0f + gap, 6.0f);
+  game_settle(&G, 60);
+  game_hit_block(&G, a, 1e6f);
+  input none = { 0 };
+  G.state = GS_SETTLE;
+  for (int t = 0; t < 240; t++) game_step(&G, &none);
+  int kegs_left = 0;
+  for (int i = 0; i < G.nb; i++) kegs_left += G.b[i].alive && G.b[i].keg;
+  printf("{\"kegs_gap\":%.1f,\"booms\":%d,\"kegs_left\":%d}\n", gap, G.booms, kegs_left);
+}
+
 int main(int argc, char **argv) {
   cw_jobs_init(-1);
+  if (argc > 1 && !strcmp(argv[1], "--kegs")) { /* the chain, and its control (too far apart to set each other off) */
+    kegs(1.6f), kegs(8.0f);
+    game_free(&G);
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[1], "--control")) {
     const char *c = argv[2];
     check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : !strcmp(c, "early") ? 23 : !strcmp(c, "stars") ? 2 : 0, c);
