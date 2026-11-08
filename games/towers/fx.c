@@ -396,7 +396,7 @@ static void flash(float x, float y, float z, float e, float r, float g, float b)
 static void blast(float x, float z, float r, bool big) {
   FX.booms_total++;
   if (FX.frame_booms++ > (big ? 3 : 6)) return;
-  if (!FX.strobe) flash_len(x, 1.6f, z, big ? 120.0f : 50.0f, 1.0f, 0.62f, 0.28f, big ? 30 : 20);
+  if (!FX.strobe) flash_len(x, 1.6f, z, big ? 80.0f : 35.0f, 1.0f, 0.62f, 0.28f, big ? 34 : 24);
   cw_node e = big ? FX.big[FX.nb++ % BIGS] : FX.small[FX.ns++ % SMALLB];
   cw_node3d_set_position(e, (t3_vec3){ x, 0, z });
   cw_node_set(cw_node_get(e, "Wave"), "max_radius", cw_val_float(CW_MAX(r * 1.5f, 2.5f)));
@@ -464,7 +464,7 @@ void fx_events(sim *s) {
         a[0] = e->z + (frand() - 0.5f) * 3, a[1] = 13, a[2] = e->w - 2 + (frand() - 0.5f) * 3;
       else
         a[0] = x, a[1] = 0.8f, a[2] = z;
-      float w = e->b == 200 ? 1.5f : (1.0f - 0.08f * (float)e->b) * (0.8f + 0.2f * (float)e->a);
+      float w = e->b == 200 ? 1.1f : (1.0f - 0.08f * (float)e->b) * (0.8f + 0.2f * (float)e->a);
       bolt_new(a, b, w, FX.strobe ? 9 : BOLT_LIFE);
       if (FX.frame_hits++ < (lvl >= 2 ? 40 : 20)) burst(FX.spark, e->z, 0.8f, e->w, 0, 1, 0);
       break;
@@ -533,7 +533,7 @@ void fx_events(sim *s) {
     case EV_SPAWN: if (lvl >= 2 && (FX.tick & 3) == 0) burst(FX.wisp, x, 0.8f, z, 0, 1, 0); break;
     case EV_HOP: break;
     case EV_POWER: /* the storm: a ring of charge over the ground, a cold-white light swelling over it, the pad rumbles */
-      ring(x, z, e->z, 0.6f), flash_len(x, 4, z, 110, 0.7f, 0.8f, 1.0f, 36), burst(FX.wisp, x, 1.0f, z, 0, 1, 0);
+      ring(x, z, e->z, 0.6f), flash_len(x, 4, z, 70, 0.7f, 0.8f, 1.0f, 40), burst(FX.wisp, x, 1.0f, z, 0, 1, 0);
       if (e->a < MAXP) rumble(e->a, 0.5f, 0.3f, 220);
       break;
     case EV_STUN: if (FX.frame_hits++ < 30) burst(FX.spark, x, 0.9f, z, 0, 1, 0); break;
