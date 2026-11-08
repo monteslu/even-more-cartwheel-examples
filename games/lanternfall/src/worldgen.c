@@ -46,7 +46,7 @@ typedef struct link { int from, to, gate; } link;
 /* from: the region you reach first (the gate's old side) */
 static const link LINKS[] = {
   { R_GATE, R_ROOTWAY, G_NONE },  { R_ROOTWAY, R_GLASS, G_DJUMP }, { R_GLASS, R_FEN, G_DASH },
-  { R_FEN, R_CLOCK, G_CLIMB },      { R_CLOCK, R_TIDAL, G_POUND },   { R_TIDAL, R_STAR, G_SWIM },
+  { R_FEN, R_CLOCK, G_GRAPPLE },    { R_CLOCK, R_TIDAL, G_POUND },   { R_TIDAL, R_STAR, G_SWIM },
   { R_STAR, R_SKY, G_GRAPPLE },     { R_GATE, R_ARCHIVE, G_DASH }, { R_ARCHIVE, R_FORGE, G_POUND },
   { R_CLOCK, R_FORGE, G_CLIMB },    { R_CLOCK, R_BLOOM, G_SWIM },    { R_BLOOM, R_FROST, G_DJUMP },
   { R_FORGE, R_FROST, G_GRAPPLE },  { R_GLASS, R_STAR, G_GRAPPLE },  { R_ROOTWAY, R_SKY, G_GRAPPLE },
@@ -54,6 +54,8 @@ static const link LINKS[] = {
   /* shortcuts: gates inside a region found early, so each ability cuts a corner through ground already walked */
   { R_GATE, R_GATE, G_DJUMP },     { R_ROOTWAY, R_ROOTWAY, G_DASH }, { R_ROOTWAY, R_ROOTWAY, G_CLIMB },
   { R_ROOTWAY, R_ROOTWAY, G_POUND }, { R_GLASS, R_GLASS, G_SWIM },  { R_GATE, R_GATE, G_GRAPPLE },
+  /* the grapple line comes third and swings across every early region */
+  { R_ROOTWAY, R_ROOTWAY, G_GRAPPLE }, { R_GLASS, R_GLASS, G_GRAPPLE }, { R_FEN, R_FEN, G_GRAPPLE }, { R_ARCHIVE, R_ARCHIVE, G_GRAPPLE },
 };
 #define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
 
@@ -68,18 +70,18 @@ typedef struct region_plan {
   int secrets;   /* hidden walls with a relic behind */
 } region_plan;
 static const region_plan PLAN[NREGIONS] = {
-  [R_GATE] = { 0, AB_BOLT, 2, 18, { G_POUND, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
+  [R_GATE] = { 0, AB_BOLT, 1, 18, { G_POUND, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
   [R_ROOTWAY] = { 1, AB_DJUMP, 2, 30, { G_DASH, G_CLIMB, 0 }, { PK_ENERGY, PK_HEALTH, 0 }, 1 },
-  [R_GLASS] = { 2, AB_DASH, 2, 30, { G_CLIMB, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
-  [R_FEN] = { 0, AB_CLIMB, 1, 22, { G_POUND, 0, 0 }, { PK_ENERGY, 0, 0 }, 1 },
-  [R_CLOCK] = { 3, AB_POUND, 2, 30, { G_GRAPPLE, 0, 0 }, { PK_HEALTH, 0, 0 }, 1 },
-  [R_TIDAL] = { 4, AB_SWIM, 2, 34, { G_GRAPPLE, 0, 0 }, { PK_RELIC, 0, 0 }, 1 },
-  [R_STAR] = { 0, AB_GRAPPLE, 2, 30, { G_GRAPPLE, 0, 0 }, { PK_ENERGY, 0, 0 }, 1 },
-  [R_SKY] = { 5, 0, 2, 28, { 0, 0, 0 }, { 0, 0, 0 }, 2 },
+  [R_GLASS] = { 2, AB_DASH, 1, 30, { G_CLIMB, G_SWIM, 0 }, { PK_HEALTH, PK_RELIC, 0 }, 1 },
+  [R_FEN] = { 0, AB_GRAPPLE, 1, 22, { G_POUND, 0, 0 }, { PK_ENERGY, 0, 0 }, 1 },
+  [R_CLOCK] = { 3, AB_CLIMB, 1, 30, { G_POUND, 0, 0 }, { PK_HEALTH, 0, 0 }, 1 },
+  [R_TIDAL] = { 4, AB_SWIM, 1, 34, { G_SWIM, 0, 0 }, { PK_RELIC, 0, 0 }, 1 },
+  [R_STAR] = { 0, 0, 1, 30, { G_SWIM, 0, 0 }, { PK_ENERGY, 0, 0 }, 1 },
+  [R_SKY] = { 5, 0, 1, 28, { 0, 0, 0 }, { 0, 0, 0 }, 2 },
   [R_ARCHIVE] = { 0, 0, 1, 26, { G_CLIMB, G_GRAPPLE, 0 }, { PK_HEALTH, PK_ENERGY, 0 }, 2 },
-  [R_FORGE] = { 0, 0, 1, 26, { G_SWIM, 0, 0 }, { PK_RELIC, 0, 0 }, 1 },
-  [R_FROST] = { 0, 0, 2, 28, { G_GRAPPLE, 0, 0 }, { PK_HEALTH, 0, 0 }, 2 },
-  [R_BLOOM] = { 0, 0, 2, 28, { G_GRAPPLE, 0, 0 }, { PK_ENERGY, 0, 0 }, 2 },
+  [R_FORGE] = { 0, AB_POUND, 1, 26, { G_SWIM, 0, 0 }, { PK_RELIC, 0, 0 }, 1 },
+  [R_FROST] = { 0, 0, 1, 28, { G_GRAPPLE, 0, 0 }, { PK_HEALTH, 0, 0 }, 2 },
+  [R_BLOOM] = { 0, 0, 1, 28, { G_GRAPPLE, 0, 0 }, { PK_ENERGY, 0, 0 }, 2 },
   [R_HEART] = { 6, 0, 0, 4, { 0, 0, 0 }, { 0, 0, 0 }, 0 },
 };
 
@@ -441,8 +443,8 @@ static const piece_plan PIECE_PLAN[] = {
   { R_ARCHIVE, PC_FLOODED_NOOK, PK_RELIC, 0 },
   /* the grapple line */
   { R_ROOTWAY, PC_HIGH_ISLE, PK_RELIC, 0 },
-  { R_TIDAL, PC_HIGH_ISLE, PK_RELIC, 0 },
-  { R_FORGE, PC_HIGH_ISLE, PK_RELIC, 0 },
+  { R_GLASS, PC_HIGH_ISLE, PK_RELIC, 0 },
+  { R_ARCHIVE, PC_HIGH_ISLE, PK_RELIC, 0 },
   /* fights of several at once, a relic past them */
   { R_FEN, PC_AMBUSH, PK_RELIC, 0 },
   { R_CLOCK, PC_AMBUSH, PK_RELIC, 0 },

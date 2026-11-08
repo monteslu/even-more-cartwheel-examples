@@ -48,15 +48,16 @@ static const char *const TL_NAME[TL_N] = { "region", "special room", "new room k
 static double tl_t[8192];
 static int tl_k[8192], tl_room[8192], tl_n;
 static int tl_cur_room;
+static uint32_t tl_ab[8192], tl_cur_ab;
 static uint8_t tl_region[NREGIONS], tl_seen_room[MAXROOMS], tl_kind[256], tl_land[MAXENTS / 8];
 static void tl_add(long tick, int k) {
-  if (tl_n < 8192) tl_t[tl_n] = (double)tick / 60.0, tl_k[tl_n] = k, tl_room[tl_n] = tl_cur_room, tl_n++;
+  if (tl_n < 8192) tl_t[tl_n] = (double)tick / 60.0, tl_k[tl_n] = k, tl_room[tl_n] = tl_cur_room, tl_ab[tl_n] = k == TL_REWARD ? tl_cur_ab : 0, tl_n++;
 }
 static void tl_tick(const sim *s, long tick) {
   tl_cur_room = s->room;
   for (int k = 0; k < s->nev; k++) {
     const event *e = &s->ev[k];
-    if (e->kind == EV_PICKUP) tl_add(tick, TL_REWARD);
+    if (e->kind == EV_PICKUP) tl_cur_ab = e->a == PK_ABILITY ? e->b : 0, tl_add(tick, TL_REWARD);
     if (e->kind == EV_SECRET) tl_add(tick, TL_SECRET);
   }
   int r = s->room;
@@ -104,6 +105,16 @@ static void tl_report(long ticks) {
   for (int i = 0; i < ng; i++) over60 += gaps[i] > 60, over120 += gaps[i] > 120;
   printf("timeline reward/secret gaps (s): median %.1f, p75 %.1f, p90 %.1f, max %.1f; over 60 s: %d, over 120 s: %d\n", gaps[ng / 2], gaps[ng * 3 / 4],
          gaps[ng * 9 / 10], gaps[ng - 1], over60, over120);
+  { /* minutes of play with nothing new in them */
+    int nm = (int)(ticks / 3600) + 1, empty = 0;
+    static uint8_t busy[1024];
+    memset(busy, 0, sizeof busy);
+    for (int i = 0; i < tl_n; i++) if ((int)(tl_t[i] / 60) < 1024) busy[(int)(tl_t[i] / 60)] = 1;
+    for (int m = 0; m < nm && m < 1024; m++) empty += !busy[m];
+    printf("timeline empty minutes: %d of %d (%.0f%%)\n", empty, nm, 100.0 * empty / nm);
+  }
+  for (int i = 0; i < tl_n; i++) /* the abilities, as they came */
+    if (tl_k[i] == TL_REWARD && tl_ab[i]) printf("timeline ability %02x at %.1f min\n", tl_ab[i], tl_t[i] / 60);
   if (getenv("LANTERNFALL_SOAK_TIMELINE_ALL"))
     for (int i = 0; i < tl_n; i++) printf("  %8.1f %s (room %d, %s)\n", tl_t[i], TL_NAME[tl_k[i]], tl_room[i], tl_room[i] >= 0 ? REGIONS[W.rooms[tl_room[i]].region].name : "-");
 }

@@ -268,7 +268,7 @@ static void open_room_kind(int room, int kind) {
 }
 
 static int stage;
-static const char *const STAGE_NAME[8] = { "start", "second jump", "dash", "wall climb", "plunge", "tide charm", "grapple line", "end" };
+static const char *const STAGE_NAME[8] = { "start", "second jump", "dash", "grapple line", "wall climb", "plunge", "tide charm", "end" };
 static void visit_effects(int tile) {
   int x = tile % TW, y = tile / TW;
   int room = w_room_at(&W, (float)x + 0.5f, (float)y - 0.5f);
@@ -662,11 +662,12 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
 }
 
 static int write_route(const char *path, int start) {
-  static uint8_t goal[TW * TH], is_warden[TW * TH];
+  static uint8_t goal[TW * TH], is_warden[TW * TH], is_move_ab[TW * TH];
   static route_step steps[60000];
   int n = 0, wardens_met = 0;
   memset(goal, 0, sizeof goal);
   memset(is_warden, 0, sizeof is_warden);
+  memset(is_move_ab, 0, sizeof is_move_ab);
   int ngoals = 0, last = -1;
   for (int i = 0; i < W.nents; i++) {
     const ent *e = &W.ents[i];
@@ -680,6 +681,7 @@ static int write_route(const char *path, int start) {
     if (e->kind == EK_BOSS && e->sub == NBOSSES - 1) last = t; /* the heart: last of all, once everything else is found */
     else goal[t] = 1;
     if (e->kind == EK_BOSS && e->sub < NBOSSES - 1) is_warden[t] = 1;
+    if (e->kind == EK_PICKUP && e->sub == PK_ABILITY && e->arg != AB_BOLT) is_move_ab[t] = 1;
     ngoals++;
   }
   int cur = start, legs = 0;
@@ -690,6 +692,7 @@ static int write_route(const char *path, int start) {
       if (g < 0) break;
       goal[g] = 0, cur = g, legs++;
       wardens_met += is_warden[g];
+      if (is_move_ab[g] && st + 1 < nstages) break; /* a new way to move: the rest of this stage's legs were planned without it (a wall it now clings to), so go on with the next stage's */
     }
   route_shut_heart = false;
   if (last >= 0) {
@@ -753,7 +756,7 @@ int main(int argc, char **argv) {
   if (!only) {
   /* stages */
   AB = 0;
-  static const uint32_t ORDER[NABILITIES] = { AB_BOLT | AB_DJUMP, AB_DASH, AB_CLIMB, AB_POUND, AB_SWIM, AB_GRAPPLE, 0 };
+  static const uint32_t ORDER[NABILITIES] = { AB_BOLT | AB_DJUMP, AB_DASH, AB_GRAPPLE, AB_CLIMB, AB_POUND, AB_SWIM, 0 };
   int order_bad = 0;
   push(start);
   for (stage = 0; stage < 12; stage++) {

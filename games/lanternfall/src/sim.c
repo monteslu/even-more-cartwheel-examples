@@ -6,7 +6,7 @@
 #include "cartwheel/math.h"
 #include "sim.h"
 
-const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "WALL CLIMB", "PLUNGE", "TIDE CHARM", "GRAPPLE LINE" };
+const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "GRAPPLE LINE", "WALL CLIMB", "PLUNGE", "TIDE CHARM" };
 const char *const CHARM_NAME[CH_KINDS] = { "LONG WICK", "CUTTING DASH", "RUNNER'S STRIDE", "EMBER HARVEST", "SWIFT MEND", "UPDRAFT", "THORN WARD",
                                          "QUICK HAND", "TWIN SPARK", "QUAKE", "SECOND WIND" };
 const char *const CHARM_LINE[CH_KINDS] = { "your strike reaches further", "{dash} cuts through what it passes, and nothing touches you in it",

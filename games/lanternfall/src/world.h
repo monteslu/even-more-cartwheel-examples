@@ -41,10 +41,10 @@ enum {
   AB_BOLT = 1 << 0,    /* the ranged spark (energy) */
   AB_DJUMP = 1 << 1,   /* a second jump in the air */
   AB_DASH = 1 << 2,    /* a burst along the ground or through the air */
-  AB_CLIMB = 1 << 3,   /* cling to walls, climb them, jump off them */
-  AB_POUND = 1 << 4,   /* plunge from the air: breaks cracked floors */
-  AB_SWIM = 1 << 5,    /* the tide charm: swim deep water */
-  AB_GRAPPLE = 1 << 6, /* a line to the anchors overhead: swing */
+  AB_GRAPPLE = 1 << 3, /* a line to the anchors overhead: swing (early, so it serves the whole city) */
+  AB_CLIMB = 1 << 4,   /* cling to walls, climb them, jump off them */
+  AB_POUND = 1 << 5,   /* plunge from the air: breaks cracked floors */
+  AB_SWIM = 1 << 6,    /* the tide charm: swim deep water */
   AB_ALL = 0x7f
 };
 #define NABILITIES 7
