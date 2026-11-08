@@ -17,6 +17,10 @@ four played (won or not) light the table's wizard mode at the scoop: four balls,
 toy lit, each hit worth more than the last (and more for every mode won); when it ends the modes start over. Nudging
 works; too much warns twice and then tilts. The five best scores of each table are saved.
 
+Goals: each table has five beyond the score (a million in a game, two modes on one ball, a jackpot in multiball's
+first 30 seconds, its toy's own, the wizard mode); each one met is a star kept in the save and shown on the table
+select.
+
 Practice (below one player on the table select): the ball always comes back, and the left panel says how to aim.
 
 ## Starting
