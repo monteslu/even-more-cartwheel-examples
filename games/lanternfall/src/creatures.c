@@ -593,7 +593,7 @@ static void paint_enemies(void) {
   /* ── thistle puff: a ball of pale down round a dark seed core, thorns hidden in it ── */
   {
     cv(1.3f, 1.3f);
-    pstyle down = sty(0xe2d2f2, 0x7a6aa0, 0xfff8ff, 0.7f, TX_FUR, 0.014f, 1.0f);
+    pstyle down = sty(0xdcc8f0, 0x5a4a88, 0xfff8ff, 0.7f, TX_FUR, 0.012f, 1.0f);
     down.soft = 6, down.rim = 0.5f, down.tex_dir = 0.8f;
     el(0.65f, 0.65f, 0.55f, 0.55f, 0, &down);
     pstyle tuft = down;
@@ -970,7 +970,7 @@ static void draw_knight(const enemy *e, float t, float tk) {
 static void draw_puff(const enemy *e, float t, float tk) {
   bool tell = e->state == ES_TELL, spiky = e->state == ES_ACT;
   float cy = -0.55f, bris = spiky ? 1 : tell ? tk : 0;
-  float fluff = 1 + (tell ? tk * 0.2f : spiky ? -0.12f : 0.04f * sinf(t * 3 + e->x));
+  float fluff = 1 + (tell ? tk * 0.12f : spiky ? -0.12f : 0.04f * sinf(t * 3 + e->x));
   put(&E.pcore, 0, cy, 0, 0.9f + 0.3f * bris, 0.9f + 0.3f * bris);
   for (int k = 0; k < 10; k++) { /* the thorns: hidden in the down, pushing out through the tell, bristling after */
     float a = (float)k * 0.628f + t * 0.5f, l = 0.25f + 0.75f * bris;
@@ -978,7 +978,7 @@ static void draw_puff(const enemy *e, float t, float tk) {
   }
   putk(&E.puff, 0, cy, sinf(t * 0.7f) * 0.1f, fluff, fluff, (cw_color){ 1, 1, 1, spiky ? 0.55f : 1 });
   for (int k = 0; k < 2; k++) put(&E.peye, 0.17f + 0.17f * (float)k, cy - 0.08f, 0, 1 - 0.15f * (float)k, 1);
-  if (tell) halo_at(0, cy, 0.6f + 0.5f * tk, (cw_color){ 1, 0.55f, 0.5f, 0.3f * tk });
+  if (tell) halo_at(0, cy, 0.6f + 0.5f * tk, (cw_color){ 1, 0.55f, 0.5f, 0.15f * tk });
 }
 
 static void draw_dropper(const enemy *e, float t, float tk) {
@@ -1028,10 +1028,10 @@ static void draw_eye(const enemy *e, float t, float tk) {
   float ex = top.x, ey = top.y - 0.12f;
   float blink = fmodf(t * 0.5f + e->x * 0.13f, 3.1f) < 0.08f ? 0.1f : 1;
   float open = tell ? 0.75f + 0.25f * tk : rest ? 0.45f : 0.6f * blink;
-  putx(&E.eball, ex, ey, 0, 1, 1, false, tell ? 1.05f + 0.9f * tk : 0, tell ? white(1) : D.tint, true);
+  put(&E.eball, ex, ey, 0, 1, 1); /* (its iris glows from its own material; the tell widens the lids and the halo grows) */
   put(&E.elid, ex, ey - 0.08f - 0.3f * open, 0, 1, 1);           /* the upper lid */
   put(&E.elid, ex, ey + 0.08f + 0.3f * open, 0, 1, -1);          /* the lower lid, turned over */
-  if (tell) halo_at(ex + 0.15f, ey, 0.5f + 0.6f * tk, (cw_color){ 1, 0.6f, 0.25f, 0.45f * tk });
+  if (tell) halo_at(ex + 0.15f, ey, 0.5f + 0.6f * tk, (cw_color){ 1, 0.6f, 0.25f, 0.25f * tk });
 }
 
 void creature_enemy(const enemy *e, int region, float t) {
@@ -1462,7 +1462,7 @@ static void paint_wardens(void) {
     }
     B.hroots = done(2.4f, 0.95f, 3);
     cv(3.6f, 3.8f);
-    pstyle flesh = sty(0x9a3a58, 0x3a0a20, 0xf090a8, 1.0f, TX_VEINS, 0.06f, 1.0f);
+    pstyle flesh = sty(0x9a3a58, 0x3a0a20, 0xf090a8, 1.0f, TX_VEINS, 0.035f, 1.0f);
     flesh.ink = 2.2f, flesh.rim = 0.4f, flesh.shadow = 0.4f, flesh.shadow_r = 18, flesh.spec = 0.45f, flesh.gloss = 0.55f, flesh.em = 0.15f;
     { /* the heart's outline (the classic curve), then its two lobes swelling inside it */
       float hp[96];
@@ -1472,9 +1472,18 @@ static void paint_wardens(void) {
       }
       poly(hp, 48, 0.1f, &flesh);
       pstyle lobe = flesh;
-      lobe.alpha = 0.55f, lobe.soft = 14, lobe.ink = 0, lobe.shadow = 0, lobe.seed = 77, lobe.dome = 0.6f, lobe.lift = 0.4f;
+      lobe.alpha = 0.35f, lobe.soft = 14, lobe.ink = 0, lobe.shadow = 0, lobe.seed = 77, lobe.dome = 0.6f, lobe.lift = 0.4f;
       el(1.15f, 1.35f, 0.75f, 0.85f, -0.4f, &lobe);
       el(2.45f, 1.35f, 0.75f, 0.85f, 0.4f, &lobe);
+    }
+    { /* the muscle's fibres: fine dark ridges sweeping round each lobe */
+      pstyle fib = sty(0x4a1028, 0, 0, -0.15f, TX_NONE, 0, 0);
+      fib.alpha = 0.55f, fib.soft = 1.5f;
+      for (int i = 0; i < 18; i++) {
+        float side = i & 1 ? 1.0f : -1.0f, u = (float)(i / 2) / 8.0f, cx = 1.8f + side * (0.35f + 0.55f * u);
+        float fp[8] = { cx, 0.75f + 0.3f * u, cx + side * 0.35f, 1.4f, cx + side * 0.1f, 2.2f, 1.8f + side * 0.15f * u, 3.0f - 0.2f * u };
+        stk(fp, 4, 0.012f, 0.006f, &fib);
+      }
     }
     pstyle cleft = sty(0x2a0612, 0, 0, -0.5f, TX_NONE, 0, 0);
     cleft.soft = 6, cleft.alpha = 0.8f;

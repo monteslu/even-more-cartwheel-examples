@@ -211,7 +211,7 @@ static void make_rock(int r) {
             int i = (oy + y) * W + ox + x;
             /* (the body's pattern kept soft: its two-tile period must not read as a repeat; the features set into the
              * rock (scenery.c) carry the detail, the normals carry the relief) */
-            float lb = 0.68f * (0.55f + 0.45f * bev), lc = lb + (l - lb) * 0.5f + 0.04f;
+            float lb = 0.68f * (0.55f + 0.45f * bev), lc = region_material(r) == MAT_CRYSTAL ? l : lb + (l - lb) * 0.5f + 0.04f; /* (the faceted crystal and ice keep their full facets: their planes read as planes, not a repeat) */
             col[4 * i + 0] = col[4 * i + 1] = col[4 * i + 2] = u8(lc);
             col[4 * i + 3] = u8(edge_alpha);
           }
