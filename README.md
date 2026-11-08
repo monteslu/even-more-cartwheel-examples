@@ -85,7 +85,7 @@ par.
 
 ### Ember Throne
 
-![Ember Throne: the wayfarer and the warden at the keep's brazier, a raider coming at them](docs/screenshots/emberthrone.jpg)
+![Ember Throne: the wayfarer at the keep's brazier between a brute and a lancer](docs/screenshots/emberthrone.jpg)
 
 A third-person action adventure through one connected world for one player,
 with a second able to drop in. The wanderer gathers the Sun Key and the Moon Key
