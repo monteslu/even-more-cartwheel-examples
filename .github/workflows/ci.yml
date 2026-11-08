@@ -66,6 +66,13 @@ jobs:
           TARGETS=native scripts/build.sh skate_check
           node tests/skate-physics.mjs
           node tests/skate-parks.mjs
+      # pinball's ball and flippers: nothing through a wall or a firing flipper (a naive one-step solver must fail),
+      # and the flipper buttons live until the ball has gone (the rule that killed them at the drain line must fail)
+      - name: Check pinball's physics and flippers
+        run: |
+          TARGETS=native scripts/build.sh pinball_physcheck pinball_flipcheck pinball_flipcheck_oldrule
+          node tests/pinball-physics.mjs
+          node tests/pinball-drain.mjs
       # lanternfall's world: the shipped world and route are current, the checker proves it completable in ability
       # order with no soft locks, every pickup reached, every gate holding, nothing floating; the controls (worlds
       # broken on purpose) must each fail; the movement's feel stays in its bounds and the combat rules hold (each with

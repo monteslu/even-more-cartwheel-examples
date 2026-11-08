@@ -491,21 +491,43 @@ bool game_over(const game *g) { return g->state == GS_OVER && g->state_t > SEC(3
 
 static void hash_u32(game *g, uint32_t v) { g->hash = (g->hash ^ v) * 16777619u; }
 
+/* when the flipper buttons work. As on a real machine: from the plunge until the ball has gone down the drain and
+ * through the bonus count after it, in ball save and multiball alike, a ball past the flippers included (it may come
+ * back: a kickback, a bounce, a nudge). Only a tilt kills them. PINBALL_OLD_FLIPPER_RULE builds the rule this game
+ * had before (dead from the moment a ball crossed the drain line, which is just under the flippers): the control
+ * tests/pinball-drain.mjs runs, which must fail. */
+static bool flippers_live(const game *g) {
+#ifdef PINBALL_OLD_FLIPPER_RULE
+  return !g->tilted && g->state != GS_BONUS;
+#else
+  return !g->tilted;
+#endif
+}
+
 void game_step(game *g, const input *in) {
   table *T = &g->T;
   player_state *p = cur(g);
   g->nfx = 0;
   g->tick++, g->state_t++;
   if (g->msg && ++g->msg_t > g->msg_len) g->msg = MSG_NONE;
-  if (g->state == GS_OVER) return;
-  /* the flippers (dead when tilted); a flip moves the lit top lanes along */
-  bool want[3] = { in->left, in->right, T->upper_flipper >= 0 ? (in->upper || in->right) : false };
+  if (g->state == GS_OVER) { /* the game is over: the flippers fall back (nothing else moves) */
+    for (int f = 0; f < g->W.nfl; f++) g->W.fl[f].held = false;
+    pb_step(&g->W, TICK);
+    return;
+  }
+  /* the flippers (dead only when tilted); a flip moves the lit top lanes along. The launch button flips both once no
+   * ball waits on the plunger, from a fresh press (the one that pulled the plunger never flips) */
+  int pb = ball_on_plunger(g);
+  if (!in->both) g->both_ok = true;
+  else if (pb >= 0 || g->pull_armed) g->both_ok = false;
+  bool both = in->both && g->both_ok;
+  bool want[3] = { in->left || both, in->right || both, T->upper_flipper >= 0 ? (in->upper || in->right || both) : false };
   int fi[3] = { T->left_flipper, T->right_flipper, T->upper_flipper };
   for (int k = 0; k < 3; k++) {
     if (fi[k] < 0) continue;
     pb_flipper *F = &g->W.fl[fi[k]];
     bool was = F->held;
-    F->held = want[k] && !g->tilted && g->state != GS_BONUS;
+    F->held = want[k] && flippers_live(g);
     if (F->held && !was) {
       g->flips++;
       fx(g, FX_FLIP, k, 1);
@@ -542,9 +564,9 @@ void game_step(game *g, const input *in) {
       }
     }
   }
-  /* the plunger: hold to pull it back, let go to fire */
-  int pb = ball_on_plunger(g);
-  if (in->launch && !g->tilted) {
+  /* the plunger: hold to pull it back, let go to fire (a pull starts only with a ball waiting on it) */
+  pb = ball_on_plunger(g); /* after the nudge */
+  if (in->launch && !g->tilted && (g->pull_armed || (!g->launch_was && pb >= 0))) {
     if (!g->launch_was) fx(g, FX_PLUNGER_PULL, 0, 1), g->pull_armed = true;
     g->plunge = fminf(1, g->plunge + 1.3f * TICK);
   } else if (g->launch_was) {
