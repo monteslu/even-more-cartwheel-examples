@@ -49,7 +49,7 @@ static pstyle sty(uint32_t base, uint32_t shade, uint32_t hi, float dome, int te
 }
 
 /* ── posing: a frame of parts, drawn in local coordinates facing right (x forward, y down, origin at the feet) ── */
-typedef struct pose { float x, y, f, flash, die, alpha, s; cw_color tint, flash_c; uint32_t seed; int idx; } pose;
+typedef struct pose { float x, y, f, flash, die, alpha, s, tilt, sink; cw_color tint, flash_c; uint32_t seed; int idx; } pose;
 static pose D;
 typedef struct qd { cw_sprite s; float glow; bool rim; } qd;
 #define MAXQ 160
@@ -68,6 +68,10 @@ static void putx(const part *p, float lx, float ly, float a, float sx, float sy,
   if (nq >= MAXQ) return;
   bool left = (D.f < 0) != mirror;
   float alpha = D.alpha;
+  if (D.tilt != 0 || D.sink != 0) { /* a whole-body slump (a warden's stagger): turned about its feet, lowered */
+    cw_vec2 r = rot2(lx, ly, D.tilt);
+    lx = r.x, ly = r.y + D.sink, a += D.tilt;
+  }
   if (D.die > 0) { /* death: each part flies its own way and turns as it falls */
     int i = D.idx++;
     float k = D.die, vx = (hsh(i, D.seed) - 0.5f) * 3.2f, vy = -1.2f - hsh(i, D.seed + 1) * 1.8f;
@@ -1746,6 +1750,30 @@ void creature_boss(const boss *b, int region, float t) {
   D.die = die;
   static const float SCALE[NBOSSES] = { 1.15f, 1.15f, 1, 1, 1.4f, 1 }; /* (to fill each one's body) */
   D.s = SCALE[b->idx];
+  /* the stagger at half health (ES_HURT, 75 ticks): it slumps, eased in and out, dazed motes circling slowly over it;
+   * then the second phase: its rim and tint lean to its own glow and embers of it drift up (eased in over the stagger,
+   * steady after: never a pulse) */
+  static const uint32_t GLOWC[NBOSSES] = { 0xd6ff6a, 0xbff6ff, 0xffd060, 0x8affe6, 0xffe6a0, 0xffb060 };
+  if (b->state == ES_HURT && D.die <= 0) {
+    float u = (float)b->t / 75.0f, k = fminf(1, (float)b->t / 10.0f) * fminf(1, (75.0f - (float)b->t) / 15.0f);
+    k = k < 0 ? 0 : k * k * (3 - 2 * k);
+    D.tilt = -0.14f * k, D.sink = 0.18f * k * boss_hh(b->idx);
+    for (int m = 0; m < 3; m++) {
+      float a = t * 2.2f + (float)m * 2.094f;
+      halo_at(cosf(a) * boss_hw(b->idx) * 0.6f, -boss_hh(b->idx) * 2.2f + sinf(a) * 0.15f, 0.22f, (cw_color){ 1, 1, 0.8f, 0.55f * k });
+    }
+    (void)u;
+  }
+  float ph = b->phase > 0 ? (b->state == ES_HURT ? fminf(1, (float)b->t / 75.0f) : 1) : 0;
+  if (ph > 0) {
+    cw_color gc = pc_hex(GLOWC[b->idx]);
+    D.tint = pc_mix(D.tint, gc, 0.14f * ph);
+    rim_c = pc_mix(rim_c, gc, 0.7f * ph), rim_k = 0.75f + 0.25f * ph;
+    if (D.die <= 0 && ((int)(t * 60) % 6) == 0) {
+      float hw = boss_hw(b->idx) * D.s, hh = boss_hh(b->idx) * D.s, rx = (pn_hash((int)(t * 60), 5, 11) - 0.5f) * 2 * hw;
+      cr_emit(b->x + rx, b->y - hh * (0.5f + pn_hash((int)(t * 60), 6, 11) * 1.4f), 0, -1.2f, 1.4f, 0.2f, (cw_color){ gc.r, gc.g, gc.b, 0.8f * ph }, true, -0.3f);
+    }
+  }
   switch (b->idx) {
   case 0: boss_moss(b, t, tk); break;
   case 1: boss_mantis(b, t, tk); break;
@@ -1968,14 +1996,16 @@ void creature_hero(const player *p, int i, int region, float t) {
   if (!p->active) return;
   const struct hero_parts *h = &H[i % MAXP];
   i &= 15;
-  bool blink = p->invuln > 0; /* (after a hurt: the hero is drawn faded, steadily; never blinking) */
+  /* after a hurt: a soft pale shimmer that swells and fades about twice a second (never a blink) */
+  float shimmer = p->invuln > 0 ? (0.5f - 0.5f * cosf((float)p->invuln * 0.21f)) * fminf(1, (float)p->invuln / 20.0f) : 0;
+  bool blink = p->invuln > 0;
   float f = p->facing_left ? -1.0f : 1.0f;
   float sp = fabsf(p->vx) / RUN;
   if (p->on_ground) hero_run[i] += fabsf(p->vx) * DT * 1.35f;
   float ph = hero_run[i];
   bool air = !p->on_ground && p->state != PS_SWIM;
   begin(p->x, p->y, f, 0, region, 700u + (uint32_t)i);
-  if (blink) D.alpha = 0.55f;
+  D.flash = 0.45f * shimmer;
   if (blink && getenv("LANTERNFALL_STROBE_CONTROL") && ((p->invuln / 4) & 1)) D.flash = 1; /* (the control: the old blink) */
   rim_k = 0.6f;
   float bob = p->on_ground ? fabsf(sinf(ph * 3.1416f)) * 0.07f * sp : 0;

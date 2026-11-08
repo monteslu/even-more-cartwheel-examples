@@ -58,7 +58,7 @@ export function sheets(pick) {
   S['wardens-s0-empty'] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: '0', LANTERNFALL_SHOWCASE_EMPTY: '1' } };
   S['enemies-r0-mask'] = { vars: { ...S['enemies-r0'].vars, LANTERNFALL_SHOWCASE_MASK: '1' } };
   S['wardens-s0-mask'] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: '0', LANTERNFALL_SHOWCASE_MASK: '1' } };
-  for (let st = 0; st < 4; st++) S[`wardens-s${st}`] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: String(st) } };
+  for (let st = 0; st < 6; st++) S[`wardens-s${st}`] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: String(st) } };
   S['heroes'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h' } };
   S['heroes-near'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h', LANTERNFALL_SHOWCASE_ZOOM: '2.2' } };
   S['heroes-4k'] = { scale: 3, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'h', LANTERNFALL_SHOWCASE_ZOOM: '2.2' } };

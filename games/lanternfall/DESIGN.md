@@ -175,6 +175,13 @@ of local contrast; frames flattened halfway to their mean must fail.
 Lamps, the lantern, shots and pickups are 2D lights on the lit layers; glows and particles go on an additive layer
 over them.
 
+**Nothing strobes.** No wash of colour ever covers the screen; a struck creature takes a pale tint that eases off over
+its flash ticks, a hurt hero a soft shimmer that swells and fades about twice a second, a tell's eye one swell per
+tell, the marks of a warden's rain a slow swell; impact stars are small and fade. `tests/lanternfall-flash.mjs` draws a
+warden fight frame by frame and follows every ninth of the screen through time against the photosensitive flash
+thresholds (general and red): no block may flash at all, none past three a second; a quarter of the screen blinking at
+5 Hz must fail.
+
 ## The bot
 
 `src/bot.c` plays through the input struct the pad fills: it stands on each route step's tile and plays its move tick

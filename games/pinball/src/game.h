@@ -140,6 +140,8 @@ enum { GS_IDLE, GS_PLUNGE, GS_PLAY, GS_DRAINED, GS_BONUS, GS_OVER };
 typedef struct input {
   bool left, right, upper; /* flipper buttons held (upper: the third flipper; the same as right on a table with one) */
   bool launch;             /* the plunger button held (released fires) */
+  bool both;               /* both flippers held: the launch button's face once no ball waits on the plunger (a press
+                            * that began while one waited, or pulled the plunger, never flips) */
   bool nudge_l, nudge_r, nudge_up; /* pressed this tick */
   bool start;              /* add a player / start (pressed this tick) */
 } input;
@@ -172,6 +174,7 @@ typedef struct game {
   int ball_save_t;         /* ticks of ball save left */
   float plunge;            /* the plunger's pull 0..1 */
   bool launch_was, pull_armed; /* a release fires only a pull that began in play (not the press that started the game) */
+  bool both_ok;            /* the both-flippers button was let go since it last pulled the plunger */
   int tilt_warn;           /* warnings this ball */
   float tilt_meter;
   bool tilted;

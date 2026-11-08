@@ -26,5 +26,37 @@
         "romdev"
       ]
     }
+  },
+  {
+    "name": "pinball-face",
+    "app": "pinball",
+    "frames": 480,
+    "input": "pinball-face.json",
+    "controlInput": "pinball-face-control.json",
+    "maxGt16": 0.06,
+    "fields": [
+      "game.phase",
+      "game.table",
+      "game.launches",
+      "game.flips",
+      "game.balls",
+      "game.hash",
+      "player.score",
+      "flip.presses"
+    ],
+    "expect": {
+      "game.flips": 9
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "The face buttons alone in play, through the real pad path: west the left flipper, east the right, both together, south both once the ball is up (a fresh press), short taps of each, north a nudge. Every press is a flip (game.flips) and the game is the same bits natively and in the dual cart on romdev. The control plays the same start and nudge with no face-button flips: its flips and ball path differ, so it must fail.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
   }
 ]

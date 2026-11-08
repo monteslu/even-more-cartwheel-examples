@@ -48,8 +48,8 @@ int main(int argc, char **argv) {
       t++, gt++;
       for (int k = 0; k < g.W.nev; k++)
         if (g.W.ev[k].kind == EV_DRAIN) { float x = hi_x[g.W.ev[k].ball]; drain_where[x < -0.21f ? 0 : x > 0.18f ? 2 : 1]++; }
-      if (inject && t == 3600)
-        for (int i = 0; i < PB_MAXB; i++) if (g.W.b[i].state == BS_FREE) { g.W.b[i].x = NAN; break; }
+      if (inject && t >= 3600) /* the first free ball after a minute (at the minute itself there may be none: a drain) */
+        for (int i = 0; i < PB_MAXB; i++) if (g.W.b[i].state == BS_FREE) { g.W.b[i].x = NAN, inject = false; break; }
       for (int i = 0; i < PB_MAXB; i++) {
         const pb_ball *b = &g.W.b[i];
         if (b->state == BS_OFF) { still[i] = 0; continue; }
