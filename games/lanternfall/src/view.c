@@ -666,6 +666,23 @@ static void draw_barriers(const sim *s, float x0, float y0, float x1, float y1, 
 }
 
 /* ── props and lamps ── */
+/* what holds a one-way ledge up (placeholder art): a chain hanging from the rock to the ledge's end (HOLD_CEIL, from
+ * e->y down arg tiles), a post standing up to it (HOLD_FLOOR, from e->y up arg tiles), a bracket from a wall (HOLD_WALL) */
+static void draw_support(const ent *e, const region_info *g) {
+  float x = e->x, y = e->y, len = (float)e->arg;
+  cw_color iron = mixc(hexc(g->ground, 1), rgba(0.25f, 0.24f, 0.26f, 1), 0.6f), wood = mixc(hexc(g->ground, 1), rgba(0.45f, 0.32f, 0.2f, 1), 0.5f);
+  if (e->hold & HOLD_CEIL) {
+    for (float k = 0; k < len; k += 0.5f) cw_r2d_round_rect((cw_rect){ x - 0.09f, y + k + 0.04f, 0.18f, 0.42f }, 0.08f, 3, scalec(iron, (int)(k * 2) & 1 ? 0.85f : 1));
+  } else if (e->hold & HOLD_FLOOR) {
+    cw_r2d_rect((cw_rect){ x - 0.13f, y - len, 0.26f, len }, wood);
+    cw_r2d_rect((cw_rect){ x - 0.3f, y - len, 0.6f, 0.18f }, scalec(wood, 0.8f));
+  } else {
+    float s = (e->hold & HOLD_WALL_L) ? -1.0f : 1.0f; /* (the wall is on side s) */
+    cw_vec2 p[3] = { v2(x + s * 0.5f, y), v2(x - s * 0.6f, y), v2(x + s * 0.5f, y + len * 0.6f) };
+    cw_r2d_polygon(p, 3, iron);
+  }
+}
+
 /* a region's landmark (placeholder art: a beacon tower on a stepped plinth, its lantern in the region's accent; arg is
  * the region). Big enough to know the room by, and marked on the map. */
 static void draw_landmark(const ent *e, const region_info *g, float t) {
@@ -836,6 +853,7 @@ static void draw_prop(const ent *e, const region_info *g, float t) {
     break;
   }
   case PR_LANDMARK: draw_landmark(e, g, t); break;
+  case PR_SUPPORT: draw_support(e, g); break;
   default: { /* hanging vines / roots / chains from the ceiling: arg is the length */
     float len = (float)e->arg * 0.5f;
     cw_vec2 prev = v2(x, y);

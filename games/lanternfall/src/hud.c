@@ -85,9 +85,13 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     cw_rect rc = { ox + (float)r->x * cell + 1.5f * u, oy + (float)r->y * cell + 1.5f * u, (float)r->w * cell - 3 * u, (float)r->h * cell - 3 * u };
     if (seen) cw_r2d_rect(rc, rgba(c.r * 0.45f, c.g * 0.45f, c.b * 0.45f, 0.95f));
     cw_r2d_rect_lines(rc, (seen ? 2 : 1.2f) * u, c);
-    if (r->kind == RK_GATE && r->gate) { /* the obstacle across a gate room: its ability's mark */
+    if (r->kind == RK_GATE && r->gate >= 1 && r->gate <= 6) { /* the obstacle across a gate room: the ability it wants, by colour and word */
+      static const char *const WORD[7] = { "", "jump", "dash", "climb", "plunge", "tide", "line" };
+      static const uint32_t COL[7] = { 0, 0x9fd8ff, 0xffa060, 0x8fe08a, 0xff7070, 0x60e8d8, 0xffd860 };
       cw_vec2 m = { rc.x + rc.w * 0.5f, rc.y + rc.h * 0.5f };
-      cw_r2d_circle_lines(m, cell * 0.18f, 2 * u, 8, rgba(1, 0.75f, 0.4f, seen ? 0.9f : 0.4f));
+      cw_color gc = hexa(COL[r->gate], seen ? 0.95f : 0.45f);
+      cw_r2d_circle_lines(m, cell * 0.2f, 2.5f * u, 10, gc);
+      text(WORD[r->gate], m.x, m.y - cell * 0.2f - 26 * u, 22 * u, gc, CW_ALIGN_CENTER);
     }
     if (i == s->room && (int)(t * 3) % 2) cw_r2d_rect(rc, rgba(1, 1, 1, 0.18f));
   }
@@ -138,7 +142,7 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
     for (int i = 0; i < w->nrooms; i++)
       if (w->rooms[i].region == r && seen_room(s, i)) any = true, sx += (float)w->rooms[i].x + (float)w->rooms[i].w * 0.5f, sy += (float)w->rooms[i].y + (float)w->rooms[i].h * 0.5f, n++;
     if (!any) continue;
-    text(REGIONS[r].name, ox + sx / (float)n * cell, oy + sy / (float)n * cell - 10 * u, 20 * u, hexa(REGIONS[r].top, 0.75f), CW_ALIGN_CENTER);
+    text(REGIONS[r].name, ox + sx / (float)n * cell, oy + sy / (float)n * cell - 12 * u, 24 * u, hexa(REGIONS[r].top, 0.75f), CW_ALIGN_CENTER);
   }
   /* you */
   for (int i = 0; i < s->players; i++) {
@@ -210,7 +214,7 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
   snprintf(b, sizeof b, "relics %d", s->relics);
   if (s->relics) text(b, cs.x - 40 * u, 30 * u, 28 * u, rgba(0.9f, 0.8f, 1, 1), CW_ALIGN_RIGHT);
   /* a region's name as you enter it */
-  if (h->banner_t > 0 && h->banner_region >= 0) {
+  if (h->banner_t > 0 && h->banner_region >= 0 && h->intro_t <= 0) {
     float a = fminf(1, h->banner_t * 1.5f) * fminf(1, (3.5f - (3.5f - h->banner_t)) * 1.0f);
     const region_info *g = &REGIONS[h->banner_region];
     float y = cs.y * 0.18f;

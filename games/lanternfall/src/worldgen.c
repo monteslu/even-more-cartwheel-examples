@@ -658,6 +658,32 @@ static void compose(int ri, const uint8_t *keep, bool light) {
     }
 }
 
+/* the first room: you start at the end away from its door; between you and the door a low wall, the one thing to
+ * jump over, and standing lamps lead the eye along the floor to the way on */
+static int opening_dir; /* 1: the way on is to the right, -1 left, 0 unknown */
+static void opening(int ri, uint8_t *keep, int floor_y) {
+  room *rm = &W->rooms[ri];
+  int X0 = rm->x * CELL_W, Wd = rm->w * CELL_W;
+  bool left = false, right = false;
+  for (int i = 0; i < W->ndoors; i++) {
+    const door *d = &W->doors[i];
+    if ((d->a == ri || d->b == ri) && !d->vertical) { if (door_side(rm, d) == 0) left = true; else right = true; }
+  }
+  opening_dir = right && !left ? 1 : left && !right ? -1 : 0;
+  if (!opening_dir) return;
+  int sx = opening_dir > 0 ? X0 + 8 : X0 + Wd - 9;
+  int wx = sx + opening_dir * 14; /* the low wall: three tiles, one held jump clears it */
+  if (area_open(wx - 2, floor_y - 6, wx + 4, floor_y - 1)) {
+    fill(wx, floor_y - 3, wx + 2, floor_y - 1, T_SOLID);
+    for (int x = wx - 1; x <= wx + 3; x++) keep[x - X0] = 1;
+  }
+  for (int k = 0; k < 6; k++) { /* lamps along the way */
+    int lx = sx + opening_dir * (5 + 9 * k);
+    if (lx < X0 + 4 || lx > X0 + Wd - 5 || abs(lx - wx - 1) < 4) continue;
+    if (t_solid(tile(lx, floor_y)) && tile(lx, floor_y - 1) == T_EMPTY && tile(lx, floor_y - 3) == T_EMPTY) add_ent(EK_LAMP, 9, 0, HOLD_FLOOR, ri, (float)lx + 0.5f, (float)floor_y);
+  }
+}
+
 static void carve_room(int ri) {
   room *rm = &W->rooms[ri];
   int X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H, Wd = rm->w * CELL_W, Ht = rm->h * CELL_H;
@@ -711,6 +737,7 @@ static void carve_room(int ri) {
     stamp_piece(ri, right && !left);
     return;
   }
+  if (rm->kind == RK_START) { opening(ri, keep, floor_y); compose(ri, keep, true); return; }
   if (rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START || rm->kind == RK_SECRET) { compose(ri, keep, true); return; }
   /* the floor: steps of one to three, thorn pits and pools between kept columns */
   int region = rm->region;
@@ -739,7 +766,7 @@ static void carve_room(int ri) {
     } else if (choice < 48 && level == 0 && rm->h == 1) { /* a thorn pit (never at the foot of a tall room: a fall from its top would meet it out of view) */
       int pw = rint_(2, 4);
       fill(x + 1, floor_y, x + pw, floor_y, T_SPIKE);
-      run = pw + 2;
+      run = pw + 4; /* (three tiles of level floor after it before any step: room to land and jump again) */
     } else if (choice < 58 && level == 0 && (region == R_FEN || region == R_TIDAL || region == R_GLASS || region == R_BLOOM)) {
       int pw = rint_(3, 6); /* a shallow pool */
       fill(x + 1, floor_y, x + pw, floor_y, T_WATER);
@@ -965,6 +992,44 @@ static void item_room(int ri, int pk, int arg) {
   add_ent(EK_LAMP, 7, 3, HOLD_FLOOR, ri, (float)cx + 4.5f, (float)fy);
 }
 
+/* what holds each one-way ledge up, so none reads as floating: a ledge against a wall gets a bracket under its wall
+ * end; one out in the air hangs on chains from the rock above both ends, or (with no rock near above) stands on posts
+ * from the ground below. Drawn by the view (placeholder art); nothing here collides. */
+static void ledge_supports(void) {
+  for (int y = 1; y < TH - 1; y++)
+    for (int x = 1; x < TW - 1; x++) {
+      if (tile(x, y) != T_ONEWAY || tile(x - 1, y) == T_ONEWAY) continue;
+      int x1 = x;
+      while (tile(x1 + 1, y) == T_ONEWAY) x1++;
+      int ri = W->cell_room[y / CELL_H][x / CELL_W];
+      if (ri == 0xffff) continue;
+      const room *rm = &W->rooms[ri];
+      int Y0 = rm->y * CELL_H;
+      bool left = t_solid(tile(x - 1, y)), right = t_solid(tile(x1 + 1, y));
+      if (left && right) continue; /* (wall to wall: a trapdoor or a bridge) */
+      if (t_solid(tile(x, y - 1)) || t_solid(tile(x, y + 1))) continue; /* (in a door's opening) */
+      if (left || right) {
+        int bx = left ? x : x1;
+        if (!t_solid(tile(bx, y + 1)) && !t_solid(tile(bx, y + 2)) && t_solid(tile(left ? bx - 1 : bx + 1, y + 1)))
+          add_ent(EK_PROP, PR_SUPPORT, 2, left ? HOLD_WALL_L : HOLD_WALL_R, ri, (float)bx + 0.5f, (float)y + 1);
+        continue;
+      }
+      int up[2] = { -1, -1 }, down[2] = { -1, -1 }, ends[2] = { x, x1 };
+      for (int k = 0; k < 2; k++) {
+        for (int yy = y - 1; yy >= Y0 - 2 && yy > y - 40; yy--) /* (a chain passes the ledges above it, down a tall shaft too) */
+          if (t_solid(tile(ends[k], yy))) { up[k] = yy; break; }
+          else if (tile(ends[k], yy) != T_EMPTY && tile(ends[k], yy) != T_ONEWAY) break;
+        for (int yy = y + 1; yy < y + 30 && yy < TH; yy++)
+          if (t_solid(tile(ends[k], yy))) { down[k] = yy; break; }
+          else if (tile(ends[k], yy) != T_EMPTY && tile(ends[k], yy) != T_ONEWAY) break;
+      }
+      for (int k = 0; k < 2 && x1 > x; k++) {
+        if (up[k] >= 0) add_ent(EK_PROP, PR_SUPPORT, (uint8_t)(y - up[k] - 1), HOLD_CEIL, ri, (float)ends[k] + 0.5f, (float)(up[k] + 1));
+        else if (down[k] >= 0) add_ent(EK_PROP, PR_SUPPORT, (uint8_t)(down[k] - y - 1), HOLD_FLOOR, ri, (float)ends[k] + 0.5f, (float)down[k]);
+      }
+    }
+}
+
 /* ── the whole world ─────────────────────────────────────────────────── */
 
 void world_generate(world *w, uint32_t seed) {
@@ -978,6 +1043,7 @@ void world_generate(world *w, uint32_t seed) {
     for (int x = 0; x < GW; x++) w->cell_room[y][x] = 0xffff, creg[y][x] = -1;
   memset(used, 0, sizeof used);
   memset(piece_reward, 0, sizeof piece_reward);
+  opening_dir = 0;
   lore_n = 0;
   for (int r = 0; r < NREGIONS; r++)
     for (int y = REGIONS[r].y; y < REGIONS[r].y + REGIONS[r].h; y++)
@@ -992,7 +1058,7 @@ void world_generate(world *w, uint32_t seed) {
     int rooms[4], ex, ey;
     if (r == R_GATE) {
       piece_room s[1] = { { 0, 0, 2, 1, RK_START } };
-      start_room = place_piece(r, s, 1, rooms, &ex, &ey);
+      start_room = place_piece_f(r, s, 1, rooms, &ex, &ey, 1); /* (its way on at the floor, to one side: not up a ladder) */
     }
     if (p->boss) { /* the warden's arena, and the prize room behind its sealed far door */
       piece_room b[2] = { { 0, 0, 2, 1, RK_BOSS }, { 2, 0, 1, 1, RK_ITEM } };
@@ -1087,9 +1153,10 @@ void world_generate(world *w, uint32_t seed) {
   for (int i = 0; i < W->nents; i++) /* pedestals under the pickups */
     if (W->ents[i].kind == EK_PICKUP && W->ents[i].sub != PK_LORE) fill((int)W->ents[i].x - 1, (int)W->ents[i].y, (int)W->ents[i].x, (int)W->ents[i].y, T_SOLID);
   for (int i = 0; i < W->nrooms; i++) populate(i);
+  ledge_supports();
   if (start_room >= 0) {
     room *rm = &W->rooms[start_room];
-    w->start_x = (float)(rm->x * CELL_W + 12) + 0.5f;
+    w->start_x = (float)(rm->x * CELL_W + (opening_dir > 0 ? 8 : opening_dir < 0 ? rm->w * CELL_W - 9 : 12)) + 0.5f;
     w->start_y = (float)(rm->y * CELL_H + CELL_H - 2);
     add_ent(EK_START, 0, 0, HOLD_FLOOR, start_room, w->start_x, w->start_y);
   }

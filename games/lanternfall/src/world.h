@@ -70,7 +70,9 @@ enum {
 enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC, PK_MAPSTONE, PK_LORE, PK_KINDS };
 /* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
  * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
-enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_LANDMARK /* arg: the region */ };
+enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_LANDMARK /* arg: the region */,
+       PR_SUPPORT /* what holds a one-way ledge up: a chain from the ceiling (HOLD_CEIL), a post from the floor (HOLD_FLOOR) or a
+                     bracket from a wall (HOLD_WALL_*); arg: its length in tiles */ };
 /* enemies, one idea each: the crawler charges along its floor, the spitter spits, the moth swoops to where you stood,
  * the hopper leaps at you, the knight shields its front; the puff floats and only a strike from above hurts it (it is
  * a step to bounce off), the dropper hangs from a ceiling and falls on whoever passes under, the burrower waits under

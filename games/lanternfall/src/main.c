@@ -282,7 +282,7 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
-  if (H.banner_t > 0) H.banner_t -= (float)DT;
+  if (H.banner_t > 0 && H.intro_t <= 0) H.banner_t -= (float)DT; /* (the region's name waits for the opening lines to close: never text over text) */
   if (H.card_t > 0) H.card_t -= (float)DT;
   if (H.intro_t > 0) H.intro_t -= (float)DT;
   if (H.trial_t > 0) H.trial_t -= (float)DT;

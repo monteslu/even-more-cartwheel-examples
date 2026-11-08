@@ -14,6 +14,8 @@
  *   gates      every gate room: its far half cannot be reached without the gate's ability (a control on the
  *              obstacle), and can with it
  *   grounded   every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says
+ *   ledges held  every one-way ledge out in the air is held by something the eye can see: a wall at an end, a chain
+ *              from the rock above, a post from the ground below
  *   see before reach  every ability reaches two or more rewards that were on screen at an earlier stage (the camera
  *              frames 32 x 18 tiles round the player inside its room; a reward inside hidden rock is not seen)
  *   shortcuts  every ability opens a gate whose two sides were both reached before it
@@ -26,7 +28,7 @@
  * grapple gates, 2 swaps the second jump and the dash prizes, 3 digs a pit with no way out next to the start,
  * 4 lifts a lamp off its ceiling, 5 lowers a wall gate to one jump's height, 6 takes the set pieces' rewards out (see
  * before reach), 7 lays thorns beside the landing under the Rootway's trapdoors (blind drops), 8 forgets the Rootway's set pieces, 9 walls up the
- * gates inside a region (shortcuts).
+ * gates inside a region (shortcuts), 10 takes every ledge's chains and posts away (ledges held).
  * --route writes the bot's route: the moves from the start through every pickup and warden (route.bin). */
 #include <math.h>
 #include <pthread.h>
@@ -519,8 +521,11 @@ static void break_world(int n) {
   } else if (n == 3) {
     /* a pit by the start whose walls are too high to jump out of: dug through the floor into rock below */
     int sx = (int)W.start_x + 6, sy = (int)W.start_y;
-    for (int y = sy; y < sy + 10 && y < TH - 1; y++)
+    for (int y = sy; y < sy + 10 && y < TH - 1; y++) {
       for (int x = sx; x < sx + 3; x++) W.t[y][x] = T_EMPTY;
+      W.t[y][sx - 1] = W.t[y][sx + 3] = T_SOLID; /* (walled, whatever lies below the floor) */
+    }
+    for (int x = sx - 1; x <= sx + 3; x++) W.t[sy + 10][x] = T_SOLID;
     for (int i = 0; i < W.nents; i++)
       if (W.ents[i].x >= sx - 1 && W.ents[i].x <= sx + 4 && W.ents[i].y >= sy - 2 && W.ents[i].y <= sy + 11) W.ents[i].kind = EK_NONE;
     if (W.cell_room[(sy + 10) / CELL_H][sx / CELL_W] != 0xffff) printf("(the pit reaches another room)\n");
@@ -553,6 +558,9 @@ static void break_world(int n) {
   } else if (n == 8) { /* the Rootway's set pieces forgotten */
     for (int i = 0; i < W.nrooms; i++)
       if (W.rooms[i].region == R_ROOTWAY) W.rooms[i].piece = 0;
+  } else if (n == 10) { /* every ledge's chains and posts taken away */
+    for (int i = 0; i < W.nents; i++)
+      if (W.ents[i].kind == EK_PROP && W.ents[i].sub == PR_SUPPORT) W.ents[i].kind = EK_NONE;
   } else if (n == 9) { /* the gates inside a region walled up */
     for (int i = 0; i < W.nrooms; i++) {
       const struct room *r = &W.rooms[i];
@@ -597,6 +605,56 @@ typedef struct route_step { int32_t from, to; uint8_t move, stage, goal, pad; } 
 
 /* the cheapest way over a stage's edges from `from` to the nearest tile of `goal_mask` (1 = a goal): steps
  * appended, the goal reached returned (-1 none) */
+/* cracked floors on the route: the walk breaks one wherever any plunge lands on it, but the bot only breaks the
+ * ones it plunges through itself, so the route crosses a cracked floor only after one of its own steps plunged
+ * onto it (crack_id: the cracked regions of the world as made, crack_open: those the route has broken) */
+static int32_t *crack_id;
+static uint8_t crack_open[4096];
+static void crack_label(void) {
+  crack_id = malloc(sizeof(int32_t) * TW * TH);
+  for (int i = 0; i < TW * TH; i++) crack_id[i] = -1;
+  int n = 0;
+  static int32_t st[TW * 8];
+  for (int i = 0; i < TW * TH; i++) {
+    if (W.t[i / TW][i % TW] != T_CRACKED || crack_id[i] >= 0 || n >= 4096) continue;
+    int sn = 0;
+    st[sn++] = i, crack_id[i] = n;
+    while (sn) {
+      int j = st[--sn], x = j % TW, y = j / TW;
+      const int nb[4] = { j + 1, j - 1, j + TW, j - TW };
+      for (int k = 0; k < 4; k++) {
+        int q = nb[k];
+        if (q < 0 || q >= TW * TH || abs(q % TW - x) > 1 || abs(q / TW - y) > 1) continue;
+        if (W.t[q / TW][q % TW] == T_CRACKED && crack_id[q] < 0 && sn < TW * 8) crack_id[q] = n, st[sn++] = q;
+      }
+    }
+    n++;
+  }
+}
+/* the straight way from u to v (the body's middle) passes a cracked tile the route has not broken; open: break the
+ * ones it passes instead (a way down through one: the bot plunges onto it) */
+static bool crack_line(int u, int v, bool open) {
+  float ax = (float)(u % TW) + 0.5f, ay = (float)(u / TW) - 0.9f, bx = (float)(v % TW) + 0.5f, by = (float)(v / TW) - 0.9f;
+  int n = (int)(fabsf(bx - ax) + fabsf(by - ay)) * 2 + 2;
+  for (int k = 0; k <= n; k++) {
+    float t = (float)k / (float)n;
+    int x = (int)floorf(ax + (bx - ax) * t), y = (int)floorf(ay + (by - ay) * t);
+    if (!w_in(x, y)) continue;
+    int id = crack_id[y * TW + x];
+    if (id >= 0 && !crack_open[id]) {
+      if (open) crack_open[id] = 1;
+      else return true;
+    }
+  }
+  return false;
+}
+/* up through a cracked floor the route has not broken: not yet (down through one breaks it) */
+static bool crosses_shut_crack(int u, int v) { return v / TW < u / TW && crack_line(u, v, false); }
+/* a route step down through a cracked floor (the bot plunges onto it) breaks it from then on */
+static void crack_step(int from, int to) {
+  if (to / TW > from / TW) crack_line(from, to, true);
+}
+
 static bool route_shut_heart; /* the heart's seal is still shut where the route has got to: no way through the Heartwood */
 static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out, int *nout, int cap) {
   static int32_t *dist, *prev, *prevmv;
@@ -639,6 +697,7 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
     const edges *e = &stage_E[st][eslot[u]];
     for (int k = 0; k < e->n; k++) {
       int v = e->to[k], nd = dist[u] + e->ticks[k] + 4;
+      if (crack_id && crosses_shut_crack(u, v)) continue;
       if (route_shut_heart) {
         int vr = w_room_at(&W, (float)(v % TW) + 0.5f, (float)(v / TW) - 0.5f);
         if (vr >= 0 && W.rooms[vr].region == R_HEART) continue;
@@ -656,6 +715,7 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
   for (int i = n - 1; i >= 0 && *nout < cap; i--) {
     int to = path[i], fr = i == n - 1 ? from : path[i + 1];
     out[(*nout)++] = (route_step){ fr, to, (uint8_t)prevmv[to], (uint8_t)st, 0, 0 };
+    crack_step(fr, to);
   }
   out[*nout - 1].goal = 1;
   return found;
@@ -663,6 +723,7 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
 
 static int write_route(const char *path, int start) {
   static uint8_t goal[TW * TH], is_warden[TW * TH], is_move_ab[TW * TH];
+  crack_label();
   static route_step steps[60000];
   int n = 0, wardens_met = 0;
   memset(goal, 0, sizeof goal);
@@ -928,6 +989,33 @@ int main(int argc, char **argv) {
     }
   if (floating) fails++, printf("FAIL grounded: %d things float\n", floating);
   else printf("ok   grounded: all %d things are held by their tiles\n", W.nents);
+  }
+  if (!only || !strcmp(only, "grounded")) {
+  /* ledges held: every one-way ledge out in the air is held by something the eye can see (a wall at an end, or a
+   * chain or post worldgen laid for it) */
+  static uint8_t held_at[TH][TW];
+  memset(held_at, 0, sizeof held_at);
+  for (int i = 0; i < W.nents; i++) {
+    const ent *e = &W.ents[i];
+    if (e->kind != EK_PROP || e->sub != PR_SUPPORT) continue;
+    int x = (int)floorf(e->x), y = (int)roundf(e->y);
+    int ly = (e->hold & HOLD_CEIL) ? y + e->arg : (e->hold & HOLD_FLOOR) ? y - e->arg - 1 : y - 1;
+    if (w_in(x, ly)) held_at[ly][x] = 1;
+  }
+  int loose = 0, ledges = 0;
+  for (int y = 1; y < TH - 1; y++)
+    for (int x = 1; x < TW - 1; x++) {
+      if (W.t[y][x] != T_ONEWAY || W.t[y][x - 1] == T_ONEWAY) continue;
+      int x1 = x;
+      while (W.t[y][x1 + 1] == T_ONEWAY) x1++;
+      if (t_solid(W.t[y][x - 1]) || t_solid(W.t[y][x1 + 1]) || t_solid(W.t[y - 1][x]) || t_solid(W.t[y + 1][x])) continue; /* (on a wall, or in a door) */
+      ledges++;
+      bool held = false;
+      for (int k = x; k <= x1 && !held; k++) held = held_at[y][k];
+      if (!held && ++loose <= 5) printf("FAIL loose ledge: %d..%d,%d (room %d) has nothing holding it up\n", x, x1, y, w_room_at(&W, (float)x + 0.5f, (float)y - 0.5f));
+    }
+  if (loose) fails++, printf("FAIL ledges held: %d of %d ledges in the air hang on nothing\n", loose, ledges);
+  else printf("ok   ledges held: all %d ledges in the air are held by a wall, a chain or a post\n", ledges);
   }
   struct timespec ts1;
   clock_gettime(CLOCK_MONOTONIC, &ts1);
