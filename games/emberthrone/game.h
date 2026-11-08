@@ -50,7 +50,9 @@ extern wobj g_obj[MAXOBJ];
 extern int g_nobj;
 
 /* a foe placed in the world */
-typedef struct wfoe { int kind, region, group; float x, z, yaw; int flag; } wfoe;
+/* a foe's role: one idea on top of its kind (the same body and weapon; what it does differs) */
+enum { R_PLAIN, R_SHIELD, R_SLINGER, R_LURKER, R_ROLES };
+typedef struct wfoe { int kind, region, group; float x, z, yaw; int flag; int role; } wfoe;
 extern wfoe g_foe[MAXE];
 extern int g_nfoe;
 
@@ -90,7 +92,7 @@ enum { K_WAYFARER, K_WARDEN, K_RAIDER, K_BRUTE, K_LANCER, K_THORN, K_TIDE, K_EMB
 #define IS_BOSS(k) ((k) >= K_THORN)
 enum { ST_MOVE, ST_ATTACK, ST_DODGE, ST_HURT, ST_DOWN, ST_DEAD, ST_DRINK, ST_ACT, ST_REST, ST_ROAR, ST_IDLE_HOME };
 enum { A_NONE, A_SLASH1, A_SLASH2, A_SLASH3, A_HEAVY, A_MAUL1, A_MAUL2, A_CLEAVE, A_CHOP, A_STAB, A_SLAM, A_HAY, A_SPIN, A_LARIAT,
-       A_HAMMER, A_WAVE, A_COUNT };
+       A_HAMMER, A_WAVE, A_BASH, A_THROW, A_COUNT };
 
 typedef struct attack_def {
   const char *clip;
@@ -128,6 +130,12 @@ typedef struct actor {
   int atk, combo; bool queued; int queue_atk;
   uint32_t hit_mask[3];   /* who this swing already hit */
   int iframes, flash;
+  int crit_t;             /* foes: ticks left of the opening after their poise broke (the next blow is a critical) */
+  int spent;              /* bosses: ticks left of the breather after a big blow (they take more poise) */
+  int guard;              /* shield bearers: how much more the shield takes before it is knocked aside */
+  int role;               /* foes: R_* */
+  float magnet;           /* players: the cut's step toward its target (m/s through the wind-up) */
+  int string;             /* bosses: blows left in a string (their later phases chain two or three) */
   int target;             /* lock-on target (players) or who it hunts (foes); -1 none */
   /* foes */
   int foe, group, region, phase, think, token, strafe;
@@ -165,12 +173,22 @@ typedef struct save_data {
 } save_data;
 
 enum { EV_HIT, EV_BLOCKED, EV_KILL, EV_SWING, EV_DODGE, EV_STEP, EV_PICK, EV_OPEN, EV_REST, EV_BOSS, EV_ROAR, EV_SHOCK, EV_DOWN, EV_DRINK,
-       EV_BREAK, EV_LEVER, EV_GATE, EV_FALL, EV_TELL, EV_WIN, EV_REGION, EV_LAND };
-typedef struct event { int kind, a, b; float x, y, z, v; } event;
+       EV_BREAK, EV_LEVER, EV_GATE, EV_FALL, EV_TELL, EV_WIN, EV_REGION, EV_LAND, EV_CRIT, EV_STAGGER, EV_THROW, EV_STONE, EV_CLEAR,
+       EV_GUARD_BREAK, EV_RISE };
+/* a: who it happened to, b: what (the blow), c: who did it (-1 nobody), v: how much */
+typedef struct event { int kind, a, b; float x, y, z, v; int c; } event;
 
 enum { GS_PLAY, GS_FALLEN, GS_WON };
 
 typedef struct shock { bool on; int from; float x, y, z, r, speed; int dmg; uint32_t hit; } shock;
+/* a slinger's stone in flight: straight at where the target stood when it let go (moving dodges it) */
+typedef struct stone { bool on; int from, t; float x, y, z, vx, vy, vz; } stone;
+#define MAXSTONE 8
+
+/* the feel rules (each can be turned off for its test's control: ADV_RULES_OFF=name,name) */
+enum { FR_HITSTOP = 1, FR_KNOCK = 2, FR_CRIT = 4, FR_MAGNET = 8, FR_GUARD = 16, FR_STONES = 32, FR_FLANK = 64, FR_SPENT = 128, FR_CLEAR = 256, FR_STRING = 512,
+       FR_LURK = 1024, FR_RUMBLE = 2048 };
+extern int g_rules_off, g_rules_force; /* force: the rules test sets them directly (-1: from ADV_RULES_OFF) */
 
 typedef struct sim {
   actor a[MAXA];
@@ -190,10 +208,15 @@ typedef struct sim {
   int cam_blocked;        /* ticks something solid stood between the player and the camera (the check: 0) */
   int interact;           /* the object the lead player can use now, -1 none */
   shock sh[4];
+  stone st[MAXSTONE];
+  int hitstop;            /* ticks the world holds still after a blow lands (both bodies; presses made in it are kept) */
+  input held[MAXP];       /* the presses made during a hold */
+  int held_ticks;         /* every tick held (the tests read it) */
   event ev[128];
   int ev_n;
   uint32_t hash;
   int kills, hits_taken, hits_landed, dodges, dodged, tells, stagger;
+  int swings, crits, blocked, guard_breaks, stones_thrown, stones_hit, clears, strings;
   int deaths;
   int heal_ticks;
   int banner_t, banner_kind, banner_item;
@@ -212,6 +235,9 @@ const char *sim_item_name(int item);
 void sim_respawn_foes(void);
 float sim_cam_yaw(void);
 void sim_teleport_party(float x, float z);
+void sim_test_blow(int victim, int attacker, int atk);
+extern bool g_held_now;   /* this tick was held (a blow's hit-stop): the view stops the clips */
+extern bool g_foe_passive; /* the rules test: foes stand still */
 
 /* ── the view ──────────────────────────────────────────────────────── */
 bool view_init_step(cw_node root, int *done, int *total);
@@ -227,6 +253,8 @@ view_stats view_get_stats(void);
 void fx_init(cw_node root);
 void fx_events(void);
 void fx_tick(float t);
+void fx_feel(void);       /* pad rumble from the tick's events (called after every rule tick) */
+extern int g_rumble_n;    /* rumble requests made (the rules test reads it) */
 extern int g_fx_level;
 
 /* ── the bot ───────────────────────────────────────────────────────── */

@@ -2,8 +2,10 @@
 // from several places, GL and WebGPU at 1080p High on the test GPU. The places run interleaved, round after round
 // (one run of each place a round), so the shared GPU's swings land on all of them alike; each pass's time is the median
 // over the rounds of each run's mean of its last three 120-frame windows. Prints a table per API: the passes down, the
-// places across, with each place's frame total and its draws.
-//   node tests/emberthrone-perf-passes.mjs [--rounds 5] [--gpu gl|webgpu|both] [--places meadow:1,heights:39,...]
+// places across, with each place's frame total and its draws. With --compare <another emberthrone_bench> (a build of
+// another commit, its .cwpak and libwebgpu_dawn.so beside it) every round runs both, place by place, and the table
+// gains that build's totals and the difference.
+//   node tests/emberthrone-perf-passes.mjs [--rounds 5] [--gpu gl|webgpu|both] [--places meadow:1,heights:39,...] [--compare <exe>]
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -24,13 +26,14 @@ const rounds = +arg('--rounds', '5');
 const places = arg('--places', 'meadow:1,heights:39,tidecaller:22,wood:28,spire:61').split(',').map((p) => p.split(':'));
 const extraEnv = Object.fromEntries((arg('--env', '') || '').split(',').filter(Boolean).map((kv) => kv.split('=')));
 
-function run(gpu, from) {
+const other = arg('--compare', '');
+function run(gpu, from, bin = exe) {
   const env = { ...process.env, CW_FRAMES: '420', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', ADV_BENCH: '1', ADV_NO_HUD: '1', ADV_QUALITY: '3', ADV_FROM: from,
     CW_RENDER_SCALE: '1.5', CW_GPU_TIMERS: '1', ...extraEnv };
   const pin = gpu === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();
   if (pin) Object.assign(env, pin.env, { CW_GPU: 'webgpu' }); else { env.CW_GPU = 'gl'; if (gl) Object.assign(env, gl.env); }
   scrubDisplay(env);
-  const r = spawnSync('timeout', ['-s', 'KILL', '300', exe], { env, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const r = spawnSync('timeout', ['-s', 'KILL', '300', bin], { env, encoding: 'utf8', maxBuffer: 1 << 26 });
   const err = r.stderr || '';
   const lines = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3);
   const passes = {};
@@ -49,13 +52,22 @@ function run(gpu, from) {
 const median = (a) => { const b = a.filter((x) => Number.isFinite(x)).sort((x, y) => x - y); return b.length ? b[b.length >> 1] : NaN; };
 let bad = 0;
 for (const gpu of arg('--gpu', 'both') === 'both' ? ['gl', 'webgpu'] : [arg('--gpu', 'both')]) {
-  const res = Object.fromEntries(places.map(([n]) => [n, []]));
-  for (let i = 0; i < rounds; i++) for (const [n, from] of places) { const r = run(gpu, from); if (r.failed) bad++, console.log(`${gpu} ${n}: run failed (${r.failed})`); res[n].push(r); }
+  const res = Object.fromEntries(places.map(([n]) => [n, []])), base = Object.fromEntries(places.map(([n]) => [n, []]));
+  for (let i = 0; i < rounds; i++)
+    for (const [n, from] of places) {
+      const r = run(gpu, from); if (r.failed) bad++, console.log(`${gpu} ${n}: run failed (${r.failed})`); res[n].push(r);
+      if (other) { const o = run(gpu, from, other); if (o.failed) bad++, console.log(`${gpu} ${n} (compare): run failed (${o.failed})`); base[n].push(o); }
+    }
   const keys = [...new Set(places.flatMap(([n]) => res[n].flatMap((r) => Object.keys(r))))].filter((k) => k !== 'failed' && k !== 'draws' && k !== 'total');
   const col = (s) => String(s).padStart(11);
   console.log(`\n${gpu} (median of ${rounds} interleaved rounds, ms)\n${'pass'.padEnd(14)}${places.map(([n]) => col(n)).join('')}`);
   for (const k of [...keys, 'total']) console.log(`${k.padEnd(14)}${places.map(([n]) => col(median(res[n].map((r) => r[k] ?? 0)).toFixed(2))).join('')}`);
   console.log(`${'draws'.padEnd(14)}${places.map(([n]) => col(median(res[n].map((r) => r.draws)))).join('')}`);
+  if (other) {
+    console.log(`${'compare total'.padEnd(14)}${places.map(([n]) => col(median(base[n].map((r) => r.total ?? 0)).toFixed(2))).join('')}`);
+    console.log(`${'difference'.padEnd(14)}${places.map(([n]) => col((median(res[n].map((r) => r.total ?? 0)) - median(base[n].map((r) => r.total ?? 0))).toFixed(2))).join('')}`);
+    console.log(`${'compare draws'.padEnd(14)}${places.map(([n]) => col(median(base[n].map((r) => r.draws)))).join('')}`);
+  }
   console.log(`${'total spread'.padEnd(14)}${places.map(([n]) => { const t = res[n].map((r) => r.total).sort((a, b) => a - b); return col(`${t[0].toFixed(2)}-${t.at(-1).toFixed(2)}`); }).join('')}`);
 }
 process.exit(bad ? 1 : 0);

@@ -50,6 +50,7 @@ static struct {
   cw_action move[4], cam[4], attack, heavy, dodge, use, lock, tonic, swap;
   cw_node camera;
   int32_t state, tick, region, kills, hits_taken, hits_landed, dodges, dodged, tells, keys, hearts, maul, route, boss_hp, deaths, rests, stuck;
+  int32_t swings, crits, staggers, blocked, held, clears, stones, rumbles;
   int32_t hp[MAXP], stam[MAXP], px[MAXP], py[MAXP], pz[MAXP], pstate[MAXP], target, foes_live, rigs, feet, flags0, flags3, cam_clip_t, world_hash;
   uint32_t hash;
   float cam_clip, cam_jerk;
@@ -174,6 +175,7 @@ static void start(int players, void *u) {
   g_bench = true;
 #endif
   if (getenv("ADV_GOD")) g_bench = true;
+  if (getenv("ADV_RULES")) { extern int rules_run(void); exit(rules_run()); } /* the combat feel rules (tests/emberthrone-rules.mjs) */
   (void)sd;
 #else
   sim_init(players, sd && sd->version == 1 ? sd : NULL);
@@ -231,6 +233,14 @@ static void init(void *u) {
   cw_debug_i32("game.interact", &S.interact);
   { extern int bot_step_ticks(void); static int32_t rt; (void)rt; }
   cw_debug_i32("game.foes_live", &G.foes_live);
+  cw_debug_i32("game.swings", &G.swings);
+  cw_debug_i32("game.crits", &G.crits);
+  cw_debug_i32("game.staggers", &G.staggers);
+  cw_debug_i32("game.blocked", &G.blocked);
+  cw_debug_i32("game.held", &G.held);
+  cw_debug_i32("game.clears", &G.clears);
+  cw_debug_i32("game.stones", &G.stones);
+  cw_debug_i32("game.rumbles", &G.rumbles);
   cw_debug_field("player.hp", G.hp, CW_DBG_I32, MAXP);
   cw_debug_field("player.stamina", G.stam, CW_DBG_I32, MAXP);
   cw_debug_field("player.x", G.px, CW_DBG_I32, MAXP);
@@ -278,6 +288,8 @@ static void status_line(void) {
     if (p.x != p.x || p.y != p.y || p.z != p.z) nan++;
     live += i >= MAXP && a->active && a->state != ST_DEAD;
   }
+  fprintf(stderr, "adv-feel tick=%u swings=%d landed=%d taken=%d crits=%d staggers=%d blocked=%d guard_breaks=%d stones=%d stones_hit=%d clears=%d strings=%d held=%d rumbles=%d\n", S.tick, S.swings, S.hits_landed, S.hits_taken, S.crits, S.stagger,
+          S.blocked, S.guard_breaks, S.stones_thrown, S.stones_hit, S.clears, S.strings, S.held_ticks, g_rumble_n);
   fprintf(stderr, "adv-status tick=%u route=%d state=%d region=%d kills=%d deaths=%d rests=%d hp=%d keys=%d maul=%d hearts=%d stuck=%d camblock=%d nan=%d live=%d x=%d z=%d boss=%d pst=%d bst=%d bx=%d bz=%d by=%d py=%d shrine=%d\n", S.tick, bot_route_index(), S.state,
           S.region, S.kills, S.deaths, S.sv.rests, S.a[0].hp, S.sv.keys, S.sv.maul, S.sv.hearts, g_bot_stuck, S.cam_blocked, nan, live, (int)S.a[0].mv.position.x, (int)S.a[0].mv.position.z, S.boss >= 0 ? S.a[S.boss].hp : -1, S.a[0].state, S.boss >= 0 ? S.a[S.boss].state : -1,
           S.boss >= 0 ? (int)S.a[S.boss].mv.position.x : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.z : 0, S.boss >= 0 ? (int)S.a[S.boss].mv.position.y : 0, (int)S.a[0].mv.position.y, S.sv.shrine);
@@ -298,14 +310,16 @@ static void fixed_update(void *u, double dt) {
   for (int k = 0; k < turbo; k++) {
     if (k) read_input(in);
     sim_step(in);
+    fx_feel();
     if (getenv("ADV_LOG") && S.tick % (getenv("ADV_LOG_EVERY") ? atoi(getenv("ADV_LOG_EVERY")) : 3600) == 0) status_line();
-    if (getenv("ADV_LOG") && S.state == GS_WON && S.state_t == 1) { fprintf(stderr, "adv-won tick=%u kills=%d deaths=%d\n", S.tick, S.kills, S.deaths); status_line(); }
+    if (getenv("ADV_LOG") && S.state == GS_WON && S.state_t == 1) { status_line(); fprintf(stderr, "adv-won tick=%u kills=%d deaths=%d\n", S.tick, S.kills, S.deaths); fflush(stderr); }
   }
   view_fixed();
   G.t_sim += (wall_s() - t0) * 1000;
   G.state = S.state, G.tick = (int32_t)S.tick, G.region = S.region, G.kills = S.kills, G.hits_taken = S.hits_taken, G.hits_landed = S.hits_landed;
   G.dodges = S.dodges, G.dodged = S.dodged, G.tells = S.tells, G.keys = S.sv.keys, G.hearts = S.sv.hearts, G.maul = S.sv.maul, G.route = bot_route_index();
   G.boss_hp = S.boss >= 0 ? S.a[S.boss].hp : -1, G.deaths = S.deaths, G.rests = S.sv.rests, G.flags0 = (int32_t)S.sv.flags[0], G.flags3 = (int32_t)S.sv.flags[3];
+  G.swings = S.swings, G.crits = S.crits, G.staggers = S.stagger, G.blocked = S.blocked, G.held = S.held_ticks, G.clears = S.clears, G.stones = S.stones_thrown, G.rumbles = g_rumble_n;
   G.target = S.a[0].target, G.hash = S.hash, G.world_hash = (int32_t)world_hash(), G.stuck = g_bot_stuck, G.cam_clip_t = S.cam_clip_t, G.cam_clip = S.cam_clip;
   int live = 0;
   for (int i = MAXP; i < MAXA; i++) live += S.a[i].used && S.a[i].active && S.a[i].state != ST_DEAD;
@@ -344,7 +358,8 @@ static void hud_player(int i, float u, cw_vec2 cs) {
   cw_text_metrics nm = text(b, x, y - 4 * u, bs, i == 0 ? rgba(0.4f, 1, 0.95f, 1) : rgba(1, 0.55f, 0.5f, 1), CW_ALIGN_LEFT);
   float bx = x + nm.width + 14 * u;
   bool low = p->hp < p->hp_max / 4;
-  bar(bx, y, hw, 18 * u, (float)p->hp / (float)p->hp_max, low && (S.tick / 12) % 2 ? rgba(1, 0.5f, 0.4f, 1) : rgba(0.92f, 0.2f, 0.25f, 1), rgba(0.25f, 0.05f, 0.06f, 0.85f));
+  float pulse = low ? 0.5f - 0.5f * cw_cos((float)S.tick * CW_TAU / 72.0f) : 0; /* low: a slow swell toward a lighter red (never a blink) */
+  bar(bx, y, hw, 18 * u, (float)p->hp / (float)p->hp_max, rgba(0.92f + 0.08f * pulse, 0.2f + 0.3f * pulse, 0.25f + 0.15f * pulse, 1), rgba(0.25f, 0.05f, 0.06f, 0.85f));
   bar(bx, y + 28 * u, sw, 12 * u, p->stamina / p->stamina_max, rgba(0.35f, 0.95f, 0.45f, 1), rgba(0.06f, 0.2f, 0.08f, 0.85f));
   /* the flask: a round shape with its count; the keys */
   float fy = y + 56 * u, iu = u * cw_text_drawn_size(font, bs) / bs;
@@ -369,7 +384,10 @@ static void hud(void) {
   float u = cs.y / 1080.0f, bs = 26 * u;
   cw_r2d_begin(NULL);
   for (int i = 0; i < MAXP; i++) if (S.a[i].used) hud_player(i, u, cs);
-  if (!S.a[1].used) cw_prompt_text(font, "{ui_accept}: a second player joins", -1, cw_v2(cs.x - 28 * u, 28 * u), bs, rgba(1, 1, 1, 0.55f), CW_ALIGN_RIGHT); /* prompt-ok: the join press is the shell's */
+  { /* the join line: the first minute of play, and whenever the game is paused (then it fades out of the way) */
+    float ja = cw_shell_screen_now() == CW_SHELL_PAUSE ? 0.55f : 0.55f * cw_clampf((float)(3600 - S.sv.play_ticks) / 120.0f, 0, 1);
+    if (!S.a[1].used && ja > 0.01f) cw_prompt_text(font, "{ui_accept}: a second player joins", -1, cw_v2(cs.x - 28 * u, 28 * u), bs, rgba(1, 1, 1, ja), CW_ALIGN_RIGHT); /* prompt-ok: the join press is the shell's */
+  }
   /* the lock reticle: a diamond over the target */
   const actor *p = &S.a[0];
   if (p->target >= 0) {
@@ -412,6 +430,12 @@ static void hud(void) {
     if (S.banner_kind == 1 && S.banner_item == IT_MAUL) cw_prompt_text(font, "{swap}: change weapon   it breaks cracked stone", 0, cw_v2(cs.x * 0.5f, y + 8 * u), bs, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
     if (S.banner_kind == 3) text("the gate wants the Sun Key and the Moon Key", cs.x * 0.5f, y + 6 * u, 30 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }
+  { /* the flash check's control only (ADV_STROBE_CONTROL, development): a white wash over the screen at 10 Hz, the
+     * strobe the check must catch */
+    static int strobe = -1;
+    if (strobe < 0) strobe = getenv("ADV_STROBE_CONTROL") != NULL;
+    if (strobe && (S.tick / 3) % 2) cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(1, 1, 1, 0.6f));
+  }
   if (S.state == GS_FALLEN) {
     float a = cw_clampf((float)S.state_t / 60.0f, 0, 0.75f);
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0.1f, 0.02f, 0.03f, a));
@@ -453,6 +477,16 @@ static void render(void *u, double alpha) {
     double t0 = wall_s();
     view_sync((float)alpha);
     fx_events();
+    { /* ADV_FX_LOG=1 (the flash check): the frame each blow, stagger and roar shows on */
+      static int log = -1, frame;
+      if (log < 0) log = getenv("ADV_FX_LOG") != NULL;
+      frame++;
+      for (int k = 0; log && k < S.ev_n; k++) {
+        int kd = S.ev[k].kind;
+        if (kd == EV_HIT || kd == EV_CRIT || kd == EV_STAGGER || kd == EV_ROAR || kd == EV_DOWN || kd == EV_SHOCK || kd == EV_GUARD_BREAK || kd == EV_KILL)
+          fprintf(stderr, "adv-fx frame=%d tick=%u kind=%d\n", frame, S.tick, kd);
+      }
+    }
     if (sc == CW_SHELL_PLAY) fx_tick(t);
     G.t_view += (wall_s() - t0) * 1000;
   }

@@ -30,17 +30,42 @@ The order through the world:
 
 - Light cuts chain three deep inside a window near the end of each; a heavy spins and knocks ordinary foes down.
   The maul is slower and hits harder; its heavy is a ground slam.
+- The first cut of a combo (and a heavy) steps up to a metre toward the locked foe, or the nearest one in front with no
+  lock, spread over its wind-up: a foe that sidesteps the wind-up is still met.
+- Every blow that lands has weight. The whole world holds still for a few ticks (both bodies, the camera, every clip):
+  4 for a cut, 5 for the third, 6 for the maul's swing or the heavy, 8 for the maul's slam, a broken poise or a
+  knockdown, 9 for a critical, 10 when a boss turns to its next phase, 6 for a blow taken (8 from a boss). Presses made
+  in a hold are kept for the tick after. The push follows the blow (a cut nudges, the third cut and the maul throw) and
+  the body's weight (brutes and bosses barely move). Sparks, a sound, a small warm light that swells and fades over a
+  third of a second where it landed, and pad rumble by how hard it was all come together. The camera never shakes.
+- Poise: light blows wear it down; when it breaks the foe stumbles for most of a second with a ring of sparks, and the
+  next blow in that opening is a critical (double damage, a longer hold, a heavier rumble). A knockdown opens the same.
 - The dodge is a dive roll with invulnerable frames through most of it (2 to 21 of 37 ticks); with no direction, a
   quick back step (1 to 13 of 25). Rolling through a shockwave is the answer to the bosses' later phases.
 - Stamina pays for every swing and roll and comes back after a short wait, so a fight has a rhythm.
 - Lock-on: the player faces the target, moves in a circling walk with sidestep and back-step clips, and the camera
   turns to keep both in view; a flick of the camera stick moves to the next foe that side.
-- Foes: raiders (quick cleavers, a slower overhead), brutes (hyper-armoured through their swings, a slam with a ring on
-  the ground, a looping haymaker), lancers (long reach, they keep their distance). A group wakes together; two at a
-  time come at each player (an attack token), the rest circle. Every blow has a wind-up of 26 frames or more, with a
-  warm flare of light on the foe and a sound; area blows draw a ring that grows to the blow's reach.
-- Bosses: phases at two thirds and one third of their health, each with a roar (invulnerable) and quicker, newer
-  blows: charges across the arena, and shockwaves that run out along the ground.
+- Foes, each kind with one idea: raiders (quick cleavers, a slower overhead), brutes (hyper-armoured through their
+  swings, a slam with a ring on the ground, a looping haymaker), lancers (long reach, they keep their distance). Roles
+  on top of a kind give a group its shape:
+  - the shield bearer holds a round shield up in front: a cut from the front glances off (the striker bounces back)
+    and wears the shield down; a heavy or the maul knocks it aside at once, and so do a few cuts; from the side or the
+    back it is open. It turns quickly and shoves. Go round it or break it.
+  - the slinger keeps nine metres off and throws stones straight at where you stand: standing still is hit, moving is
+    not. It backs away when you close in.
+  - the marsh lurker waits under the pools and rises when you wade close: nothing can lock on to it until then.
+  A group wakes together; two at a time come at each player (an attack token) while the rest circle round toward the
+  player's back, so a group closes from more than one side. Every blow has a wind-up of 26 frames or more, with a warm
+  light on the foe that swells through it and fades after it, and a sound (lower for the big blows); area blows draw a
+  ring on the ground that fades in and grows to the blow's reach. The heroes' and bosses' blades leave a ribbon through
+  exactly the arc where the blow is live.
+- Beating a whole group puts a sip back in every flask (up to its size): fights pay for the next one.
+- Bosses: phases at two thirds and one third of their health. Each change is a roar (invulnerable, a hold, and a breath
+  that pushes everyone near back out of reach), then quicker, newer blows: charges across the arena, shockwaves that
+  run out along the ground. In the later phases a blow opens a fixed string (the Thornwarden's haymaker into a spin;
+  the Tidecaller's thrusts into a wave; the Ember King's haymaker into a spin into the hammer), each with its full
+  wind-up, and after a big blow or a string's last the boss stands spent for most of a second, breath steaming, taking
+  twice the poise: a fair exam with an answer and an opening.
 
 ## The camera
 
@@ -81,6 +106,16 @@ stairs (FootPlacement3D on the physics ground); the dead fall as ragdolls.
 
 ## Tests
 
+- `tests/emberthrone-rules.mjs` (games/emberthrone/rules.c, natively on software GL, nothing drawn): the combat feel on
+  the real rules and world. The hold of a landed cut (4 ticks, both bodies still, a press in it kept) and its ladder by
+  blow, knockback by blow, the critical after a broken poise, the cut's magnet (a locked foe 3.4 m off is met), the
+  shield's guard (front blocked, back open, a heavy breaks it), the slinger's stones (half or more hit a player standing
+  still, a quarter or fewer one who keeps moving), waiting foes circling to the player's back (half or more of the blows
+  come from beyond the shoulder), a boss spent after a big blow and chaining blows in its later phase, the flask's sip
+  for a beaten group, the lurker, rumble on a hit. Controls: each rule off in turn, and its own check must fail.
+- `tests/emberthrone-flash.mjs`: no strobing. Two seconds of the Tidecaller's fight from its busiest moment, frame by
+  frame, against WCAG 2.3.1 and the Harding thresholds: no ninth of the screen may flash at all, no 1/144 of it more
+  than 3 times (general or red) in a second. Control: the same frames under a 10 Hz white wash must fail.
 - `tests/emberthrone-gates.json`: the bot's first 30 seconds (it rests, crosses the hollow, fights the raiders on the road
   and reaches the canyon shrine) and a scripted pad run (Start, Start, the road, the lock, three cuts, a roll, a heavy, a
   drink) with its control. Both agree to the bit across native GL, native WebGPU and the cart on romdev's WebGPU host.

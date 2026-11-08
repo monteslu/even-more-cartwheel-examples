@@ -42,9 +42,13 @@ The screens show each control with the engine's button prompts for the device in
 | tonic | drink from the flask |
 | swap | change weapon |
 
-Every action costs stamina; it comes back when you stop spending it. Foes come at you two at a time while the rest
-circle; every blow has a wind-up (a flare of light on the foe), and area blows a ring on the ground. Bosses change in
-their later phases: charges, and shockwaves that run out along the ground (roll through them).
+Every action costs stamina; it comes back when you stop spending it. A blow that lands stops the world for a moment
+and is felt in the pad; break a foe's poise and your next blow is a critical. Foes come at you two at a time while the
+rest circle round behind you; every blow has a wind-up (a flare of light on the foe), and area blows a ring on the
+ground. Shield bearers turn cuts from the front (go round them, or break the shield with a heavy), slingers throw at
+whoever stands still, and something waits under the marsh pools. Beat a whole group and the flask gets a sip back.
+Bosses change in their later phases: charges, strings of blows, and shockwaves that run out along the ground (roll
+through them); after their biggest blows they stand spent for a moment, open to you.
 
 ## Builds and tools
 
@@ -59,7 +63,9 @@ their later phases: charges, and shockwaves that run out along the ground (roll 
 | `tools/swshot.sh` | a screenshot on software GL |
 | `tools/capture-look.sh` | one play frame from each region, for the look check |
 
-Tests: `node tests/emberthrone-soak.mjs` (the whole game on software GL, with a control that must fail),
+Tests: `node tests/emberthrone-rules.mjs` (the combat feel on the real rules, each rule with a control that must fail),
+`node tests/emberthrone-flash.mjs` (a boss fight frame by frame against the photosensitive flash thresholds, with a
+strobing control that must fail), `node tests/emberthrone-soak.mjs` (the whole game on software GL, with a control that must fail),
 `node tests/emberthrone-grounding.mjs` (no floating props, with a control that must fail),
 `node tests/emberthrone-perf.mjs` (1080p High on the 890M, GL and WebGPU), `node tests/emberthrone-look.mjs out/look` (each
 region mid-key, with real contrast and more than one hue family, with a control that must fail), and the gates in

@@ -4,7 +4,11 @@
  * hung on the right hand bone, the tonic flask in the left while it drinks, a light that flares through a foe's
  * wind-up. The clip follows the rules' state each fixed tick (cross-faded, an attack's clip timed so its blow lands
  * on the rules' hit frame). The dead fall as ragdolls (cartwheel/ragdoll.h) on the world's own collision and lie
- * there; that is presentation only, the rules never read it. Rings on the ground warn of area blows and shockwaves. */
+ * there; that is presentation only, the rules never read it. Rings on the ground warn of area blows and shockwaves
+ * (they fade in and out). A blade leaves a ribbon through the arc where its blow is live (the rules' hit window), the
+ * heroes' and the bosses'. A blow's hit-stop stops every clip with the world. A shield bearer carries its shield up in
+ * front while it holds and drops it when it is knocked aside; a slinger's stones fly with a short streak; a marsh
+ * lurker waits under the water and rises. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,7 +28,8 @@ bool g_hide_hud;
 typedef struct rig {
   bool made;
   int kind;
-  cw_node root, model, anim, feet, light, flask;
+  cw_node root, model, anim, feet, light, flask, trail, shield;
+  int role;
   t3_object *inst;
   const char *clip;
   int clip_tick;     /* the tick the current clip started */
@@ -38,7 +43,9 @@ typedef struct rig {
   int shadow;        /* casting the sun's shadow now (-1 unknown) */
 } rig;
 static rig RIG[MAXA];
-static cw_node V_world, V_ring[8], V_shock[4];
+static cw_node V_world, V_ring[8], V_shock[4], V_stone[MAXSTONE], V_stone_trail[MAXSTONE];
+static t3_material *RING_MAT[8], *SHOCK_MAT[4];
+static t3_mesh *SHIELD_MESH, *STONE_MESH;
 static cw_res RES_KIND[K_KINDS], RES_WEAP[8], RES_FLASK;
 static view_stats VST;
 static int rag_live;
@@ -156,6 +163,24 @@ static void rig_make(int i, int kind) {
     cw_node_set(r->light, "range", cw_val_float(4 * GEN_SCALE[kind]));
     cw_node3d_set_position(r->light, (t3_vec3){ 0, 1.3f * GEN_SCALE[kind], 0.5f });
   }
+  /* the blade's ribbon: the heroes and the bosses */
+  if (kind <= K_WARDEN || IS_BOSS(kind)) {
+    r->trail = cw_node_new("Trail3D", "Blade");
+    cw_node_add_child(V_world, r->trail);
+    bool boss = IS_BOSS(kind);
+    cw_node_set(r->trail, "length", cw_val_int(boss ? 12 : 10));
+    cw_node_set(r->trail, "width", cw_val_float(boss ? 0.9f : 0.45f));
+    cw_node_set(r->trail, "color_ramp", cw_val_string(boss ? "0 1 0.62 0.3 0.75, 0.5 1 0.45 0.18 0.4, 1 0.9 0.3 0.1 0" : "0 1 0.95 0.82 0.8, 0.5 1 0.78 0.45 0.4, 1 1 0.55 0.25 0"));
+    cw_node_set(r->trail, "energy", cw_val_float(boss ? 1.6f : 1.8f));
+    cw_node_set(r->trail, "emitting", cw_val_bool(false));
+  }
+  /* a shield bearer's shield: held up in front of it */
+  r->role = S.a[i].role;
+  if (r->role == R_SHIELD && SHIELD_MESH) {
+    r->shield = cw_node_new("MeshInstance3D", "Shield");
+    cw_node_add_child(r->root, r->shield);
+    cw_mesh3d_set_procedural(r->shield, SHIELD_MESH);
+  }
   t3_release(inst);
   r->made = true, r->shadow = -1;
 }
@@ -180,6 +205,7 @@ static t3_mesh *ring_mesh(float inner, float outer, t3_color c, float e) {
   return mesh;
 }
 
+static t3_mesh *ring_mesh(float inner, float outer, t3_color c, float e);
 static int init_stage;
 bool view_init_step(cw_node root, int *done, int *total) {
   *total = 3 + K_KINDS;
@@ -200,6 +226,7 @@ bool view_init_step(cw_node root, int *done, int *total) {
       V_ring[i] = cw_node_new("MeshInstance3D", nm);
       cw_node_add_child(V_world, V_ring[i]);
       t3_mesh *m = ring_mesh(0.86f, 1.0f, (t3_color){ 1, 0.35f, 0.1f }, 2.2f);
+      RING_MAT[i] = m->materials[0], t3_retain(RING_MAT[i]);
       cw_mesh3d_set_procedural(V_ring[i], m);
       t3_release(m);
       cw_node_set(V_ring[i], "visible", cw_val_bool(false));
@@ -210,9 +237,35 @@ bool view_init_step(cw_node root, int *done, int *total) {
       V_shock[i] = cw_node_new("MeshInstance3D", nm);
       cw_node_add_child(V_world, V_shock[i]);
       t3_mesh *m = ring_mesh(0.92f, 1.0f, (t3_color){ 0.5f, 0.9f, 1 }, 3.0f);
+      SHOCK_MAT[i] = m->materials[0], t3_retain(SHOCK_MAT[i]);
       cw_mesh3d_set_procedural(V_shock[i], m);
       t3_release(m);
       cw_node_set(V_shock[i], "visible", cw_val_bool(false));
+    }
+    { /* the shield (a round of planks with an iron rim: a disc facing forward) and the slingers' stones */
+      /* (the world's own wood and stone: the programs the gates and doors already draw with) */
+      extern t3_material *world_material(int mt, float tint);
+      t3_geometry *g = t3_cylinder_geometry_new(0.38f, 0.38f, 0.07f, 20, 1, false);
+      SHIELD_MESH = t3_mesh_new(g, world_material(MT_WOOD, 1));
+      t3_release(g);
+      g = t3_icosahedron_geometry_new(0.09f, 1);
+      STONE_MESH = t3_mesh_new(g, world_material(MT_STONE, 1));
+      t3_release(g);
+      for (int i = 0; i < MAXSTONE; i++) {
+        char nm[16];
+        snprintf(nm, sizeof nm, "Stone%d", i);
+        V_stone[i] = cw_node_new("MeshInstance3D", nm);
+        cw_node_add_child(V_world, V_stone[i]);
+        cw_mesh3d_set_procedural(V_stone[i], STONE_MESH);
+        cw_node_set(V_stone[i], "visible", cw_val_bool(false));
+        V_stone_trail[i] = cw_node_new("Trail3D", "StoneTrail");
+        cw_node_add_child(V_stone[i], V_stone_trail[i]);
+        cw_node_set(V_stone_trail[i], "length", cw_val_int(6));
+        cw_node_set(V_stone_trail[i], "width", cw_val_float(0.14f));
+        cw_node_set(V_stone_trail[i], "color_ramp", cw_val_string("0 0.9 0.85 0.75 0.6, 1 0.7 0.65 0.55 0"));
+        cw_node_set(V_stone_trail[i], "blend", cw_val_enum("ALPHA"));
+        cw_node_set(V_stone_trail[i], "emitting", cw_val_bool(false));
+      }
     }
     init_stage++;
   } else {
@@ -274,6 +327,30 @@ static void rag_start(rig *r, const actor *a, float away) {
   cw_node_set(r->feet, "active", cw_val_bool(false));
 }
 
+/* where the blade is through the live part of a blow (from three ticks before the rules' hit window to one after):
+ * a point on an arc round the body by the blow's shape (a sweep left or right, a full spin, an overhead, a thrust).
+ * It follows the rules, so the ribbon shows exactly where the blow can land. */
+static bool blade_at(const actor *a, t3_vec3 *out) {
+  if (a->state != ST_ATTACK || a->atk == A_THROW) return false;
+  const attack_def *d = &ATK[a->atk];
+  int t0 = d->on - 3, t1 = d->off + 1;
+  if (a->st_t < t0 || a->st_t > t1) return false;
+  float u = (float)(a->st_t - t0) / (float)(t1 - t0), g = GEN_SCALE[a->kind];
+  float r = fmaxf(1.0f, d->reach * 0.75f) * g, h = 1.15f * g, th = 0;
+  switch (a->atk) {
+  case A_SLASH1: case A_CLEAVE: case A_HAY: th = lerpf(1.3f, -1.3f, u); break;
+  case A_SLASH2: th = lerpf(-1.3f, 1.3f, u); break;
+  case A_HEAVY: case A_SPIN: th = u * CW_TAU; break;
+  case A_LARIAT: th = u * CW_TAU * 3; break;
+  case A_STAB: case A_BASH: r *= lerpf(0.5f, 1.0f, u); h = 1.2f * g; break;
+  case A_WAVE: return false;
+  default: h = lerpf(2.2f, 0.35f, u) * g, r *= 0.7f + 0.3f * cw_sin(u * CW_PI); break; /* overheads and slams */
+  }
+  float yw = a->yaw + th;
+  *out = (t3_vec3){ a->mv.position.x + cw_sin(yw) * r, a->mv.position.y + h, a->mv.position.z + cw_cos(yw) * r };
+  return true;
+}
+
 /* the rig follows its actor, once per fixed tick (main.c calls it after the rules) */
 void view_fixed(void) {
   VST.rigs = VST.drawn = 0;
@@ -282,12 +359,14 @@ void view_fixed(void) {
     rig *r = &RIG[i];
     if (!a->used || (!a->active && i >= MAXP)) {
       if (r->made && cw_node_valid(r->root)) cw_node_set(r->root, "visible", cw_val_bool(false));
+      if (r->made && r->trail.id) cw_node_set(r->trail, "emitting", cw_val_bool(false));
       if (r->rd && (!a->used || !a->active)) cw_ragdoll_destroy(r->rd), r->rd = NULL, rag_live--;
       if (r->made && !a->used) r->still = false;
       continue;
     }
-    if (!r->made || r->kind != a->kind) {
+    if (!r->made || r->kind != a->kind || r->role != a->role) {
       if (r->made && cw_node_valid(r->root)) cw_node_free(r->root);
+      if (r->made && r->trail.id && cw_node_valid(r->trail)) cw_node_free(r->trail);
       rig_make(i, a->kind);
       if (!r->made) continue;
     }
@@ -295,6 +374,8 @@ void view_fixed(void) {
     static int nochars = -1;
     if (nochars < 0) nochars = getenv("ADV_PROBE_NOCHARS") != NULL;
     bool near = !nochars && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 45 * 45); /* farther than 45 m a foe is a few pixels in the haze */
+    bool lurk = a->role == R_LURKER && (a->state == ST_IDLE_HOME || a->state == ST_ROAR);
+    if (lurk && a->state == ST_IDLE_HOME) near = false; /* under the water */
     cw_node_set(r->root, "visible", cw_val_bool(near));
     VST.drawn += near;
     { /* a foe casts the sun's shadow only near the camera (the cascades reach 40 m; a far caster redraws them for a
@@ -309,7 +390,9 @@ void view_fixed(void) {
       cw_node_set(r->feet, "active", cw_val_bool(true));
     }
     if (!r->rd && !r->still) {
-      cw_node3d_set_position(r->root, a->mv.position);
+      t3_vec3 at = a->mv.position;
+      if (lurk && a->state == ST_ROAR) { float k = 1 - (float)a->st_t / (float)CW_MAX(1, a->st_len); at.y -= 2.1f * k * k; } /* rising out of the water */
+      cw_node3d_set_position(r->root, at);
       cw_node3d_set_rotation(r->root, (t3_vec3){ 0, a->yaw, 0 });
     }
     float sc = 1;
@@ -344,7 +427,7 @@ void view_fixed(void) {
       break;
     }
     case ST_REST: play(r, a->st_t < 36 ? "kneel" : "rest", 0.2f, 1, false); break;
-    case ST_ROAR: play(r, "roar", 0.15f, 1.2f / ((float)a->st_len / TPS), newst); break;
+    case ST_ROAR: if (lurk) play(r, "getup", 0.15f, 1, newst); else play(r, "roar", 0.15f, 1.2f / ((float)a->st_len / TPS), newst); break;
     case ST_DEAD:
       if (newst && !r->rd && !r->still) {
         rag_start(r, a, a->last_hit_by >= 0 ? cw_atan2(a->mv.position.x - S.a[a->last_hit_by].mv.position.x, a->mv.position.z - S.a[a->last_hit_by].mv.position.z) : a->yaw + CW_PI);
@@ -362,19 +445,20 @@ void view_fixed(void) {
       if (fl) fl->visible = a->state == ST_DRINK;
     }
     /* the feet: planted while standing and walking; free in the air, the roll, a fall */
-    bool plant = a->mv.on_floor && (a->state == ST_MOVE || a->state == ST_IDLE_HOME || a->state == ST_ATTACK || a->state == ST_HURT || a->state == ST_DRINK || a->state == ST_ACT || a->state == ST_ROAR);
+    bool plant = !lurk && a->mv.on_floor && (a->state == ST_MOVE || a->state == ST_IDLE_HOME || a->state == ST_ATTACK || a->state == ST_HURT || a->state == ST_DRINK || a->state == ST_ACT || a->state == ST_ROAR);
     cw_node_set(r->feet, "active", cw_val_bool(plant && !r->rd && !r->still));
     if (plant && i == 0) {
       cw_foot_state fs;
       VST.feet = 0, VST.foot_err = 0;
       for (int l = 0; l < 2 && cw_foot_placement_leg(r->feet, l, &fs); l++) VST.feet += fs.hit;
     }
-    /* the tell */
+    /* the tell: the light swells through the wind-up and fades over the blow (never cut off) */
     if (r->light.id) {
       float e = 0;
       if (a->state == ST_ATTACK) {
         const attack_def *d = &ATK[a->atk];
         if (a->st_t < d->on) e = 18 * cw_clampf((float)a->st_t / (float)d->on, 0, 1);
+        else { float k = cw_clampf(1 - (float)(a->st_t - d->on) / 12.0f, 0, 1); e = 18 * k * k; }
       }
       cw_node_set(r->light, "energy", cw_val_float(e * (a->boss ? 2 : 1)));
       cw_node_set(r->light, "visible", cw_val_bool(e > 0.01f)); /* an unlit light still costs the clusters */
@@ -392,6 +476,23 @@ void view_fixed(void) {
         cw_node_set(r->anim, "speed_scale", cw_val_float(0));
       }
     } else if (r->still && r->bound) cw_pose_flush(&r->pose);
+    /* the blade's ribbon through the live part of the blow */
+    if (r->trail.id) {
+      t3_vec3 bp;
+      bool on = near && blade_at(a, &bp);
+      if (on) cw_node3d_set_position(r->trail, bp);
+      cw_node_set(r->trail, "emitting", cw_val_bool(on));
+    }
+    /* the shield: up in front while it holds, down at the side once it is knocked aside */
+    if (r->shield.id) {
+      bool up = a->guard > 0 && a->state != ST_DEAD;
+      float g = GEN_SCALE[a->kind];
+      cw_node3d_set_position(r->shield, up ? (t3_vec3){ -0.2f * g, 1.12f * g, 0.42f * g } : (t3_vec3){ -0.42f * g, 0.75f * g, 0.05f * g });
+      cw_node3d_set_rotation(r->shield, up ? (t3_vec3){ CW_PI / 2, 0, 0 } : (t3_vec3){ CW_PI / 2, -CW_PI / 2 + 0.3f, 0.2f });
+      cw_node_set(r->shield, "visible", cw_val_bool(a->state != ST_DEAD || !r->rd));
+    }
+    /* a blow's hit-stop holds every clip with the world */
+    if ((g_held_now || S.hitstop > 0) && a->state != ST_DEAD) cw_node_set(r->anim, "speed_scale", cw_val_float(0));
     r->last_state = a->state, r->last_st_t = a->st_t, r->last_atk = a->atk;
   }
 }
@@ -433,7 +534,10 @@ void view_sync(float alpha) {
     const actor *a = &S.a[i];
     if (!a->used || !a->active || a->state != ST_ATTACK || !ATK[a->atk].ring) continue;
     const attack_def *d = &ATK[a->atk];
-    if (a->st_t > d->off) continue;
+    if (a->st_t > d->off + 10) continue;
+    /* in over 8 ticks, out over 10 after the blow: no ring pops */
+    float op = cw_clampf((float)a->st_t / 8.0f, 0, 1) * cw_clampf(1 - (float)(a->st_t - d->off) / 10.0f, 0, 1);
+    RING_MAT[n]->opacity = 0.75f * op;
     float sc = KIND[a->kind].scale, r = d->ring_r * sc * 1.0f;
     float fwd = d->arc > -1 ? 1.4f * sc : 0;
     float x = a->mv.position.x + cw_sin(a->yaw) * fwd, z = a->mv.position.z + cw_cos(a->yaw) * fwd;
@@ -450,8 +554,15 @@ void view_sync(float alpha) {
     const shock *s = &S.sh[k];
     cw_node_set(V_shock[k], "visible", cw_val_bool(s->on));
     if (!s->on) continue;
+    SHOCK_MAT[k]->opacity = 0.75f * cw_clampf(s->r / 1.5f, 0, 1) * cw_clampf((18 - s->r) / 4.0f, 0, 1);
     cw_node3d_set_position(V_shock[k], (t3_vec3){ s->x, s->y + 0.15f, s->z });
     cw_node3d_set_rotation(V_shock[k], (t3_vec3){ -CW_PI / 2, 0, 0 });
     cw_node3d_set_scale(V_shock[k], (t3_vec3){ s->r, s->r, s->r });
+  }
+  for (int k = 0; k < MAXSTONE; k++) { /* the stones in flight */
+    const stone *st = &S.st[k];
+    cw_node_set(V_stone[k], "visible", cw_val_bool(st->on));
+    cw_node_set(V_stone_trail[k], "emitting", cw_val_bool(st->on));
+    if (st->on) cw_node3d_set_position(V_stone[k], (t3_vec3){ st->x, st->y, st->z });
   }
 }

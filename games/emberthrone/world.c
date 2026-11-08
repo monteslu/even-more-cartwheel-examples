@@ -693,11 +693,12 @@ t3_material *world_material(int mt, float tint) {
 }
 
 /* ── foes and route ────────────────────────────────────────────────── */
-static void foe(int kind, int rg, int group, float x, float z, float yaw) {
+static void foe_r(int kind, int rg, int group, float x, float z, float yaw, int role) {
   if (g_nfoe >= MAXE) return;
-  g_foe[g_nfoe] = (wfoe){ kind, rg, group, x, z, yaw, IS_BOSS(kind) ? 100 + kind : -1 };
+  g_foe[g_nfoe] = (wfoe){ kind, rg, group, x, z, yaw, IS_BOSS(kind) ? 100 + kind : -1, role };
   g_nfoe++;
 }
+static void foe(int kind, int rg, int group, float x, float z, float yaw) { foe_r(kind, rg, group, x, z, yaw, R_PLAIN); }
 static void route(float x, float z, int act, int obj, int need) {
   if (g_nroute < (int)(sizeof g_route / sizeof g_route[0])) g_route[g_nroute++] = (wroute){ x, z, need, act, obj };
 }
@@ -810,14 +811,14 @@ static void build_canyon(void) {
   for (int sd = -1; sd <= 1; sd += 2) box_add(R, MT_STONE, 214, ground_min(214, 137.4f + (float)sd * 4.3f, 0.8f, 0.8f, 0) + 2.6f, 137.4f + (float)sd * 4.3f, 0.8f, 3.4f, 0.8f, 0.11f, true);
   /* foes */
   foe(K_RAIDER, R, 3, 152, 150, 3.1f);
-  foe(K_RAIDER, R, 3, 160, 146, 3.3f);
+  foe_r(K_RAIDER, R, 3, 160, 146, 3.3f, R_SHIELD); /* the first shield: go round it, or break it with a heavy */
   foe(K_BRUTE, R, 4, 172, 126, 3.0f);
   foe(K_RAIDER, R, 4, 178, 132, 2.6f);
   foe(K_BRUTE, R, 5, 206, 106, 3.3f);
-  foe(K_RAIDER, R, 5, 200, 110, 3.6f);
+  foe_r(K_RAIDER, R, 5, 200, 110, 3.6f, R_SLINGER); /* stones from behind the brute */
   foe(K_LANCER, R, 6, 154, 108, 3.1f);
-  foe(K_LANCER, R, 6, 166, 108, 3.2f);
-  foe(K_RAIDER, R, 7, 124, 114, 0.4f);
+  foe_r(K_LANCER, R, 6, 166, 108, 3.2f, R_SHIELD);
+  foe_r(K_RAIDER, R, 7, 124, 114, 0.4f, R_SLINGER);
   foe(K_THORN, R, 8, 160, 68, 0);
 }
 static void build_marsh(void) {
@@ -845,10 +846,11 @@ static void build_marsh(void) {
   int lv = lever(R, 229, 214, -CW_PI / 2, door, 7);
   (void)lv;
   /* foes */
-  foe(K_LANCER, R, 9, 256, 176, 3.0f);
-  foe(K_LANCER, R, 9, 266, 182, 3.2f);
+  foe_r(K_LANCER, R, 9, 256, 176, 3.0f, R_LURKER); /* lurkers: under the pools until you wade close */
+  foe_r(K_LANCER, R, 9, 266, 182, 3.2f, R_LURKER);
+  foe_r(K_LANCER, R, 10, 272, 196, 2.8f, R_LURKER);
   foe(K_RAIDER, R, 10, 284, 204, 2.6f);
-  foe(K_RAIDER, R, 10, 278, 212, 2.9f);
+  foe_r(K_RAIDER, R, 10, 278, 212, 2.9f, R_SLINGER);
   foe(K_BRUTE, R, 11, 270, 238, 3.1f);
   foe(K_LANCER, R, 11, 278, 236, 3.4f);
   foe(K_TIDE, R, 12, 276, 278, 3.14f);
@@ -890,12 +892,12 @@ static void build_keep(void) {
   wall(R, MT_STONE_RED, 63.5f, 124, 71, 124, 1.3f, 0.8f);
   /* foes */
   foe(K_RAIDER, R, 13, 92, 228, 2.2f);
-  foe(K_RAIDER, R, 13, 88, 222, 2.0f);
+  foe_r(K_RAIDER, R, 13, 88, 222, 2.0f, R_SHIELD);
   foe(K_BRUTE, R, 14, 66, 202, 1.6f);
   foe(K_LANCER, R, 14, 72, 210, 1.8f);
   foe(K_BRUTE, R, 15, 61, 172, 0);
-  foe(K_LANCER, R, 15, 59, 150, 0);
-  foe(K_RAIDER, R, 16, 58, 136, 0.2f);
+  foe_r(K_LANCER, R, 15, 59, 150, 0, R_SHIELD); /* a shield before the brute on the ramp */
+  foe_r(K_RAIDER, R, 16, 58, 136, 0.2f, R_SLINGER);
   foe(K_EMBER, R, 17, 55, 104, 0);
 }
 /* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, trees, pines, stilt trees, stones):
@@ -971,7 +973,7 @@ static void build_heights(void) {
   foe(K_BRUTE, R, 18, 430, 142, 3.0f);
   foe(K_LANCER, R, 18, 405, 116, 2.0f);
   foe(K_LANCER, R, 19, 446, 122, 3.6f);
-  foe(K_RAIDER, R, 19, 396, 100, 1.0f);
+  foe_r(K_RAIDER, R, 19, 396, 100, 1.0f, R_SLINGER);
   foe(K_RAIDER, R, 20, 272, 60, 3.1f);
 }
 static void build_under(void) {
@@ -984,7 +986,7 @@ static void build_under(void) {
     if (k % 2 == 0) lantern(R, x, floor + 4.6f, z, 1, 0.62f, 0.3f, 26);
   }
   foe(K_RAIDER, R, 21, 175, 352, 3.1f);
-  foe(K_RAIDER, R, 21, 178, 372, 0.1f);
+  foe_r(K_RAIDER, R, 21, 178, 372, 0.1f, R_SHIELD); /* a shield in the cutting: no room to go round */
 }
 /* the spire: a stone tower with a stair winding round it to the top */
 #define SPIRE_X 202.0f
@@ -1018,7 +1020,7 @@ static void build_spire(void) {
   dress(R, 172, 484, 5), dress(R, 230.5f, 459, 6);
   lamp_post(R, 196, 448, 0.0f);
   foe(K_RAIDER, R, 22, 188, 460, 0.2f);
-  foe(K_RAIDER, R, 22, 214, 486, 3.4f);
+  foe_r(K_RAIDER, R, 22, 214, 486, 3.4f, R_SLINGER);
   foe(K_LANCER, R, 22, 182, 478, 1.4f);
   foe(K_BRUTE, R, 23, 212, 456, 2.2f);
 }
@@ -1029,9 +1031,9 @@ static void build_wood(void) {
   chest(R, 510, 362, CW_PI, IT_CHARM, 11);
   for (int k = 0; k < 5; k++) lantern(R, 460 + (float)k * 14, world_height(460 + (float)k * 14, 340) + 1.5f, 340 + (float)(k % 2) * 12, 0.3f, 0.9f, 1, 18);
   foe(K_RAIDER, R, 24, 470, 330, 1.0f);
-  foe(K_RAIDER, R, 24, 482, 346, 2.0f);
+  foe_r(K_RAIDER, R, 24, 482, 346, 2.0f, R_SHIELD);
   foe(K_RAIDER, R, 25, 500, 320, 3.0f);
-  foe(K_RAIDER, R, 25, 462, 362, 4.0f);
+  foe_r(K_RAIDER, R, 25, 462, 362, 4.0f, R_SLINGER);
   foe(K_LANCER, R, 26, 520, 350, 2.4f);
   foe(K_LANCER, R, 26, 506, 376, 2.0f);
   foe(K_BRUTE, R, 27, 530, 334, 3.4f);

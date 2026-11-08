@@ -35,22 +35,37 @@ const attack_def ATK[A_COUNT] = {
   [A_LARIAT] = { "lariat", 70, 26, 56, 26, 60, 1.9f, 0.3f, 7.0f, 0, 0, 0, true, false, 0, 0 },
   [A_HAMMER] = { "hammer", 76, 44, 50, 34, 90, 2.6f, 0.2f, 0.8f, 0, 0, 0, true, true, 2.8f, 12 },
   [A_WAVE] = { "roar", 72, 40, 44, 20, 40, 1.0f, -1, 0, 0, 0, 0, true, false, 0, 10 },
+  /* the shield bearer's shove and the slinger's throw (no blade: the stone does the harm) */
+  [A_BASH] = { "stab", 46, 28, 33, 10, 45, 1.9f, 0.5f, 3.4f, 0, 0, 0, false, false, 0, 0 },
+  [A_THROW] = { "swing", 58, 36, 37, 0, 0, -9, 1, 0, 0, 0, 0, false, false, 0, 0 },
 };
 
 const kind_def KIND[K_KINDS] = {
   [K_WAYFARER] = { "wayfarer", "sword", 1.0f, 100, 30, 5.4f, 0.34f, 1.75f, 1, 0, "WAYFARER" },
   [K_WARDEN] = { "warden", "sword", 1.0f, 100, 30, 5.4f, 0.36f, 1.8f, 1, 0, "WARDEN" },
-  [K_RAIDER] = { "raider", "cleaver", 1.0f, 60, 20, 3.6f, 0.36f, 1.8f, 1, 12, "Hollow raider" },
+  [K_RAIDER] = { "raider", "cleaver", 1.0f, 60, 45, 3.6f, 0.36f, 1.8f, 1, 12, "Hollow raider" },
   [K_BRUTE] = { "brute", "maul", 1.0f, 170, 120, 2.4f, 0.5f, 2.3f, 1, 12, "Stone brute" },
-  [K_LANCER] = { "lancer", "spear", 1.0f, 80, 30, 3.2f, 0.36f, 1.9f, 1, 13, "Tide lancer" },
+  [K_LANCER] = { "lancer", "spear", 1.0f, 80, 55, 3.2f, 0.36f, 1.9f, 1, 13, "Tide lancer" },
   [K_THORN] = { "thornwarden", "bigaxe", 1.0f, 620, 400, 3.0f, 0.8f, 3.1f, 1, 16, "THE THORNWARDEN" },
   [K_TIDE] = { "tidecaller", "spear", 1.0f, 700, 350, 3.4f, 0.65f, 2.8f, 1, 16, "THE TIDECALLER" },
   [K_EMBER] = { "emberking", "bigaxe", 1.0f, 950, 500, 3.0f, 0.9f, 3.5f, 1, 18, "THE EMBER KING" },
 };
 
-static void ev(int kind, int a, int b, float x, float y, float z, float v) {
-  if (S.ev_n < (int)(sizeof S.ev / sizeof S.ev[0])) S.ev[S.ev_n++] = (event){ kind, a, b, x, y, z, v };
+static void evc(int kind, int a, int b, float x, float y, float z, float v, int c) {
+  if (S.ev_n < (int)(sizeof S.ev / sizeof S.ev[0])) S.ev[S.ev_n++] = (event){ kind, a, b, x, y, z, v, c };
 }
+static void ev(int kind, int a, int b, float x, float y, float z, float v) { evc(kind, a, b, x, y, z, v, -1); }
+
+int g_rules_off, g_rules_force = -1;
+static void rules_from_env(void) {
+  static const char *const N[] = { "hitstop", "knock", "crit", "magnet", "guard", "stones", "flank", "spent", "clear", "string", "lurk", "rumble" };
+  const char *e = getenv("ADV_RULES_OFF");
+  g_rules_off = 0;
+  if (g_rules_force >= 0) { g_rules_off = g_rules_force; return; }
+  for (int i = 0; e && i < (int)(sizeof N / sizeof *N); i++)
+    if (strstr(e, N[i])) g_rules_off |= 1 << i;
+}
+static bool rule(int r) { return !(g_rules_off & r); }
 
 bool sim_has_flag(int f) { return f >= 0 && f < 128 && ((S.sv.flags[f >> 5] >> (f & 31)) & 1); }
 void sim_set_flag(int f) { if (f >= 0 && f < 128) S.sv.flags[f >> 5] |= 1u << (f & 31); }
@@ -103,6 +118,8 @@ static void foe_spawn(int f) {
   a->state = ST_IDLE_HOME;
   a->target = -1;
   a->boss = IS_BOSS(w->kind);
+  a->role = w->role;
+  a->guard = a->role == R_SHIELD ? 60 : 0;
   a->think = (f * 7) % 30;
   actor_place(a, w->x, w->z);
   a->home_y = a->mv.position.y;
@@ -147,6 +164,7 @@ void sim_init(int players, const save_data *sv) {
   S.boss = -1;
   S.interact = -1;
   S.region = -1;
+  rules_from_env();
   apply_flags();
   sim_respawn_foes();
   wake_at_shrine();
@@ -179,7 +197,9 @@ static float turn_to(float from, float to, float rate) {
 }
 static float bearing(const actor *a, const actor *b) { return cw_atan2(pos(b).x - pos(a).x, pos(b).z - pos(a).z); }
 static float flat_dist(const actor *a, const actor *b) { return sqrtf(dist2(pos(a).x, pos(a).z, pos(b).x, pos(b).z)); }
-static bool alive(const actor *a) { return a->used && a->active && a->state != ST_DEAD; }
+/* a lurker under the water is not there yet: nothing targets it and no blow finds it */
+static bool hidden(const actor *a) { return a->role == R_LURKER && a->state == ST_IDLE_HOME && rule(FR_LURK); }
+static bool alive(const actor *a) { return a->used && a->active && a->state != ST_DEAD && !hidden(a); }
 static float scale_of(const actor *a) { return KIND[a->kind].scale; }
 
 static void set_state(actor *a, int st, int len) { a->state = st, a->st_t = 0, a->st_len = len; }
@@ -191,6 +211,8 @@ static void start_attack(actor *a, int atk) {
   if (a->idx < MAXP) {
     a->stamina -= (float)ATK[atk].stamina;
     a->stam_wait = 36;
+    a->magnet = 0;
+    S.swings++;
   } else {
     a->flash = 14;
     ev(EV_TELL, a->idx, atk, pos(a).x, pos(a).y, pos(a).z, 0);
@@ -254,6 +276,17 @@ static void camera_step(const input *in) {
   cw_phys_filter f = cw_phys_filter_layers(1u | 8u); /* the world and the trees' crowns */
   float allowed = want;
   if (cw_world3d_shapecast(world_phys(), &sph, (t3_vec3){ dir.x * want, dir.y * want, dir.z * want }, &f, &hit, 1) > 0) allowed = fmaxf(0.6f, hit.fraction * want - 0.05f);
+  /* pressed against a wall with the camera stick left alone (and nothing locked): swing round along the wall toward
+   * the side with room, rather than sitting in the stone behind the player's head */
+  if (allowed < want * 0.6f && S.cam_idle > 30 && !(t && alive(t))) {
+    float room[2];
+    for (int k = 0; k < 2; k++) {
+      float yw = S.cam_yaw + (k ? 0.45f : -0.45f), sy2 = cw_sin(yw), cy2 = cw_cos(yw);
+      t3_vec3 d2 = { sy2 * cp * want, -sp * want, cy2 * cp * want };
+      room[k] = cw_world3d_shapecast(world_phys(), &sph, d2, &f, &hit, 1) > 0 ? hit.fraction : 1;
+    }
+    if (fabsf(room[1] - room[0]) > 0.1f) S.cam_yaw = wrapf(S.cam_yaw + (room[1] > room[0] ? 1 : -1) * 1.1f * dt);
+  }
   if (allowed < S.cam_dist) S.cam_dist = allowed, S.cam_clip_t++;
   else S.cam_dist = fminf(allowed, S.cam_dist + 3.5f * dt);
   S.cam_clip = want - S.cam_dist;
@@ -315,27 +348,106 @@ int sim_find_target(int pi, int prefer_dir) {
 
 /* ── damage ────────────────────────────────────────────────────────── */
 bool g_bench; /* the perf scene: nobody falls, so the fight holds for the whole run */
+bool g_foe_passive; /* the rules test: foes stand where they are put and never swing */
+
+/* the hold: a blow that lands stops the whole world for a few ticks (both bodies, the camera, the clips), longer the
+ * harder the blow; presses made in it are kept for the tick after */
+static void hold(int ticks) {
+  if (rule(FR_HITSTOP) && ticks > S.hitstop) S.hitstop = ticks;
+}
+static int hold_for(const actor *by, int atk) {
+  if (!by || by->idx >= MAXP) return by && by->boss ? 8 : 6; /* a blow taken */
+  switch (atk) {
+  case A_SLASH3: return 5;
+  case A_HEAVY: case A_MAUL1: return 6;
+  case A_MAUL2: return 8;
+  default: return 4;
+  }
+}
+/* how hard a body is to move: size squared, brutes and bosses heavier still */
+static float mass_of(const actor *v) { float s = scale_of(v); return s * s * (v->boss ? 3.0f : v->kind == K_BRUTE ? 1.8f : 1.0f); }
+/* knocked away from bx,bz: the push follows the blow's poise damage (a light cut nudges, a maul throws) */
+static void knock_from(actor *v, float bx, float bz, int poise, bool down) {
+  float k = rule(FR_KNOCK) ? (down ? 1.6f + 0.025f * (float)poise : 1.0f + 0.05f * (float)poise) / mass_of(v) : 3.0f;
+  float b = cw_atan2(pos(v).x - bx, pos(v).z - bz);
+  v->vx = cw_sin(b) * k, v->vz = cw_cos(b) * k;
+}
+static bool group_left(int group, int but) {
+  for (int i = MAXP; i < MAXA; i++) {
+    const actor *e = &S.a[i];
+    if (i != but && e->used && !e->boss && e->group == group && e->state != ST_DEAD) return true;
+  }
+  return false;
+}
+/* a shield bearer's shield: up while it walks and winds up, toward the blow's side */
+static bool guarding(const actor *v, const actor *by) {
+  if (v->role != R_SHIELD || v->guard <= 0 || !by || !rule(FR_GUARD)) return false;
+  if (v->state == ST_HURT || v->state == ST_DOWN || v->state == ST_DEAD) return false;
+  if (v->state == ST_ATTACK && v->st_t >= ATK[v->atk].on) return false; /* the shove opens it */
+  float dx = pos(by).x - pos(v).x, dz = pos(by).z - pos(v).z, d = sqrtf(dx * dx + dz * dz) + 1e-4f;
+  return (dx * cw_sin(v->yaw) + dz * cw_cos(v->yaw)) / d > 0.25f;
+}
+static void stagger(actor *v, int len, int crit) {
+  set_state(v, ST_HURT, len);
+  v->poise = v->poise_max;
+  if (v->idx >= MAXP && rule(FR_CRIT)) v->crit_t = crit;
+  S.stagger++;
+  ev(EV_STAGGER, v->idx, len, pos(v).x, pos(v).y + 1.2f * scale_of(v), pos(v).z, 0);
+}
 static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
   if (g_bench) { if (v->idx < MAXP) dmg = 0; else if (v->hp - dmg < 1) dmg = v->hp - 1; }
   if (v->iframes > 0 || v->state == ST_DEAD) {
     if (v->idx < MAXP && v->iframes > 0) { S.dodged++; ev(EV_DODGE, v->idx, 1, pos(v).x, pos(v).y, pos(v).z, 0); }
     return;
   }
-  v->hp -= dmg;
-  v->last_hit_by = by ? by->idx : -1;
-  v->flash = 8;
+  int byi = by ? by->idx : -1;
+  bool heavy = atk == A_HEAVY || atk == A_MAUL1 || atk == A_MAUL2;
   float bx = by ? pos(by).x : pos(v).x, bz = by ? pos(by).z : pos(v).z;
-  ev(EV_HIT, v->idx, atk, pos(v).x, pos(v).y + 1.2f * scale_of(v), pos(v).z, (float)dmg);
+  if (byi >= 0 && byi < MAXP && v->idx >= MAXP && guarding(v, by)) {
+    v->guard -= heavy ? 999 : poise;
+    v->think = 0;
+    if (v->guard > 0) { /* the shield takes it: the striker bounces off */
+      S.blocked++;
+      evc(EV_BLOCKED, v->idx, atk, (pos(v).x + bx) * 0.5f, pos(v).y + 1.1f, (pos(v).z + bz) * 0.5f, 0, byi);
+      hold(3);
+      set_state(by, ST_HURT, 14);
+      knock_from(by, pos(v).x, pos(v).z, 30, false);
+      return;
+    }
+    /* knocked aside (down for five seconds): the blow goes through, and the foe is wide open */
+    S.guard_breaks++;
+    evc(EV_GUARD_BREAK, v->idx, atk, pos(v).x, pos(v).y + 1.1f, pos(v).z, 0, byi);
+    v->guard = -300;
+  }
+  bool crit = false;
+  if (byi >= 0 && byi < MAXP && v->idx >= MAXP && v->crit_t > 0 && rule(FR_CRIT)) {
+    crit = true, dmg *= 2, v->crit_t = 0;
+    S.crits++;
+  }
+  if (v->idx >= MAXP && v->spent > 0 && rule(FR_SPENT)) poise *= 2; /* a boss catching its breath staggers sooner */
+  v->hp -= dmg;
+  v->last_hit_by = byi;
+  v->flash = 8;
+  evc(crit ? EV_CRIT : EV_HIT, v->idx, atk, pos(v).x, pos(v).y + 1.2f * scale_of(v), pos(v).z, (float)dmg, byi);
   if (v->idx < MAXP) S.hits_taken++;
   else S.hits_landed++;
+  hold(crit ? 9 : hold_for(by, atk));
   if (v->hp <= 0) {
     v->hp = 0;
     set_state(v, ST_DEAD, v->idx < MAXP ? 999999 : 240);
     v->iframes = 0;
     if (v->idx >= MAXP) {
       S.kills++;
+      hold(crit ? 10 : hold_for(by, atk) + 2);
       ev(EV_KILL, v->idx, v->kind, pos(v).x, pos(v).y, pos(v).z, cw_atan2(pos(v).x - bx, pos(v).z - bz));
       const wfoe *w = &g_foe[v->foe];
+      if (!v->boss && rule(FR_CLEAR) && !group_left(v->group, v->idx)) { /* the group is beaten: a sip back in every flask */
+        S.clears++;
+        int filled = 0;
+        for (int i = 0; i < MAXP; i++)
+          if (S.a[i].used && S.a[i].state != ST_DEAD && S.a[i].tonics < S.a[i].tonic_max) S.a[i].tonics++, filled++;
+        evc(EV_CLEAR, v->idx, v->group, pos(v).x, pos(v).y + 1, pos(v).z, (float)filled, byi);
+      }
       if (w->flag >= 0) { /* a boss falls: its reward, the save flag */
         sim_set_flag(w->flag);
         int item = v->kind == K_THORN ? IT_KEY_SUN : v->kind == K_TIDE ? IT_KEY_MOON : 0;
@@ -354,6 +466,12 @@ static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
     return;
   }
   v->poise -= poise;
+  if (v->guard == -300) { /* the shield just went: a long stumble, its opening makes the next blow a critical */
+    stagger(v, 56, 70);
+    if (by) knock_from(v, bx, bz, 50, false);
+    hold(8);
+    return;
+  }
   /* hyper armour: brutes and bosses keep swinging through light blows once the swing is under way */
   bool armour = (v->boss || v->kind == K_BRUTE) && v->state == ST_ATTACK && v->st_t > 6;
   if (knock && !(v->boss && v->poise > 0)) {
@@ -361,15 +479,27 @@ static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
     v->iframes = v->idx < MAXP ? 66 : 0;
     v->poise = v->poise_max;
     v->yaw = cw_atan2(bx - pos(v).x, bz - pos(v).z);
+    knock_from(v, bx, bz, poise, true);
+    if (v->idx >= MAXP && rule(FR_CRIT)) v->crit_t = 50; /* down: a blow before it rises is a critical */
     ev(EV_DOWN, v->idx, 0, pos(v).x, pos(v).y, pos(v).z, 0);
     S.stagger++;
-  } else if (v->poise <= 0 || (!armour && v->idx < MAXP) || (!armour && !v->boss && v->kind != K_BRUTE)) {
-    set_state(v, ST_HURT, v->poise <= 0 ? 34 : 20);
-    if (v->poise <= 0) v->poise = v->poise_max, S.stagger++;
-    float k = by ? 3.0f / (scale_of(v) * scale_of(v)) : 0;
-    float b = by ? cw_atan2(pos(v).x - bx, pos(v).z - bz) : 0;
-    v->vx = cw_sin(b) * k, v->vz = cw_cos(b) * k;
+    hold(8);
+  } else if (v->poise <= 0) { /* the poise breaks: a long stumble, the opening */
+    stagger(v, v->idx < MAXP ? 34 : 48, 60);
+    if (by) knock_from(v, bx, bz, poise + 20, false);
+    hold(8);
+  } else if ((!armour && v->idx < MAXP) || (!armour && !v->boss && v->kind != K_BRUTE)) {
+    set_state(v, ST_HURT, 20);
+    if (by) knock_from(v, bx, bz, poise, false);
+    else v->vx = v->vz = 0;
   }
+}
+
+/* the rules test: one blow, as if it landed */
+void sim_test_blow(int victim, int attacker, int atk) {
+  const attack_def *d = &ATK[atk];
+  actor *by = attacker >= 0 ? &S.a[attacker] : NULL;
+  hurt(&S.a[victim], by, atk, d->dmg, d->poise, d->knock && (attacker >= MAXP || !S.a[victim].boss));
 }
 
 /* a swing's window: everyone in front within reach (once per swing) */
@@ -406,6 +536,11 @@ static void resolve_swing(actor *a) {
       }
     }
   }
+  /* an area blow without a shockwave still lands with a thud (dust, rumble near it) */
+  if (d->ring && !d->shock && a->st_t == d->on) {
+    float hx = pos(a).x + fx * (d->arc > -1 ? 1.4f : 0) * scale_of(a), hz = pos(a).z + fz * (d->arc > -1 ? 1.4f : 0) * scale_of(a);
+    ev(EV_SHOCK, a->idx, -1, hx, pos(a).y, hz, 0);
+  }
   /* a blow with a shockwave sends it out from where it lands */
   if (d->shock && a->st_t == d->on) {
     for (int k = 0; k < 4; k++)
@@ -415,6 +550,43 @@ static void resolve_swing(actor *a) {
         ev(EV_SHOCK, a->idx, k, hx, pos(a).y, hz, 0);
         break;
       }
+  }
+}
+
+/* a slinger lets go: a stone straight at where its target stands now, a little over its head height, at 15 m/s */
+static void throw_stone(actor *e, const actor *t) {
+  if (!rule(FR_STONES)) return;
+  for (int k = 0; k < MAXSTONE; k++)
+    if (!S.st[k].on) {
+      float fx = cw_sin(e->yaw), fz = cw_cos(e->yaw);
+      float x = pos(e).x + fx * 0.6f, y = pos(e).y + 1.6f, z = pos(e).z + fz * 0.6f;
+      float dx = pos(t).x - x, dy = pos(t).y + 1.1f - y, dz = pos(t).z - z, d = sqrtf(dx * dx + dy * dy + dz * dz) + 1e-3f;
+      float sp = 15.0f / TPS;
+      S.st[k] = (stone){ true, e->idx, 0, x, y, z, dx / d * sp, dy / d * sp, dz / d * sp };
+      S.stones_thrown++;
+      evc(EV_THROW, e->idx, k, x, y, z, 0, t->idx);
+      return;
+    }
+}
+static void stones_step(void) {
+  for (int k = 0; k < MAXSTONE; k++) {
+    stone *s = &S.st[k];
+    if (!s->on) continue;
+    s->x += s->vx, s->y += s->vy, s->z += s->vz, s->t++;
+    if (s->t > 90 || s->y < world_height(s->x, s->z)) { s->on = false; ev(EV_STONE, -1, k, s->x, s->y, s->z, 0); continue; }
+    for (int i = 0; i < MAXP; i++) {
+      actor *v = &S.a[i];
+      if (!alive(v)) continue;
+      float dx = pos(v).x - s->x, dz = pos(v).z - s->z, dy = s->y - pos(v).y;
+      if (dx * dx + dz * dz < 0.5f * 0.5f && dy > 0.1f && dy < 1.9f) {
+        s->on = false;
+        int before = S.hits_taken;
+        hurt(v, &S.a[s->from], A_THROW, 12, 25, false);
+        if (S.hits_taken > before) S.stones_hit++;
+        ev(EV_STONE, i, k, s->x, s->y, s->z, 1);
+        break;
+      }
+    }
   }
 }
 
@@ -549,6 +721,28 @@ static void act_done(actor *p) {
   if (o->kind == OB_GATE || o->kind == OB_DOOR) ev(EV_GATE, p->idx, k, o->x, o->y, o->z, 0);
 }
 
+/* the cut's magnet: the first blow of a combo steps up to a metre toward the locked foe (or the nearest one in front
+ * when nothing is locked), spread over its wind-up, so a foe that sidesteps the wind-up is still met */
+static void aim_cut(actor *p, const actor *t, float wx, float wz, float mag) {
+  if (!rule(FR_MAGNET)) return;
+  const attack_def *d = &ATK[p->atk];
+  if (!t) { /* the nearest awake foe within 3.6 m in front (of the stick, or of the player) */
+    float fx = mag > 0.2f ? wx / mag : cw_sin(p->yaw), fz = mag > 0.2f ? wz / mag : cw_cos(p->yaw), bs = 1e30f;
+    for (int i = MAXP; i < MAXA; i++) {
+      const actor *e = &S.a[i];
+      if (!alive(e) || fabsf(pos(e).y - pos(p).y) > 2) continue;
+      float dx = pos(e).x - pos(p).x, dz = pos(e).z - pos(p).z, dd = sqrtf(dx * dx + dz * dz) + 1e-4f;
+      if (dd > 3.6f + KIND[e->kind].radius * scale_of(e) || (dx * fx + dz * fz) / dd < 0.5f) continue;
+      if (dd < bs) bs = dd, t = e;
+    }
+    if (!t) return;
+  }
+  float dd = flat_dist(p, t), gap = dd - (KIND[t->kind].radius * scale_of(t) + d->reach * 0.8f);
+  if (gap <= 0 || dd > 3.6f + d->reach) return;
+  p->yaw = bearing(p, t);
+  p->magnet = fminf(gap, 1.0f) / ((float)d->on / TPS);
+}
+
 static void player_step(actor *p, const input *in) {
   float dt = 1.0f / TPS;
   p->yaw_prev = p->yaw;
@@ -598,6 +792,7 @@ static void player_step(actor *p, const input *in) {
       if (t) p->yaw = bearing(p, t);
       else if (mag > 0.2f) p->yaw = cw_atan2(wx, wz);
       start_attack(p, a);
+      aim_cut(p, t, wx, wz, mag);
     }
     break;
   }
@@ -609,8 +804,9 @@ static void player_step(actor *p, const input *in) {
     }
     if (p->st_t <= d->off) {
       float k = p->st_t < d->on ? 0.6f : 1;
-      if (t && flat_dist(p, t) < KIND[t->kind].radius * scale_of(t) + 0.9f) k = 0; /* do not run into the target */
-      vx = cw_sin(p->yaw) * d->lunge * k, vz = cw_cos(p->yaw) * d->lunge * k;
+      float m = p->st_t < d->on ? p->magnet : 0;
+      if (t && flat_dist(p, t) < KIND[t->kind].radius * scale_of(t) + 0.9f) k = 0, m = 0; /* do not run into the target */
+      vx = cw_sin(p->yaw) * (d->lunge * k + m), vz = cw_cos(p->yaw) * (d->lunge * k + m);
     }
     resolve_swing(p);
     if ((in->attack || in->heavy) && p->st_t >= d->combo_from - 8) p->queued = true, p->queue_atk = in->heavy ? 1 : 0;
@@ -639,7 +835,7 @@ static void player_step(actor *p, const input *in) {
     if (p->st_t >= p->st_len) set_state(p, ST_MOVE, 0);
     break;
   case ST_DOWN:
-    if (p->st_t < 14) vx = -cw_sin(p->yaw) * 3, vz = -cw_cos(p->yaw) * 3;
+    if (p->st_t < 14) vx = p->vx, vz = p->vz;
     if (p->st_t >= p->st_len) set_state(p, ST_MOVE, 0), p->iframes = 10;
     break;
   case ST_DRINK:
@@ -676,6 +872,15 @@ static int choose_attack(const actor *e, float d) {
   int ph = e->phase;
   uint32_t r = (S.tick * 2654435761u) ^ (uint32_t)e->idx * 40503u;
   r ^= r >> 13;
+  if (e->role == R_SLINGER) return A_THROW;
+  if (e->role == R_SHIELD) return (r % 3) == 0 ? A_CLEAVE : A_BASH;
+  if (e->string > 0 && rule(FR_STRING)) { /* a boss's string: the follow-up is fixed, so it can be learned */
+    switch (e->kind) {
+    case K_THORN: return A_SPIN;
+    case K_TIDE: return e->string > 1 ? A_STAB : A_WAVE;
+    case K_EMBER: return e->string > 1 ? A_SPIN : A_HAMMER;
+    }
+  }
   switch (e->kind) {
   case K_RAIDER: return (r & 3) == 0 ? A_CHOP : A_CLEAVE;
   case K_LANCER: return A_STAB;
@@ -702,14 +907,27 @@ static int tokens_on(int p) {
   return n;
 }
 
+/* the side of a player a circling foe makes for: round toward their back (the group closes from more than one side) */
+static int flank_side(const actor *e, const actor *t) {
+  float a = bearing(t, e), back = t->yaw + CW_PI;
+  float d = wrapf(back - a) + (float)((e->idx % 3) - 1) * 0.55f; /* (spread over the back, not one spot) */
+  if (fabsf(d) < 0.35f) return 0; /* behind: hold there */
+  return d > 0 ? -1 : 1;
+}
+
 static void foe_step(actor *e) {
   float dt = 1.0f / TPS;
   e->yaw_prev = e->yaw;
   if (e->flash > 0) e->flash--;
   if (e->cooldown > 0) e->cooldown--;
+  if (e->crit_t > 0) e->crit_t--;
+  if (e->spent > 0) e->spent--;
+  /* the arm recovers: a knocked-aside shield (guard below 0) comes back up after five seconds, a worn one slowly */
+  if (e->role == R_SHIELD && e->guard < 60 && (e->guard < 0 || (e->state == ST_MOVE && (S.tick % 4) == 0))) e->guard++;
   e->st_t++;
   float vx = 0, vz = 0;
   const kind_def *K = &KIND[e->kind];
+  if (g_foe_passive && e->state != ST_HURT && e->state != ST_DOWN && e->state != ST_DEAD) { move_actor(e, 0, 0); return; }
   /* who to hunt: the nearest living player */
   int best = -1;
   float bd = 1e30f;
@@ -724,13 +942,23 @@ static void foe_step(actor *e) {
   else e->off_t = 0;
   if (e->off_t > 240) {
     cw_mover3d_teleport(&e->mv, (t3_vec3){ e->home_x, e->home_y + 0.05f, e->home_z });
-    e->off_t = 0, e->hp = e->hp_max, e->aggro = false, e->target = -1, e->token = 0, e->phase = 0;
+    e->off_t = 0, e->hp = e->hp_max, e->aggro = false, e->target = -1, e->token = 0, e->phase = 0, e->string = 0, e->spent = 0;
     set_state(e, ST_IDLE_HOME, 0);
     if (S.boss == e->idx) S.boss = -1;
     return;
   }
   float leash = e->boss ? 26 : 24;
   if (e->state == ST_IDLE_HOME) {
+    if (e->role == R_LURKER && rule(FR_LURK)) { /* under the water at its post until someone wades close: then it rises */
+      if (home_d > 0.8f) vx = hx / home_d * K->speed, vz = hz / home_d * K->speed;
+      if (best >= 0 && bd < 6.5f && fabsf(pos(&S.a[best]).y - pos(e).y) < 3) {
+        e->aggro = true, e->target = best, e->yaw = bearing(e, &S.a[best]);
+        set_state(e, ST_ROAR, 44);
+        ev(EV_RISE, e->idx, 0, pos(e).x, pos(e).y, pos(e).z, 0);
+      }
+      move_actor(e, vx, vz);
+      return;
+    }
     if (home_d > 0.8f) { /* walk home */
       float sp = K->speed * 0.6f;
       vx = hx / home_d * sp, vz = hz / home_d * sp;
@@ -740,7 +968,7 @@ static void foe_step(actor *e) {
     if (best >= 0 && bd < K->aggro && fabsf(pos(&S.a[best]).y - pos(e).y) < 5) {
       e->aggro = true, e->target = best;
       set_state(e, ST_MOVE, 0);
-      for (int i = MAXP; i < MAXA; i++) /* the group wakes together */
+      for (int i = MAXP; i < MAXA; i++) /* the group wakes together (a lurker waits for its own moment) */
         if (alive(&S.a[i]) && S.a[i].group == e->group && S.a[i].state == ST_IDLE_HOME) S.a[i].aggro = true, S.a[i].target = best, set_state(&S.a[i], ST_MOVE, 0);
       if (e->boss) { S.boss = e->idx; ev(EV_BOSS, e->idx, 1, pos(e).x, pos(e).y, pos(e).z, 0); S.banner_t = 200, S.banner_kind = 4, S.banner_item = e->kind; }
     }
@@ -752,7 +980,7 @@ static void foe_step(actor *e) {
   if (lost) { /* lost them: back home */
     e->aggro = false, e->target = -1, e->token = 0;
     if (e->state == ST_MOVE) set_state(e, ST_IDLE_HOME, 0);
-    if (e->boss && S.boss == e->idx) S.boss = -1, e->hp = e->hp_max, e->phase = 0;
+    if (e->boss && S.boss == e->idx) S.boss = -1, e->hp = e->hp_max, e->phase = 0, e->string = 0, e->spent = 0;
   }
   if (e->target >= 0 && !alive(&S.a[e->target])) e->target = best;
   actor *t = e->target >= 0 ? &S.a[e->target] : NULL;
@@ -760,22 +988,39 @@ static void foe_step(actor *e) {
   case ST_MOVE: {
     if (!t) { set_state(e, ST_IDLE_HOME, 0); break; }
     float d = flat_dist(e, t), b = bearing(e, t);
+    float sp = K->speed * (e->phase ? 1.18f : 1);
+    float fx = cw_sin(b), fz = cw_cos(b);
+    if (e->role == R_SLINGER) { /* keeps its distance and throws: it punishes standing still */
+      float want = 9.0f;
+      if (d > want + 2) vx = fx * sp, vz = fz * sp;
+      else if (d < 5.0f) vx = -fx * sp * 0.85f, vz = -fz * sp * 0.85f;
+      else { /* sidestep while it waits */
+        if (e->think-- <= 0) e->think = 80 + (e->idx * 11) % 50, e->strafe = (S.tick / 89 + (uint32_t)e->idx) & 1 ? 1 : -1;
+        vx = fz * (float)e->strafe * sp * 0.4f, vz = -fx * (float)e->strafe * sp * 0.4f;
+      }
+      e->yaw = turn_to(e->yaw, b, 6.0f * dt);
+      e->atk = A_THROW;
+      if (e->cooldown == 0 && d > 3.5f && d < 15 && fabsf(wrapf(b - e->yaw)) < 0.3f && fabsf(pos(t).y - pos(e).y) < 4) start_attack(e, A_THROW), e->atk = A_THROW;
+      break;
+    }
     /* the token: bosses always; others while fewer than two hold one on this player */
     if (!e->token && (e->boss || tokens_on(e->target) < 2) && e->cooldown == 0) e->token = 1;
     int atk = e->atk ? e->atk : choose_attack(e, d);
     float want = e->token ? attack_range(e, atk) - 0.6f : 4.6f + (float)(e->idx % 3) * 0.6f;
-    if (e->kind == K_LANCER && e->token) want = 2.4f;
-    float sp = K->speed * (e->phase ? 1.18f : 1);
-    float fx = cw_sin(b), fz = cw_cos(b);
+    if (e->kind == K_LANCER && e->token && e->role == R_PLAIN) want = 2.4f;
+    if (e->boss && e->spent > 0) want = fmaxf(want, 3.5f), e->token = 1; /* catching its breath: it holds back */
     if (d > want + 0.4f) vx = fx * sp, vz = fz * sp;
     else if (d < want - 0.8f) vx = -fx * sp * 0.6f, vz = -fz * sp * 0.6f;
-    if (!e->token) { /* circle at a distance */
-      if (e->think-- <= 0) e->think = 90 + (e->idx * 13) % 60, e->strafe = (S.tick / 97 + (uint32_t)e->idx) & 1 ? 1 : -1;
-      vx += fz * (float)e->strafe * sp * 0.45f, vz += -fx * (float)e->strafe * sp * 0.45f;
+    if (!e->token) { /* circle at a distance, round toward the player's back */
+      if (rule(FR_FLANK)) {
+        if (e->think-- <= 0) e->think = 20, e->strafe = flank_side(e, t);
+      } else if (e->think-- <= 0) e->think = 90 + (e->idx * 13) % 60, e->strafe = (S.tick / 97 + (uint32_t)e->idx) & 1 ? 1 : -1;
+      float k = rule(FR_FLANK) ? 0.6f : 0.45f;
+      vx += fz * (float)e->strafe * sp * k, vz += -fx * (float)e->strafe * sp * k;
     }
-    e->yaw = turn_to(e->yaw, b, (e->boss ? 3.5f : 6.0f) * dt);
+    e->yaw = turn_to(e->yaw, b, (e->boss ? 3.5f : e->role == R_SHIELD ? 8.0f : 6.0f) * dt);
     e->atk = atk;
-    if (e->token && e->cooldown == 0 && d <= attack_range(e, atk) && fabsf(wrapf(b - e->yaw)) < 0.5f) {
+    if (e->token && e->cooldown == 0 && e->spent == 0 && d <= attack_range(e, atk) && fabsf(wrapf(b - e->yaw)) < 0.5f) {
       start_attack(e, atk);
       e->atk = atk;
     }
@@ -785,12 +1030,27 @@ static void foe_step(actor *e) {
     const attack_def *d = &ATK[e->atk];
     if (t && e->st_t < d->on - 8) e->yaw = turn_to(e->yaw, bearing(e, t), (e->boss ? 2.4f : 3.5f) * dt); /* tracks through the wind-up, not the blow */
     if (e->st_t >= d->on - 6 && e->st_t <= d->off) { float k = e->atk == A_LARIAT ? 1 : 0.8f; vx = cw_sin(e->yaw) * d->lunge * k, vz = cw_cos(e->yaw) * d->lunge * k; }
+    if (e->atk == A_THROW && e->st_t == d->on && t) throw_stone(e, t);
     resolve_swing(e);
     if (e->st_t >= e->st_len) {
+      int done = e->atk;
       set_state(e, ST_MOVE, 0);
       e->atk = 0;
-      e->cooldown = e->boss ? 26 - 8 * e->phase : 70 + (e->idx * 17) % 50;
+      e->cooldown = e->boss ? 26 - 8 * e->phase : e->role == R_SLINGER ? 120 + (e->idx * 17) % 50 : 70 + (e->idx * 17) % 50;
       if (!e->boss) e->token = 0;
+      if (e->boss) {
+        bool big = done == A_SLAM || done == A_HAMMER || done == A_LARIAT || done == A_SPIN || done == A_WAVE;
+        if (e->string > 0) e->string--;
+        else if (e->phase >= 1 && rule(FR_STRING) && !big) { /* later phases: the blow opens a string of two or three */
+          e->string = e->phase >= 2 ? 2 : 1;
+          S.strings++;
+        }
+        if (e->string > 0) e->cooldown = 4;
+        else if (big && rule(FR_SPENT)) { /* after a big blow (or a string's last) it stands spent: the opening */
+          e->spent = 56 - 8 * e->phase;
+          ev(EV_LAND, e->idx, done, pos(e).x, pos(e).y + 2.2f * scale_of(e), pos(e).z, 0);
+        }
+      }
     }
     break;
   }
@@ -799,12 +1059,12 @@ static void foe_step(actor *e) {
     if (e->st_t >= e->st_len) set_state(e, ST_MOVE, 0), e->cooldown = CW_MAX(e->cooldown, 20);
     break;
   case ST_DOWN:
-    if (e->st_t < 14) vx = -cw_sin(e->yaw) * 3, vz = -cw_cos(e->yaw) * 3;
+    if (e->st_t < 14) vx = e->vx, vz = e->vz;
     if (e->st_t >= e->st_len) set_state(e, ST_MOVE, 0), e->cooldown = 30;
     break;
   case ST_ROAR:
     e->iframes = 1;
-    if (e->st_t >= e->st_len) set_state(e, ST_MOVE, 0), e->iframes = 0, e->cooldown = 10;
+    if (e->st_t >= e->st_len) set_state(e, ST_MOVE, 0), e->iframes = 0, e->cooldown = e->role == R_LURKER ? 0 : 10;
     break;
   case ST_DEAD:
     if (e->st_t >= e->st_len) e->active = false;
@@ -816,7 +1076,18 @@ static void foe_step(actor *e) {
   if (e->boss && e->state != ST_ROAR) {
     int want = e->hp < e->hp_max / 3 ? 2 : e->hp < e->hp_max * 2 / 3 ? 1 : 0;
     if (e->kind == K_THORN && want > 1) want = 1;
-    if (want > e->phase) { e->phase = want; set_state(e, ST_ROAR, 72); ev(EV_ROAR, e->idx, want, pos(e).x, pos(e).y, pos(e).z, 0); }
+    if (want > e->phase) {
+      e->phase = want, e->string = 0, e->spent = 0;
+      set_state(e, ST_ROAR, 72);
+      hold(10);
+      ev(EV_ROAR, e->idx, want, pos(e).x, pos(e).y, pos(e).z, 0);
+      for (int i = 0; i < MAXP; i++) { /* the roar's breath pushes everyone near back out of reach (no harm): room to read the new phase */
+        actor *p = &S.a[i];
+        if (!alive(p) || flat_dist(p, e) > 5.5f) continue;
+        if (p->state == ST_MOVE || p->state == ST_ATTACK || p->state == ST_DRINK) set_state(p, ST_HURT, 24);
+        knock_from(p, pos(e).x, pos(e).z, 160, false);
+      }
+    }
   }
   move_actor(e, vx, vz);
 }
@@ -834,10 +1105,32 @@ static void hash_state(void) {
   S.hash = h;
 }
 
-void sim_step(const input in[MAXP]) {
+bool g_held_now; /* this tick was held (the view stops the clips) */
+void sim_step(const input in_[MAXP]) {
   S.ev_n = 0;
   S.tick++;
   S.sv.play_ticks++;
+  if (S.hitstop > 0 && S.state != GS_PLAY) S.hitstop = 0; /* (a fall or the win ends a hold) */
+  if (S.hitstop > 0) { /* the hold: nothing moves; presses are kept for the tick after */
+    S.hitstop--, S.held_ticks++;
+    g_held_now = true;
+    for (int i = 0; i < MAXP; i++) {
+      input *h = &S.held[i];
+      const input *q = &in_[i];
+      h->attack |= q->attack, h->heavy |= q->heavy, h->dodge |= q->dodge, h->use |= q->use, h->lock |= q->lock, h->tonic |= q->tonic, h->swap |= q->swap;
+    }
+    S.cam_pos_prev = S.cam_pos, S.cam_target_prev = S.cam_target;
+    hash_state();
+    return;
+  }
+  g_held_now = false;
+  input in[MAXP];
+  for (int i = 0; i < MAXP; i++) {
+    const input *h = &S.held[i];
+    in[i] = in_[i];
+    in[i].attack |= h->attack, in[i].heavy |= h->heavy, in[i].dodge |= h->dodge, in[i].use |= h->use, in[i].lock |= h->lock, in[i].tonic |= h->tonic, in[i].swap |= h->swap;
+  }
+  memset(S.held, 0, sizeof S.held);
   if (S.banner_t > 0) S.banner_t--;
   if (S.heal_ticks > 0) S.heal_ticks--;
   camera_step(&in[0]);
@@ -866,6 +1159,7 @@ void sim_step(const input in[MAXP]) {
       if (S.a[i].used && (S.a[i].active || S.a[i].state == ST_DEAD)) foe_step(&S.a[i]);
     separate();
     shocks_step();
+    stones_step();
     /* a second player too far from the first comes back to them */
     for (int i = 1; i < MAXP; i++)
       if (alive(&S.a[i]) && alive(lead) && flat_dist(&S.a[i], lead) > 22) cw_mover3d_teleport(&S.a[i].mv, (t3_vec3){ pos(lead).x + 1, pos(lead).y + 0.2f, pos(lead).z + 1 });
@@ -877,6 +1171,7 @@ void sim_step(const input in[MAXP]) {
       S.boss = -1;
       wake_at_shrine();
       memset(S.sh, 0, sizeof S.sh);
+      memset(S.st, 0, sizeof S.st);
     }
   } else if (S.state == GS_WON) {
     S.state_t++;

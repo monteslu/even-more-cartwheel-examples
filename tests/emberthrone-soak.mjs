@@ -5,7 +5,10 @@
 //   - the camera never has a wall between it and the player (camblock=0);
 //   - the bot wins (an adv-won line) inside the game-time budget, having taken all three bosses, both keys, the maul;
 //   - no stall: the route point moves on at least every 6 minutes of game time;
-//   - resident memory grows less than 8 percent from minute 5 to the end.
+//   - resident memory grows less than 8 percent from minute 5 to the end;
+//   - the combat met every new mechanic on the way (the adv-feel line): blows held the world (hit-stop), the pad was
+//     asked to rumble, poise broke and criticals landed, shields were knocked aside, slingers threw, beaten groups
+//     filled the flask, bosses chained strings; and more than 60 percent of the bot's swings landed.
 // CONTROL that must fail: the same run with the maul's chest empty (ADV_NO_MAUL=1): the cracked wall never breaks, so
 // the route stalls and the game is never won, and the soak has to say so.
 //
@@ -34,7 +37,7 @@ async function run(minutes, turbo, extra = {}) {
     CW_GPU: 'gl', ADV_QUALITY: '0', CW_RENDER_SCALE: '0.25', CW_FRAMES: String(Math.ceil(ticks / turbo)), CW_PAK: pak, ADV_TURBO: String(turbo), ADV_LOG: '1', CW_WARMUP_SPREAD: '0', ...extra };
   const kv = (line) => Object.fromEntries([...line.matchAll(/(\w+)=(-?\d+)/g)].map((m) => [m[1], +m[2]]));
   const status = [];
-  let won = null, buf = '', rss0 = null, rssEnd = null;
+  let won = null, buf = '', rss0 = null, rssEnd = null, feel = null;
   const p = spawn('nice', ['-n', '10', exe], { env, stdio: ['ignore', 'pipe', 'pipe'] });
   const rss = () => { try { return +/VmRSS:\s+(\d+)/.exec(readFileSync(`/proc/${p.pid}/status`, 'utf8'))[1]; } catch { return null; } };
   const onData = (d) => {
@@ -42,6 +45,7 @@ async function run(minutes, turbo, extra = {}) {
     let i;
     while ((i = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, i); buf = buf.slice(i + 1);
+      if (line.startsWith('adv-feel')) feel = kv(line);
       if (line.startsWith('adv-status')) { const s = kv(line); if (process.env.SOAK_VERBOSE) console.log(line); s.rss = rss(); status.push(s); if (s.tick >= 5 * 3600 && rss0 == null) rss0 = s.rss; rssEnd = s.rss; }
       else if (line.startsWith('adv-won')) won = kv(line);
       else if (/\[error\]/.test(line) && !/program table|NOT DRAWN|^(depth|standard|physical|basic|lambert)/.test(line)) console.log('  ' + line);
@@ -60,9 +64,14 @@ async function run(minutes, turbo, extra = {}) {
   let stall = 0, lastRoute = -1, since = 0;
   for (const s of status) { if (s.route !== lastRoute) lastRoute = s.route, since = s.tick; stall = Math.max(stall, s.tick - since); }
   if (stall > 6 * 3600) problems.push(`the route stalled for ${(stall / 3600).toFixed(1)} minutes`);
+  const f = feel || {};
+  const met = [['held', 'no blow held the world'], ['rumbles', 'the pad never rumbled'], ['staggers', 'no poise broke'], ['crits', 'no critical'], ['guard_breaks', 'no shield knocked aside'],
+    ['stones', 'no slinger threw'], ['clears', 'no beaten group filled the flask'], ['strings', 'no boss chained a string']];
+  for (const [k, what] of met) if (!(f[k] > 0)) problems.push(`${what} (${k} ${f[k] ?? 'missing'})`);
+  if (f.swings > 0 && f.landed / f.swings < 0.6) problems.push(`only ${f.landed} of ${f.swings} swings landed`);
   const growth = rss0 && rssEnd ? (rssEnd - rss0) / rss0 : null;
   if (growth != null && growth > 0.08) problems.push(`memory grew ${(growth * 100).toFixed(1)} percent from minute 5`);
-  return { problems, won, status, growth };
+  return { problems, won, status, growth, feel: f };
 }
 
 let bad = 0;
@@ -70,7 +79,7 @@ const minutes = +arg('--minutes', 60), turbo = +arg('--turbo', 30);
 const only = argv.includes('--control-only');
 const r = only ? null : await run(minutes, turbo);
 const s = r?.status.at(-1) || {};
-if (r) { const line = `${r.won ? `won at ${(r.won.tick / 3600).toFixed(1)} min` : 'not won'}, ${s.kills ?? 0} kills, ${s.deaths ?? 0} falls, ${s.rests ?? 0} rests, stuck ${s.stuck ?? 0}, memory ${r.growth == null ? 'n/a' : (r.growth * 100).toFixed(1) + '%'}`;
+if (r) { const f = r.feel; const line = `${r.won ? `won at ${(r.won.tick / 3600).toFixed(1)} min` : 'not won'}, ${s.kills ?? 0} kills, ${s.deaths ?? 0} falls, ${s.rests ?? 0} rests, stuck ${s.stuck ?? 0}, memory ${r.growth == null ? 'n/a' : (r.growth * 100).toFixed(1) + '%'}; ${f.landed}/${f.swings} swings landed, ${f.crits} criticals, ${f.staggers} staggers, ${f.guard_breaks} shields broken, ${f.blocked} cuts blocked, ${f.stones_hit}/${f.stones} stones hit, ${f.clears} groups beaten, ${f.strings} boss strings, ${f.held} ticks held, ${f.rumbles} rumbles`;
 if (r.problems.length) { bad++; console.log(`FAIL soak: ${line}\n  ${r.problems.join('\n  ')}`); } else console.log(`ok   soak: ${line}`); }
 if (!argv.includes('--no-control')) {
   const c = await run(25, turbo, { ADV_NO_MAUL: '1' });

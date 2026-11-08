@@ -60,6 +60,15 @@ static bool incoming(const actor *p, float *ax, float *az) {
     int lead = d->on - e->st_t;
     if (lead >= 2 && lead <= 9) { *ax = e->mv.position.x, *az = e->mv.position.z; return true; }
   }
+  for (int k = 0; k < MAXSTONE; k++) { /* a stone that will pass within arm's length in the next fifth of a second */
+    const stone *s = &S.st[k];
+    if (!s->on) continue;
+    float rx = p->mv.position.x - s->x, rz = p->mv.position.z - s->z, vv = s->vx * s->vx + s->vz * s->vz + 1e-6f;
+    float tc = (rx * s->vx + rz * s->vz) / vv;
+    if (tc < 0 || tc > 12) continue;
+    float cx = rx - s->vx * tc, cz = rz - s->vz * tc;
+    if (cx * cx + cz * cz < 0.9f * 0.9f) { *ax = s->x, *az = s->z; return true; }
+  }
   for (int k = 0; k < 4; k++) {
     const shock *s = &S.sh[k];
     if (!s->on || (s->hit >> p->idx) & 1) continue;
@@ -92,7 +101,7 @@ static void fight(const actor *p, int ti, input *in, int seat) {
   if (d > reach) to_stick(dx, dz, 1, in);
   else if (d < reach - 1.2f) to_stick(-dx, -dz, 0.6f, in);
   if (d <= reach + 0.3f && p->stamina > 26 && (t->state != ST_ATTACK || t->st_t > ATK[t->atk].off)) {
-    bool heavy = (S.tick / 60 + (uint32_t)ti) % 5 == 0 || t->state == ST_DOWN;
+    bool heavy = (S.tick / 60 + (uint32_t)ti) % 5 == 0 || t->state == ST_DOWN || (t->role == R_SHIELD && t->guard > 0); /* a shield: break it */
     if (p->state == ST_MOVE || (p->state == ST_ATTACK && p->st_t >= ATK[p->atk].combo_from - 4)) {
       if ((R_press++ & 1) == 0) { if (heavy) in->heavy = true; else in->attack = true; }
     }
