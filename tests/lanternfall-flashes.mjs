@@ -28,6 +28,7 @@ if (!process.env.CW_GPU_SUITE_INNER && !opt('--dir')) {
 }
 const FRAMES = 60, START = 120, CELL = 48;
 const SCENES = { enemies: { LANTERNFALL_SHOWCASE: 'e' }, wardens: { LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: '3' }, heroes: { LANTERNFALL_SHOWCASE: 'h' } };
+if (opt('--scene')) for (const k of Object.keys(SCENES)) if (k !== opt('--scene')) delete SCENES[k]; /* (one scene: --scene heroes) */
 
 function shot(out, vars) {
   const env = { ...process.env, CW_FRAMES: String(vars.frames), CW_WARMUP_SPREAD: '0', SDL_AUDIODRIVER: 'dummy', CW_RENDER_SCALE: '1', CW_SCREENSHOT: out, CW_GPU: 'gl',

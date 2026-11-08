@@ -635,7 +635,7 @@ static void paint_enemies(void) {
     sap.em = 0.9f, sap.alpha = 0.8f, sap.soft = 8;
     el(0.5f, 0.72f, 0.26f, 0.2f, 0, &sap);
     pstyle spot = sty(0x2a4a14, 0x0a1a04, 0x5a8a30, 0.2f, TX_SKIN, 0.02f, 0.8f);
-    spot.alpha = 0.75f, spot.soft = 2;
+    spot.alpha = 0.9f, spot.soft = 1.5f;
     for (int i = 0; i < 18; i++) el(0.25f + hsh(i, 62) * 0.5f, 0.25f + hsh(i, 63) * 0.4f, 0.025f + hsh(i, 64) * 0.03f, 0.02f + hsh(i, 65) * 0.025f, 0, &spot);
     pstyle streak = sty(0xf0ffe0, 0, 0, 0.2f, TX_NONE, 0, 0);
     streak.alpha = 0.6f, streak.spec = 1;
@@ -661,9 +661,9 @@ static void paint_enemies(void) {
     pstyle clod = sty(0x6a5038, 0x2a1c10, 0xb09070, 0.7f, TX_STONE, 0.03f, 0.8f);
     clod.ink = 1.2f, clod.shadow = 0.4f;
     for (int i = 0; i < 9; i++) el(0.2f + 0.15f * (float)i, 0.42f - sinf((float)i / 8 * 3.14f) * 0.18f, 0.1f + hsh(i, 71) * 0.06f, 0.07f + hsh(i, 72) * 0.04f, hsh(i, 73), &clod);
-    static const uint32_t PEB[6] = { 0x8a8a84, 0xb08a50, 0x5a4a3a, 0xc8b8a0, 0x9a5a3a, 0x6a7a4a };
-    for (int i = 0; i < 22; i++) {
-      pstyle pb = sty(PEB[i % 6], 0, 0, 0.8f, TX_STONE, 0.015f, 0.6f);
+    static const uint32_t PEB[9] = { 0x8a8a84, 0xb08a50, 0x5a4a3a, 0xc8b8a0, 0x9a5a3a, 0x6a7a4a, 0xd0c070, 0x7a6a9a, 0xb0b0a8 };
+    for (int i = 0; i < 27; i++) {
+      pstyle pb = sty(PEB[i % 9], 0, 0, 0.8f, TX_STONE, 0.015f, 0.6f);
       pb.ink = 1, pb.seed = 120 + (uint32_t)i;
       el(0.15f + hsh(i, 74) * 1.3f, 0.45f - hsh(i, 75) * 0.25f, 0.03f + hsh(i, 76) * 0.03f, 0.025f + hsh(i, 77) * 0.02f, 0, &pb);
     }
@@ -869,7 +869,7 @@ static void draw_moth(const enemy *e, float t, float tk) {
   /* wing angle from the body's up: open (tell) high and held, swept back in the swoop */
   float wa = tell ? -1.15f - flare * 0.25f + flap * 0.08f : act ? 0.55f + flap * 0.1f : -0.55f + flap * 0.55f;
   float wsy = tell ? 1.05f : act ? 0.65f : 0.75f + 0.25f * fabsf(flap);
-  float spot = tell ? 1.2f + 0.9f * flare : 1.15f;
+  float spot = tell ? 1.1f + 0.6f * flare : 1.1f;
   for (int side = -1; side <= 1; side += 2) { /* the far side's wings first (behind the body), a little darker */
     float sd = (float)side, k = side < 0 ? 0.62f : 1;
     cw_color c = { D.tint.r * k, D.tint.g * k, D.tint.b * k, 1 };
@@ -878,8 +878,8 @@ static void draw_moth(const enemy *e, float t, float tk) {
     putx(&E.fwing, rx, ry, fa, 1, wsy, side < 0, 0, c, true);
     /* the eyespot's blaze, where the spot sits on the turned wing */
     cw_vec2 sp = rot2(0.56f * sd, -0.19f * wsy, fa);
-    putg(&E.spot, rx + sp.x, ry + sp.y, 0, 0.55f + flare * 0.35f, 0.55f + flare * 0.35f, spot, (0.35f + 0.5f * flare) * k);
-    if (tell) halo_at(rx + sp.x, ry + sp.y, 0.3f + 0.6f * flare, (cw_color){ 0.4f, 0.9f, 1, 0.45f * flare });
+    putg(&E.spot, rx + sp.x, ry + sp.y, 0, 0.55f + flare * 0.35f, 0.55f + flare * 0.35f, spot, (0.3f + 0.3f * flare) * k);
+    if (tell) halo_at(rx + sp.x, ry + sp.y, 0.25f + 0.3f * flare, (cw_color){ 0.4f, 0.9f, 1, 0.3f * flare });
   }
   for (int k = 0; k < 3; k++) put(&E.mleg, 0.04f, cy + 0.05f, 1.2f + (float)k * 0.25f + sinf(t * 4 + (float)k) * 0.1f, 1, 1);
   put(&E.abdo, 0, cy + 0.08f, pitch + sinf(t * 2.2f) * 0.08f, 1, 1);
@@ -2041,7 +2041,7 @@ void creature_hero(const player *p, int i, int region, float t) {
   /* the pole's turn (0 points forward, -1.57 straight up): carried up and forward, the lantern out in front of the
    * face; a strike sweeps it through the strike's arc (forward: from over the shoulder down through the front; up:
    * from the front to overhead; down: from the front to below); held straight up while mending */
-  float sa = p->state == PS_CLING ? -1.9f : -0.95f + sinf(ph * 3.1416f) * 0.18f * sp + (air ? p->vy * 0.006f : 0);
+  float sa = p->state == PS_CLING ? -1.9f : -0.95f + (air ? p->vy * 0.006f : 0); /* (held steady through the run: a bright lamp must not bob) */
   if (p->atk_t > 0) {
     float k = 1 - (float)p->atk_t / 14.0f;
     k = 1 - (1 - k) * (1 - k); /* (fast through, easing at the end) */
@@ -2064,8 +2064,8 @@ void creature_hero(const player *p, int i, int region, float t) {
   float hx = sx + el.x + hn.x, hy = sy + el.y + hn.y;
   put(&h->staff, hx, hy, sa, 1, 1);
   cw_vec2 tip = rot2(1.2f, 0, sa);
-  float lx = hx + tip.x, ly = hy + tip.y + 0.02f;
-  putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, p->atk_t > 0 ? 1.6f : 3.0f, white(1), true); /* (dimmer as it sweeps: no streak of light) */
+  float lx = hx + tip.x, ly = hy + tip.y + 0.02f + bob; /* (the arm takes up the body's bob) */
+  putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, p->atk_t > 0 ? 1.5f : 2.2f, white(1), true); /* (dimmer as it sweeps: no streak of light) */
   put(&h->hand, hx, hy, 0, 1, 1);
   flush();
   cw_vec2 lw = W(lx, ly + 0.28f);

@@ -89,7 +89,8 @@ if (!dir) {
 /* ── the measurement: each creature's own pixels (the sheet against the same frame with no creature in it), in the
  * game-scale sheets (1080p): how many distinct colours (4 bits a channel) and how much fine detail (the mean absolute
  * difference of luma from its 3 x 3 neighbourhood, inside the creature) it is painted with. Bounds: 120 colours and
- * 4 levels of detail for every enemy in every state and every warden. CONTROL, which must fail: the old flat shapes
+ * 4 levels of detail for every enemy in every state and every warden (2.5 while hurt: the hurt tint is 0.4 of the way to
+ * a warm white, so it softens what is under it). CONTROL, which must fail: the old flat shapes
  * (LANTERNFALL_CREATURES_FLAT). */
 const KINDS = ['crawler', 'spitter', 'moth', 'hopper', 'knight', 'puff', 'dropper', 'burrower', 'eye'], WARDENS = ['Moss Warden', 'Glass Mantis', 'Brass Sentinel', 'Tide Serpent', 'Sky Warden', 'Heart of Thorns'];
 function boxes(kind) {
@@ -134,7 +135,7 @@ function judge(dirA, tag) {
     const a = readPng(join(dirA, `${sheet}.png`)), b = readPng(join(dirA, `${sheet}-empty.png`));
     const mf = join(dirA, `${sheet}-mask.png`), m = existsSync(mf) ? readPng(mf) : null;
     for (const box of boxes(kind)) {
-      const r = measureCreature(a, b, box, m), fail = r.n < 400 || r.colours < 120 || r.detail < 4;
+      const r = measureCreature(a, b, box, m), fail = r.n < 400 || r.colours < 120 || r.detail < (box.name.endsWith('hurt') ? 2.5 : 4);
       if (fail) bad++;
       if (tag === 'art') console.log(`${fail ? 'FAIL' : 'ok  '} ${box.name.padEnd(16)} ${String(r.n).padStart(6)} px  ${String(r.colours).padStart(4)} colours  detail ${r.detail.toFixed(1)}`);
     }
