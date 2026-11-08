@@ -477,11 +477,12 @@ static const burst_info BURST[NAMMO] = {
 #define BURST_MIN_SPEED 8.0f
 #define BURST_KEEP 0.5f
 
-static void strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
+/* true when it burst (the strike is spent on it: no single-block harm and punch-through for that hit) */
+static bool strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
   const burst_info *bi = &BURST[g->proj_kind];
   float sp = vlen(v);
   g->proj_burst = true;
-  if (g->old_damage || bi->drive_r <= 0 || sp < BURST_MIN_SPEED) return;
+  if (g->old_damage || bi->drive_r <= 0 || sp < BURST_MIN_SPEED) return false;
   float m = AMMO[g->proj_kind].mass, ke = 0.5f * m * sp * sp, mom = m * sp;
   t3_vec3 dn = vscale(v, 1.0f / sp);
   cw_qshape3d q = cw_qshape3d_sphere(at, bi->drive_r);
@@ -509,6 +510,7 @@ static void strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
     if (dist[s] < bi->crush_r) harm(g, idx[s], ke * bi->crush_k * (1 - dist[s] / bi->crush_r), dirs[s], false);
   if (g->proj_live) cw_body3d_set_velocity(g->proj, vscale(v, BURST_KEEP));
   ev_push(g, EV_STRIKE, mat_at, at, vscale(dn, -1), bi->crush_r, sp, (int)fminf(ke, 2e9f)); /* dust, chips, the thump and the pad's kick where it struck */
+  return true;
 }
 
 /* the hits of the last step */
@@ -533,9 +535,9 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
         detonate(g, h->point);
         continue;
       }
-      if (!g->proj_burst && (pa ? ib : ia) >= 0) { /* the first block it strikes: the burst (and no punch-through sum after it) */
-        strike_burst(g, h->point, proj_v_before, g->b[pa ? ib : ia].mat);
-        if (!g->old_damage) { proj_broke = false; continue; }
+      if (!g->proj_burst && g->proj_kind != A_CHARGE && (pa ? ib : ia) >= 0 && strike_burst(g, h->point, proj_v_before, g->b[pa ? ib : ia].mat)) {
+        proj_broke = false; /* the first block it strikes: the burst, and no punch-through sum after it */
+        continue;
       }
     }
     /* sounds and dust for anything that lands hard enough to hear */
