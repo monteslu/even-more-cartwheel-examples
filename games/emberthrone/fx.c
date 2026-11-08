@@ -24,7 +24,6 @@ static int imp_next;
 /* a light where a blow landed: peak energy, from this tick */
 static void impact(t3_vec3 at, float peak) {
   int k = imp_next++ % NIMP;
-  if (!IMP[k].node.id) return;
   IMP[k].tick = (int)S.tick, IMP[k].peak = peak, IMP[k].at = at;
   cw_node3d_set_position(IMP[k].node, at);
 }
@@ -97,9 +96,8 @@ void fx_init(cw_node root) {
   FX_MOTES = pool(w, "FxMotes", 256, 4, 2.2f, 0.5f, 2.0f, 180, (t3_vec3){ 0, 1.2f, 0 }, 0.06f, cw_val_color(0.5f, 1, 1, 1), 6);
   FX_BLOOM = pool(w, "FxBloom", 256, 8, 0.9f, 1, 4, 180, (t3_vec3){ 0, 0.5f, 0 }, 0.09f, cw_val_color(1, 0.4f, 0.55f, 1), 6);
   FX_EMBER = pool(w, "FxEmber", 512, 32, 1.6f, 0.4f, 1.6f, 25, (t3_vec3){ 0, 1.5f, 0 }, 0.05f, cw_val_color(1, 0.55f, 0.15f, 1), 7);
-  /* the impact lights: a few small warm lights that swell and fade where blows land (ADV_PROBE_NOIMPACT: none, the
-   * look probe) */
-  for (int i = 0; i < (getenv("ADV_PROBE_NOIMPACT") ? 0 : NIMP); i++) {
+  /* the impact lights: a few small warm lights that swell and fade where blows land */
+  for (int i = 0; i < NIMP; i++) {
     char nm[16];
     snprintf(nm, sizeof nm, "Impact%d", i);
     IMP[i].node = cw_node_new("OmniLight3D", nm);
@@ -212,7 +210,6 @@ void fx_events(void) {
 /* the impact lights: up over 3 ticks, down over 20 (eased), so a hit glows and never blinks */
 static void lights(void) {
   for (int i = 0; i < NIMP; i++) {
-    if (!IMP[i].node.id) continue;
     float age = (float)((int)S.tick - IMP[i].tick), e = 0;
     if (age >= 0 && age < 3) e = (age + 1) / 3;
     else if (age >= 3 && age < 23) { float k = 1 - (age - 3) / 20; e = k * k; }

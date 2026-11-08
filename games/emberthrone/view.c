@@ -215,8 +215,8 @@ static void rig_make(int i, int kind) {
     cw_node_set(r->light, "range", cw_val_float(4 * GEN_SCALE[kind]));
     cw_node3d_set_position(r->light, (t3_vec3){ 0, 1.3f * GEN_SCALE[kind], 0.5f });
   }
-  /* the blade's ribbon: the heroes and the bosses (ADV_PROBE_NOTRAIL: none, the look probe) */
-  if ((kind <= K_WARDEN || IS_BOSS(kind)) && !getenv("ADV_PROBE_NOTRAIL")) {
+  /* the blade's ribbon: the heroes and the bosses */
+  if (kind <= K_WARDEN || IS_BOSS(kind)) {
     r->trail = cw_node_new("Trail3D", "Blade");
     cw_node_add_child(V_world, r->trail);
     bool boss = IS_BOSS(kind);

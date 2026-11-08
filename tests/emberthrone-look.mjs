@@ -1,4 +1,5 @@
-// emberthrone look check: the value and colour of play frames, one from each region (no HUD, 1920x1080), against the
+// emberthrone look check: the value and colour of play frames, five from each region spread over its fight (no HUD,
+// 1920x1080; each region judged on the median of each measure over its frames), against the
 // art direction (games/emberthrone/DESIGN.md): mid-key, never dark and never washed out, real contrast, more than one
 // hue family on screen. The same measures as the towers look check (more-cartwheel's towers pass):
 //   mean luma 100 to 125 of 255 (the underway, a roofed cutting, from 80)
@@ -101,21 +102,30 @@ export function verdict(theme, r) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const dir = process.argv[2];
   if (!dir) { console.error('usage: node tests/emberthrone-look.mjs <frames dir> [--json]'); process.exit(2); }
-  const files = readdirSync(dir).filter((f) => /^r[a-z]+\.png$/.test(f)).sort();
-  if (!files.length) { console.error(`no r<name>.png frames in ${dir}`); process.exit(2); }
+  /* r<region>-<frame>.png (several frames of a region: judged on the median of each measure) or r<region>.png */
+  const byRegion = new Map();
+  for (const f of readdirSync(dir).sort()) {
+    const m = /^r([a-z]+)(?:-(\d+))?\.png$/.exec(f);
+    if (m) (byRegion.get(m[1]) || byRegion.set(m[1], []).get(m[1])).push(f);
+  }
+  if (!byRegion.size) { console.error(`no r<name>.png frames in ${dir}`); process.exit(2); }
+  const median = (a) => { const b = [...a].sort((x, y) => x - y); return b.length % 2 ? b[b.length >> 1] : (b[b.length / 2 - 1] + b[b.length / 2]) / 2; };
+  const mid = (list) => Object.fromEntries(['mean', 'sd', 'local', 'sat', 'accent'].map((k) => [k, median(list.map((r) => r[k]))]));
   let failed = 0, controlCaught = 0;
   const rows = [];
-  for (const f of files) {
-    const theme = f.slice(1, -4), n = theme, img = readPng(join(dir, f));
-    const r = measure(img), bad = verdict(theme, r);
-    rows.push({ map: n, theme, ...r, bad });
-    console.log(`${bad.length ? 'FAIL' : 'ok  '} ${theme.padEnd(9)} mean ${r.mean.toFixed(1)} sd ${r.sd.toFixed(1)} local ${r.local.toFixed(1)} sat ${r.sat.toFixed(2)} accent ${(r.accent * 100).toFixed(1)}%${bad.length ? `: ${bad.join('; ')}` : ''}`);
+  for (const [theme, files] of byRegion) {
+    const imgs = files.map((f) => readPng(join(dir, f)));
+    const each = imgs.map((img) => measure(img));
+    const r = mid(each), bad = verdict(theme, r);
+    rows.push({ map: theme, theme, frames: files.length, ...r, each, bad });
+    const span = (k, d) => `${Math.min(...each.map((e) => e[k])).toFixed(d)}-${Math.max(...each.map((e) => e[k])).toFixed(d)}`;
+    console.log(`${bad.length ? 'FAIL' : 'ok  '} ${theme.padEnd(9)} median of ${files.length}: mean ${r.mean.toFixed(1)} sd ${r.sd.toFixed(1)} local ${r.local.toFixed(1)} sat ${r.sat.toFixed(2)} accent ${(r.accent * 100).toFixed(1)}% (frames: mean ${span('mean', 0)}, local ${span('local', 1)})${bad.length ? `: ${bad.join('; ')}` : ''}`);
     if (bad.length) failed++;
-    const c = verdict(theme, measure(img, 0.5));
+    const c = verdict(theme, mid(imgs.map((img) => measure(img, 0.5))));
     if (c.length) controlCaught++;
   }
-  if (controlCaught === files.length) console.log(`ok   control: every frame flattened halfway to its mean fails`);
-  else { console.log(`CONTROL PASSED (a failure): ${files.length - controlCaught} flattened frame(s) still pass`); failed++; }
+  if (controlCaught === byRegion.size) console.log(`ok   control: every frame flattened halfway to its mean fails`);
+  else { console.log(`CONTROL PASSED (a failure): ${byRegion.size - controlCaught} region(s) with every frame flattened still pass`); failed++; }
   if (process.argv.includes('--json')) console.log(JSON.stringify(rows));
   process.exit(failed ? 1 : 0);
 }
