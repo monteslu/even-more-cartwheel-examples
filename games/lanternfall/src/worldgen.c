@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "pieces.h"
 #include "world.h"
 
 static uint32_t rng;
@@ -50,6 +51,9 @@ static const link LINKS[] = {
   { R_CLOCK, R_FORGE, G_CLIMB },    { R_CLOCK, R_BLOOM, G_SWIM },    { R_BLOOM, R_FROST, G_DJUMP },
   { R_FORGE, R_FROST, G_GRAPPLE },  { R_GLASS, R_STAR, G_GRAPPLE },  { R_ROOTWAY, R_SKY, G_GRAPPLE },
   { R_FEN, R_TIDAL, G_SWIM },       { R_GATE, R_HEART, G_SEAL },   { R_FORGE, R_HEART, G_SEAL },
+  /* shortcuts: gates inside a region found early, so each ability cuts a corner through ground already walked */
+  { R_GATE, R_GATE, G_DJUMP },     { R_ROOTWAY, R_ROOTWAY, G_DASH }, { R_ROOTWAY, R_ROOTWAY, G_CLIMB },
+  { R_ROOTWAY, R_ROOTWAY, G_POUND }, { R_GLASS, R_GLASS, G_SWIM },  { R_GATE, R_GATE, G_GRAPPLE },
 };
 #define NLINKS ((int)(sizeof LINKS / sizeof LINKS[0]))
 
@@ -112,11 +116,44 @@ static int add_door(int ax, int ay, int bx, int by, uint8_t fill) {
 /* ── set pieces ──────────────────────────────────────────────────────── */
 
 typedef struct port { int cx, cy, px, py; } port; /* a set piece's cell, and the region cell its door leads to */
-static port ports[256];
+static port ports[512];
 static int nports;
 
 static bool cell_free(int x, int y, int region) {
   return x >= 0 && y >= 0 && x < GW && y < GH && creg[y][x] == region && !used[y][x];
+}
+/* a cell a door may lead to: free, or already the target of another set piece's door (kept free for the rooms grown
+ * there: used 3) */
+static bool cell_port(int x, int y, int region) {
+  return x >= 0 && y >= 0 && x < GW && y < GH && creg[y][x] == region && (!used[y][x] || used[y][x] == 3);
+}
+static void add_port(int cx, int cy, int px, int py) {
+  ports[nports++] = (port){ cx, cy, px, py };
+  if (!used[py][px]) used[py][px] = 3;
+}
+
+/* every door target in region r (and the cells given) can still be joined by the rooms grown later: the free cells
+ * round the set pieces are one piece of ground */
+static bool region_joined(int r, int ax, int ay, int bx, int by) {
+  static uint8_t seen[GH][GW];
+  static int q[GW * GH];
+  memset(seen, 0, sizeof seen);
+  int qn = 0, sx = ax, sy = ay;
+  if (sx < 0) return true;
+  seen[sy][sx] = 1, q[qn++] = sy * GW + sx;
+  for (int h = 0; h < qn; h++) {
+    int x = q[h] % GW, y = q[h] / GW;
+    static const int DX[4] = { 1, -1, 0, 0 }, DY[4] = { 0, 0, 1, -1 };
+    for (int d = 0; d < 4; d++) {
+      int nx = x + DX[d], ny = y + DY[d];
+      if (nx < 0 || ny < 0 || nx >= GW || ny >= GH || seen[ny][nx] || creg[ny][nx] != r || used[ny][nx] == 2) continue;
+      seen[ny][nx] = 1, q[qn++] = ny * GW + nx;
+    }
+  }
+  if (bx >= 0 && !seen[by][bx]) return false;
+  for (int i = 0; i < nports; i++)
+    if (creg[ports[i].py][ports[i].px] == r && !seen[ports[i].py][ports[i].px]) return false;
+  return true;
 }
 
 /* the room kinds a piece makes */
@@ -136,7 +173,8 @@ static bool place_link_gate(int o, int n, int g) {
     if (!cell_free(x, y, n)) continue;
     static const int DX[4] = { -1, 1, 0, 0 }, DY[4] = { 0, 0, -1, 1 };
     int d = rint_(0, 3), ox = x + DX[d], oy = y + DY[d];
-    if (ox < 0 || oy < 0 || ox >= GW || oy >= GH || creg[oy][ox] != o || used[oy][ox]) continue;
+    if (o == n && d >= 2) continue; /* (a shortcut inside a region: its doors at the floor, beside it) */
+    if (!cell_port(ox, oy, o)) continue;
     /* the new half: beside (2x1) or below (1x2, a cracked floor needs the old side on top) */
     int nx, ny;
     if (g == G_POUND) {
@@ -150,20 +188,28 @@ static bool place_link_gate(int o, int n, int g) {
     for (int k = 0, s = rint_(0, 3); k < 4; k++) {
       int dd = (s + k) & 3, px = nx + DX[dd], py = ny + DY[dd];
       if (px == x && py == y) continue;
-      if (!cell_free(px, py, n)) continue;
+      if (!cell_port(px, py, n)) continue;
       if (g == G_POUND && dd == 2) continue;
+      if (o == n && dd >= 2) continue;
       pick = dd;
       break;
     }
     if (pick < 0) continue;
+    { /* the ground round it stays one piece */
+      uint8_t ua = used[y][x], ub = used[ny][nx];
+      used[y][x] = used[ny][nx] = 2;
+      bool ok = region_joined(o, ox, oy, -1, -1) && region_joined(n, nx + DX[pick], ny + DY[pick], -1, -1);
+      used[y][x] = ua, used[ny][nx] = ub;
+      if (!ok) continue;
+    }
     int rx = x < nx ? x : nx, ry = y < ny ? y : ny, rw = x != nx ? 2 : 1, rh = y != ny ? 2 : 1;
     int r = new_room(rx, ry, rw, rh, n, g == G_SEAL || g == G_NONE ? RK_PLAIN : RK_GATE);
     W->rooms[r].gate = (uint8_t)g;
     used[y][x] = used[ny][nx] = 2;
     gates[ngates++] = (gate_rec){ r, g, x, y };
     /* the old side's door leads to o's cell (a room there is grown later); the new side's to n's */
-    ports[nports++] = (port){ x, y, ox, oy };
-    ports[nports++] = (port){ nx, ny, nx + DX[pick], ny + DY[pick] };
+    add_port(x, y, ox, oy);
+    add_port(nx, ny, nx + DX[pick], ny + DY[pick]);
     return true;
   }
   fprintf(stderr, "worldgen: no place for the %s - %s link\n", REGIONS[o].name, REGIONS[n].name);
@@ -172,7 +218,13 @@ static bool place_link_gate(int o, int n, int g) {
 
 /* place a piece of rooms (list) at a free spot of region r whose entry cell (rooms[0] at (dx,dy)) has a free
  * region cell beside it; returns the first room's index or -1 */
+static int place_piece_f(int r, const piece_room *pr, int n, int *room_out, int *entry_x, int *entry_y, int flags);
 static int place_piece(int r, const piece_room *pr, int n, int *room_out, int *entry_x, int *entry_y) {
+  return place_piece_f(r, pr, n, room_out, entry_x, entry_y, 0);
+}
+/* flags: 1 the way in only from the side (a set piece: its door at the floor), 2 a way through too (a door on the
+ * other side when that cell is free) */
+static int place_piece_f(int r, const piece_room *pr, int n, int *room_out, int *entry_x, int *entry_y, int flags) {
   const region_info *ri = &REGIONS[r];
   for (int tries = 0; tries < 3000; tries++) {
     int x = ri->x + rint_(0, ri->w - 1), y = ri->y + rint_(0, ri->h - 1);
@@ -185,24 +237,42 @@ static int place_piece(int r, const piece_room *pr, int n, int *room_out, int *e
     static const int DX[3] = { -1, 1, 0 }, DY[3] = { 0, 0, -1 };
     int pick = -1, s = rint_(0, 2);
     for (int k = 0; k < 3; k++) {
-      int d = (s + k) % 3, ex = x + pr[0].dx + DX[d], ey = y + pr[0].dy + DY[d];
+      int d = (s + k) % 3;
+      if ((flags & 1) && d == 2) continue;
+      int ex = x + pr[0].dx + DX[d], ey = y + pr[0].dy + DY[d];
       if (d == 1) ex = x + pr[0].dx + pr[0].w; /* the right of a wide room */
       bool inside = false;
       for (int q = 0; q < n; q++)
         if (ex >= x + pr[q].dx && ex < x + pr[q].dx + pr[q].w && ey >= y + pr[q].dy && ey < y + pr[q].dy + pr[q].h) inside = true;
-      if (inside || !cell_free(ex, ey, r)) continue;
+      if (inside || !cell_port(ex, ey, r)) continue;
       pick = d;
       *entry_x = ex, *entry_y = ey;
       break;
     }
     if (pick < 0) continue;
+    { /* the ground round it stays one piece (its way through too, when it has one) */
+      for (int k = 0; k < n; k++)
+        for (int cy = 0; cy < pr[k].h; cy++)
+          for (int cx = 0; cx < pr[k].w; cx++) used[y + pr[k].dy + cy][x + pr[k].dx + cx] = 2;
+      int ox = pick == 1 ? x + pr[0].dx - 1 : x + pr[0].dx + pr[0].w;
+      bool through = (flags & 2) && n == 1 && cell_port(ox, y + pr[0].dy, r);
+      bool ok = region_joined(r, *entry_x, *entry_y, through ? ox : -1, y + pr[0].dy);
+      for (int k = 0; k < n; k++)
+        for (int cy = 0; cy < pr[k].h; cy++)
+          for (int cx = 0; cx < pr[k].w; cx++) used[y + pr[k].dy + cy][x + pr[k].dx + cx] = 0;
+      if (!ok) continue;
+    }
     for (int k = 0; k < n; k++) {
       room_out[k] = new_room(x + pr[k].dx, y + pr[k].dy, pr[k].w, pr[k].h, r, pr[k].kind);
       for (int cy = 0; cy < pr[k].h; cy++)
         for (int cx = 0; cx < pr[k].w; cx++) used[y + pr[k].dy + cy][x + pr[k].dx + cx] = 2;
     }
     int ecx = pick == 1 ? x + pr[0].dx + pr[0].w - 1 : x + pr[0].dx;
-    ports[nports++] = (port){ ecx, y + pr[0].dy, *entry_x, *entry_y };
+    add_port(ecx, y + pr[0].dy, *entry_x, *entry_y);
+    if ((flags & 2) && n == 1 && pr[0].h == 1) { /* the way on, out of the other side */
+      int ox = pick == 1 ? x + pr[0].dx - 1 : x + pr[0].dx + pr[0].w, oc = pick == 1 ? x + pr[0].dx : x + pr[0].dx + pr[0].w - 1;
+      if (cell_port(ox, y + pr[0].dy, r)) add_port(oc, y + pr[0].dy, ox, y + pr[0].dy);
+    }
     return room_out[0];
   }
   return -1;
@@ -338,6 +408,129 @@ static int add_ent(int kind, int sub, int arg, int hold, int room, float x, floa
   if (kind == EK_BOSS) e->id = (uint16_t)W->nbosses++;
   if (kind == EK_SAVE) e->id = (uint16_t)W->nsaves++;
   return W->nents++;
+}
+
+/* ── hand-shaped set pieces (pieces.h) ───────────────────────────────────
+ * Every region gets a view with its landmark (and its map stone), and the early regions get rewards in plain sight
+ * that a later ability reaches: each ability reaches at least two of them (the checker's "see before reach"), so a
+ * return trip always has something waiting. */
+typedef struct piece_plan { int region, piece, pk, arg; } piece_plan;
+static const piece_plan PIECE_PLAN[] = {
+  /* seen at the start, reached with the second jump */
+  { R_GATE, PC_HIGH_SHELF, PK_CHARM, CH_ECHO },
+  { R_ROOTWAY, PC_HIGH_SHELF, PK_MOVE, MV_RISING },
+  /* the dash */
+  { R_GATE, PC_THORN_REACH, PK_CHARM, CH_SWIFT },
+  { R_ROOTWAY, PC_THORN_REACH, PK_RELIC, 0 },
+  { R_GLASS, PC_THORN_REACH, PK_CHARM, CH_WAYFINDER },
+  { R_ROOTWAY, PC_GAUNTLET, PK_RELIC, 0 },
+  /* wall climbing */
+  { R_ROOTWAY, PC_SHEER_WALL, PK_CHARM, CH_FEATHER },
+  { R_GLASS, PC_SHEER_WALL, PK_RELIC, 0 },
+  { R_ARCHIVE, PC_SHEER_WALL, PK_CHARM, CH_EMBER },
+  { R_GLASS, PC_SPIRE_LEAP, PK_RELIC, 0 },
+  /* the plunge */
+  { R_ROOTWAY, PC_SEALED_VAULT, PK_MOVE, MV_SHOCK },
+  { R_FEN, PC_SEALED_VAULT, PK_CHARM, CH_HEARTH },
+  { R_CLOCK, PC_SEALED_VAULT, PK_RELIC, 0 },
+  /* the tide charm */
+  { R_GATE, PC_FLOODED_NOOK, PK_CHARM, CH_THORNWALK },
+  { R_GLASS, PC_FLOODED_NOOK, PK_RELIC, 0 },
+  { R_ARCHIVE, PC_FLOODED_NOOK, PK_CHARM, CH_LONGARM },
+  /* the grapple line */
+  { R_ROOTWAY, PC_HIGH_ISLE, PK_MOVE, MV_SPIN },
+  { R_TIDAL, PC_HIGH_ISLE, PK_RELIC, 0 },
+  { R_FORGE, PC_HIGH_ISLE, PK_RELIC, 0 },
+  /* fights of several at once, a relic past them */
+  { R_FEN, PC_AMBUSH, PK_RELIC, 0 },
+  { R_CLOCK, PC_AMBUSH, PK_RELIC, 0 },
+  { R_FORGE, PC_AMBUSH, PK_ENERGY, 0 },
+  { R_FROST, PC_AMBUSH, PK_RELIC, 0 },
+  { R_STAR, PC_AMBUSH, PK_RELIC, 0 },
+};
+#define NPIECE_PLAN ((int)(sizeof PIECE_PLAN / sizeof PIECE_PLAN[0]))
+static struct { uint8_t pk, arg; } piece_reward[MAXROOMS];
+
+static void place_set_pieces(int r) {
+  int rooms[4], ex, ey;
+  /* the view first: a way through the region with its landmark */
+  piece_room v[1] = { { 0, 0, 1, 1, RK_ITEM } };
+  if (place_piece_f(r, v, 1, rooms, &ex, &ey, 3) >= 0) {
+    W->rooms[rooms[0]].piece = PC_VISTA, W->rooms[rooms[0]].intent = IN_VISTA;
+    piece_reward[rooms[0]].pk = PK_MAPSTONE, piece_reward[rooms[0]].arg = (uint8_t)r;
+  } else fprintf(stderr, "worldgen: no room for the %s view\n", REGIONS[r].name);
+  for (int i = 0; i < NPIECE_PLAN; i++) {
+    const piece_plan *pp = &PIECE_PLAN[i];
+    if (pp->region != r) continue;
+    piece_room p[1] = { { 0, 0, 1, 1, RK_ITEM } };
+    if (place_piece_f(r, p, 1, rooms, &ex, &ey, PIECES[pp->piece].through ? 3 : 1) < 0) {
+      fprintf(stderr, "worldgen: no room for the %s in %s\n", PIECES[pp->piece].name, REGIONS[r].name);
+      continue;
+    }
+    W->rooms[rooms[0]].piece = (uint8_t)pp->piece, W->rooms[rooms[0]].intent = PIECES[pp->piece].intent;
+    piece_reward[rooms[0]].pk = (uint8_t)pp->pk, piece_reward[rooms[0]].arg = (uint8_t)pp->arg;
+  }
+}
+
+/* lay a piece into its carved room: mirrored when its only door is on the right */
+static void stamp_piece(int ri, bool mirror) {
+  room *rm = &W->rooms[ri];
+  const piece_def *pd = &PIECES[rm->piece];
+  int X0 = rm->x * CELL_W, Y0 = rm->y * CELL_H, region = rm->region, nl = 0;
+  for (int r = 2; r <= 16; r++)
+    for (int c = 2; c <= 29; c++) {
+      char ch = pd->rows[r][mirror ? 31 - c : c];
+      int x = X0 + c, y = Y0 + r;
+      if (r == 16) {
+        if (ch == '^') set(x, y, T_SPIKE);
+        else if (ch == '~') set(x, y, T_WATER);
+        continue;
+      }
+      set(x, y, ch == '#' ? T_SOLID : ch == '=' ? T_ONEWAY : ch == '^' ? T_SPIKE : ch == '~' ? T_WATER : ch == '%' ? T_CRACKED : ch == '?' ? T_SECRET : T_EMPTY);
+    }
+  for (int r = 2; r <= 15; r++)
+    for (int c = 2; c <= 29; c++) {
+      char ch = pd->rows[r][mirror ? 31 - c : c];
+      float x = (float)(X0 + c) + 0.5f, y = (float)(Y0 + r);
+      switch (ch) {
+      case '*': add_ent(EK_PICKUP, piece_reward[ri].pk, piece_reward[ri].arg, HOLD_FLOOR, ri, (float)(X0 + c), y); break;
+      case 'A': add_ent(EK_ANCHOR, 0, 0, HOLD_CEIL, ri, x, y + 0.5f); break;
+      case 'L': add_ent(EK_LAMP, (region * 3 + nl++) % 4, 3, HOLD_CEIL, ri, x, y); break;
+      case 'l': add_ent(EK_LAMP, 7, 3, HOLD_FLOOR, ri, x, y + 1); break;
+      case 'M': add_ent(EK_PROP, PR_LANDMARK, (uint8_t)region, HOLD_FLOOR, ri, x, y + 1); break;
+      case 'c': add_ent(EK_ENEMY, EN_CRAWLER, 0, HOLD_FLOOR, ri, x, y + 1); break;
+      case 'k': add_ent(EK_ENEMY, EN_KNIGHT, 0, HOLD_FLOOR, ri, x, y + 1); break;
+      case 's': add_ent(EK_ENEMY, EN_SPITTER, 0, HOLD_FLOOR, ri, x, y + 1); break;
+      case 'h': add_ent(EK_ENEMY, EN_HOPPER, 0, HOLD_FLOOR, ri, x, y + 1); break;
+      case 'f': add_ent(EK_ENEMY, EN_FLYER, 0, 0, ri, x, y); break;
+      default: break;
+      }
+    }
+}
+
+/* a hidden alcove in a room's floor against a wall with no door: a face of hidden rock (a strike breaks it, the
+ * alcove's hidden rock with it) and a relic inside. Returns true when laid. */
+static bool secret_pocket(int ri, int side, int floor_y, const uint8_t *keep) {
+  room *rm = &W->rooms[ri];
+  int X0 = rm->x * CELL_W, Wd = rm->w * CELL_W;
+  int wx = side ? X0 + Wd - 3 : X0 + 2; /* the inside column against the wall */
+  int dir = side ? -1 : 1;
+  for (int y = floor_y - 8; y <= floor_y - 1; y++) /* the wall behind it whole (no door) */
+    if (!t_solid(tile(wx - dir, y))) return false;
+  for (int k = 0; k <= 9; k++) { /* level open floor in front, nobody's kept column */
+    int x = wx + dir * k;
+    if (keep[x - X0] || !t_solid(tile(x, floor_y)) || tile(x, floor_y) == T_SPIKE) return false;
+    for (int y = floor_y - 7; y <= floor_y - 1; y++)
+      if (tile(x, y) != T_EMPTY) return false;
+  }
+  for (int k = 0; k <= 5; k++) {
+    int x = wx + dir * k;
+    set(x, floor_y - 5, T_SOLID);
+    for (int y = floor_y - 4; y <= floor_y - 1; y++) set(x, y, T_SECRET);
+  }
+  /* the relic on its pedestal (laid with the others after carving): two in from the wall */
+  add_ent(EK_PICKUP, PK_RELIC, 0, HOLD_FLOOR, ri, (float)(side ? wx - 1 : wx + 2), (float)(floor_y - 1));
+  return true;
 }
 
 /* a ladder of one-way ledges from the floor at (x, floor_y) up to a surface at top_y around x */
@@ -480,6 +673,15 @@ static void carve_room(int ri) {
     }
   }
   if (rm->kind == RK_GATE || rm->kind == RK_BOSS) return;
+  if (rm->piece) { /* a set piece: mirrored when its only door is on the right */
+    bool left = false, right = false;
+    for (int i = 0; i < W->ndoors; i++) {
+      const door *d = &W->doors[i];
+      if ((d->a == ri || d->b == ri) && !d->vertical) { if (door_side(rm, d) == 0) left = true; else right = true; }
+    }
+    stamp_piece(ri, right && !left);
+    return;
+  }
   if (rm->kind == RK_SAVE || rm->kind == RK_ITEM || rm->kind == RK_START) { compose(ri, keep, true); return; }
   /* the floor: steps of one to three, thorn pits and pools between kept columns */
   int region = rm->region;
@@ -516,6 +718,11 @@ static void carve_room(int ri) {
       fill(x, floor_y - level, x + run - 1, floor_y - 1, T_SOLID);
     }
     x += run;
+  }
+  /* a hidden alcove against a wall with no door, now and then */
+  if ((rm->kind == RK_PLAIN || rm->kind == RK_HALL) && !flooded && chance(24)) {
+    int side = rint_(0, 1);
+    if (!secret_pocket(ri, side, floor_y, keep)) secret_pocket(ri, 1 - side, floor_y, keep);
   }
   compose(ri, keep, false);
   /* platforms in the air: one-way ledges (some broken in two), and islands of rock with tapered undersides, never
@@ -642,7 +849,7 @@ static void populate(int ri) {
                                          [R_CLOCK] = PR_MACHINE, [R_TIDAL] = PR_KELP, [R_STAR] = PR_CLUSTER, [R_SKY] = PR_STATUE,
                                          [R_ARCHIVE] = PR_SHELF, [R_FORGE] = PR_MACHINE, [R_FROST] = PR_CLUSTER, [R_BLOOM] = PR_TREE,
                                          [R_HEART] = PR_TREE };
-  int nbig = rm->kind == RK_PLAIN || rm->kind == RK_HALL || rm->kind == RK_SHAFT ? rm->w * (region == R_FORGE || region == R_BLOOM ? 3 : 2) : 1;
+  int nbig = rm->piece ? 0 : rm->kind == RK_PLAIN || rm->kind == RK_HALL || rm->kind == RK_SHAFT ? rm->w * (region == R_FORGE || region == R_BLOOM ? 3 : 2) : 1;
   for (int k = 0, last = -99; k < nbig * 3 && nbig > 0; k++) {
     int x = rint_(X0 + 4, X0 + Wd - 5), y = surface_at(ri, x);
     if (y < 0 || abs(x - last) < 6 || !t_solid(tile(x, y))) continue;
@@ -715,6 +922,7 @@ void world_generate(world *w, uint32_t seed) {
   for (int y = 0; y < GH; y++)
     for (int x = 0; x < GW; x++) w->cell_room[y][x] = 0xffff, creg[y][x] = -1;
   memset(used, 0, sizeof used);
+  memset(piece_reward, 0, sizeof piece_reward);
   for (int r = 0; r < NREGIONS; r++)
     for (int y = REGIONS[r].y; y < REGIONS[r].y + REGIONS[r].h; y++)
       for (int x = REGIONS[r].x; x < REGIONS[r].x + REGIONS[r].w; x++) creg[y][x] = (int8_t)r;
@@ -774,6 +982,7 @@ void world_generate(world *w, uint32_t seed) {
         W->rooms[rooms[0]].kind = RK_SECRET;
       }
     }
+    place_set_pieces(r);
   }
   /* grow each region round its ports, then cut it into rooms */
   for (int r = 0; r < NREGIONS; r++) grow_region(r);
@@ -789,7 +998,7 @@ void world_generate(world *w, uint32_t seed) {
   }
   /* doors listed by room */
   for (int i = 0; i < W->nrooms; i++) {
-    W->rooms[i].first_door = 0, W->rooms[i].ndoors = 0;
+    W->rooms[i].pad = 0;
   }
   /* carve */
   for (int i = 0; i < W->nrooms; i++) carve_room(i);

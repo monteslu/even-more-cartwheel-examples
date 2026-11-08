@@ -51,6 +51,7 @@ static bool standable(int x, int y) {
 
 static void build_nodes(void) {
   nnodes = 0;
+  for (int i = 0; i < TW * TH; i++) node_at[i] = -1; /* (the top rows and the edge columns hold nobody: never left unset) */
   for (int y = 3; y < TH; y++)
     for (int x = 1; x < TW - 1; x++) {
       int i = y * TW + x;
@@ -354,7 +355,10 @@ static bool local_reach(int room, uint32_t ab, int from, bool *reached_other_hal
       if (tx < X0 || tx >= X1 || ty < Y0 || ty >= Y1 || lv[to]) continue;
       lv[to] = 1;
       int h = gate_half(r, tx, ty);
-      if (h >= 0 && h != from) *reached_other_half = true;
+      if (h >= 0 && h != from) {
+        *reached_other_half = true;
+        if (getenv("CHECK_GATE_DEBUG")) printf("  gate room %d crossed: %d,%d -> %d,%d move %d (abilities %02x)\n", room, n % TW, n / TW, tx, ty, e.mv[k], ab);
+      }
       if (qt < (int)(sizeof lq / sizeof lq[0])) lq[qt++] = to;
     }
   }

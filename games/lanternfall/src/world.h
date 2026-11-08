@@ -18,7 +18,7 @@
 #define TW (GW * CELL_W)
 #define TH (GH * CELL_H)
 #define MAXROOMS 640
-#define MAXENTS 8000
+#define MAXENTS 12000
 #define MAXDOORS 1400
 #define NREGIONS 13
 
@@ -65,10 +65,17 @@ enum {
   EK_START,
   EK_KINDS
 };
-enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC }; /* pickup kinds (sub), with ability in arg */
+/* pickup kinds (sub). arg: the ability bit (PK_ABILITY), the charm (PK_CHARM: CH_*), the move (PK_MOVE: MV_*), the region
+ * (PK_MAPSTONE) */
+enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC, PK_CHARM, PK_MOVE, PK_MAPSTONE, PK_KINDS };
+/* charms: worn at a shrine, a few at a time (notches: two, and one more for every five relics). What each does is
+ * in sim.h (CHARM_LINE). */
+enum { CH_WAYFINDER, CH_ECHO, CH_SWIFT, CH_EMBER, CH_LONGARM, CH_FEATHER, CH_THORNWALK, CH_HEARTH, CH_KINDS };
+/* moves found in the world (not gates: no place needs one). What each does is in sim.h (MOVE_LINE). */
+enum { MV_RISING, MV_SPIN, MV_SHOCK, MV_KINDS };
 /* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
  * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
-enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE };
+enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_LANDMARK /* arg: the region */ };
 enum { EN_CRAWLER, EN_SPITTER, EN_FLYER, EN_HOPPER, EN_KNIGHT, EN_KINDS };
 #define NBOSSES 6
 /* how a prop or a lamp is held: standing on the tile below, hanging from the tile above, on a wall beside it */
@@ -81,13 +88,18 @@ typedef struct ent {
 } ent;
 
 enum { RK_PLAIN, RK_SHAFT, RK_HALL, RK_SAVE, RK_ITEM, RK_BOSS, RK_GATE, RK_SECRET, RK_START };
+/* what a set piece room is for: a view (a landmark, a reward seen far before it can be reached), a test of the
+ * abilities together, a hidden find, a fight */
+enum { IN_NONE, IN_VISTA, IN_CHALLENGE, IN_SECRET, IN_THREAT, IN_KINDS };
 
 typedef struct room {
   uint8_t x, y, w, h; /* cells */
   uint8_t region, kind;
   uint8_t gate;       /* RK_GATE: the ability the obstacle needs (an AB_* bit index + 1), 0 none */
   uint8_t boss;       /* RK_BOSS: boss index + 1 */
-  uint16_t first_door, ndoors;
+  uint8_t piece;      /* a hand-shaped set piece (pieces.h: PC_*), 0 none */
+  uint8_t intent;     /* what the piece is for: IN_* */
+  uint16_t pad;
 } room;
 
 typedef struct door {
@@ -123,6 +135,8 @@ static inline bool w_in(int x, int y) { return x >= 0 && y >= 0 && x < TW && y <
 static inline int w_tile(const world *w, int x, int y) { return w_in(x, y) ? w->t[y][x] : T_SOLID; }
 static inline bool t_solid(int t) { return t == T_SOLID || t == T_CRACKED || t == T_SECRET || t == T_BOSSDOOR || t == T_SEAL; }
 int w_room_at(const world *w, float x, float y); /* room index or -1 */
+static inline int room_piece(const room *r) { return r->piece; }
+static inline bool ent_is_landmark(const ent *e) { return e->kind == EK_PROP && e->sub == PR_LANDMARK; }
 
 bool world_load(world *w, const char *path); /* cw_asset or a file (native tools) */
 bool world_save(const world *w, const char *path);
