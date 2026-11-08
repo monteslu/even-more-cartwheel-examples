@@ -37,22 +37,46 @@ static void par_pixel(int k, float fx, float fy, float *a, float *l) {
     if (hash2(b, 6, 109) < 0.3f && pier > 0.13f && fy < 0.6f) solid = false;
     *a = solid && !open ? 1 : 0;
     *l = pier < 0.13f ? 0.78f + 0.22f * sstep(0.13f, 0.02f, pier) : 0.68f;
+    { /* masonry: courses of blocks, joints a shade darker, each block its own value, chips off the edges */
+      float course = fy * 40, row = floorf(course), cu = fx * 220 + (((int)row) & 1) * 0.5f, blk = floorf(cu);
+      float jy = fabsf(course - row - 0.5f), jx = fabsf(cu - blk - 0.5f);
+      *l *= (0.92f + 0.1f * hash2((int)blk, (int)row, 144)) * (jy > 0.42f || jx > 0.46f ? 0.82f : 1);
+      if (*a > 0 && fy > top && fy < top + 0.03f && hash2((int)(fx * 300), 0, 145) < 0.3f) *a = 0; /* (chipped tops) */
+      float ivy = fbm(fx * 60, fy * 8, 146, 3, 60);
+      if (*a > 0 && fy < top + 0.18f * ivy && ivy > 0.5f) *l = 0.6f + 0.2f * vnoise(fx * 800, fy * 400, 147, 800); /* (ivy over the tops) */
+    }
     if (fy > 0.88f) *a = 1, *l = 0.72f + 0.1f * (fy < 0.9f);
     break;
   }
-  case PAR_TREES: { /* trees of every size: a tapered leaning trunk, a crown of round masses lit from above */
+  case PAR_TREES: { /* trees of every size: a leaning trunk with bark and roots, branches forking up into a crown of
+                     * leaf clusters (scalloped edges, each cluster lit from above with its own value, gaps between them) */
     float lv = 0.8f;
+    float bark = 0.5f + 0.5f * sinf(fx * 2400 + fbm(fx * 300, fy * 12, 141, 2, 300) * 6); /* (vertical bark grain) */
     for (int t = 0; t < 9; t++) {
       float cx = ((float)t + 0.2f + 0.6f * hash2(t, 7, 110)) / 9, h = 0.35f + 0.45f * hash2(t, 8, 111), tw = 0.004f + 0.006f * hash2(t, 9, 112);
       float ctop = 1 - h, dx = wrapdx(fx, cx), lean = (hash2(t, 10, 113) - 0.5f) * 0.03f;
       float tx = dx - lean * (1 - fy) / h;
-      if (fy > ctop + h * 0.3f && fabsf(tx) < tw * (1.0f + 1.5f * (fy - ctop) / h)) *a = 1, lv = 0.66f;
+      float flare = 1.0f + 1.5f * (fy - ctop) / h + 3 * sstep(0.9f, 1.0f, fy); /* (the roots spread at the foot) */
+      if (fy > ctop + h * 0.3f && fabsf(tx) < tw * flare) *a = 1, lv = 0.6f + 0.1f * bark + 0.12f * sstep(tw * flare, -tw * flare, tx * 1.5f);
       for (int c = 0; c < 6; c++) {
         float ccx = (hash2(t, 20 + c, 114) - 0.5f) * 0.18f * h + lean, ccy = ctop + h * (0.08f + 0.28f * hash2(t, 30 + c, 115));
         float r = h * (0.1f + 0.13f * hash2(t, 40 + c, 116));
+        /* a branch from the trunk up to the cluster */
+        float bx0 = lean * 0.6f, by0 = ctop + h * 0.45f, ux = ccx - bx0, uy = ccy - by0, ul = sqrtf(ux * ux * 4 + uy * uy) + 1e-5f;
+        float pu = fmaxf(0, fminf(1, ((dx - bx0) * 2 * ux * 2 + (fy - by0) * uy) / (ul * ul)));
+        float qx = (dx - bx0 - ux * pu) * 2, qy = fy - by0 - uy * pu, bw = tw * (1.1f - 0.7f * pu);
+        if (qx * qx + qy * qy < bw * bw) *a = 1, lv = 0.62f + 0.08f * bark;
         float ddx = (dx - ccx) * 2.0f, ddy = fy - ccy, d = sqrtf(ddx * ddx + ddy * ddy);
-        float edge = r * (0.88f + 0.12f * vnoise(fx * 300, fy * 150, 117, 300));
-        if (d < edge) *a = 1, lv = 0.66f + 0.34f * sstep(edge, -edge, ddy + ddx * 0.3f);
+        /* leaf clusters: the edge scalloped by small cells, a ragged fringe of leaves */
+        float f1, f2, id;
+        pcells(fx * 1024 * 0.5f, fy * 512 * 0.5f, 142 + t, 48, &f1, &f2, &id);
+        float leafy = vnoise(fx * 900, fy * 450, 143, 900);
+        float edge = r * (0.8f + 0.14f * vnoise(fx * 300, fy * 150, 117, 300) + 0.12f * leafy);
+        if (d < edge) {
+          *a = 1;
+          float lit = sstep(edge, -edge, ddy + ddx * 0.3f), clump = 0.94f + 0.08f * id - 0.12f * sstep(0.35f, 0.0f, f2 - f1) * (d / edge);
+          lv = (0.66f + 0.34f * lit) * clump + 0.05f * (leafy - 0.5f);
+        }
       }
     }
     *l = lv;
