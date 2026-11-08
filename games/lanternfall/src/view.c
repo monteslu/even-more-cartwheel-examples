@@ -31,6 +31,7 @@ static double now_ms(void) {
 }
 static float cur_tint[3];
 static int showcase_mode(void);
+static bool flat_props(void);
 static float showcase_zoom(void);
 
 /* ── colours ── */
@@ -565,6 +566,14 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
         }
       } else if (tt == T_ONEWAY) {
         bool l = x > 0 && s->t[y][x - 1] == T_ONEWAY, r = x + 1 < TW && s->t[y][x + 1] == T_ONEWAY;
+        if (!l && !flat_props()) { /* what holds the ledge up (scenery.c): brackets, chains or roots */
+          int b = x;
+          while (b + 1 < TW && s->t[y][b + 1] == T_ONEWAY) b++;
+          int cl = 0, cr = 0;
+          for (int k = 1; k <= 12 && !cl; k++) if (y - k >= 0 && t_solid(s->t[y - k][x])) cl = k;
+          for (int k = 1; k <= 12 && !cr; k++) if (y - k >= 0 && t_solid(s->t[y - k][b])) cr = k;
+          scenery_ledge(x, b, y, x > 0 && t_solid(s->t[y][x - 1]), b + 1 < TW && t_solid(s->t[y][b + 1]), cl, cr, m, hexc(g->ground, 1));
+        }
         int piece = !l ? 0 : !r ? 2 : 1;
         cw_r2d_sprite(&(cw_sprite){ .texture = A.ledge[m], .src = { (float)(piece * TILE_PX), 0, TILE_PX, 28 }, .pos = { (float)x, (float)y },
                                     .size = { 1.0f, 28.0f / 64.0f }, .color = mixc(hexc(g->ground, 1), hexc(g->top, 1), 0.55f) });

@@ -203,6 +203,7 @@ static decal paint(int kind, int var) {
 }
 
 static void paint_props(void);
+static void paint_supports(void);
 void scenery_init(void) {
   static const int SET[NMAT][NDEC] = {
     [MAT_STONE] = { K_BOULDER, K_CRACKS, K_STRATA, K_FOSSIL, K_PEBBLES, K_MOSS },
@@ -215,6 +216,7 @@ void scenery_init(void) {
   for (int m = 0; m < NMAT; m++)
     for (int v = 0; v < NDEC; v++) DEC[m][v] = paint(SET[m][v], v);
   paint_props();
+  paint_supports();
 }
 
 void scenery_decal(int material, float x, float y, uint32_t h, cw_color body, float room) {
@@ -224,7 +226,7 @@ void scenery_decal(int material, float x, float y, uint32_t h, cw_color body, fl
   if (big > room) sc *= room / big;
   bool flip = (h >> 24) & 1;
   /* the rock's own colour lifted to the feature's values (the rock body is dark: a feature reads a step lighter) */
-  cw_color c = { fminf(1, body.r * 2.1f), fminf(1, body.g * 2.1f), fminf(1, body.b * 2.1f), 1 };
+  cw_color c = { fminf(1, body.r * 2.25f), fminf(1, body.g * 2.25f), fminf(1, body.b * 2.25f), 1 };
 #ifdef LANTERNFALL_R2D_V2
   if (d->glow) cw_r2d_set_intensity(1.6f);
 #endif
@@ -589,4 +591,82 @@ bool scenery_prop(int sub, int arg, float x, float y, int region, float t) {
   default: return false;
   }
 #undef GLOW
+}
+
+/* ═════════════ what holds a one-way ledge up (the eye must see it attached) ═════════════ */
+static struct { prop_part bracket, chain, cleat, roots[2]; } LS;
+static void paint_supports(void) {
+  /* a bracket: an iron-shod timber arm under the ledge, a post against the wall, a brace between, bolts */
+  cvs(1.0f, 1.0f);
+  pstyle wood = st(0x7a5638, 0x2a1a10, 0.6f, TX_BARK, 0.03f, 0.7f);
+  wood.ink = 1.4f, wood.rim = 0.35f, wood.shadow = 0.35f, wood.shadow_r = 6;
+  float arm[8] = { 0.02f, 0.02f, 0.95f, 0.02f, 0.95f, 0.14f, 0.02f, 0.14f }, post[8] = { 0.02f, 0.02f, 0.14f, 0.02f, 0.14f, 0.95f, 0.02f, 0.95f };
+  P(arm, 4, 0.02f, &wood), P(post, 4, 0.02f, &wood);
+  float br[4] = { 0.1f, 0.85f, 0.85f, 0.1f };
+  K(br, 2, 0.06f, 0.05f, &wood);
+  pstyle iron = st(0x5a5a62, 0x1a1a20, 0.8f, TX_METAL, 0.02f, 0.5f);
+  iron.spec = 0.7f, iron.ink = 1;
+  E(0.08f, 0.08f, 0.05f, 0.05f, 0, &iron), E(0.85f, 0.08f, 0.035f, 0.035f, 0, &iron), E(0.08f, 0.85f, 0.035f, 0.035f, 0, &iron), E(0.47f, 0.48f, 0.035f, 0.035f, 0, &iron);
+  LS.bracket = pfin(0.02f, 0.02f, 2.5f);
+  /* a chain: one tile of links, drawn as many times as it is long */
+  cvs(0.3f, 1.0f);
+  pstyle link = st(0xb0b0b8, 0x4a4a52, 0.8f, TX_METAL, 0.015f, 0.6f);
+  link.spec = 0.8f, link.gloss = 0.6f, link.ink = 1;
+  pstyle hole = st(0x101014, 0, -0.3f, TX_NONE, 0, 0);
+  for (int k = 0; k < 4; k++) {
+    float cy = 0.125f + 0.25f * (float)k;
+    if (k & 1) { E(0.15f, cy, 0.035f, 0.15f, 0, &link); }
+    else { E(0.15f, cy, 0.09f, 0.15f, 0, &link), E(0.15f, cy, 0.04f, 0.09f, 0, &hole); }
+  }
+  LS.chain = pfin(0.15f, 0.0f, 2.5f);
+  cvs(0.5f, 0.25f);
+  pstyle plate = st(0x6a6a72, 0x22222a, 0.6f, TX_METAL, 0.02f, 0.5f);
+  plate.ink = 1.2f, plate.spec = 0.6f;
+  float pl[8] = { 0.03f, 0.03f, 0.47f, 0.03f, 0.47f, 0.2f, 0.03f, 0.2f };
+  P(pl, 4, 0.03f, &plate);
+  E(0.12f, 0.11f, 0.03f, 0.03f, 0, &iron), E(0.38f, 0.11f, 0.03f, 0.03f, 0, &iron);
+  LS.cleat = pfin(0.25f, 0.11f, 2.5f);
+  /* roots knotted under the ledge, hanging free below it */
+  for (int v = 0; v < 2; v++) {
+    cvs(1.1f, 1.0f);
+    pstyle rt = st(0x7a5a40, 0x2a1a10, 0.6f, TX_BARK, 0.025f, 0.7f);
+    rt.ink = 1.2f, rt.rim = 0.3f, rt.shadow = 0.3f;
+    pstyle mass = rt;
+    mass.dome = 0.4f;
+    E(0.55f, 0.08f, 0.5f, 0.1f, 0, &mass);
+    for (int i = 0; i < 5; i++) {
+      float x0 = 0.1f + 0.22f * (float)i + (H(i, 900 + v) - 0.5f) * 0.1f, l = 0.35f + 0.55f * H(i, 910 + v), p[8] = { x0, 0.08f, x0 + (H(i, 920 + v) - 0.5f) * 0.2f, 0.08f + l * 0.4f,
+                                                                                                                x0 + (H(i, 930 + v) - 0.5f) * 0.3f, 0.08f + l * 0.75f, x0 + (H(i, 940 + v) - 0.5f) * 0.3f, 0.08f + l };
+      rt.seed = (uint32_t)(950 + i + v * 10);
+      K(p, 4, 0.045f, 0.008f, &rt);
+    }
+    pstyle moss = st(0x7aa04a, 0x2a4418, 0.3f, TX_MOSS, 0.02f, 1.0f);
+    moss.soft = 3, moss.alpha = 0.8f;
+    E(0.4f + 0.3f * (float)v, 0.1f, 0.18f, 0.05f, 0, &moss);
+    LS.roots[v] = pfin(0.55f, 0.02f, 2.5f);
+  }
+}
+
+void scenery_ledge(int x0, int x1, int y, bool wall_l, bool wall_r, int ceil_l, int ceil_r, int material, cw_color tint) {
+  (void)material;
+  float top = (float)y + 0.36f; /* (under the ledge's plank) */
+  cw_color white = { 1, 1, 1, 1 };
+  cw_color wood = pc_mix(white, tint, 0.25f);
+  /* walls beside it: a bracket from each; no wall but a ceiling over it: chains from the ceiling to its ends; else roots */
+  if (wall_l) pput(&LS.bracket, (float)x0, top, 0, 0.9f, 0.9f, false, wood);
+  if (wall_r) pput(&LS.bracket, (float)x1 + 1, top, 0, 0.9f, 0.9f, true, wood);
+  for (int side = 0; side < 2; side++) {
+    if (side ? wall_r : wall_l) continue;
+    int c = side ? ceil_r : ceil_l;
+    float cx = side ? (float)x1 + 0.75f : (float)x0 + 0.25f;
+    if (c > 0 && c <= 12) { /* (a chain: c tiles up to the rock) */
+      float y0 = (float)(y - c + 1);
+      for (float yy = y0; yy < (float)y + 0.05f; yy += 1) pput(&LS.chain, cx, yy, 0, 1, fminf(1, (float)y + 0.1f - yy), false, white);
+      pput(&LS.cleat, cx, (float)y + 0.3f, 0, 0.8f, 0.8f, false, white);
+      pput(&LS.cleat, cx, y0 + 0.05f, 0, 0.8f, 0.8f, false, white);
+    } else /* roots knotted under that end */
+      pput(&LS.roots[(x0 + side) & 1], cx + (side ? -0.2f : 0.2f), top - 0.05f, 0, 0.8f, 0.8f, side != 0, pc_mix(white, tint, 0.3f));
+  }
+  for (int x = x0 + 1; x < x1; x += 2) /* and a knot of roots under its middle now and then */
+    if (((x * 7 + y * 3) & 3) == 0) pput(&LS.roots[x & 1], (float)x + 0.5f, top - 0.05f, 0, 0.6f, 0.6f, (x & 2) != 0, pc_mix(white, tint, 0.3f));
 }
