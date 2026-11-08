@@ -90,6 +90,34 @@ static bool in_view(const game *g, int t, t3_vec3 at) {
 static void plan(game *g, bot_state *b) {
   int t = -1;
   for (int i = 0; i < g->ntgt; i++) if (!g->tgt[i].down) { t = i; break; }
+  if (g->mode == MODE_PARTY) { /* steady hands: a plain shot at the block farthest from every crystal still standing */
+    float best = -1;
+    int pick = -1;
+    for (int i = 0; i < g->nb; i++) {
+      const block *k = &g->b[i];
+      if (!k->alive || !k->tag || k->target >= 0 || k->down || k->keg) continue;
+      t3_vec3 p = cw_body3d_transform(k->body).p;
+      float near = 1e9f;
+      for (int c = 0; c < g->ntgt; c++) {
+        if (g->tgt[c].down || g->tgt[c].blk < 0) continue;
+        t3_vec3 q = g->tgt[c].home;
+        float d = (p.x - q.x) * (p.x - q.x) + (p.y - q.y) * (p.y - q.y) + (p.z - q.z) * (p.z - q.z);
+        if (d < near) near = d;
+      }
+      near += hashf((uint32_t)i * 2654435761u + (uint32_t)g->shots) * 2; /* not always the same block */
+      if (near > best) best = near, pick = i;
+    }
+    if (pick < 0) return;
+    b->plan_tgt = 0;
+    b->want_ammo = pick_ammo(g, A_SHOT);
+    b->want_power = 0.7f, b->lob = false;
+    b->aim_at = cw_body3d_transform(g->b[pick].body).p;
+    b->solved = false;
+    float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
+    b->want_yaw = cw_atan2(-dx, -dz), b->want_pitch = 0.1f;
+    b->planned = true, b->wait = 0;
+    return;
+  }
   if (t < 0 && g->sandbox) { /* free fire with every crystal down: a block still standing, any ammunition */
     int n = 0, pick = -1, want = (int)(hash32((uint32_t)g->shots * 7919u + 13u) % 997u);
     for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) n++;

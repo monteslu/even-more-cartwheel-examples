@@ -7,6 +7,8 @@
 // runs, and the 20-minute ones, are too short for two laps after the first and skip it).
 // Free fire: 10 minutes (--quick: 4) shooting at Great Keep with ammunition without end, never judged: soak ok, at
 // least 6 shots a minute, the bodies never past the cap (3000) and the memory at the end within 5% of a minute in.
+// Party (steady hands): 2 and 4 players, 8 minutes each (--quick: 3): soak ok, rounds that end with one player in
+// or every crystal down, players going out both ways.
 // Every level's last shot is replayed as the game replays it (a second world, the logged inputs) and must end on the
 // live state.
 // The control puts a NaN into a block and the checks must catch it.
@@ -46,6 +48,18 @@ for (const [players, mode, level] of [[1, 0, 0], [2, 0, 5], [3, 1, 12], [4, 1, 2
 const c = run(3, 1, 0, 0, { DESTRUCTO_SOAK_INJECT: '1' });
 if (c.status === 1 && /soak FAIL/.test(c.stdout)) console.log('ok   control: an injected NaN is caught');
 else { bad++; console.log(`CONTROL PASSED (a failure): the injected NaN went unseen (status ${c.status})`); }
+for (const players of [2, 4]) {
+  const minutes = quick ? 3 : 8;
+  const r = run(minutes, players, 6, 3);
+  const out = r.stdout || '';
+  const m = /party: (\d+) rounds, (\d+) with one player left, (\d+) out for a crystal, (\d+) out on strikes/.exec(out);
+  const why = [];
+  if (r.status !== 0 || !/soak ok/.test(out)) why.push(`status ${r.status}`);
+  if (!m) why.push('no party line');
+  else if (+m[1] < 2) why.push(`only ${m[1]} rounds`);
+  const line = `party, ${players} players, ${minutes} min: ${m ? `${m[1]} rounds, ${m[2]} won by the last one in, ${m[3]} out for a crystal, ${m[4]} on strikes` : '?'}`;
+  if (why.length) { bad++; console.log(`FAIL ${line}\n     ${why.join('; ')}\n${(out.match(/FAIL.*/g) || []).slice(0, 4).join('\n')}`); } else console.log(`ok   ${line}`);
+}
 {
   const minutes = quick ? 4 : 10;
   const r = run(minutes, 1, 24, 2);

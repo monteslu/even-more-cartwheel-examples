@@ -1,6 +1,6 @@
 /* destructo_soak: level after level with the bot on the controls, no window and no GPU.
  *   destructo_soak <minutes> <players> [first level] [mode 0 co-op | 1 versus | 2 free fire: the one structure, shot at
- *   for the whole run with ammunition without end, never judged]
+ *   for the whole run with ammunition without end, never judged | 3 party: steady hands, round after round]
  * Every tick checks every body: a number (no NaN), inside the field (nothing flung out of the world and kept), and
  * the counts the game keeps (blocks alive, free slots) adding up. After each turn's settle it checks debris goes to
  * sleep: a level whose bodies are still awake 30 s after the last shot has something jittering (printed). Prints
@@ -45,6 +45,8 @@ int main(int argc, char **argv) {
   int mode = argc > 4 ? atoi(argv[4]) : 0;
   bool sandbox = mode == 2;
   if (sandbox) mode = MODE_COOP;
+  else if (mode == 3) mode = MODE_PARTY;
+  int party_rounds = 0, party_won = 0, party_crystal = 0, party_strikes = 0;
   int most_alive = 0;
   bool inject = getenv("DESTRUCTO_SOAK_INJECT") != NULL;
   long ticks_total = (long)minutes * 3600, t = 0, first_rss = 0;
@@ -126,6 +128,13 @@ int main(int argc, char **argv) {
       if (replay_match() != 1) printf("FAIL level %d: the replay %s\n", G.level, replay_match() == 0 ? "ended on another state" : "never ran"), fails++;
       else replays++;
       levels++;
+      if (G.mode == MODE_PARTY) {
+        party_rounds++, party_won += G.party_winner >= 0;
+        for (int p = 0; p < G.players; p++) party_crystal += G.P[p].out == 1, party_strikes += G.P[p].out == 2;
+        int in = 0;
+        for (int p = 0; p < G.players; p++) in += !G.P[p].out;
+        if (in > 1 && G.tgt_left > 0) printf("FAIL level %d: the party ended with %d players in\n", G.level, in), fails++;
+      }
       if (G.state == GS_WON) won++, stars += game_stars(&G), over_par += G.shots > G.L->par;
       else lost++;
       shots += G.shots, broken += G.broken, frags += G.fragments, booms += G.booms;
@@ -136,6 +145,7 @@ int main(int argc, char **argv) {
   }
   printf("totals: %d levels, %d won, %d lost, %d stars, %d over par, %d shots, %ld broken, %ld pieces, %ld booms, %d jitter, %d replays on the live state, step mean %.3f ms worst %.2f ms, most awake %d\n",
          levels, won, lost, stars, over_par, shots, broken, frags, booms, jitter, replays, steps ? step_sum / steps : 0, step_worst, awake_worst);
+  if (G.mode == MODE_PARTY) printf("party: %d rounds, %d with one player left, %d out for a crystal, %d out on strikes\n", party_rounds, party_won, party_crystal, party_strikes);
   if (sandbox) printf("free fire: %d shots, %d broken, %d pieces, %d charges, most bodies %d, level judged %s\n", G.shots, G.broken, G.fragments, G.booms, most_alive, game_over(&G) ? "(a failure)" : "never");
   if (sandbox && game_over(&G)) fails++;
   printf("  rss %ld kB at the end\n", rss_kb());

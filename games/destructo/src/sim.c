@@ -152,6 +152,11 @@ static void target_down(game *g, int t) {
   target_state *ts = &g->tgt[t];
   if (ts->down) return;
   ts->down = true, ts->down_tick = g->tick, ts->by_player = g->cur;
+  if (g->mode == MODE_PARTY && !g->P[g->cur].out) { /* party: the one who brought a crystal down is out */
+    int n = 0;
+    for (int p = 0; p < g->players; p++) n += g->P[p].out != 0;
+    g->P[g->cur].out = 1, g->P[g->cur].out_order = (int8_t)(n + 1);
+  }
   g->tgt_left--;
   g->P[g->cur].targets++;
   g->P[g->cur].score += 1000;
@@ -165,7 +170,7 @@ static void kill_block(game *g, int i) {
     g->tgt[k->target].blk = -1;
     target_down(g, k->target);
   }
-  if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); }
+  if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); if (k->target < 0) g->down_count++; }
   if (k->tag && k->target < 0) g->vol_gone += k->vol;
   cw_body3d_destroy(k->body);
   k->alive = 0;
@@ -335,7 +340,8 @@ t3_vec3 game_block_pos(const game *g, int i) { return cw_body3d_transform(g->b[i
 void game_fire(game *g) {
   int a = g->ammo_sel;
   if (g->ammo[a] <= 0 || g->proj_live) return;
-  if (!g->sandbox) g->ammo[a]--;
+  if (!g->sandbox && g->mode != MODE_PARTY) g->ammo[a]--;
+  g->down_at_fire = g->down_count;
   t3_vec3 d = game_aim_dir(g);
   float sp = game_speed(g);
   cw_body3d_def bd = cw_body3d_default_def();
@@ -534,7 +540,7 @@ static void tally(game *g) {
     if (!k->alive || !k->tag || k->down || k->target >= 0) continue;
     t3_vec3 p = cw_body3d_transform(k->body).p;
     float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
-    if (vlen(vsub(p, k->home)) > lim) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); }
+    if (vlen(vsub(p, k->home)) > lim) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); g->down_count++; }
   }
 }
 
@@ -584,7 +590,7 @@ float game_share(const game *g) {
  *   3  ... and the structure is brought down (the level's mark of it, game_mark)
  * The control (old_rules) is the rule before the fix: three for any clear within par, two within par + 2. */
 int game_stars(const game *g) {
-  if (g->state != GS_WON) return 0;
+  if (g->state != GS_WON || g->mode == MODE_PARTY) return 0;
   if (g->old_rules) return g->shots <= g->L->par ? 3 : g->shots <= g->L->par + 2 ? 2 : 1;
   if (g->shots > g->L->par) return 1;
   return g->judged_share >= game_mark(g) ? 3 : 2;
@@ -593,6 +599,7 @@ int game_stars(const game *g) {
 int game_result(const game *g) {
   if (g->state == GS_LOST) return RES_LOST;
   if (g->state != GS_WON) return RES_NONE;
+  if (g->mode == MODE_PARTY) return RES_PARTY;
   if (g->old_rules) return RES_BROUGHT_DOWN;
   return g->judged_share >= game_mark(g) ? RES_BROUGHT_DOWN : RES_CLEARED;
 }
@@ -663,7 +670,23 @@ void game_step(game *g, const input *in) {
       tally(g);
       g->judged_awake = awake;
       g->judged_share = game_share(g);
-      if (g->sandbox) g->state = GS_AIM; /* free fire: never judged */
+      int in = 0;
+      if (g->mode == MODE_PARTY) { /* the turn: a strike for bringing nothing down; who is still in */
+        player_state *ps = &g->P[g->cur];
+        if (!ps->out && g->down_count == g->down_at_fire && ++ps->strikes >= PARTY_STRIKES) {
+          int n = 0;
+          for (int p = 0; p < g->players; p++) n += g->P[p].out != 0;
+          ps->out = 2, ps->out_order = (int8_t)(n + 1);
+        }
+        g->party_winner = -1;
+        for (int p = 0; p < g->players; p++) if (!g->P[p].out) in++, g->party_winner = p;
+        if (in != 1) g->party_winner = -1;
+      }
+      if (g->mode == MODE_PARTY && (in <= 1 || g->tgt_left == 0)) g->state = GS_WON; /* the party is over */
+      else if (g->mode == MODE_PARTY) {
+        g->state = GS_AIM;
+        do g->cur = (g->cur + 1) % g->players; while (g->P[g->cur].out);
+      } else if (g->sandbox) g->state = GS_AIM; /* free fire: never judged */
       else if (g->tgt_left == 0) g->state = GS_WON;
       else if (ammo_left(g) == 0) g->state = GS_LOST;
       else {

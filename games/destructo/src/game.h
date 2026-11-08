@@ -107,10 +107,17 @@ extern const level_def LEVELS[NLEVELS];
 const level_def *level_get(int i);
 
 enum { GS_AIM, GS_FLIGHT, GS_SETTLE, GS_WON, GS_LOST };
-enum { MODE_COOP, MODE_VERSUS };
+/* party (two to four players): steady hands. Ammunition without end, a shot a turn; a turn must bring down at least
+ * one block of the structure (a turn that brings none is a strike, two strikes and you are out), and whoever brings a
+ * crystal down is out. The last one in wins. */
+enum { MODE_COOP, MODE_VERSUS, MODE_PARTY };
+#define PARTY_STRIKES 2
 
 typedef struct player_state {
   int score, shots, targets;
+  int strikes;       /* party: turns that brought nothing down */
+  int8_t out;        /* party: 0 in, 1 out for a crystal, 2 out on strikes */
+  int8_t out_order;  /* party: 1 the first out, 2 the next ... */
 } player_state;
 
 typedef struct game {
@@ -140,6 +147,8 @@ typedef struct game {
   int players, mode, cur;
   player_state P[MAXP];
   int shots;         /* the team's (coop) or everyone's (versus) shots on this structure */
+  int down_count, down_at_fire; /* placed blocks brought down so far, and when the turn's shot was fired (party) */
+  int party_winner;  /* party: the seat still in at the end, -1 none */
   int tick;
   int awake_now;
   /* the fracture queue: blocks out of strength break a few dozen a tick (a charge breaks hundreds at once: making
@@ -210,7 +219,7 @@ float game_mark(const game *g);
 #define SETTLE_QUIET 20   /* ... for this many ticks */
 #define SETTLE_MAX (60 * 15) /* a turn's settle ends after 15 s whatever moves (jitter must not hang the game) */
 /* the level's headline once judged: won and brought down, won with the structure mostly standing, or lost */
-enum { RES_NONE, RES_BROUGHT_DOWN, RES_CLEARED, RES_LOST };
+enum { RES_NONE, RES_BROUGHT_DOWN, RES_CLEARED, RES_LOST, RES_PARTY };
 int game_result(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);

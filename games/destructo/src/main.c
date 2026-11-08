@@ -2,7 +2,8 @@
  * players taking turns, together (co-op: one score, one count of shots) or against each other (versus: each shot
  * scores for whoever fired it).
  *
- *   select    thirty levels, each with its best stars; how many play and how (co-op or versus); free fire (any
+ *   select    thirty levels, each with its best stars; how many play and how (co-op, versus, or party: steady hands,
+ *             where each turn must bring a block down and whoever drops a crystal is out); free fire (any
  *             structure open, ammunition without end, nothing judged: a physics toy)
  *   play      turn and raise the launcher, set the power, pick the ammunition (shot, heavy ball, charge), fire;
  *             bring every crystal down within par for three stars; hold the wide view to look the structure over
@@ -178,7 +179,7 @@ static void start(int players, void *u) {
   begin_level(start_level());
 #else
   G.phase = PH_SELECT, G.phase_t = 0;
-  G.mode = CW_CLAMP(save()->last_mode, 0, 1);
+  G.mode = CW_CLAMP(save()->last_mode, 0, 2);
   int last = save()->last_level;
   G.sel = last >= 0 && last < NLEVELS ? last : 0;
   preview_level(G.sel); /* the level behind the choice */
@@ -324,7 +325,8 @@ static void fixed_update(void *u, double dt) {
     int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
     int n = G.sel + dx + dy * 6;
     if ((dx || dy) && n >= 0 && n <= (G.free_fire ? NLEVELS - 1 : unlocked())) G.sel = n, sound_menu(0), preview_level(G.sel);
-    if (pressed(G.ammo, -1) && G.players > 1) G.mode ^= 1, sound_menu(0);
+    if (pressed(G.ammo, -1) && G.players > 1) G.mode = (G.mode + 1) % 3, sound_menu(0);
+    if (G.players < 2 && G.mode == MODE_PARTY) G.mode = MODE_COOP;
     if (pressed(G.view, -1)) {
       G.free_fire = !G.free_fire, sound_menu(0);
       if (!G.free_fire && G.sel > unlocked()) G.sel = unlocked();
@@ -454,8 +456,9 @@ static void hud_play(cw_vec2 cs, float u) {
   snprintf(b, sizeof b, "Crystals left: %d of %d", g->tgt_left, g->ntgt);
   text(b, x + 20 * u, y + 60 * u, 27 * u, PINK, CW_ALIGN_LEFT);
   if (g->sandbox) snprintf(b, sizeof b, "Free fire   Shots: %d", g->shots);
+  else if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "Steady hands   Shots: %d", g->shots);
   else snprintf(b, sizeof b, "Shots: %d   Par: %d", g->shots, g->L->par);
-  text(b, x + 20 * u, y + 98 * u, 27 * u, !g->sandbox && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_LEFT);
+  text(b, x + 20 * u, y + 98 * u, 27 * u, !g->sandbox && g->mode != MODE_PARTY && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_LEFT);
   /* how much of it is down, against the mark the third star needs */
   float share = G.share, mark = game_mark(g);
   snprintf(b, sizeof b, "Down: %d%% of %d%%", (int)(share * 100 + 0.5f), (int)(mark * 100 + 0.5f));
@@ -476,10 +479,11 @@ static void hud_play(cw_vec2 cs, float u) {
       bool now = i == g->cur;
       snprintf(b, sizeof b, "%sPlayer %d", now ? "> " : "", i + 1);
       text(b, rx + 18 * u, ry + (14 + 46 * i) * u, 28 * u, now ? SEAT[i] : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
-      snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
-      text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, WHITE, CW_ALIGN_RIGHT);
+      if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", g->P[i].out ? "out" : g->P[i].strikes ? "1 strike" : "in");
+      else snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
+      text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
     }
-    text(g->mode == MODE_VERSUS ? "VERSUS: points" : "CO-OP: shots each", rx + 165 * u, ry + (20 + 46 * g->players) * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
+    text(g->mode == MODE_PARTY ? "PARTY: bring a block down, not a crystal" : g->mode == MODE_VERSUS ? "VERSUS: points" : "CO-OP: shots each", rx + 165 * u, ry + (20 + 46 * g->players) * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
   } else {
     int score = g->P[0].score;
     snprintf(b, sizeof b, "%d", score);
@@ -502,7 +506,7 @@ static void hud_play(cw_vec2 cs, float u) {
       float cx = bx + 25 * u + a * (cw + 15 * u);
       bool sel = a == g->ammo_sel;
       cw_r2d_round_rect(cw_rect_make(cx, by + 12 * u, cw, 46 * u), 8 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.9f) : rgba(0.15f, 0.16f, 0.22f, 0.85f));
-      if (g->sandbox) snprintf(b, sizeof b, "%s", AMMO[a].name);
+      if (g->sandbox || g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", AMMO[a].name);
       else snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
       text(b, cx + cw * 0.5f, by + 22 * u, 23 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
     }
@@ -529,8 +533,27 @@ static void hud_result(cw_vec2 cs, float u) {
   float k = fminf(1, G.phase_t / 24.0f);
   k = 1 - (1 - k) * (1 - k) * (1 - k); /* eases in */
   float x = cs.x - (w + 28 * u) * k, y = cs.y * 0.5f - h * 0.5f, cx = x + w * 0.5f;
-  cw_color head = res == RES_BROUGHT_DOWN ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
+  cw_color head = res == RES_BROUGHT_DOWN || res == RES_PARTY ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
   panel(x, y, w, h, u, head);
+  if (res == RES_PARTY) { /* steady hands: who stayed in, and how the others went out */
+    char b[96];
+    int win = g->party_winner;
+    if (win >= 0) snprintf(b, sizeof b, "PLAYER %d STAYS STEADY", win + 1);
+    else snprintf(b, sizeof b, "EVERYONE IS OUT");
+    text(b, cx, y + 22 * u, 40 * u, win >= 0 ? SEAT[win] : head, CW_ALIGN_CENTER);
+    for (int k = 1, line = 0; k <= g->players; k++)
+      for (int p = 0; p < g->players; p++) {
+        if (g->P[p].out_order != k) continue;
+        snprintf(b, sizeof b, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
+        text(b, cx, y + (100 + 40 * line++) * u, 26 * u, SEAT[p], CW_ALIGN_CENTER);
+      }
+    if (G.phase_t > 45) {
+      if (!G.replayed && replay_ready())
+        cw_prompt_text(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+      cw_prompt_text(font, "{ui_accept}: next structure   {ui_back}: levels", -1, cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
+    }
+    return;
+  }
   text(res == RES_BROUGHT_DOWN ? "BROUGHT DOWN" : res == RES_CLEARED ? "CRYSTALS DOWN" : "OUT OF AMMUNITION", cx, y + 22 * u, 46 * u, head, CW_ALIGN_CENTER);
   char b[96];
   float ty = y + 160 * u;
@@ -585,7 +608,8 @@ static void hud_select(cw_vec2 cs, float u) {
   float y = gy + 5 * (ch + gap) + 16 * u;
   char b[128];
   if (G.players > 1) {
-    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op or versus)", G.players, G.mode == MODE_VERSUS ? "versus" : "co-op");
+    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,
+             G.mode == MODE_PARTY ? "party: steady hands" : G.mode == MODE_VERSUS ? "versus" : "co-op");
     cw_prompt_text(font, b, -1, cw_v2(cs.x * 0.5f, y), 26 * u, WHITE, CW_ALIGN_CENTER);
     y += 40 * u;
   }
