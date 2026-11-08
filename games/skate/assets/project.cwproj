@@ -1,7 +1,6 @@
 ; skate project settings (packed into the carts: the actions and their bindings)
 name = Skate
 app = skate
-version = 0.1.0
 app_id = org.cartwheel.skate
 ; the board: steer and lean on the stick or the d-pad (push and brake on up and down, balance a manual on them); the
 ; four face buttons pop (south), flip (west), grab (east) and grind (north); either shoulder is the manual; back takes

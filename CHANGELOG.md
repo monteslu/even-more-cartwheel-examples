@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.1
+
+- Engine v0.38.3. Every cart now carries its real version in its manifest: a release cart says this release's
+  number, any other build says the last release plus a development mark. A tagged release builds its own carts and
+  checks every cart's version against the tag before publishing.
+- Ember Throne's terrain draws its second paint layer more cheaply (from the engine), and sun shadows skip their
+  lookups where no shadow cascade reaches.
+
 ## 0.8.0
 
 - **jewels** (working title): a calm, untimed match-three for one player, readable from across a room, played with a
