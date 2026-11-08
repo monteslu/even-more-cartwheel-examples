@@ -6,9 +6,10 @@
 //   side under 0.8; a flash is a pair of opposing transitions (a swell and its fade is one). Red: the same on the
 //   area's saturated red (red share 0.8 or more, (R - G - B) x 320, a change of 20).
 //   large areas: the screen cut 6 x 6, every 2 x 2 block of it (a ninth of the screen, past the size a flash must
-//     cover to count): no blink, that is no change of 0.1 or more within a sixth of a second (10 frames) either way
-//     (a blast may swell and fade over its second, as smoke and fire do; it may not jump), and no more than 3
-//     general or red flashes in any second;
+//     cover to count): no blink, that is no flash (a change of 0.1 or more and its opposite change of 0.1 or more)
+//     within a third of a second (20 frames) (a blast may swell and fade over its second, as fire and smoke do; a
+//     single change, such as the camera turning onto the pile, is not a flash), and no more than 3 general or red
+//     flashes in any second;
 //   any region: the screen cut 12 x 12, no cell may pass 3 general or 3 red flashes in any second.
 // The largest slow swing of a ninth of the screen is reported (the blast's swell and fade: about 0.2 over a second).
 // CONTROL, which must fail: the same blast with a white wash over the screen at 10 Hz (DESTRUCTO_STROBE_CONTROL).
@@ -24,7 +25,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const ENGINE = join(ROOT, 'deps/cartwheel-engine');
 const argv = process.argv.slice(2);
 const dirArg = argv.includes('--dir') ? argv[argv.indexOf('--dir') + 1] : null;
-const BEFORE = 8, COUNT = 120, CONTROL = 48, PAR = 3, BLINK = 10;
+const BEFORE = 8, COUNT = 120, CONTROL = 48, PAR = 3, BLINK = 20;
 
 if (!dirArg && !process.env.CW_GPU_SUITE_INNER) { /* the captures run inside one hold of the lock */
   const r = spawnSync('node', [join(ENGINE, 'tools/with-gpu-suite.mjs'), 'destructo-flash', 'node', fileURLToPath(import.meta.url), ...argv],
@@ -103,9 +104,14 @@ function measure(names) {
       const fl = flashes(L, 0.1, 0.8), fr = flashes(R, 20, Infinity);
       if (inSec(fl) + inSec(fr) > r.large + r.largeRed) r.where = `block ${bx},${by}`;
       r.large = Math.max(r.large, inSec(fl)), r.largeRed = Math.max(r.largeRed, inSec(fr));
+      /* a blink: within BLINK frames, a move away and back, the smaller of the two moves */
       for (let i = 0; i < L.length; i++)
-        for (let j = i + 1; j < Math.min(L.length, i + BLINK + 1); j++)
-          if (Math.abs(L[j] - L[i]) > r.blink) r.blink = Math.abs(L[j] - L[i]), r.blinkAt = `block ${bx},${by} frames ${i}-${j}`;
+        for (let j = i + 1; j < Math.min(L.length, i + BLINK); j++)
+          for (let k = j + 1; k <= Math.min(L.length - 1, i + BLINK); k++) {
+            const a = L[j] - L[i], b = L[j] - L[k];
+            const m = Math.sign(a) === Math.sign(b) ? Math.min(Math.abs(a), Math.abs(b)) : 0;
+            if (m > r.blink) r.blink = m, r.blinkAt = `block ${bx},${by} frames ${i}-${j}-${k}`;
+          }
       r.swell = Math.max(r.swell, Math.max(...L) - Math.min(...L));
     }
   for (let k = 0; k < 144; k++) {
@@ -115,7 +121,7 @@ function measure(names) {
   return r;
 }
 const pass = (m) => m.blink < 0.1 && m.large <= 3 && m.largeRed <= 3 && m.sec <= 3 && m.secRed <= 3;
-const show = (m) => `the largest change of a ninth of the screen within ${BLINK} frames ${m.blink.toFixed(3)} (${m.blinkAt}); most flashes in a second in a ninth of the screen ${m.large}${m.where ? ` (${m.where})` : ''}, red ${m.largeRed}; in any 1/144 of it ${m.sec}, red ${m.secRed}; the slow swing of a ninth of the screen ${m.swell.toFixed(3)} relative luminance`;
+const show = (m) => `the largest blink of a ninth of the screen (there and back within ${BLINK} frames) ${m.blink.toFixed(3)} (${m.blinkAt}); most flashes in a second in a ninth of the screen ${m.large}${m.where ? ` (${m.where})` : ''}, red ${m.largeRed}; in any 1/144 of it ${m.sec}, red ${m.secRed}; the slow swing of a ninth of the screen ${m.swell.toFixed(3)} relative luminance`;
 let bad = 0;
 const m = measure(files);
 console.log(`${pass(m) ? 'ok  ' : 'FAIL'} ${files.length} frames of Great Keep's blast: ${show(m)}`);

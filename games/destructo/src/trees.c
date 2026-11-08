@@ -409,7 +409,7 @@ void grass_build(cw_node parent, const grass_tuft *t, int n) {
     for (int k = 0; k < 2; k++) {
       float a = t[i].yaw + k * PI_F * 0.5f, ca = cosf(a) * t[i].w * 0.5f, sa = sinf(a) * t[i].w * 0.5f;
       t3_vec3 up = V3(0, 1, 0); /* the cards shade like the ground they stand on */
-      t3_color lo = cmul(t[i].c, 0.55f), hi = t[i].c;
+      t3_color lo = cmul(t[i].c, 0.8f), hi = t[i].c;
       int v0 = mb_v(&b, V3(t[i].x - ca, t[i].y - 0.03f, t[i].z - sa), up, 0, 1, lo);
       int v1 = mb_v(&b, V3(t[i].x + ca, t[i].y - 0.03f, t[i].z + sa), up, 1, 1, lo);
       int v2 = mb_v(&b, V3(t[i].x + ca, t[i].y + t[i].h, t[i].z + sa), up, 1, 0, hi);

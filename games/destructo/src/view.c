@@ -665,10 +665,10 @@ void view_level(const game *g) {
     static grass_tuft tufts[NG];
     int n = 0;
     float r = g->extent + 5, tz = g->muzzle.z + 6;
-    t3_color base = { powf(S->ground[0], 2.2f) * 1.9f, powf(S->ground[1], 2.2f) * 1.9f, powf(S->ground[2], 2.2f) * 1.9f };
+    t3_color base = { powf(S->ground[0], 2.2f) * 2.6f, powf(S->ground[1], 2.2f) * 2.6f, powf(S->ground[2], 2.2f) * 2.6f };
     for (int i = 0; i < NG * 4 && n < NG; i++) {
       float a = hashf(g->L->seed * 7u + (uint32_t)i * 2654435761u) * 6.2831853f;
-      float rr = r + 2 + powf(hashf((uint32_t)i * 40503u + 17u), 1.6f) * 45;
+      float rr = r + 2 + powf(hashf((uint32_t)i * 40503u + 17u), 1.8f) * 32;
       float x = cosf(a) * rr, z = sinf(a) * rr;
       float d = fminf(sqrtf(x * x + z * z) - r, fmaxf(fabsf(x) - 4.0f, fmaxf(-z, z - tz)));
       if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
@@ -679,7 +679,7 @@ void view_level(const game *g) {
       grass_tuft *t = &tufts[n++];
       t->x = x, t->z = z, t->y = relief_h(S, g, x, z);
       t->yaw = hashf((uint32_t)i * 313u) * 3.1415927f;
-      t->w = 0.5f + 0.35f * hashf((uint32_t)i * 71u), t->h = (0.3f + 0.3f * hashf((uint32_t)i * 53u)) * (0.7f + 0.6f * clump);
+      t->w = 0.35f + 0.25f * hashf((uint32_t)i * 71u), t->h = (0.14f + 0.14f * hashf((uint32_t)i * 53u)) * (0.75f + 0.5f * clump);
       t->c = (t3_color){ (base.r + dry * 0.12f) * v, (base.g + dry * 0.05f) * v, base.b * v };
     }
     grass_build(V.field, tufts, n);

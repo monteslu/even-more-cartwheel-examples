@@ -129,7 +129,7 @@ static const char *const SMOKE[] = { "amount", "8", "lifetime", "2.4", "explosiv
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.2", NULL };
 
 /* the plume a collapse leaves: a few big soft puffs that rise a little, drift downwind and thin over 8 to 11 s */
-static const char *const PLUME[] = { "amount", "7", "lifetime", "9.5", "lifetime_random", "0.15", "explosiveness", "0.6", "one_shot", "true",
+static const char *const PLUME[] = { "amount", "5", "lifetime", "9.5", "lifetime_random", "0.15", "explosiveness", "0.6", "one_shot", "true",
   "emission_shape", "BOX", "emission_extents", "vec3(2.4, 0.6, 2.4)", "direction", "vec3(0, 1, 0)", "spread", "60", "speed_min", "0.3", "speed_max", "1.2",
   "gravity", "vec3(0.32, 0.12, 0.1)", "damping", "0.35", "blend", "ALPHA", "soft_distance", "1.5", "size", "6.5", "size_random", "0.3",
   "size_curve", "\"0 0.5, 0.25 1, 1 1.9\"", "color_ramp", "\"0 0.6 0.55 0.48 0, 0.12 0.58 0.54 0.48 0.36, 0.6 0.56 0.53 0.5 0.22, 1 0.55 0.53 0.5 0\"",
@@ -318,7 +318,7 @@ void fx_events(const game *g, int shooter) {
       cw_node3d_set_position(b, e->p);
       cw_node3d_global_transform(b);
       cw_explosion_fire(b);
-      light_swell((t3_vec3){ e->p.x, e->p.y + 1.0f, e->p.z }, 160, 18, 0.25f, 1.2f, 1, 0.62f, 0.3f);
+      light_swell((t3_vec3){ e->p.x, e->p.y + 1.0f, e->p.z }, 70, 16, 0.4f, 1.3f, 1, 0.62f, 0.3f);
       FX.st.booms++;
       rumble(shooter, 1.0f, 0.45f, 420);
       break;
@@ -346,10 +346,10 @@ void fx_events(const game *g, int shooter) {
     c.x /= n, c.y /= n, c.z /= n;
     cw_particles_burst(FX.dust_big, c, (t3_vec3){ 0, 1, 0 });
     rumble(shooter, 0.6f, 0.2f, 300);
-    /* and the plume that hangs over the pile: one every third of a second while storeys keep falling, a dozen at most */
-    if (FX.plume_wait <= 0 && FX.plumes < 12) {
+    /* and the plume that hangs over the pile: one every half second while storeys keep falling, eight at most */
+    if (FX.plume_wait <= 0 && FX.plumes < 8) {
       cw_particles_burst(FX.plume, (t3_vec3){ c.x, fmaxf(1.0f, c.y * 0.6f), c.z }, (t3_vec3){ 0, 1, 0 });
-      FX.plume_wait = 20, FX.plumes++;
+      FX.plume_wait = 30, FX.plumes++;
     }
   }
   if (FX.plume_wait > 0) FX.plume_wait--;
