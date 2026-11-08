@@ -2,7 +2,6 @@
 name = Lanternfall
 app = lanternfall
 main_scene = scenes/main.cwscene
-version = 0.1.0
 app_id = org.cartwheel.lanternfall
 ; gameplay actions: the d-pad (or the left stick) moves and aims; the four face buttons jump (south), strike
 ; (west), dash (east) and loose a spark (north); a shoulder throws the grapple line; Back opens the map. On the
