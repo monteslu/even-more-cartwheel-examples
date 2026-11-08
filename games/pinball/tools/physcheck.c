@@ -10,7 +10,7 @@
  * Shots:
  *   wall     the ball at 3 to 40 m/s, seven angles, five offsets, at a zero-thickness wall (box3d: 1 mm): did its centre
  *            ever cross the wall's line inside the wall?
- *   flipper  the ball dropped at 3 to 10 m/s from nine directions onto a flipper that fires as it arrives (40 rad/s):
+ *   flipper  the ball dropped at 3 to 10 m/s from nine directions onto a flipper that fires as it arrives (52 rad/s):
  *            did the ball ever reach the flipper's underside?
  *   cradle   the ball resting on the flipper at 1 to 7 cm from the pivot, the flipper fired: did it pass through, and
  *            how fast did it leave? A rigid flipper turning at w gives a ball at rest (1 + e) w d on its first contact (a
@@ -31,7 +31,7 @@
 #define FL_R 0.009f
 #define FL_REST (-0.5236f)
 #define FL_UP (0.4363f)
-#define FL_W 40.0f
+#define FL_W 52.0f
 #define E_REST 0.5f
 
 enum { S_GAME, S_BOX2D, S_BOX3D, S_BOX2D_8, S_BOX3D_8, S_NAIVE, S_COUNT };

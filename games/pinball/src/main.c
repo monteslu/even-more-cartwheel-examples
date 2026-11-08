@@ -1,9 +1,9 @@
 /* pinball (working title): three original tables, one to four players taking turns, on cartwheel and three.c.
  *
  *   select    choose a table and how many play (each table's best scores beside it)
- *   play      flippers on the shoulders, the d-pad and the outer face buttons; hold the launch button to pull the
- *             plunger and let go to fire; nudge the cabinet (too much tilts it); the dot display and the scores
- *             beside the table
+ *   play      flippers on the face buttons (west, east), the shoulders, the d-pad and the triggers; hold the launch
+ *             button to pull the plunger and let go to fire, and once no ball waits on it a fresh press flips both;
+ *             nudge the cabinet (too much tilts it); the dot display and the scores beside the table
  *   scores    a score in a table's top five takes three letters, saved
  *   pinball_auto plays itself (the bot); pinball_bench is the perf gate's scene (three balls on the table, all the
  *   time). Environment (development, native): PINBALL_TABLE=n, PINBALL_PLAYERS=n, PINBALL_QUALITY=0..4. */
@@ -44,6 +44,7 @@ typedef struct save_data {
   int32_t last_table, last_players;
 } save_data;
 
+#define FLH 24
 enum { PH_SELECT, PH_PLAY, PH_ENTRY, PH_OVER };
 static struct {
   game g;
@@ -54,7 +55,7 @@ static struct {
   char entry_name[4];
   int entry_order[MAXP], entry_n, entry_i;
   int prev_ui[8];
-  cw_action fl, fr, launch, nudge, nudge_l, nudge_r;
+  cw_action fl, fr, both, launch, nudge, nudge_l, nudge_r;
   cw_node camera;
   dmd D;
   cw_texture dmd_tex;
@@ -67,9 +68,16 @@ static struct {
   int32_t score[MAXP];
   uint32_t hash;
   float ball_x, ball_y;
+  /* the flippers' timing (tests/pinball-flippers.mjs), the last FLH presses of each lower flipper: the tick the coil
+   * came on, the tick the flipper first moved after it, the stroke's time to full and the drop's time back to rest
+   * (ms, -1 not yet), and the lowest it sagged (fraction of the stroke) while held after reaching full */
+  int32_t fl_press[2][FLH], fl_move[2][FLH], fl_presses[2], fl_ticks;
+  float fl_full_ms[2][FLH], fl_drop_ms[2][FLH], fl_hold_min[2][FLH], fl_frac[2];
+  bool fl_waiting[2], fl_was[2];
 } G;
 
 static cw_font font;
+static int flip_delay; /* PINBALL_TEST_FLIP_DELAY=n (native): tests/pinball-flippers.mjs's control */
 
 /* ── sound hooks for the shell ───────────────────────────────────────── */
 
@@ -132,7 +140,7 @@ static bool warmup(void *u) {
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
-  G.fl = cw_action_find("flip_left"), G.fr = cw_action_find("flip_right"), G.launch = cw_action_find("launch");
+  G.fl = cw_action_find("flip_left"), G.fr = cw_action_find("flip_right"), G.launch = cw_action_find("launch"), G.both = cw_action_find("flip_both");
   G.nudge = cw_action_find("nudge"), G.nudge_l = cw_action_find("nudge_left"), G.nudge_r = cw_action_find("nudge_right");
   cw_shell_init(&(cw_shell_desc){ .title = "PINBALL", .subtitle = "three tables, one to four players", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
@@ -141,6 +149,7 @@ static void init(void *u) {
   cw_quality_full_resolution(true);
   cw_quality_keep_msaa(true);
   if (getenv("PINBALL_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("PINBALL_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
+  if (getenv("PINBALL_TEST_FLIP_DELAY")) flip_delay = CW_CLAMP(atoi(getenv("PINBALL_TEST_FLIP_DELAY")), 0, 7);
   sound_init();
   G.rng = 1u; /* mixed with the ticks a person takes to start a game (begin_game): every game differs, and a replayed
                * input gives the same game on every host */
@@ -169,6 +178,14 @@ static void init(void *u) {
   cw_debug_i32("view.lights", &G.lights);
   cw_debug_i32("view.lamps_lit", &G.lamps);
   cw_debug_f32("dev.cam_k", &g_cam_k);
+  cw_debug_i32("flip.ticks", &G.fl_ticks);
+  cw_debug_field("flip.press_tick", G.fl_press, CW_DBG_I32, 2 * FLH);
+  cw_debug_field("flip.move_tick", G.fl_move, CW_DBG_I32, 2 * FLH);
+  cw_debug_field("flip.presses", G.fl_presses, CW_DBG_I32, 2);
+  cw_debug_field("flip.full_ms", G.fl_full_ms, CW_DBG_F32, 2 * FLH);
+  cw_debug_field("flip.drop_ms", G.fl_drop_ms, CW_DBG_F32, 2 * FLH);
+  cw_debug_field("flip.hold_min", G.fl_hold_min, CW_DBG_F32, 2 * FLH);
+  cw_debug_field("flip.frac", G.fl_frac, CW_DBG_F32, 2);
 #ifdef PINBALL_AUTOPILOT
   cw_shell_start(1);
 #else
@@ -197,8 +214,15 @@ static void read_input(input *in) {
 #ifdef PINBALL_AUTOPILOT
   bot_input(&G.g, in, &G.rng);
 #else
-  in->left = held(G.fl), in->right = held(G.fr), in->upper = in->right;
-  in->launch = held(G.launch);
+  in->left = held(G.fl), in->right = held(G.fr);
+  if (flip_delay > 0) { /* the latency gate's control only: the flipper buttons a few ticks late (it must fail) */
+    static bool past[8][2];
+    for (int i = 7; i > 0; i--) past[i][0] = past[i - 1][0], past[i][1] = past[i - 1][1];
+    past[0][0] = in->left, past[0][1] = in->right;
+    in->left = past[flip_delay][0], in->right = past[flip_delay][1];
+  }
+  in->upper = in->right;
+  in->launch = held(G.launch), in->both = held(G.both);
   in->nudge_up = pressed(G.nudge), in->nudge_l = pressed(G.nudge_l), in->nudge_r = pressed(G.nudge_r);
 #endif
 }
@@ -321,6 +345,32 @@ static void fixed_update(void *u, double dt) {
   G.players = g->players, G.cur = g->cur, G.phase_dbg = G.phase, G.saves = g->saves, G.launches = g->launches;
   for (int i = 0; i < MAXP; i++) G.score[i] = (int32_t)(g->P[i].score > 2000000000 ? 2000000000 : g->P[i].score);
   G.ball_x = g->W.b[0].x, G.ball_y = g->W.b[0].y;
+  G.fl_ticks = (int32_t)ticks_run;
+  if (G.phase == PH_PLAY) {
+    int fi[2] = { g->T.left_flipper, g->T.right_flipper };
+    for (int k = 0; k < 2; k++) {
+      const pb_flipper *F = &g->W.fl[fi[k]];
+      float frac = (F->ang - F->rest) / (F->up - F->rest);
+      G.fl_frac[k] = frac;
+      bool coil = F->held && F->on;
+      if (coil && !G.fl_was[k]) { /* a new press: its slot in the history (the oldest goes) */
+        if (G.fl_presses[k] >= FLH)
+          for (int i = 1; i < FLH; i++)
+            G.fl_press[k][i - 1] = G.fl_press[k][i], G.fl_move[k][i - 1] = G.fl_move[k][i], G.fl_full_ms[k][i - 1] = G.fl_full_ms[k][i],
+            G.fl_drop_ms[k][i - 1] = G.fl_drop_ms[k][i], G.fl_hold_min[k][i - 1] = G.fl_hold_min[k][i];
+        int i = G.fl_presses[k] < FLH ? G.fl_presses[k] : FLH - 1;
+        G.fl_press[k][i] = (int32_t)ticks_run, G.fl_move[k][i] = -1, G.fl_full_ms[k][i] = -1, G.fl_drop_ms[k][i] = -1, G.fl_hold_min[k][i] = 1;
+        G.fl_presses[k]++, G.fl_waiting[k] = true;
+      }
+      int i = (G.fl_presses[k] < FLH ? G.fl_presses[k] : FLH) - 1;
+      if (i >= 0) {
+        if (G.fl_waiting[k] && frac > 0.001f) G.fl_move[k][i] = (int32_t)ticks_run, G.fl_waiting[k] = false;
+        if (coil && F->reach_t >= 0) G.fl_full_ms[k][i] = F->reach_t * 1000, G.fl_hold_min[k][i] = fminf(G.fl_hold_min[k][i], frac);
+        if (!coil && G.fl_drop_ms[k][i] < 0 && F->reach_t >= 0) G.fl_drop_ms[k][i] = F->reach_t * 1000;
+      }
+      G.fl_was[k] = coil;
+    }
+  }
 }
 
 /* ── the dot display ─────────────────────────────────────────────────── */
@@ -444,10 +494,20 @@ static void hud_play(cw_vec2 cs, float u) {
   if (plunging || g->ball_ticks < 60 * 12) {
     float x = cs.x * 0.165f;
     y += 14 * u;
-    cw_prompt_text(font, "{launch}: hold, let go to launch", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
-    y += cw_prompt_text_size(font, "{launch}", -1, bs).y + 12 * u;
-    cw_prompt_text(font, "{flip_left|flip_right}: flippers", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
-    y += cw_prompt_text_size(font, "{flip_left}", -1, bs).y + 12 * u;
+    /* a pad's diamond: west and east the flippers, south the plunger and then both flippers, north the nudge */
+    const char *south = plunging ? "{launch}: hold, let go to launch" : "{flip_both}: both flippers";
+    cw_prompt_text(font, south, -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
+    y += cw_prompt_text_size(font, south, -1, bs).y + 12 * u;
+    bool pad = false; /* players on a pad: the diamond's sides first, the shoulders and the d-pad after */
+    for (int i = 0; i < MAXP; i++) pad |= cw_prompt_device_of(i) == CW_PROMPT_PAD;
+    const char *fl = pad ? "{pad:west} {pad:east}: flippers" : "{flip_left|flip_right}: flippers";
+    cw_prompt_text(font, fl, -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
+    y += cw_prompt_text_size(font, fl, -1, bs).y + 12 * u;
+    if (pad) {
+      const char *also = "{pad:lshoulder} {pad:rshoulder} {flip_left|flip_right}: flippers too";
+      cw_prompt_text(font, also, -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+      y += cw_prompt_text_size(font, also, -1, bs).y + 12 * u;
+    }
     cw_prompt_text(font, "{nudge}: nudge (not too hard)", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
   }
   /* the right panel: every player's score, whose turn, the ball */
@@ -546,14 +606,16 @@ static void hud(void) {
 /* ── frame ───────────────────────────────────────────────────────────── */
 
 static void render(void *u, double alpha) {
-  (void)u;
+  (void)u, (void)alpha;
   const float dt = 1.0f / 60.0f; /* the view animates by frames: the same pictures on every host */
   music_update();
   if (G.built) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(&G.g, G.camera, (float)w / (float)h, dt);
-    view_sync(&G.g, cw_shell_screen_now() == CW_SHELL_PLAY ? (float)alpha : 1.0f, dt);
+    /* the balls where the simulation has them now, as the flippers are: drawn between the last two ticks (the step's
+     * leftover, about 0 on a 60 Hz screen) they showed the ball a tick behind the flipper that had already hit it */
+    view_sync(&G.g, 1.0f, dt);
     view_stats vs = view_get_stats();
     G.lights = vs.lights, G.lamps = vs.lamps_lit;
   }

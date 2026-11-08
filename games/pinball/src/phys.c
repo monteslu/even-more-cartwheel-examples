@@ -47,8 +47,11 @@ int pb_add_circle(pb_world *w, float x, float y, float r, float e, float mu, int
 int pb_add_flipper(pb_world *w, float px, float py, float len, float rb, float rt, float rest, float up, int tag) {
   if (w->nfl >= PB_MAXFL) return -1;
   pb_flipper *f = &w->fl[w->nfl];
+  /* the coil: full speed (52 rad/s, 3.9 m/s at the tip) in 9 ms and the whole 58 degree stroke in about 24 ms, so the
+   * button to full stroke (half a tick waiting for the step on average, one frame on a 60 Hz screen) stays inside a
+   * real machine's 30 to 50 ms; the return spring brings it back to rest in about 28 ms (tests/pinball-flippers.mjs) */
   *f = (pb_flipper){ .px = px, .py = py, .len = len, .rb = rb, .rt = rt, .rest = rest, .up = up, .ang = rest,
-                     .wmax = 38.0f, .alpha_up = 2600.0f, .alpha_down = 1300.0f, .e = 0.55f, .mu = 0.35f, .on = true, .tag = (int16_t)tag };
+                     .wmax = 52.0f, .alpha_up = 5700.0f, .alpha_down = 3000.0f, .e = 0.55f, .mu = 0.35f, .on = true, .tag = (int16_t)tag };
   return w->nfl++;
 }
 
@@ -438,9 +441,11 @@ void pb_step(pb_world *w, float dt) {
     } else if (b->state == BS_PATH) vmax = fmaxf(vmax, fabsf(b->sv) + 10 * dt);
   }
   for (int f = 0; f < w->nfl; f++) {
-    const pb_flipper *F = &w->fl[f];
+    pb_flipper *F = &w->fl[f];
     float target = F->held && F->on ? F->up : F->rest;
     if (F->ang != target || F->omega != 0) wfl = fmaxf(wfl, F->wmax);
+    bool coil = F->held && F->on;
+    if (coil != F->coil_was) F->coil_was = coil, F->coil_t = 0, F->reach_t = F->ang == target ? 0 : -1;
   }
   int n = (int)ceilf(fmaxf(vmax * dt / (0.5f * PB_R), wfl * dt / 0.02f));
   n = n < 4 ? 4 : n > 96 ? 96 : n;
@@ -462,6 +467,8 @@ void pb_step(pb_world *w, float dt) {
         F->ang += F->omega * h;
         if ((sg > 0 && F->ang >= target) || (sg < 0 && F->ang <= target)) F->ang = target, F->omega = 0;
       } else F->omega = 0;
+      F->coil_t += h;
+      if (F->reach_t < 0 && F->ang == target) F->reach_t = F->coil_t;
       fs[f] = (flip_sub){ a0, F->ang, (F->ang - a0) / h };
     }
     for (int i = 0; i < PB_MAXB; i++) {
