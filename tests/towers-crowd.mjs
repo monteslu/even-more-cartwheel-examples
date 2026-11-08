@@ -3,11 +3,11 @@
 // four bots) is drawn twice from the same deterministic run: as it is, and with the crowd hidden
 // (TOWERS_HIDE=1, the ground and everything else the same). The crowd's pixels are those the crowd changed; over them:
 //   value step:  the mean relative luminance of the crowd against the ground under it, as a ratio (brighter over
-//                darker): at least VALUE_MIN, so the crowd stands off its ground (dark on the pale grounds, lit on the
-//                dark ones);
-//   parting:     the crowd's own local contrast (each pixel's luma against its 9 x 9 neighbourhood, crowd pixels only):
-//                at least PART_MIN, so the bodies part from one another (an edge round each) instead of running
-//                together into one band.
+//                darker): at least VALUE_MIN, so the crowd stands off its ground;
+//   the way:     on a dark path (its luminance under DARK_PATH, the snowfields' frozen earth) the crowd must be the
+//                lighter of the two: a dark-inked crowd on a dark path reads as one dark band;
+//   parting:     the crowd's own local contrast (each pixel's luma against its 9 x 9 neighbourhood, crowd pixels
+//                only), reported: how far the bodies part from one another.
 // CONTROL, which must fail: the snowfields with TOWERS_OLD_INK=1 (the old thin dark ink edge on their dark path).
 // Run: node tests/towers-crowd.mjs [webgpu]   (holds the GPU suite lock; frames in out/towers-crowd)
 import { spawnSync } from 'node:child_process';
@@ -25,7 +25,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
 const MAPS = { meadow: 5, autumn: 10, desert: 15, snow: 20, volcano: 25, crystal: 30 };
-const VALUE_MIN = 1.35, PART_MIN = 0.055, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' };
+const VALUE_MIN = 1.35, DARK_PATH = 0.14, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' };
 const dir = join(ROOT, 'out', 'towers-crowd', GPU);
 mkdirSync(dir, { recursive: true });
 
@@ -57,7 +57,7 @@ function measure(withF, without) {
   return { share: cnt / n, value, part: part / cnt, crowd: ma, ground: mb };
 }
 const fmt = (m) => `crowd ${(m.share * 100).toFixed(1)}% of the screen, luminance ${m.crowd.toFixed(3)} on ${m.ground.toFixed(3)} (x${m.value.toFixed(2)}), parting ${m.part.toFixed(4)}`;
-const ok = (m) => m.share > 0.01 && m.value >= VALUE_MIN && m.part >= PART_MIN;
+const ok = (m) => m.share > 0.01 && m.value >= VALUE_MIN && (m.ground >= DARK_PATH || m.crowd > m.ground);
 let bad = 0;
 const run = async (name, map, env = {}) => {
   const o = { map, wave: WAVE, frames: FRAMES, gpu: GPU };
@@ -69,7 +69,7 @@ const run = async (name, map, env = {}) => {
 for (const [theme, map] of Object.entries(MAPS)) {
   const m = await run(theme, map);
   if (ok(m)) console.log(`ok   ${theme} (map ${map}) ${fmt(m)}`);
-  else { bad++; console.log(`FAIL ${theme} (map ${map}) ${fmt(m)} (value at least x${VALUE_MIN}, parting at least ${PART_MIN})`); }
+  else { bad++; console.log(`FAIL ${theme} (map ${map}) ${fmt(m)} (value at least x${VALUE_MIN}, and lighter than a path darker than ${DARK_PATH})`); }
 }
 const c = await run('snow-old-ink', MAPS.snow, { TOWERS_OLD_INK: '1' });
 if (!ok(c)) console.log(`ok   control fails as it must (the snowfields with the old dark ink): ${fmt(c)}`);

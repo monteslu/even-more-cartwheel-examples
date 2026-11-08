@@ -262,7 +262,7 @@ static void kind_load(int k) {
     int cap = MON_CAP[k] / CW_MAX(kv->nwalk, 1) * 3 / 2 + 48;
     kv->im[f] = imesh(MON_NAME[k], t3_retain(kv->c.geo[0][f]), t3_retain(m), cap);
     if (k == CK_SKITTER) continue; /* the swarm is cyan specks: an edge on each costs a third of the crowd's edges and reads as nothing */
-    t3_geometry *hg = hull(kv->c.geo[0][f], getenv("TOWERS_OLD_INK") ? 0.045f : 0.075f); /* an edge thick enough to part a packed crowd into bodies */
+    t3_geometry *hg = hull(kv->c.geo[0][f], 0.045f);
     if (!hg) continue;
     t3_instanced_mesh *e = imesh(MON_NAME[k], hg, t3_retain(em), 1);
     t3_release(e->instance_matrix), t3_release(e->instance_color);
