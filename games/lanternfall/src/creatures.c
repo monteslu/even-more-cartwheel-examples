@@ -1991,7 +1991,8 @@ static void paint_hero(int i) {
   H[0].scarf = done(0.6f, 0.08f, 2);
 }
 
-static float hero_run[16], hero_swing[16], hero_swing_v[16]; /* (per player; the showcase uses more slots) */
+static float hero_run[16], hero_swing[16], hero_swing_v[16];
+static cw_vec2 hero_tip[16]; /* (the lantern in the world, for the strike's trail) */ /* (per player; the showcase uses more slots) */
 void creature_hero(const player *p, int i, int region, float t) {
   if (!p->active) return;
   const struct hero_parts *h = &H[i % MAXP];
@@ -2067,6 +2068,7 @@ void creature_hero(const player *p, int i, int region, float t) {
   float lx = hx + tip.x, ly = hy + tip.y + 0.02f + bob; /* (the arm takes up the body's bob) */
   putx(&h->lantern, lx, ly, hero_swing[i] + sinf(t * 2) * 0.04f, 1, 1, false, p->atk_t > 0 ? 1.5f : 2.2f, white(1), true); /* (dimmer as it sweeps: no streak of light) */
   put(&h->hand, hx, hy, 0, 1, 1);
+  hero_tip[i] = W(lx, ly + 0.2f);
   flush();
   cw_vec2 lw = W(lx, ly + 0.28f);
   cr_light(lw.x, lw.y, 8, (cw_color){ 1, 0.85f, 0.6f, 1 }, 0.55f, true);
@@ -2080,4 +2082,31 @@ void creatures_init(void) {
   for (int i = 0; i < MAXP; i++) paint_hero(i);
   clock_gettime(CLOCK_MONOTONIC, &b);
   if (getenv("LANTERNFALL_BENCH") || getenv("LANTERNFALL_SHOWCASE")) fprintf(stderr, "lanternfall: creatures painted in %.0f ms\n", (double)(b.tv_sec - a.tv_sec) * 1e3 + (double)(b.tv_nsec - a.tv_nsec) * 1e-6);
+}
+
+/* ── the hero's trails (the additive layer): the strike's sweep as a ribbon behind the lantern, fading over the
+ * strike's ticks; the dash a smear behind the body. Soft (strikes come three a second): never a flash. ── */
+enum { TRAIL_N = 10 };
+static cw_vec2 tip_hist[16][TRAIL_N], body_hist[16][TRAIL_N];
+static int hist_n[16];
+void creature_hero_track(const player *p, int i) {
+  i &= 15;
+  for (int k = TRAIL_N - 1; k > 0; k--) tip_hist[i][k] = tip_hist[i][k - 1], body_hist[i][k] = body_hist[i][k - 1];
+  tip_hist[i][0] = hero_tip[i], body_hist[i][0] = (cw_vec2){ p->x, p->y - 0.9f };
+  if (hist_n[i] < TRAIL_N) hist_n[i]++;
+}
+void creature_hero_fx(const player *p, int i) {
+  i &= 15;
+  if (!p->active) return;
+  int n = hist_n[i] < TRAIL_N ? hist_n[i] : TRAIL_N;
+  if (p->atk_t > 0 && n >= 3) {
+    int m = 14 - p->atk_t + 1; /* (only the strike's own path) */
+    m = m < 2 ? 2 : m > n ? n : m;
+    float k = (float)p->atk_t / 14.0f;
+    cw_r2d_trail(&(cw_r2d_trail_desc){ .points = tip_hist[i], .count = m, .head_width = 0.32f * k + 0.08f, .tail_width = 0.02f,
+                                       .head_color = (cw_color){ 1, 0.9f, 0.65f, 0.38f * k }, .tail_color = (cw_color){ 1, 0.7f, 0.4f, 0 } });
+  }
+  if (p->state == PS_DASH && n >= 3)
+    cw_r2d_trail(&(cw_r2d_trail_desc){ .points = body_hist[i], .count = n < 6 ? n : 6, .head_width = 0.9f, .tail_width = 0.2f,
+                                       .head_color = (cw_color){ 0.6f, 0.9f, 1, 0.22f }, .tail_color = (cw_color){ 0.6f, 0.9f, 1, 0 } });
 }

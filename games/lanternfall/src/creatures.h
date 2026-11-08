@@ -14,6 +14,8 @@ void creatures_init(void);
 void creature_enemy(const enemy *e, int region, float t);
 void creature_boss(const boss *b, int region, float t);
 void creature_hero(const player *p, int i, int region, float t); /* the hooded lamplighter, player i */
+void creature_hero_track(const player *p, int i); /* once a tick after drawing: the trails' history */
+void creature_hero_fx(const player *p, int i);    /* the strike's ribbon and the dash smear (the additive layer) */
 /* the deaths of the tick (EV_KILL, EV_BOSS_DOWN): remnants that fall apart and burn out */
 void creatures_events(const sim *s, int region);
 void creatures_tick(float dt);

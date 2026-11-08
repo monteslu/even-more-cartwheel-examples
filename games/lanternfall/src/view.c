@@ -1713,7 +1713,7 @@ void view_draw(const sim *s, float t) {
       limb(v2(p->x, p->y - 1.1f), v2(a->x, a->y), 0.04f, 0.04f, rgba(1, 0.9f, 0.6f, 1));
     }
     if (flat_creatures()) draw_hero(s, i, t);
-    else creature_hero(&s->p[i], i, region, t);
+    else creature_hero(&s->p[i], i, region, t), creature_hero_track(&s->p[i], i);
   }
   /* effects: additive glows and particles over the lit scene */
   cw_r2d_use_layer(L_FX);
@@ -1739,7 +1739,8 @@ void view_draw(const sim *s, float t) {
     const player *p = &s->p[i];
     if (!p->active) continue;
     glow(p->x, p->y - 1.0f, 2.6f, rgba(1, 0.8f, 0.5f, 0.12f));
-    if (p->atk_t > 4) {
+    if (!flat_creatures()) creature_hero_fx(p, i); /* (the strike's ribbon, the dash smear: creatures.c) */
+    if (p->atk_t > 4 && flat_creatures()) {
       float k = 1 - (float)(p->atk_t - 4) / 10.0f, f = p->facing_left ? -1.0f : 1.0f;
       float a0, a1;
       cw_vec2 c = v2(p->x, p->y - 1.0f);
@@ -1749,7 +1750,7 @@ void view_draw(const sim *s, float t) {
       cw_r2d_arc(c, 1.2f, 2.1f, a0 + (a1 - a0) * (k - 0.5f), a0 + (a1 - a0) * k, 14, rgba(0.85f, 0.95f, 1, 0.3f * (1 - k * 0.6f))); /* (soft: strikes come three a second) */
     }
     if (p->sprint) cw_r2d_rect((cw_rect){ p->x - (p->vx > 0 ? 1.8f : -0.4f) - (p->vx > 0 ? 0 : 1.4f), p->y - 1.6f, 1.8f, 1.4f }, rgba(1, 0.75f, 0.4f, 0.18f));
-    if (p->state == PS_DASH) cw_r2d_rect((cw_rect){ p->x - (p->dash_dir > 0 ? 2.5f : 0), p->y - 1.3f, 2.5f, 0.9f }, rgba(0.6f, 0.9f, 1, 0.25f));
+    if (p->state == PS_DASH && flat_creatures()) cw_r2d_rect((cw_rect){ p->x - (p->dash_dir > 0 ? 2.5f : 0), p->y - 1.3f, 2.5f, 0.9f }, rgba(0.6f, 0.9f, 1, 0.25f));
   }
   creatures_fx(s, t);
   draw_tells(s, t);
