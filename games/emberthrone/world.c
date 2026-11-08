@@ -1194,10 +1194,8 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
   if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
-  /* the terrain out of the picture: its node moved far down (the terrain follows its node every tick; Terrain3D ignores
-   * visible, so NOTERRAIN moves it too) */
-  /* (no probe takes the terrain out: Terrain3D ignores visible, its node carries the regions, and its origin follows
-   * the node every tick) */
+  /* the terrain out of the picture (with the grass and stones it carries) */
+  if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
