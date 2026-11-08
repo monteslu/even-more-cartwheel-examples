@@ -115,7 +115,7 @@ static void draw_map(const sim *s, const hud_state *h, float t, cw_vec2 cs, floa
   int region = s->room >= 0 ? w->rooms[s->room].region : 0;
   text(REGIONS[region].name, cs.x * 0.5f, 30 * u, 44 * u, hexa(REGIONS[region].top, 1), CW_ALIGN_CENTER);
   int got = 0, all = w->npickups, seen = 0;
-  for (int k = 0; k < 4; k++) got += sim_pickups_got(s, k);
+  for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(s, k);
   for (int r = 0; r < w->nrooms; r++) seen += (s->seen[r >> 3] >> (r & 7)) & 1;
   snprintf(b, sizeof b, "rooms %d of %d    finds %d of %d    beacons %d of 5", seen, w->nrooms, got, all, sim_beacons(s));
   text(b, cs.x * 0.5f, cs.y - bottom + 12 * u, 28 * u, rgba(0.9f, 0.92f, 1, 1), CW_ALIGN_CENTER);
@@ -242,7 +242,7 @@ void hud_draw(const sim *s, const hud_state *h, float t) {
     float a = fminf(1, h->won_t);
     cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, rgba(1, 0.95f, 0.8f, 0.35f * a));
     text("THE HEART WAKES", cs.x * 0.5f, cs.y * 0.35f, 84 * u, rgba(1, 0.9f, 0.6f, a), CW_ALIGN_CENTER);
-    snprintf(b, sizeof b, "the lanterns are lit again.   finds %d of %d   relics %d", sim_pickups_got(s, 0) + sim_pickups_got(s, 1) + sim_pickups_got(s, 2) + sim_pickups_got(s, 3),
+    snprintf(b, sizeof b, "the lanterns are lit again.   finds %d of %d   relics %d", sim_finds(s),
              s->w->npickups, s->relics);
     text(b, cs.x * 0.5f, cs.y * 0.35f + 110 * u, 32 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }

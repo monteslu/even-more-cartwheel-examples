@@ -6,7 +6,7 @@
 #include "cartwheel/math.h"
 #include "sim.h"
 
-const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "WALL CLIMB", "PLUNGE", "TIDE CHARM", "GRAPPLE LINE" };
+const char *const ABILITY_NAME[NABILITIES] = { "SPARK", "SECOND JUMP", "DASH", "GRAPPLE LINE", "WALL CLIMB", "PLUNGE", "TIDE CHARM" };
 const char *const CHARM_NAME[CH_KINDS] = { "LONG WICK", "CUTTING DASH", "RUNNER'S STRIDE", "EMBER HARVEST", "SWIFT MEND", "UPDRAFT", "THORN WARD",
                                          "QUICK HAND", "TWIN SPARK", "QUAKE", "SECOND WIND" };
 const char *const CHARM_LINE[CH_KINDS] = { "your strike reaches further", "{dash} cuts through what it passes, and nothing touches you in it",
@@ -630,6 +630,27 @@ int sim_pickups_total(const world *w, int pk) {
   for (int i = 0; i < w->nents; i++) n += w->ents[i].kind == EK_PICKUP && w->ents[i].sub == pk;
   return n;
 }
+bool sim_pk_seen(const sim *s, int id) { return id >= 0 && id < MAXENTS && ((s->pk_seen[id >> 3] >> (id & 7)) & 1); }
+int sim_finds(const sim *s) {
+  int n = 0;
+  for (int k = 0; k < PK_KINDS; k++) n += sim_pickups_got(s, k);
+  return n;
+}
+int sim_lore_found(const sim *s) {
+  int n = 0;
+  for (int i = 0; i < NLORE; i++) n += (s->lore[i >> 3] >> (i & 7)) & 1;
+  return n;
+}
+bool sim_in_view(const world *w, int ri, float fx, float fy, float px, float py) {
+  if (ri < 0 || w_room_at(w, px, py) != ri) return false;
+  const room *rm = &w->rooms[ri];
+  float tx = fx, ty = fy - 1.2f;
+  float x0 = (float)(rm->x * CELL_W) + 16, x1 = (float)((rm->x + rm->w) * CELL_W) - 16;
+  float y0 = (float)(rm->y * CELL_H) + 9, y1 = (float)((rm->y + rm->h) * CELL_H) - 9;
+  tx = x1 < x0 ? (x0 + x1) * 0.5f : tx < x0 ? x0 : tx > x1 ? x1 : tx;
+  ty = y1 < y0 ? (y0 + y1) * 0.5f : ty < y0 ? y0 : ty > y1 ? y1 : ty;
+  return absf(px - tx) <= 15.6f && absf(py - ty) <= 8.6f;
+}
 int sim_pickups_got(const sim *s, int pk) {
   int n = 0;
   for (int i = 0; i < s->w->nents; i++) n += s->w->ents[i].kind == EK_PICKUP && s->w->ents[i].sub == pk && sim_got(s, s->w->ents[i].id);
@@ -929,6 +950,15 @@ void sim_step(sim *s, const pinput in[MAXP]) {
       for (int j = 0; j < MAXP; j++) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
       ev(s, EV_ECHO, 1, 0, p->x, p->y - 0.9f);
     }
+    /* pickups: those on screen are marked seen (the map shows them until taken), then the ones touched are taken */
+    if (i == 0)
+      for (int k = 0; k < s->w->nents; k++) {
+        const ent *e = &s->w->ents[k];
+        if (e->kind != EK_PICKUP || e->room != s->room || sim_pk_seen(s, e->id)) continue;
+        int ex = (int)floorf(e->x), ey = (int)roundf(e->y);
+        if (tile(s, ex, ey - 1) == T_SECRET) continue; /* (inside hidden rock) */
+        if (sim_in_view(s->w, s->room, p->x, p->y, e->x, e->y - 0.6f)) s->pk_seen[e->id >> 3] |= (uint8_t)(1 << (e->id & 7));
+      }
     /* pickups */
     for (int k = 0; k < s->w->nents; k++) {
       const ent *e = &s->w->ents[k];
@@ -940,6 +970,8 @@ void sim_step(sim *s, const pinput in[MAXP]) {
           if (e->sub == PK_HEALTH) s->p[j].hp_max++, s->p[j].hp = s->p[j].hp_max;
           if (e->sub == PK_ENERGY) s->p[j].en_max++, s->p[j].en = s->p[j].en_max;
         }
+        if (e->sub == PK_MAPSTONE && e->arg < 16) s->maps |= (uint16_t)(1u << e->arg);
+        if (e->sub == PK_LORE && e->arg < NLORE) s->lore[e->arg >> 3] |= (uint8_t)(1 << (e->arg & 7));
         ev(s, EV_PICKUP, e->sub, e->arg, e->x, e->y);
         if (e->sub == PK_RELIC) { /* a relic: the next charm (a new move); past the last, a leaf or a measure */
           int c = s->relics++;
@@ -1091,6 +1123,9 @@ void sim_save(const sim *s, save_state *o) {
   memcpy(o->broken, seeds, sizeof(uint32_t) * (size_t)nseeds);
   o->play_ticks = s->tick;
   o->charms = s->charms;
+  o->maps = s->maps;
+  memcpy(o->lore, s->lore, sizeof o->lore);
+  memcpy(o->pk_seen, s->pk_seen, sizeof o->pk_seen);
   o->echo = s->echo, o->echo_x = s->echo_x, o->echo_y = s->echo_y;
   memcpy(o->trials_done, s->trials_done, sizeof o->trials_done);
 }
@@ -1110,6 +1145,9 @@ void sim_restore(sim *s, const save_state *in) {
   }
   s->tick = in->play_ticks;
   s->charms = in->charms;
+  s->maps = in->maps;
+  memcpy(s->lore, in->lore, sizeof s->lore);
+  memcpy(s->pk_seen, in->pk_seen, sizeof in->pk_seen);
   s->echo = in->echo != 0, s->echo_x = in->echo_x, s->echo_y = in->echo_y;
   memcpy(s->trials_done, in->trials_done, sizeof in->trials_done);
   if (s->save_ent >= 0 && s->save_ent < s->w->nents) sim_teleport(s, s->w->ents[s->save_ent].x, s->w->ents[s->save_ent].y);

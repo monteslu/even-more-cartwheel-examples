@@ -40,6 +40,85 @@ static void *slurp(const char *path, size_t *n) {
   return b;
 }
 
+/* LANTERNFALL_SOAK_TIMELINE=1: the seconds between meaningful events as the bot plays (the fun measure in
+ * internal notes): a new region, a special room entered the first time (a shrine, an item room, an arena, a gate, a
+ * hidden room, a set piece), a new kind of room, a reward taken, a secret opened, a landmark coming into view. */
+enum { TL_REGION, TL_ROOM, TL_KIND, TL_REWARD, TL_SECRET, TL_LANDMARK, TL_N };
+static const char *const TL_NAME[TL_N] = { "region", "special room", "new room kind", "reward", "secret", "landmark" };
+static double tl_t[8192];
+static int tl_k[8192], tl_room[8192], tl_n;
+static int tl_cur_room;
+static uint32_t tl_ab[8192], tl_cur_ab;
+static uint8_t tl_region[NREGIONS], tl_seen_room[MAXROOMS], tl_kind[256], tl_land[MAXENTS / 8];
+static void tl_add(long tick, int k) {
+  if (tl_n < 8192) tl_t[tl_n] = (double)tick / 60.0, tl_k[tl_n] = k, tl_room[tl_n] = tl_cur_room, tl_ab[tl_n] = k == TL_REWARD ? tl_cur_ab : 0, tl_n++;
+}
+static void tl_tick(const sim *s, long tick) {
+  tl_cur_room = s->room;
+  for (int k = 0; k < s->nev; k++) {
+    const event *e = &s->ev[k];
+    if (e->kind == EV_PICKUP) tl_cur_ab = e->a == PK_ABILITY ? e->b : 0, tl_add(tick, TL_REWARD);
+    if (e->kind == EV_SECRET) tl_add(tick, TL_SECRET);
+  }
+  int r = s->room;
+  if (r >= 0 && !tl_seen_room[r]) {
+    tl_seen_room[r] = 1;
+    const room *rm = &s->w->rooms[r];
+    if (!tl_region[rm->region]) tl_region[rm->region] = 1, tl_add(tick, TL_REGION);
+    int kind = rm->kind | (room_piece(rm) << 4);
+    if (rm->kind != RK_PLAIN && rm->kind != RK_SHAFT && rm->kind != RK_HALL) tl_add(tick, TL_ROOM);
+    else if (room_piece(rm)) tl_add(tick, TL_ROOM);
+    if (!tl_kind[kind & 255]) tl_kind[kind & 255] = 1, tl_add(tick, TL_KIND);
+  }
+  const player *p = &s->p[0];
+  for (int i = 0; i < s->w->nents; i++) { /* landmarks in view (the camera shows about 32 x 18 tiles round the player) */
+    const ent *e = &s->w->ents[i];
+    if (!ent_is_landmark(e) || e->room != s->room || ((tl_land[i >> 3] >> (i & 7)) & 1)) continue;
+    if (fabsf(e->x - p->x) < 15 && fabsf(e->y - p->y) < 8) tl_land[i >> 3] |= (uint8_t)(1 << (i & 7)), tl_add(tick, TL_LANDMARK);
+  }
+}
+static int dcmp(const void *a, const void *b) { double x = *(const double *)a, y = *(const double *)b; return x < y ? -1 : x > y; }
+static void tl_report(long ticks) {
+  int count[TL_N] = { 0 };
+  for (int i = 0; i < tl_n; i++) count[tl_k[i]]++;
+  static double gaps[8192];
+  int ng = 0;
+  double last = 0;
+  for (int i = 0; i < tl_n; i++) { /* events in the same second are one moment */
+    if (tl_t[i] - last >= 1.0 || i == 0) gaps[ng++] = tl_t[i] - last, last = tl_t[i];
+  }
+  gaps[ng++] = (double)ticks / 60.0 - last;
+  qsort(gaps, (size_t)ng, sizeof gaps[0], dcmp);
+  int over60 = 0, over120 = 0;
+  for (int i = 0; i < ng; i++) over60 += gaps[i] > 60, over120 += gaps[i] > 120;
+  printf("timeline: %.1f game minutes, %d moments;", (double)ticks / 3600.0, ng);
+  for (int k = 0; k < TL_N; k++) printf(" %s %d,", TL_NAME[k], count[k]);
+  printf("\ntimeline gaps (s): median %.1f, p75 %.1f, p90 %.1f, max %.1f; over 60 s: %d, over 120 s: %d\n", gaps[ng / 2], gaps[ng * 3 / 4], gaps[ng * 9 / 10],
+         gaps[ng - 1], over60, over120);
+  /* the same for the moments that are rewards or secrets alone (what the player gets for exploring) */
+  ng = 0, last = 0;
+  for (int i = 0; i < tl_n; i++)
+    if (tl_k[i] == TL_REWARD || tl_k[i] == TL_SECRET) gaps[ng++] = tl_t[i] - last, last = tl_t[i];
+  gaps[ng++] = (double)ticks / 60.0 - last;
+  qsort(gaps, (size_t)ng, sizeof gaps[0], dcmp);
+  over60 = over120 = 0;
+  for (int i = 0; i < ng; i++) over60 += gaps[i] > 60, over120 += gaps[i] > 120;
+  printf("timeline reward/secret gaps (s): median %.1f, p75 %.1f, p90 %.1f, max %.1f; over 60 s: %d, over 120 s: %d\n", gaps[ng / 2], gaps[ng * 3 / 4],
+         gaps[ng * 9 / 10], gaps[ng - 1], over60, over120);
+  { /* minutes of play with nothing new in them */
+    int nm = (int)(ticks / 3600) + 1, empty = 0;
+    static uint8_t busy[1024];
+    memset(busy, 0, sizeof busy);
+    for (int i = 0; i < tl_n; i++) if ((int)(tl_t[i] / 60) < 1024) busy[(int)(tl_t[i] / 60)] = 1;
+    for (int m = 0; m < nm && m < 1024; m++) empty += !busy[m];
+    printf("timeline empty minutes: %d of %d (%.0f%%)\n", empty, nm, 100.0 * empty / nm);
+  }
+  for (int i = 0; i < tl_n; i++) /* the abilities, as they came */
+    if (tl_k[i] == TL_REWARD && tl_ab[i]) printf("timeline ability %02x at %.1f min\n", tl_ab[i], tl_t[i] / 60);
+  if (getenv("LANTERNFALL_SOAK_TIMELINE_ALL"))
+    for (int i = 0; i < tl_n; i++) printf("  %8.1f %s (room %d, %s)\n", tl_t[i], TL_NAME[tl_k[i]], tl_room[i], tl_room[i] >= 0 ? REGIONS[W.rooms[tl_room[i]].region].name : "-");
+}
+
 int main(int argc, char **argv) {
   if (argc < 3) { fprintf(stderr, "usage: lanternfall_soak <assets dir> <minutes> [players]\n"); return 2; }
   char path[1024];
@@ -55,6 +134,8 @@ int main(int argc, char **argv) {
   sim_init(&S, &W, players);
   S.assist = getenv("LANTERNFALL_ASSIST") ? atoi(getenv("LANTERNFALL_ASSIST")) : 3;
   bool inject = getenv("LANTERNFALL_SOAK_INJECT") != NULL;
+  bool timeline = getenv("LANTERNFALL_SOAK_TIMELINE") != NULL;
+  long tl_ticks = 0;
   /* LANTERNFALL_SOAK_SEED=n: another run of the same world (the sim has no randomness of its own): the bot waits n % 97
    * ticks before it starts, so every enemy and warden meets it at another point of its cycle, and its wiggles go
    * another way */
@@ -65,13 +146,19 @@ int main(int argc, char **argv) {
   for (long tick = 0; tick < (long)minutes * 3600 && !S.won; tick++) {
     pinput in[MAXP];
     memset(in, 0, sizeof in);
+    static int goal_i; /* (the step the goal trace last looked at) */
     if (tick >= (long)(seed % 97)) bot_input(&B, &S, 0, &in[0]);
     for (int i = 1; i < S.players; i++) bot_follow(&S, i, &in[i]);
     static int prev_i;
     int i_before = B.i;
     sim_step(&S, in);
+    if (timeline) tl_tick(&S, tick), tl_ticks = tick + 1;
     if (getenv("LANTERNFALL_SOAK_HURT") && B.i < prev_i - 40) printf("t%ld REGRESS step %d -> %d at %.1f,%.1f room %d mode %d deaths %d\n", tick, prev_i, B.i, S.p[0].x, S.p[0].y, S.room, B.mode, S.deaths);
     prev_i = i_before > B.i ? i_before : B.i;
+    if (getenv("LANTERNFALL_SOAK_GOALS") && B.i > goal_i)
+      for (int k = goal_i; k < B.i && k < B.n; k++)
+        if (B.steps[k].goal) printf("t%ld goal step %d at %d,%d (room %d) pickups %d\n", tick, k, B.steps[k].to % TW, B.steps[k].to / TW, w_room_at(&W, (float)(B.steps[k].to % TW) + 0.5f, (float)(B.steps[k].to / TW) - 0.5f), sim_finds(&S));
+    if (B.i > goal_i) goal_i = B.i;
     for (int k = 0; getenv("LANTERNFALL_SOAK_HURT") && k < S.nev; k++)
       if (S.ev[k].kind == EV_HURT || S.ev[k].kind == EV_DIE) {
         printf("t%ld %s hp %d at %.1f,%.1f room %d state %d:", tick, S.ev[k].kind == EV_DIE ? "DIE" : "hurt", S.p[0].hp, S.p[0].x, S.p[0].y, S.room, S.p[0].state);
@@ -130,7 +217,7 @@ int main(int argc, char **argv) {
       int seen = 0;
       for (int r = 0; r < W.nrooms; r++) seen += (S.seen[r >> 3] >> (r & 7)) & 1;
       int got = 0;
-      for (int k = 0; k < 4; k++) got += sim_pickups_got(&S, k);
+      for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(&S, k);
       long rss = rss_kb();
       if (!first_rss) first_rss = rss;
       printf("minute %ld: step %d/%d, pickups %d/%d, wardens %d, rooms %d/%d, abilities %02x, deaths %d, recoveries %d, stuck %d, rss %ld kB (first minute %ld)\n",
@@ -141,6 +228,8 @@ int main(int argc, char **argv) {
       last_i = B.i;
       if (flat_minutes >= 4) {
         printf("soak FAIL: the bot made no progress for 4 minutes at step %d (room %d, at %.1f,%.1f; trial %d wave %d t %d; boss %d)\n", B.i, S.room, S.p[0].x, S.p[0].y, S.trial_room, S.trial_wave, S.trial_t, S.b.active);
+        for (int k = 0; k < W.nents; k++) /* the finds it passed by */
+          if (W.ents[k].kind == EK_PICKUP && !sim_got(&S, W.ents[k].id)) printf("  not taken: pickup %d kind %d in room %d at %.1f,%.1f\n", W.ents[k].id, W.ents[k].sub, W.ents[k].room, W.ents[k].x, W.ents[k].y);
         for (int j = 0; j < S.nen; j++) if (S.en[j].alive) printf("  enemy %d kind %d state %d at %.1f,%.1f hp %d\n", j, S.en[j].kind, S.en[j].state, S.en[j].x, S.en[j].y, S.en[j].hp);
         for (int y = (int)S.p[0].y - 8; y <= (int)S.p[0].y + 5; y++) {
           for (int x = (int)S.p[0].x - 20; x <= (int)S.p[0].x + 20; x++) putchar(x == (int)S.p[0].x && y == (int)S.p[0].y - 1 ? '@' : " #=^~%?BS"[w_tile(&W, x, y) == S.t[y][x] ? S.t[y][x] : S.t[y][x]]);
@@ -151,7 +240,10 @@ int main(int argc, char **argv) {
     }
   }
   int got = 0;
-  for (int k = 0; k < 4; k++) got += sim_pickups_got(&S, k);
+  for (int k = 0; k < PK_KINDS; k++) got += sim_pickups_got(&S, k);
+  if (timeline) tl_report(tl_ticks);
+  for (int k = 0; k < W.nents && getenv("LANTERNFALL_SOAK_GOALS"); k++)
+    if (W.ents[k].kind == EK_PICKUP && !sim_got(&S, W.ents[k].id)) printf("  not taken: pickup %d kind %d in room %d at %.1f,%.1f\n", W.ents[k].id, W.ents[k].sub, W.ents[k].room, W.ents[k].x, W.ents[k].y);
   printf("soak ok: %d minutes, %d pickups, %d wardens, won %d\n", minutes, got, __builtin_popcount(S.bosses_down), S.won ? 1 : 0);
   free(rb);
   return 0;

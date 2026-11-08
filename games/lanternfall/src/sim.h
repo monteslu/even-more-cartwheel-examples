@@ -195,6 +195,9 @@ typedef struct sim {
   bool echo;                  /* a fall leaves your lantern's flame where you fell: a measure of energy stays with it */
   float echo_x, echo_y;       /* (until you go back and touch it; a second fall moves it to the new place) */ /* the world's enemies struck down: they stay down until you rest at a shrine (or fall) */
   bool held_jump[MAXP], held_attack[MAXP], held_dash[MAXP], held_shoot[MAXP], held_grapple[MAXP]; /* presses during a hold */
+  uint16_t maps;              /* regions whose map stone was found (PK_MAPSTONE): their rooms show on the map */
+  uint8_t lore[NLORE / 8];    /* tablets of the story found (PK_LORE, by tale) */
+  uint8_t pk_seen[MAXENTS / 8]; /* pickups that have been on screen (by pickup id): the map marks those not yet reached */
 } sim;
 
 /* rules tools/rules.c can turn off, one at a time, for its controls (0 in the game) */
@@ -210,6 +213,12 @@ void sim_enter_room(sim *s, int room);       /* spawns the room's enemies, start
 uint32_t sim_hash(const sim *s);
 int sim_pickups_total(const world *w, int pk);
 int sim_pickups_got(const sim *s, int pk);
+bool sim_pk_seen(const sim *s, int pickup_id);
+int sim_finds(const sim *s); /* pickups taken, of every kind */
+int sim_lore_found(const sim *s);
+/* the camera's rule: the point is on screen for a player with feet at (fx, fy) in that room (32 x 18 tiles round the
+ * player, inside the room's walls) */
+bool sim_in_view(const world *w, int room, float fx, float fy, float px, float py);
 
 /* the save: what persists */
 typedef struct save_state {
@@ -226,6 +235,9 @@ typedef struct save_state {
   uint8_t trials_done[MAXROOMS / 8];
   uint8_t echo;
   float echo_x, echo_y;
+  uint16_t maps;
+  uint8_t lore[NLORE / 8];
+  uint8_t pk_seen[MAXENTS / 8 > 760 ? 760 : MAXENTS / 8];
 } save_state;
 void sim_save(const sim *s, save_state *out);
 void sim_restore(sim *s, const save_state *in);

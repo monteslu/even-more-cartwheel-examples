@@ -321,7 +321,7 @@ static void fixed_update(void *u, double dt) {
   view_events(&S);
   G.tick = (int32_t)S.tick, G.room = S.room, G.region = S.room >= 0 ? W.rooms[S.room].region : -1, G.abilities = (int32_t)S.abilities;
   G.pickups = 0;
-  for (int k = 0; k < 4; k++) G.pickups += sim_pickups_got(&S, k);
+  for (int k = 0; k < PK_KINDS; k++) G.pickups += sim_pickups_got(&S, k);
   G.bosses = __builtin_popcount(S.bosses_down), G.hp = S.p[0].hp, G.deaths = S.deaths, G.relics = S.relics, G.won = S.won;
   G.px = (int32_t)lroundf(S.p[0].x * 100), G.py = (int32_t)lroundf(S.p[0].y * 100), G.step = B.i, G.hash = S.hash;
 }

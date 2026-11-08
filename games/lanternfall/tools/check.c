@@ -14,11 +14,19 @@
  *   gates      every gate room: its far half cannot be reached without the gate's ability (a control on the
  *              obstacle), and can with it
  *   grounded   every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says
+ *   see before reach  every ability reaches two or more rewards that were on screen at an earlier stage (the camera
+ *              frames 32 x 18 tiles round the player inside its room; a reward inside hidden rock is not seen)
+ *   shortcuts  every ability opens a gate whose two sides were both reached before it
+ *   set pieces every region has a hand-shaped room (pieces.h), and the walk reaches it
+ *   blind drops  no move falls into thorns below where it left the ground that were on screen neither as it left nor
+ *              at the top of its flight (any tile of the thorns' run along their row on screen counts)
  * Exit 0 when everything holds, 1 when a check fails.
  *
  * --break n breaks the world on purpose first (the controls, which must fail): 1 takes the anchors out of the
  * grapple gates, 2 swaps the second jump and the dash prizes, 3 digs a pit with no way out next to the start,
- * 4 lifts a lamp off its ceiling, 5 lowers a wall gate to one jump's height.
+ * 4 lifts a lamp off its ceiling, 5 lowers a wall gate to one jump's height, 6 takes the set pieces' rewards out (see
+ * before reach), 7 lays thorns beside the landing under the Rootway's trapdoors (blind drops), 8 forgets the Rootway's set pieces, 9 walls up the
+ * gates inside a region (shortcuts).
  * --route writes the bot's route: the moves from the start through every pickup and warden (route.bin). */
 #include <math.h>
 #include <pthread.h>
@@ -42,7 +50,7 @@ static bool standable(int x, int y) {
   int t = T[y][x];
   if (!(t_solid(t) || t == T_ONEWAY) || t == T_SECRET) return false; /* (a hidden floor breaks under you: nobody stands on it) */
   for (int k = 1; k <= 2; k++) {
-    int a = w_tile(&W, x, y - k);
+    int a = y - k >= 0 ? T[y - k][x] : T_SOLID; /* (the live tiles: room under a broken hidden wall is room to stand) */
     if (t_solid(a) || a == T_SPIKE) return false;
   }
   if (w_tile(&W, x, y - 2) == T_WATER && T[y - 2][x] == T_WATER) return false;
@@ -51,6 +59,7 @@ static bool standable(int x, int y) {
 
 static void build_nodes(void) {
   nnodes = 0;
+  for (int i = 0; i < TW * TH; i++) node_at[i] = -1; /* (the top rows and the edge columns hold nobody: never left unset) */
   for (int y = 3; y < TH; y++)
     for (int x = 1; x < TW - 1; x++) {
       int i = y * TW + x;
@@ -80,6 +89,95 @@ static int landing_node(const player *p) {
   return -1;
 }
 
+/* ── what is in view: the camera frames 32 x 18 tiles round the player (a little ahead of the feet), inside the
+ * walls of the room it stands in (view.c view_camera) ── */
+static void camera_feet(float fx, float fy, float vx, float *cx, float *cy) {
+  float tx = fx + vx * 0.18f, ty = fy - 1.2f;
+  int r = w_room_at(&W, fx, fy - 0.5f);
+  if (r >= 0) {
+    const struct room *rm = &W.rooms[r];
+    float x0 = (float)(rm->x * CELL_W) + 16, x1 = (float)((rm->x + rm->w) * CELL_W) - 16;
+    float y0 = (float)(rm->y * CELL_H) + 9, y1 = (float)((rm->y + rm->h) * CELL_H) - 9;
+    tx = x1 < x0 ? (x0 + x1) * 0.5f : tx < x0 ? x0 : tx > x1 ? x1 : tx;
+    ty = y1 < y0 ? (y0 + y1) * 0.5f : ty < y0 ? y0 : ty > y1 ? y1 : ty;
+  }
+  *cx = tx, *cy = ty;
+}
+static void camera_at(int tile, float *cx, float *cy) { camera_feet((float)(tile % TW) + 0.5f, (float)(tile / TW), 0, cx, cy); }
+/* the point is on screen for a player whose feet are at (fx, fy), running at vx */
+static bool in_view_feet(float fx, float fy, float vx, float px, float py) {
+  if (w_room_at(&W, fx, fy - 0.5f) != w_room_at(&W, px, py)) return false;
+  float cx, cy;
+  camera_feet(fx, fy, vx, &cx, &cy);
+  return fabsf(px - cx) <= 15.6f && fabsf(py - cy) <= 8.6f;
+}
+/* the point (px, py) is on screen for a player standing on tile, in the same room */
+static bool in_view(int tile, float px, float py) {
+  int x = tile % TW, y = tile / TW;
+  if (w_room_at(&W, (float)x + 0.5f, (float)y - 0.5f) != w_room_at(&W, px, py)) return false;
+  float cx, cy;
+  camera_at(tile, &cx, &cy);
+  return fabsf(px - cx) <= 15.6f && fabsf(py - cy) <= 8.6f;
+}
+
+/* any tile of the run of thorns along that row is on screen (the edge of a pit seen is the pit seen) */
+static bool thorns_in_view(int hz, float gx, float gy, float gvx) {
+  int hx = hz % TW, hy = hz / TW;
+  for (int dir = -1; dir <= 1; dir += 2)
+    for (int x = dir < 0 ? hx : hx + 1; w_in(x, hy) && T[hy][x] == T_SPIKE; x += dir)
+      if (in_view_feet(gx, gy, gvx, (float)x + 0.5f, (float)hy + 0.5f)) return true;
+  return false;
+}
+/* a move played like move_play (reach.c), but when it ends in thorns it says which tile: -1 none */
+/* gx, gy, gvx: where it last left the ground (feet, speed); ax, ay, avx: the top of its flight after that */
+static int move_play_h(const move *m, uint32_t abilities, float x, float y, player *out, int *broke, int *hazard, float *gx, float *gy, float *gvx, float *ax,
+                       float *ay, float *avx) {
+  player p;
+  memset(&p, 0, sizeof p);
+  p.hp_max = 5, p.en_max = 3;
+  player_spawn(&p, x, y);
+  p.on_ground = 1;
+  pworld pw = { .t = (const uint8_t(*)[TW])T, .abilities = abilities };
+  int room = w_room_at(&W, x, y - 0.5f);
+  pworld_anchors(&pw, &W, room);
+  int phase = 0;
+  *broke = -1, *hazard = -1;
+  *gx = x, *gy = y, *gvx = 0, *ax = x, *ay = y, *avx = 0;
+  bool rising = false;
+  for (int tick = 0; tick <= MOVE_MAX_TICKS + 60; tick++) {
+    pinput in;
+    if (!move_input(m, tick, &p, &phase, &in)) {
+      *out = p;
+      return tick;
+    }
+    float bx = p.x, by = p.y, bvx = p.vx, bvy = p.vy;
+    if (p.on_ground) *gx = p.x, *gy = p.y, *gvx = p.vx, *ax = p.x, *ay = p.y, *avx = p.vx, rising = false;
+    else if (p.vy < 0) rising = true;
+    else if (rising) *ax = p.x, *ay = p.y, *avx = p.vx, rising = false; /* (the top of the flight) */
+    int b = player_step(&p, &in, &pw);
+    if (p.ev & PE_HAZARD) { /* the thorns it touched: round where the body was going */
+      float hx = bx + bvx * DT, hy = by + bvy * DT;
+      for (int yy = (int)floorf(hy - PH) - 1; yy <= (int)floorf(hy) + 1 && *hazard < 0; yy++)
+        for (int xx = (int)floorf(hx - PW) - 1; xx <= (int)floorf(hx + PW) + 1; xx++)
+          if (w_in(xx, yy) && T[yy][xx] == T_SPIKE) { *hazard = yy * TW + xx; break; }
+      return -1;
+    }
+    if (p.ev & PE_COLD) return -1;
+    if (b >= 0) {
+      *broke = b;
+      *out = p;
+      return tick;
+    }
+    int nr = w_room_at(&W, p.x, p.y - 0.5f);
+    if (nr != room && nr >= 0) room = nr, pworld_anchors(&pw, &W, room);
+  }
+  return -1;
+}
+/* thorns a move from a node ran into that were not on screen from the node (blind drops into a hazard) */
+static uint8_t *blind;
+static int no_blind; /* (the gates' own walks inside a room mark nothing) */
+static int32_t *blind_from;
+
 static void expand(int tile, edges *out) {
   out->n = 0, out->nbroke = 0;
   int x = tile % TW, y = tile / TW;
@@ -94,8 +192,13 @@ static void expand(int tile, edges *out) {
     if (MOVES[m].need & ~AB) continue;
     player a, b;
     int ba, bb;
-    int ta = move_play(&MOVES[m], &W, (const uint8_t(*)[TW])T, AB, (float)x + 0.3f, (float)y, &a, &ba);
-    if (ta < 0) continue;
+    int hz;
+    float gx, gy, gvx, ax, ay, avx;
+    int ta = move_play_h(&MOVES[m], AB, (float)x + 0.3f, (float)y, &a, &ba, &hz, &gx, &gy, &gvx, &ax, &ay, &avx);
+    if (ta < 0) { /* thorns below where it left the ground, on screen neither as it left nor at the top of its flight */
+      if (hz >= 0 && !no_blind && (float)(hz / TW) > gy + 1 && !thorns_in_view(hz, gx, gy, gvx) && !thorns_in_view(hz, ax, ay, avx)) blind[hz] = 1, blind_from[hz] = (int)roundf(gy) * TW + (int)floorf(gx); /* (where it left the ground) */
+      continue;
+    }
     int la = landing_node(&a);
     if (ba >= 0 && out->nbroke < 4) out->broke[out->nbroke++] = ba;
     if (la < 0 || la == tile) continue;
@@ -165,6 +268,7 @@ static void open_room_kind(int room, int kind) {
 }
 
 static int stage;
+static const char *const STAGE_NAME[8] = { "start", "second jump", "dash", "grapple line", "wall climb", "plunge", "tide charm", "end" };
 static void visit_effects(int tile) {
   int x = tile % TW, y = tile / TW;
   int room = w_room_at(&W, (float)x + 0.5f, (float)y - 0.5f);
@@ -215,6 +319,39 @@ static void print_path(int tile) {
   printf("     the way there:");
   for (int i = n - 1; i >= 0; i--) printf(" %d%s", rooms[i], rooms[i] >= 0 && W.rooms[rooms[i]].kind == RK_GATE ? "(gate)" : "");
   printf("\n");
+}
+
+/* ── what each stage showed: pickups on screen, gate halves reached ── */
+static int pk_seen[MAXENTS];        /* by pickup id: the first stage it was on screen (-1 never) */
+static uint8_t *looked;             /* tile index -> looked round from there already */
+static int half_stage[MAXROOMS][2]; /* gate rooms: the first stage each half was stood in */
+static uint8_t room_reached[MAXROOMS];
+static int gate_half(const struct room *r, int x, int y);
+static void look_around(void) {
+  for (int i = 0; i < qn; i++) {
+    int tile = queue[i];
+    if (looked[tile] || node_at[tile] < 0) continue;
+    looked[tile] = 1;
+    int x = tile % TW, y = tile / TW, r = w_room_at(&W, (float)x + 0.5f, (float)y - 0.5f);
+    if (r < 0) continue;
+    room_reached[r] = 1;
+    const struct room *rm = &W.rooms[r];
+    if (rm->kind == RK_GATE) {
+      int h = gate_half(rm, x, y);
+      if (h >= 0 && half_stage[r][h] < 0) half_stage[r][h] = stage;
+    }
+    static int pks[MAXENTS], npks = -1;
+    if (npks < 0)
+      for (int k = npks = 0; k < W.nents; k++)
+        if (W.ents[k].kind == EK_PICKUP) pks[npks++] = k;
+    for (int j = 0; j < npks; j++) {
+      const ent *e = &W.ents[pks[j]];
+      if (e->room != r || pk_seen[e->id] >= 0) continue;
+      int ex = (int)floorf(e->x), ey = (int)roundf(e->y);
+      if (w_in(ex, ey - 1) && T[ey - 1][ex] == T_SECRET) continue; /* (inside hidden rock: not to be seen) */
+      if (in_view(tile, e->x, e->y - 0.6f)) pk_seen[e->id] = stage;
+    }
+  }
 }
 
 /* walk until nothing new: returns nodes visited */
@@ -335,6 +472,7 @@ static bool local_reach(int room, uint32_t ab, int from, bool *reached_other_hal
       if (node_at[y * TW + x] >= 0 && gate_half(r, x, y) == from && qt < (int)(sizeof lq / sizeof lq[0])) lv[y * TW + x] = 1, lq[qt++] = y * TW + x;
   uint32_t save = AB;
   AB = ab;
+  no_blind++;
   *reached_other_half = false;
   while (qh < qt && !*reached_other_half) {
     int n = lq[qh++];
@@ -354,10 +492,14 @@ static bool local_reach(int room, uint32_t ab, int from, bool *reached_other_hal
       if (tx < X0 || tx >= X1 || ty < Y0 || ty >= Y1 || lv[to]) continue;
       lv[to] = 1;
       int h = gate_half(r, tx, ty);
-      if (h >= 0 && h != from) *reached_other_half = true;
+      if (h >= 0 && h != from) {
+        *reached_other_half = true;
+        if (getenv("CHECK_GATE_DEBUG")) printf("  gate room %d crossed: %d,%d -> %d,%d move %d (abilities %02x)\n", room, n % TW, n / TW, tx, ty, e.mv[k], ab);
+      }
       if (qt < (int)(sizeof lq / sizeof lq[0])) lq[qt++] = to;
     }
   }
+  no_blind--;
   AB = save;
   if (memcmp(keep, T, sizeof T)) memcpy(T, keep, sizeof T), build_nodes();
   return true;
@@ -393,6 +535,43 @@ static void break_world(int n) {
       for (int y = fy - 6; y < fy - 2; y++)
         for (int x = mid - 4; x <= mid + 3; x++) W.t[y][x] = T_EMPTY;
     }
+  } else if (n == 6) { /* the rewards of the set pieces taken out */
+    for (int i = 0; i < W.nents; i++)
+      if (W.ents[i].kind == EK_PICKUP && W.rooms[W.ents[i].room].piece) W.ents[i].kind = EK_NONE;
+  } else if (n == 7) { /* thorns on the floor beside the landing under each of the Rootway's trapdoors, in the room below */
+    for (int i = 0; i < W.ndoors; i++) {
+      const door *d = &W.doors[i];
+      if (!d->vertical) continue;
+      if (W.rooms[d->a].region != R_ROOTWAY) continue;
+      int lo = W.rooms[d->a].y > W.rooms[d->b].y ? d->a : d->b;
+      const struct room *r = &W.rooms[lo];
+      int fy = (r->y + r->h) * CELL_H - 2;
+      if (lo == W.cell_room[(int)W.start_y / CELL_H][(int)W.start_x / CELL_W]) continue; /* (the start stays a place to stand) */
+      for (int x = d->x + d->len + 1; x <= d->x + d->len + 4; x++) /* (beside the hole: a drop that drifts lands there) */
+        if (t_solid(W.t[fy][x]) && W.t[fy - 1][x] == T_EMPTY) W.t[fy][x] = T_SPIKE;
+    }
+  } else if (n == 8) { /* the Rootway's set pieces forgotten */
+    for (int i = 0; i < W.nrooms; i++)
+      if (W.rooms[i].region == R_ROOTWAY) W.rooms[i].piece = 0;
+  } else if (n == 9) { /* the gates inside a region walled up */
+    for (int i = 0; i < W.nrooms; i++) {
+      const struct room *r = &W.rooms[i];
+      if (r->kind != RK_GATE) continue;
+      bool inside = true;
+      for (int k = 0; k < W.ndoors; k++) {
+        const door *d = &W.doors[k];
+        int o = d->a == i ? d->b : d->b == i ? d->a : -1;
+        if (o >= 0 && (W.rooms[o].region != r->region || W.rooms[o].kind == RK_ITEM)) inside = false; /* (not a link, not a side branch) */
+      }
+      if (!inside) continue;
+      int X0 = r->x * CELL_W, Y0 = r->y * CELL_H;
+      if (r->w == 2)
+        for (int y = Y0 + 2; y < Y0 + CELL_H - 1; y++)
+          for (int x = X0 + CELL_W - 14; x < X0 + CELL_W + 14; x++) W.t[y][x] = T_SOLID;
+      else
+        for (int y = Y0 + CELL_H - 2; y <= Y0 + CELL_H + 1; y++)
+          for (int x = X0 + 2; x < X0 + CELL_W - 2; x++) W.t[y][x] = T_SOLID;
+    }
   }
 }
 
@@ -402,7 +581,7 @@ static bool grounded(const ent *e) {
   if (e->kind == EK_ENEMY && (e->sub == EN_FLYER || e->sub == EN_PUFF)) return true; /* (they fly) */
   if (e->kind == EK_ENEMY && e->sub == EN_DROPPER) return t_solid(w_tile(&W, x, (int)floorf(e->y) - 2)) && !t_solid(w_tile(&W, x, (int)floorf(e->y) - 1)); /* (its thread from the ceiling) */
   if (e->kind == EK_START) return t_solid(w_tile(&W, x, y));
-  if (e->hold & HOLD_FLOOR) return t_solid(w_tile(&W, x, y)) && !t_solid(w_tile(&W, x, y - 1));
+  if (e->hold & HOLD_FLOOR) return t_solid(w_tile(&W, x, y)) && (!t_solid(w_tile(&W, x, y - 1)) || w_tile(&W, x, y - 1) == T_SECRET); /* (in a hidden alcove: there once it opens) */
   if (e->hold & HOLD_CEIL) return t_solid(w_tile(&W, x, y - 1)) && !t_solid(w_tile(&W, x, y));
   if (e->hold & HOLD_WALL_L) return t_solid(w_tile(&W, x - 1, (int)e->y));
   if (e->hold & HOLD_WALL_R) return t_solid(w_tile(&W, x + 1, (int)e->y));
@@ -418,6 +597,7 @@ typedef struct route_step { int32_t from, to; uint8_t move, stage, goal, pad; } 
 
 /* the cheapest way over a stage's edges from `from` to the nearest tile of `goal_mask` (1 = a goal): steps
  * appended, the goal reached returned (-1 none) */
+static bool route_shut_heart; /* the heart's seal is still shut where the route has got to: no way through the Heartwood */
 static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out, int *nout, int cap) {
   static int32_t *dist, *prev, *prevmv;
   static uint8_t *done;
@@ -459,6 +639,10 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
     const edges *e = &stage_E[st][eslot[u]];
     for (int k = 0; k < e->n; k++) {
       int v = e->to[k], nd = dist[u] + e->ticks[k] + 4;
+      if (route_shut_heart) {
+        int vr = w_room_at(&W, (float)(v % TW) + 0.5f, (float)(v / TW) - 0.5f);
+        if (vr >= 0 && W.rooms[vr].region == R_HEART) continue;
+      }
       if (nd < dist[v]) {
         dist[v] = nd, prev[v] = u, prevmv[v] = e->mv[k];
         HPUSH(v);
@@ -478,10 +662,12 @@ static int plan_leg(int st, int from, const uint8_t *goal_mask, route_step *out,
 }
 
 static int write_route(const char *path, int start) {
-  static uint8_t goal[TW * TH];
+  static uint8_t goal[TW * TH], is_warden[TW * TH], is_move_ab[TW * TH];
   static route_step steps[60000];
-  int n = 0;
+  int n = 0, wardens_met = 0;
   memset(goal, 0, sizeof goal);
+  memset(is_warden, 0, sizeof is_warden);
+  memset(is_move_ab, 0, sizeof is_move_ab);
   int ngoals = 0, last = -1;
   for (int i = 0; i < W.nents; i++) {
     const ent *e = &W.ents[i];
@@ -494,15 +680,21 @@ static int write_route(const char *path, int start) {
     if (t < 0 || t >= TW * TH || node_at[t] < 0) continue;
     if (e->kind == EK_BOSS && e->sub == NBOSSES - 1) last = t; /* the heart: last of all, once everything else is found */
     else goal[t] = 1;
+    if (e->kind == EK_BOSS && e->sub < NBOSSES - 1) is_warden[t] = 1;
+    if (e->kind == EK_PICKUP && e->sub == PK_ABILITY && e->arg != AB_BOLT) is_move_ab[t] = 1;
     ngoals++;
   }
   int cur = start, legs = 0;
   for (int st = 0; st < nstages; st++)
     for (;;) {
+      route_shut_heart = wardens_met < 5;
       int g = plan_leg(st, cur, goal, steps, &n, 60000);
       if (g < 0) break;
       goal[g] = 0, cur = g, legs++;
+      wardens_met += is_warden[g];
+      if (is_move_ab[g] && st + 1 < nstages) break; /* a new way to move: the rest of this stage's legs were planned without it (a wall it now clings to), so go on with the next stage's */
     }
+  route_shut_heart = false;
   if (last >= 0) {
     goal[last] = 1;
     int g = plan_leg(nstages - 1, cur, goal, steps, &n, 60000);
@@ -551,6 +743,9 @@ int main(int argc, char **argv) {
   build_nodes();
   E = malloc(sizeof(edges) * (size_t)(nnodes + 20000));
   for (int i = 0; i < MAXENTS; i++) pk_stage[i] = -1;
+  for (int i = 0; i < MAXENTS; i++) pk_seen[i] = -1;
+  for (int i = 0; i < MAXROOMS; i++) half_stage[i][0] = half_stage[i][1] = -1;
+  looked = calloc(TW * TH, 1), blind = calloc(TW * TH, 1), blind_from = calloc(TW * TH, sizeof(int32_t));
   int fails = 0;
   double t0 = (double)clock() / CLOCKS_PER_SEC;
   struct timespec ts0;
@@ -561,11 +756,12 @@ int main(int argc, char **argv) {
   if (!only) {
   /* stages */
   AB = 0;
-  static const uint32_t ORDER[NABILITIES] = { AB_BOLT | AB_DJUMP, AB_DASH, AB_CLIMB, AB_POUND, AB_SWIM, AB_GRAPPLE, 0 };
+  static const uint32_t ORDER[NABILITIES] = { AB_BOLT | AB_DJUMP, AB_DASH, AB_GRAPPLE, AB_CLIMB, AB_POUND, AB_SWIM, 0 };
   int order_bad = 0;
   push(start);
   for (stage = 0; stage < 12; stage++) {
     walk();
+    look_around();
     if (stage < 12) { /* this stage's edges, for the route */
       stage_E[stage] = malloc(sizeof(edges) * (size_t)nslots);
       memcpy(stage_E[stage], E, sizeof(edges) * (size_t)nslots);
@@ -623,6 +819,73 @@ int main(int argc, char **argv) {
   for (int i = 1; i <= NBOSSES; i++) bosses += boss_done[i];
   if (bosses != NBOSSES) fails++, printf("FAIL wardens: %d of %d arenas reached\n", bosses, NBOSSES);
   else printf("ok   wardens: all %d arenas reached\n", NBOSSES);
+  /* see before reach: every ability reaches at least two rewards that were on screen at an earlier stage */
+  {
+    int see_bad = 0;
+    for (int s = 1; s < nstages && s <= 6; s++) {
+      int n = 0, all = 0;
+      for (int i = 0; i < W.nents; i++) {
+        const ent *e = &W.ents[i];
+        if (e->kind != EK_PICKUP || pk_stage[e->id] != s) continue;
+        all++;
+        if (pk_seen[e->id] >= 0 && pk_seen[e->id] < s) n++;
+      }
+      if (n < 2) see_bad++, printf("FAIL see before reach: the %s reaches %d rewards seen before it (of %d it reaches), want 2\n", STAGE_NAME[s], n, all);
+      else if (!quiet) printf("     the %s reaches %d rewards seen before it (of %d)\n", STAGE_NAME[s], n, all);
+    }
+    if (see_bad) fails++;
+    else printf("ok   see before reach: every ability reaches two or more rewards already seen\n");
+  }
+  /* shortcuts: every ability opens a gate whose two sides were both reached before it (a corner cut through ground
+   * already walked) */
+  {
+    int sc_bad = 0;
+    static const uint32_t GATE_ABS[] = { 0, AB_DJUMP, AB_DASH, AB_CLIMB, AB_POUND, AB_SWIM, AB_GRAPPLE };
+    for (int g = 1; g <= 6; g++) {
+      int s_g = -1;
+      for (int s = 0; s < nstages; s++)
+        if (stage_ab[s] & GATE_ABS[g]) { s_g = s; break; }
+      int n = 0;
+      for (int i = 0; i < W.nrooms; i++)
+        if (W.rooms[i].kind == RK_GATE && W.rooms[i].gate == g && half_stage[i][0] >= 0 && half_stage[i][1] >= 0 && half_stage[i][0] < s_g &&
+            half_stage[i][1] < s_g) {
+          bool cross;
+          local_reach(i, stage_ab[s_g], 0, &cross); /* and the ability takes you across it */
+          n += cross;
+        }
+      if (n < 1) sc_bad++, printf("FAIL shortcuts: the %s opens no gate between places already reached\n", STAGE_NAME[s_g < 0 ? 0 : s_g]);
+      else if (!quiet) printf("     the %s opens %d gate%s between places already reached\n", STAGE_NAME[s_g], n, n > 1 ? "s" : "");
+    }
+    if (sc_bad) fails++;
+    else printf("ok   shortcuts: every ability opens a way between places already reached\n");
+  }
+  /* set pieces: every region has a hand-shaped room the walk reaches */
+  {
+    int sp_bad = 0;
+    for (int r = 0; r < NREGIONS; r++) {
+      int n = 0;
+      for (int i = 0; i < W.nrooms; i++) n += W.rooms[i].region == r && W.rooms[i].piece && room_reached[i];
+      if (!n) sp_bad++, printf("FAIL set pieces: %s has none reached\n", REGIONS[r].name);
+    }
+    if (sp_bad) fails++;
+    else printf("ok   set pieces: every region has one or more, reached\n");
+  }
+  /* blind drops: no move falls into thorns below where it began that were not on screen there (thorns ahead at the
+   * same height come into view as the camera runs with the player; thorns below a drop may never show) */
+  {
+    int nb = 0;
+    for (int i = 0; i < TW * TH; i++)
+      if (blind[i]) {
+        nb++;
+        if (nb <= 6 || getenv("CHECK_ALL")) {
+          int f = blind_from[i];
+          printf("FAIL blind drop: thorns at %d,%d (room %d) out of view where the move left the ground at %d,%d (room %d)\n", i % TW, i / TW, w_room_at(&W, (float)(i % TW) + 0.5f, (float)(i / TW) + 0.5f),
+                 f % TW, f / TW, w_room_at(&W, (float)(f % TW) + 0.5f, (float)(f / TW) - 0.5f));
+        }
+      }
+    if (nb) fails++, printf("FAIL blind drops: %d thorn tiles are met before they are seen\n", nb);
+    else printf("ok   blind drops: no thorns met out of view\n");
+  }
   }
   if (!only || !strcmp(only, "gates")) {
   /* the gates */

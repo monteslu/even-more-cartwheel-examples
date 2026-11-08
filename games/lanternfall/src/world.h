@@ -18,7 +18,7 @@
 #define TW (GW * CELL_W)
 #define TH (GH * CELL_H)
 #define MAXROOMS 640
-#define MAXENTS 8000
+#define MAXENTS 12000
 #define MAXDOORS 1400
 #define NREGIONS 13
 
@@ -41,10 +41,10 @@ enum {
   AB_BOLT = 1 << 0,    /* the ranged spark (energy) */
   AB_DJUMP = 1 << 1,   /* a second jump in the air */
   AB_DASH = 1 << 2,    /* a burst along the ground or through the air */
-  AB_CLIMB = 1 << 3,   /* cling to walls, climb them, jump off them */
-  AB_POUND = 1 << 4,   /* plunge from the air: breaks cracked floors */
-  AB_SWIM = 1 << 5,    /* the tide charm: swim deep water */
-  AB_GRAPPLE = 1 << 6, /* a line to the anchors overhead: swing */
+  AB_GRAPPLE = 1 << 3, /* a line to the anchors overhead: swing (early, so it serves the whole city) */
+  AB_CLIMB = 1 << 4,   /* cling to walls, climb them, jump off them */
+  AB_POUND = 1 << 5,   /* plunge from the air: breaks cracked floors */
+  AB_SWIM = 1 << 6,    /* the tide charm: swim deep water */
   AB_ALL = 0x7f
 };
 #define NABILITIES 7
@@ -65,10 +65,12 @@ enum {
   EK_START,
   EK_KINDS
 };
-enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC }; /* pickup kinds (sub), with ability in arg */
+/* pickup kinds (sub). arg: the ability bit (PK_ABILITY), the region (PK_MAPSTONE: its map), the tale (PK_LORE: a line
+ * of the old city's story, numbered in the order the world was made) */
+enum { PK_ABILITY, PK_HEALTH, PK_ENERGY, PK_RELIC, PK_MAPSTONE, PK_LORE, PK_KINDS };
 /* prop kinds (sub): 0..5 small floor things (grass, mushrooms, a rock, a fern, crystals, flowers), 6..8 hanging
  * (vines, roots, a glowing strand: arg is the length), then the regions' set pieces (arg: a variation seed) */
-enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE };
+enum { PR_PIPE = 9, PR_MACHINE, PR_TREE, PR_CLUSTER, PR_KELP, PR_SHELF, PR_STATUE, PR_LANDMARK /* arg: the region */ };
 /* enemies, one idea each: the crawler charges along its floor, the spitter spits, the moth swoops to where you stood,
  * the hopper leaps at you, the knight shields its front; the puff floats and only a strike from above hurts it (it is
  * a step to bounce off), the dropper hangs from a ceiling and falls on whoever passes under, the burrower waits under
@@ -84,14 +86,19 @@ typedef struct ent {
   float x, y;         /* feet (pickups and enemies: bottom centre), or the point (anchors, lamps) */
 } ent;
 
-enum { RK_PLAIN, RK_SHAFT, RK_HALL, RK_SAVE, RK_ITEM, RK_BOSS, RK_GATE, RK_SECRET, RK_START };
+enum { RK_PLAIN, RK_SHAFT, RK_HALL, RK_SAVE, RK_ITEM, RK_BOSS, RK_GATE, RK_SECRET, RK_START, RK_PIECE /* a hand-shaped set piece: room.piece */ };
+/* what a set piece room is for: a view (a landmark, a reward seen far before it can be reached), a test of the
+ * abilities together, a hidden find, a fight */
+enum { IN_NONE, IN_VISTA, IN_CHALLENGE, IN_SECRET, IN_THREAT, IN_KINDS };
 
 typedef struct room {
   uint8_t x, y, w, h; /* cells */
   uint8_t region, kind;
   uint8_t gate;       /* RK_GATE: the ability the obstacle needs (an AB_* bit index + 1), 0 none */
   uint8_t boss;       /* RK_BOSS: boss index + 1 */
-  uint16_t first_door, ndoors;
+  uint8_t piece;      /* a hand-shaped set piece (pieces.h: PC_*), 0 none */
+  uint8_t intent;     /* what the piece is for: IN_* */
+  uint16_t pad;
 } room;
 
 typedef struct door {
@@ -108,6 +115,9 @@ typedef struct region_info {
   uint32_t sky, far, mid, near, ground, top, accent; /* palette 0xRRGGBB */
 } region_info;
 extern const region_info REGIONS[NREGIONS];
+/* the tablets of the old city's story found in hidden alcoves (regions.c) */
+#define NLORE 48
+extern const char *const LORE[NLORE];
 
 typedef struct world {
   uint8_t t[TH][TW];
@@ -127,6 +137,8 @@ static inline bool w_in(int x, int y) { return x >= 0 && y >= 0 && x < TW && y <
 static inline int w_tile(const world *w, int x, int y) { return w_in(x, y) ? w->t[y][x] : T_SOLID; }
 static inline bool t_solid(int t) { return t == T_SOLID || t == T_CRACKED || t == T_SECRET || t == T_BOSSDOOR || t == T_SEAL; }
 int w_room_at(const world *w, float x, float y); /* room index or -1 */
+static inline int room_piece(const room *r) { return r->piece; }
+static inline bool ent_is_landmark(const ent *e) { return e->kind == EK_PROP && e->sub == PR_LANDMARK; }
 
 bool world_load(world *w, const char *path); /* cw_asset or a file (native tools) */
 bool world_save(const world *w, const char *path);
