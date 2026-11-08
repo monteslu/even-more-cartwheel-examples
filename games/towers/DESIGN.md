@@ -71,14 +71,19 @@ whole map on one screen, a fixed camera per map.
 |---|---|---|
 | hop the cursor to the next pad that way | d-pad or left stick | W A S D or the arrows |
 | on an empty pad: build (the diamond) | north bolt, west frost, east beam, south mortar | I, J, L, K |
-| on a tower of yours: upgrade | south | K or Space |
+| on a tower of yours: upgrade (to the third level: the A branch) | south | K or Space |
+| on a tower of yours at the second level: the third level's B branch | east | L |
 | on a tower of yours: change its aim (first, strongest, last) | north | I |
 | on a tower of yours: sell (hold) | west | J |
 | call the next wave early (gold for the time left) | either shoulder | Q |
 | pause | Start | Escape |
 
 - The build diamond is drawn round the cursor where the buttons sit: the tower each face button builds, with its
-  price, greyed when the gold is short. On a tower the same places show upgrade (with its price), aim and a held sell.
+  price, greyed when the gold is short. On a tower the same places show upgrade (with its price; at the second level
+  the two branches, south and east, each with what it does), aim and a held sell.
+- With two or more players the labels and the reach rings show while a player is choosing: for three seconds after
+  the cursor hops or the tower under it changes, and while a sell is held; then they fade and one short line stays
+  over the cursor (P1 BOLT III STORM). One player alone keeps the full labels.
 - The cursor hops only between the pads of its player's share and the towers they own (the d-pad works everywhere;
   the stick picks one of eight ways). A press hops once; holding hops again after 0.3 s, then every 0.15 s.
 - Shares: one player owns every pad; two split the map into a left and a right band, three into three bands, four
@@ -97,16 +102,42 @@ whole map on one screen, a fixed camera per map.
 | period | 0.83, 0.73, 0.63 s | 1.33, 1.2, 1.07 s | held | 2.5, 2.27, 2 s |
 | extra | 3, 5, 8 leaps of 3.6 m | slows 40%, 50%, 60% for 2 to 2.5 s | level 3 pierces: everything on its line to its reach takes half | blast 2.2, 2.6, 3 m; level 3 throws four bomblets round the blast |
 
+The third level comes in one of two branches, chosen as it is bought (A south, B east); A is the third level as it
+always was, so the map tuning holds, and B trades it for something else:
+
+| | A | B |
+|---|---|---|
+| bolt | STORM: eight leaps | ARC: three leaps of 52, each creep struck stands stunned for a third of a second (not bosses, not shades) |
+| frost | SHATTER: every third pulse freezes | BLIZZARD: reach 9 m, slows 68% for 2.8 s, 7 a pulse, never freezes |
+| beam | LANCE: pierces the line | PRISM: 75% on its creep, and splits on to the two others nearest it (within 3.5 m) at 50% each |
+| mortar | CLUSTER: four bomblets | NAPALM: no bomblets; the path burns where it lands (2.6 m, 3 s, 26 a second through armour) |
+
+The towers work together, so a mixed defence beats four of one kind: a mortar's blast or a napalm fire hits a frozen
+or stunned creep half again as hard (it shatters), a beam heats twice as fast on a slowed creep, and lightning leaps
+4.8 m instead of 3.6 off a chilled one.
+
 Selling returns 70% of what a tower cost. Armour (imps, ogres) comes off every hit but the beam's. Shades take half
 the cold and never freeze, and take half again from lightning.
 
 The effects (fx.c, view.c):
-- Bolt: jagged lightning from the coil's orb, hop by hop, re-forking every other frame as it flickers out over 9
-  frames, a white core and a wide blue glow, a flash light at the orb and electric sparks at each strike.
+- Bolt: jagged lightning from the coil's orb, hop by hop: one fork a strike that writhes smoothly from one jagged
+  shape into another as it fades over 16 frames, a white core and a wide blue glow, a light swelling at the orb and
+  electric sparks at each strike; the coil charges up before a shot and cools after it.
+- No strobing, anywhere: every light and glow swells in and fades out (lights over 4 frames in, and out over 14 or
+  more), nothing blinks or flickers (a beam's shimmer is under one cycle a second, a hit warms a creep toward white
+  and lets it cool), no flash is red (a leak flashes amber), and a pooled light is only ever taken back when it has
+  dimmed. The explosions' own flash light starts at its peak, so it is off and the blasts swell a pooled light
+  instead. tests/towers-flash.mjs holds it (below).
+- Kills: the body tips over onto its side and sinks into the ground over half a second, darkening (a shade fades into
+  its wisp), and a coin rises off it. Each wave's banner says what each player did in the wave before it (kills and
+  damage), in their colours.
+- The crowd's edge takes the value opposite its ground (dark ink on the pale and middling grounds, a pale rim of the
+  kind's hue on the volcano and the crystal vale); a boss stands in a red ring, an ogre in a red glow;
+  tests/towers-crowd.mjs holds the crowd off its ground on every theme.
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters
   ice shards off each creep it catches; the tower's reach glows faintly on the ground.
-- Beam: a white-hot core and a magenta glow from the emitter to the creep, flickering and growing wider and hotter as
-  it ramps; sparks spray off the creep, heat haze over it, a light rides the hit, a glow pool under it.
+- Beam: a white-hot core and a magenta glow from the emitter to the creep, swelling in on a new creep and fading out
+  where it was when it lets go, growing wider and hotter as it ramps; sparks spray off the creep, heat haze over it, a light rides the hit, a glow pool under it.
 - Mortar: a muzzle flash and a puff of smoke, the head recoils, a shell on its arc with a burning fuse trail, and an
   Explosion3D where it lands (fire, sparks that leave smoke, a shockwave ring, debris, a cooling scorch).
 - Pooled: one system of burst slots per effect kind, a pool of explosions, flash lights and rings; the quality
@@ -176,6 +207,15 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
 - The ground and path baked and drawn unlit; moving lights clustered and pooled on the ground as splats.
 - Perf gate (`tests/towers-perf.mjs`): towers at level 3 on every pad of a late map, 2400 creeps kept on its paths,
   1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame (3.89 to 4.26 ms measured across six maps).
+
+## Photosensitivity
+
+`tests/towers-flash.mjs` captures every tick of four seconds of the perf bench (map 26, every pad at the third
+level, both branches, 2400 creeps) and of the volcano at wave 18, and measures them against WCAG 2.3.1's general and
+red flash thresholds: no 4% region of the screen over 3 flashes in a second, no more than 4.7% of the screen whose
+pixels flash over 3 times in a second, and (stricter than the guideline, for small effects) almost no pixel that
+flashes twice inside 12 ticks. Its controls must fail: the old effects (TOWERS_STROBE_CONTROL) and a 10 Hz blink over
+a quarter of the screen.
 
 ## Feel
 

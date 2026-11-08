@@ -9,6 +9,7 @@
  *       The long soak: map after map (a fallen core starts its map again), checking every tick: no NaN or stray
  *       position, no creep off the path, counts that agree with the tables, gold never below nothing, every tower on
  *       a slot. A line a game minute (map, wave, creeps, kills, leaks, resident memory). Exit 0 = nothing broke.
+ * TOWERS_BOT_BRANCH=0|1|2: the bots' third-level branch (A, B, or each in turn by slot; game.h g_bot_branch).
  * TOWERS_SOAK_INJECT=1 puts a NaN into a creep's health from tick 4000 (the first alive) (the control: the checks must catch it). */
 #include <math.h>
 #include <stdio.h>
@@ -155,6 +156,7 @@ static int clear_run(const char *file, int players, int minutes, int tries) {
 }
 
 int main(int argc, char **argv) {
+  if (getenv("TOWERS_BOT_BRANCH")) g_bot_branch = CW_CLAMP(atoi(getenv("TOWERS_BOT_BRANCH")), 0, 2);
   cw_jobs_init(3);
   if (argc > 2 && !strcmp(argv[1], "--clear")) return clear_run(argv[2], argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 40, argc > 5 ? CW_CLAMP(atoi(argv[5]), 1, 3) : 3);
   int minutes = argc > 1 ? atoi(argv[1]) : 30, players = argc > 2 ? atoi(argv[2]) : 4, map0 = argc > 3 ? atoi(argv[3]) : 1;

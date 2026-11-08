@@ -53,6 +53,8 @@ static struct {
   float pu[MAXP], pv[MAXP];
   uint32_t hash;
   int banner_t, banner_kind;
+  int kills0[MAXP], wave_kills[MAXP]; /* each player's kills when the last wave came, and in the wave before it (the banner's line) */
+  float dmg0[MAXP], wave_dmg[MAXP];
   cw_action move[4], act[A_KINDS], call;
   cw_node camera;
   int lm_frames;
@@ -131,7 +133,8 @@ static void fill_towers(int wave) {
     tower *t = &G.S.tw[k];
     float x = mp_wx(&G.S.m, G.S.m.slot[k].x), y = mp_wz(&G.S.m, G.S.m.slot[k].y);
     int kind = (k * 7 + 3) % TK_KINDS, lvl = CW_CLAMP(1 + wave / 8 + (k % 3 == 0), 1, 3);
-    *t = (tower){ .alive = true, .kind = (uint8_t)kind, .level = (uint8_t)lvl, .owner = (uint8_t)sim_slot_owner(&G.S, k), .x = x, .y = y, .tgt = -1, .beam_k = 1, .age = 100,
+    int branch = lvl < 3 ? BR_NONE : (k / TK_KINDS) % 2 ? BR_B : BR_A; /* the third levels: both branches of every kind */
+    *t = (tower){ .alive = true, .kind = (uint8_t)kind, .level = (uint8_t)lvl, .owner = (uint8_t)sim_slot_owner(&G.S, k), .x = x, .y = y, .branch = (uint8_t)branch, .tgt = -1, .tgt2 = { -1, -1 }, .beam_k = 1, .age = 100,
                   .cd = k * 7 % 60, .spent = sim_tower_cost(kind, 1) };
   }
 }
@@ -166,6 +169,7 @@ static bool map_go(int n) {
     }
   }
   view_map(&G.S);
+  for (int p = 0; p < MAXP; p++) G.kills0[p] = G.S.p[p].kills, G.dmg0[p] = G.S.p[p].dmg, G.wave_kills[p] = 0, G.wave_dmg[p] = 0;
   G.lm_frames = 0;
   G.banner_t = 200, G.banner_kind = 0;
   save_data *sd = cw_shell_game_save();
@@ -287,6 +291,7 @@ static void init(void *u) {
   cw_debug_f32("dev.lean", &g_lean);
 #ifdef TOWERS_AUTOPILOT
   cw_debug_command("map", "map <n>: go to that map", cmd_map);
+  if (getenv("TOWERS_BOT_BRANCH")) g_bot_branch = CW_CLAMP(atoi(getenv("TOWERS_BOT_BRANCH")), 0, 2);
   if (getenv("TOWERS_CAM")) sscanf(getenv("TOWERS_CAM"), "%f,%f,%f", &g_cam_k, &g_cam_x, &g_cam_z); /* key art: TOWERS_CAM=k,x,z */
 #ifndef TOWERS_AUTO_PLAYERS
 #define TOWERS_AUTO_PLAYERS 2
@@ -374,7 +379,11 @@ static void fixed_update(void *u, double dt) {
     case EV_HOP: play(snd_hop, 0.5f); break;
     case EV_AIM: play(snd_select, 0.5f); break;
     case EV_LEAK: play(snd_leak, 0.6f); break;
-    case EV_WAVE: play(snd_wave, 0.7f), G.banner_t = 150, G.banner_kind = 1; break;
+    case EV_WAVE:
+      play(snd_wave, 0.7f), G.banner_t = 150, G.banner_kind = 1;
+      for (int p = 0; p < MAXP; p++) /* who did what in the wave that went before: the banner's line */
+        G.wave_kills[p] = G.S.p[p].kills - G.kills0[p], G.kills0[p] = G.S.p[p].kills, G.wave_dmg[p] = G.S.p[p].dmg - G.dmg0[p], G.dmg0[p] = G.S.p[p].dmg;
+      break;
     case EV_WON: play(snd_won, 0.8f); break;
     case EV_LOST: play(snd_lost, 0.8f); break;
     case EV_KILL: kills++; break;
@@ -444,62 +453,92 @@ static cw_vec2 pill(const char *markup, int player, float x, float y, float ax, 
   return (cw_vec2){ w, h };
 }
 
-/* the build diamond (an empty slot) or the tower's actions round a player's cursor; where two cursors stand close, the
- * later one's labels move up or down out of the earlier ones' way (their P1..P4 says whose they are) */
+/* the build diamond (an empty slot) or the tower's actions round a player's cursor, while the player is choosing (for
+ * three seconds after the cursor hops or the tower under it changes, and while selling); then the labels fade and one
+ * short line stays under the cursor. Where two cursors stand close, the later one's labels move up or down out of the
+ * earlier ones' way (their P1..P4 says whose they are). One player alone keeps the full labels. */
 static float g_lab[MAXP][2];
 static int g_nlab;
+float g_cursor_k[MAXP]; /* how much of each cursor's detail shows (the labels and the reach rings): 0 .. 1 */
+static void cursor_detail(void) {
+  static int last_slot[MAXP] = { -1, -1, -1, -1 }, last_key[MAXP], quiet[MAXP];
+  for (int i = 0; i < MAXP; i++) {
+    const player *p = &G.S.p[i];
+    const tower *t = p->slot >= 0 ? &G.S.tw[p->slot] : NULL;
+    int key = t && t->alive ? 1 + t->kind * 64 + t->level * 8 + t->aim + t->branch * 512 : 0;
+    if (p->slot != last_slot[i] || key != last_key[i] || p->sell_t > 0 || G.S.wave == 0) quiet[i] = 0;
+    else quiet[i]++;
+    last_slot[i] = p->slot, last_key[i] = key;
+    float k = 1.0f - cw_smoothstep(180, 210, (float)quiet[i]);
+    g_cursor_k[i] = G.S.players <= 1 ? 1.0f : k;
+  }
+}
 static void hud_cursor(int i, float u, cw_vec2 cs) {
   const player *p = &G.S.p[i];
   if (!p->active || p->slot < 0) return;
   float x = mp_wx(&G.S.m, G.S.m.slot[p->slot].x), z = mp_wz(&G.S.m, G.S.m.slot[p->slot].y), su, sv;
   if (!view_screen((t3_vec3){ x, MP_GROUND_H, z }, &su, &sv)) return;
-  float cx = su * cs.x, cy = sv * cs.y, bs = 26 * u, gap = view_px_per_m(cs.y) * 1.25f;
-  for (int pass = 0, dir = cy > cs.y * 0.5f ? -1 : 1; pass < MAXP; pass++) {
-    bool hit = false;
-    for (int j = 0; j < g_nlab; j++) hit |= fabsf(cx - g_lab[j][0]) < 15 * gap && fabsf(cy - g_lab[j][1]) < 4.6f * gap;
-    if (!hit) break;
-    cy += (float)dir * 4.8f * gap;
+  float cx = su * cs.x, cy = sv * cs.y, bs = 26 * u, gap = view_px_per_m(cs.y) * 1.25f, k = g_cursor_k[i];
+  if (k > 0.01f) {
+    for (int pass = 0, dir = cy > cs.y * 0.5f ? -1 : 1; pass < MAXP; pass++) {
+      bool hit = false;
+      for (int j = 0; j < g_nlab; j++) hit |= fabsf(cx - g_lab[j][0]) < 15 * gap && fabsf(cy - g_lab[j][1]) < 4.6f * gap;
+      if (!hit) break;
+      cy += (float)dir * 4.8f * gap;
+    }
+    if (g_nlab < MAXP) g_lab[g_nlab][0] = cx, g_lab[g_nlab++][1] = cy;
   }
-  if (g_nlab < MAXP) g_lab[g_nlab][0] = cx, g_lab[g_nlab++][1] = cy;
   const float *pc = PCOL[i];
-  cw_color bg = rgba(0.02f, 0.03f, 0.06f, 0.72f);
+  cw_color bg = rgba(0.02f, 0.03f, 0.06f, 0.72f * k), grey = rgba(0.6f, 0.6f, 0.62f, 0.75f * k);
   const tower *t = &G.S.tw[p->slot];
-  char b[96];
-  if (!t->alive) {
-    /* north, west, east, south: the four towers where their buttons sit */
-    static const float AX[A_KINDS] = { 0.5f, 1.0f, 0.0f, 0.5f }, AY[A_KINDS] = { 1.0f, 0.5f, 0.5f, 0.0f };
-    static const float DX[A_KINDS] = { 0, -1, 1, 0 }, DY[A_KINDS] = { -1, 0, 0, 1 };
-    for (int a = 0; a < A_KINDS; a++) {
-      int cost = sim_tower_cost(a, 1);
-      bool afford = p->gold >= cost;
-      snprintf(b, sizeof b, "%s %s %d", ACT_TAG[a], sim_tower_name(a), cost);
-      const float *tc = TCOL[a];
-      cw_color c = afford ? rgba(0.55f + 0.45f * tc[0], 0.55f + 0.45f * tc[1], 0.55f + 0.45f * tc[2], 1) : rgba(0.6f, 0.6f, 0.62f, 0.75f);
-      pill(b, i, cx + DX[a] * gap, cy + DY[a] * gap * 0.8f, AX[a], AY[a], bs, c, bg);
-    }
-  } else {
-    snprintf(b, sizeof b, "%s %s", sim_tower_name(t->kind), ROMAN[t->level]);
-    pill(b, i, cx + gap, cy, 0.0f, 0.5f, bs, rgba(0.55f + 0.45f * TCOL[t->kind][0], 0.55f + 0.45f * TCOL[t->kind][1], 0.55f + 0.45f * TCOL[t->kind][2], 1), bg);
-    if (t->level < 3) {
-      int cost = sim_tower_cost(t->kind, t->level + 1);
-      snprintf(b, sizeof b, "{act_s} upgrade %d", cost);
-      pill(b, i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, p->gold >= cost ? rgba(0.7f, 1, 0.6f, 1) : rgba(0.6f, 0.6f, 0.62f, 0.75f), bg);
-    } else
-      pill("FULLY UPGRADED", i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, rgba(1, 0.9f, 0.5f, 1), bg);
-    if (t->kind != TK_FROST) {
-      snprintf(b, sizeof b, "{act_n} aim: %s", sim_aim_name(t->aim));
-      pill(b, i, cx, cy - gap * 0.8f, 0.5f, 1.0f, bs, rgba(0.85f, 0.9f, 1, 1), bg);
-    }
-    snprintf(b, sizeof b, "{act_w} hold: sell %d", sim_sell_value(t));
-    cw_vec2 sz = pill(b, i, cx - gap, cy, 1.0f, 0.5f, bs, rgba(1, 0.8f, 0.6f, 1), bg);
-    if (p->sell_t > 0) { /* the hold's progress under it */
-      float k = (float)p->sell_t / 36.0f;
-      cw_r2d_rect(cw_rect_make(cx - gap - sz.x, cy + sz.y * 0.5f, sz.x * k, 5 * u), rgba(1, 0.6f, 0.3f, 1));
+  char b[128];
+  cw_color pcol = rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1);
+  if (k > 0.01f) {
+    if (!t->alive) {
+      /* north, west, east, south: the four towers where their buttons sit */
+      static const float AX[A_KINDS] = { 0.5f, 1.0f, 0.0f, 0.5f }, AY[A_KINDS] = { 1.0f, 0.5f, 0.5f, 0.0f };
+      static const float DX[A_KINDS] = { 0, -1, 1, 0 }, DY[A_KINDS] = { -1, 0, 0, 1 };
+      for (int a = 0; a < A_KINDS; a++) {
+        int cost = sim_tower_cost(a, 1);
+        bool afford = p->gold >= cost;
+        snprintf(b, sizeof b, "%s %s %d", ACT_TAG[a], sim_tower_name(a), cost);
+        const float *tc = TCOL[a];
+        cw_color c = afford ? rgba(0.55f + 0.45f * tc[0], 0.55f + 0.45f * tc[1], 0.55f + 0.45f * tc[2], k) : grey;
+        pill(b, i, cx + DX[a] * gap, cy + DY[a] * gap * 0.8f, AX[a], AY[a], bs, c, bg);
+      }
+    } else {
+      if (t->level == 1) {
+        int cost = sim_tower_cost(t->kind, 2);
+        snprintf(b, sizeof b, "{act_s} upgrade %d", cost);
+        pill(b, i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, p->gold >= cost ? rgba(0.7f, 1, 0.6f, k) : grey, bg);
+      } else if (t->level == 2) { /* the third level: two branches, south and east, each with what it does */
+        int cost = sim_tower_cost(t->kind, 3);
+        bool ok = p->gold >= cost;
+        snprintf(b, sizeof b, "{act_s} %s %d: %s", sim_branch_name(t->kind, BR_A), cost, sim_branch_does(t->kind, BR_A));
+        pill(b, i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, ok ? rgba(0.7f, 1, 0.6f, k) : grey, bg);
+        snprintf(b, sizeof b, "{act_e} %s %d: %s", sim_branch_name(t->kind, BR_B), cost, sim_branch_does(t->kind, BR_B));
+        pill(b, i, cx + gap, cy, 0.0f, 0.5f, bs, ok ? rgba(1, 0.85f, 0.55f, k) : grey, bg);
+      }
+      if (t->kind != TK_FROST) {
+        snprintf(b, sizeof b, "{act_n} aim: %s", sim_aim_name(t->aim));
+        pill(b, i, cx, cy - gap * 0.8f, 0.5f, 1.0f, bs, rgba(0.85f, 0.9f, 1, k), bg);
+      }
+      snprintf(b, sizeof b, "{act_w} hold: sell %d", sim_sell_value(t));
+      cw_vec2 sz = pill(b, i, cx - gap, cy, 1.0f, 0.5f, bs, rgba(1, 0.8f, 0.6f, k), bg);
+      if (p->sell_t > 0) { /* the hold's progress under it */
+        float q = (float)p->sell_t / 36.0f;
+        cw_r2d_rect(cw_rect_make(cx - gap - sz.x, cy + sz.y * 0.5f, sz.x * q, 5 * u), rgba(1, 0.6f, 0.3f, 1));
+      }
     }
   }
-  /* P1..P4 over the cursor */
-  snprintf(b, sizeof b, "P%d", i + 1);
-  text(b, cx, cy - gap * 0.8f - bs * 1.55f - measure(b, bs).height - 2 * u, bs, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_CENTER);
+  /* the cursor's own line, always: P1..P4 and the tower under it (its level and branch) over the cursor */
+  if (t->alive)
+    snprintf(b, sizeof b, "P%d %s %s%s%s", i + 1, sim_tower_name(t->kind), ROMAN[t->level], t->level >= 3 ? " " : "", t->level >= 3 ? sim_branch_name(t->kind, t->branch) : "");
+  else
+    snprintf(b, sizeof b, "P%d", i + 1);
+  float top = cy - gap * 0.8f - (k > 0.01f && t->alive && t->kind != TK_FROST ? bs * 1.55f : 0) - measure(b, bs).height - 2 * u;
+  if (k < 0.99f && t->alive) top = top + (cy - gap * 0.6f - measure(b, bs).height - top) * (1 - k); /* settles in close over the cursor as the labels fade */
+  text(b, cx, top, bs, pcol, CW_ALIGN_CENTER);
 }
 
 static void hud_player(int i, float u, cw_vec2 cs) {
@@ -568,7 +607,11 @@ static void hud(void) {
     cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.02f, 0.03f, 0.06f, 0.72f));
     text(b, x + 16 * u, y + 6 * u, 34 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
     float hurt = (float)G.S.core_hp / (float)CORE_HP;
-    text(c, x + w - 16 * u, y + 6 * u, 34 * u, hurt < 0.35f && (G.S.tick / 15) % 2 ? rgba(1, 0.3f, 0.25f, 1) : rgba(0.55f + 0.45f * (1 - hurt), 0.85f, 1, 1), CW_ALIGN_RIGHT);
+    /* low: the count glows amber and back, slowly (never a blink, never a red flash) */
+    float lo = hurt < 0.35f ? 0.5f + 0.5f * cw_sin((float)G.S.tick * 0.07f) : 0.0f;
+    cw_color cc = rgba(0.55f + 0.45f * (1 - hurt), 0.85f, 1, 1), warn = rgba(1, 0.6f, 0.32f, 1);
+    if (g_strobe_control && hurt < 0.35f) lo = (G.S.tick / 15) % 2 ? 1.0f : 0.0f, warn = rgba(1, 0.3f, 0.25f, 1);
+    text(c, x + w - 16 * u, y + 6 * u, 34 * u, rgba(cc.r + (warn.r - cc.r) * lo, cc.g + (warn.g - cc.g) * lo, cc.b + (warn.b - cc.b) * lo, 1), CW_ALIGN_RIGHT);
     float ny = y + h + 6 * u;
     if (G.S.state == ST_PLAY && G.S.next_t > 0) {
       int secs = (G.S.next_t + 59) / 60;
@@ -610,7 +653,21 @@ static void hud(void) {
              rgba(0.02f, 0.03f, 0.06f, 0.6f * a));
     } else {
       snprintf(b, sizeof b, G.S.wave == G.S.m.waves ? "THE LAST WAVE" : "WAVE %d", G.S.wave);
-      text(b, cs.x * 0.5f, y, 64 * u, rgba(1, 0.75f, 0.45f, a), CW_ALIGN_CENTER);
+      y += text(b, cs.x * 0.5f, y, 64 * u, rgba(1, 0.75f, 0.45f, a), CW_ALIGN_CENTER).height + 8 * u;
+      if (G.S.players > 1 && G.S.wave > 1) { /* the wave before it, player by player: kills and damage, each in their colour */
+        float tw = 0, gapx = 40 * u;
+        char pb[MAXP][48];
+        for (int i = 0; i < G.S.players; i++) {
+          snprintf(pb[i], sizeof pb[i], "P%d  %d kills  %.1fk damage", i + 1, G.wave_kills[i], (double)(G.wave_dmg[i] / 1000.0f));
+          tw += measure(pb[i], 30 * u).width + (i ? gapx : 0);
+        }
+        float x = cs.x * 0.5f - tw * 0.5f, h = measure(pb[0], 30 * u).height;
+        cw_r2d_rect(cw_rect_make(x - 16 * u, y - 6 * u, tw + 32 * u, h + 12 * u), rgba(0.02f, 0.03f, 0.06f, 0.6f * a));
+        for (int i = 0; i < G.S.players; i++) {
+          const float *pc = PCOL[i];
+          x += text(pb[i], x, y, 30 * u, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], a), CW_ALIGN_LEFT).width + gapx;
+        }
+      }
     }
   }
   if (G.S.state == ST_WON) {
@@ -649,6 +706,7 @@ static void render(void *u, double alpha) {
 #ifdef TOWERS_AUTOPILOT
     if (getenv("TOWERS_NO_CURSORS")) for (int i = 0; i < MAXP; i++) show[i] = false;
 #endif
+    if (G.in_match && G.phase == PH_PLAY) cursor_detail();
     { CW_PROFILE_SCOPE("towers.view_sync"); view_sync(&G.S, t, show); }
     G.t_view += (wall() - t0) * 1000;
     t0 = wall();

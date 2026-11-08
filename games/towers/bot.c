@@ -2,11 +2,14 @@
  * auto cart, the soak and the map check's clear run all exercise the real controls. A bot works out its goal from
  * the rules' state alone each tick (no memory of its own): the empty slot of its share that reaches the most path,
  * built in a fixed mix of the four towers, or the tower of its that an upgrade does most for, whichever the gold
- * buys more of; then it hops its cursor there (one press every other tick) and presses the button. */
+ * buys more of; then it hops its cursor there (one press every other tick) and presses the button (to the third
+ * level: south for the A branch, east for B, as g_bot_branch says). */
 #include <stdlib.h>
 
 #include "cartwheel/math.h"
 #include "game.h"
+
+int g_bot_branch; /* 0: the A branch (the south button) for every third level, 1: B (east), 2: A and B by slot in turn */
 
 /* the mix a bot builds in, by how many towers it holds */
 static const int MIX[8] = { TK_BOLT, TK_FROST, TK_MORTAR, TK_BOLT, TK_BEAM, TK_MORTAR, TK_FROST, TK_BEAM };
@@ -35,7 +38,10 @@ void towers_bot(const sim *s, int i, input *in) {
   bool can_build = bs >= 0 && p->gold >= sim_tower_cost(kind, 1);
   bool can_up = bu >= 0 && p->gold >= sim_tower_cost(s->tw[bu].kind, s->tw[bu].level + 1);
   if (can_build && (!can_up || vs >= vu * (mine < 3 ? 0.5f : 1.0f))) goal = bs, act = kind;
-  else if (can_up) goal = bu, act = A_S;
+  else if (can_up) {
+    goal = bu, act = A_S;
+    if (s->tw[bu].level == 2 && (g_bot_branch == 1 || (g_bot_branch == 2 && bu % 2))) act = A_E;
+  }
   /* the next wave early when the field is quiet and nothing is to be bought (the first bot calls) */
   if (i == 0 && s->wave >= 2 && s->next_t > 600 && s->nenemies == 0 && s->core_hp == CORE_HP && goal < 0) in->wave = (s->tick / 30) % 2 == 0;
   if (goal < 0) return;
