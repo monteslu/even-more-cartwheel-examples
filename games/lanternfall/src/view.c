@@ -10,6 +10,7 @@
  *   front        the distortion layer: shockwaves
  * Mood comes from colour: every region is mid-key under a bright ambient, the lamps add warmth or chill. */
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,6 +28,8 @@ static double now_ms(void) {
   return (double)ts.tv_sec * 1000.0 + (double)ts.tv_nsec * 1e-6;
 }
 static float cur_tint[3];
+static int showcase_mode(void);
+static float showcase_zoom(void);
 
 /* ── colours ── */
 static cw_color hexc(uint32_t c, float a) { return (cw_color){ (float)((c >> 16) & 255) / 255.0f, (float)((c >> 8) & 255) / 255.0f, (float)(c & 255) / 255.0f, a }; }
@@ -100,6 +103,7 @@ void view_camera(const sim *s, float dt, bool snap) {
   cw_vec2 cs = view_canvas();
   if (cs.y < 1) return;
   zoom = cs.y / (float)CELL_H;
+  if (showcase_mode()) zoom *= showcase_zoom();
   float vw = cs.x / zoom, vh = cs.y / zoom;
   /* the players' middle, a little ahead of where player 1 runs */
   float tx = 0, ty = 0;
@@ -1082,8 +1086,8 @@ static void draw_hero(const sim *s, int i, float t) {
 }
 
 /* ── enemies ── */
-static void draw_enemy(const sim *s, const enemy *e, float t) {
-  const region_info *g = &REGIONS[s->room >= 0 ? s->w->rooms[s->room].region : 0];
+static void draw_enemy(const enemy *e, int region, float t) {
+  const region_info *g = &REGIONS[region];
   float f = e->facing_left ? -1.0f : 1.0f, x = e->x, y = e->y;
   bool tell = e->state == ES_TELL;
   float tk = tell ? (float)e->t / 30.0f : 0;
@@ -1151,8 +1155,7 @@ static void draw_enemy(const sim *s, const enemy *e, float t) {
 }
 
 /* ── the wardens ── */
-static void draw_boss(const sim *s, float t) {
-  const boss *b = &s->b;
+static void draw_boss(const boss *b, float t) {
   if (!b->active) return;
   float f = b->facing_left ? -1.0f : 1.0f, x = b->x, y = b->y, hw = boss_hw(b->idx), hh = boss_hh(b->idx);
   bool tell = b->state == ES_TELL;
@@ -1412,6 +1415,70 @@ static void draw_water(const sim *s, float x0, float y0, float x1, float y1, flo
     }
 }
 
+/* ── the showcase (development, native): every creature in every state in the room in view, for close-ups ──
+ *   LANTERNFALL_SHOWCASE=e      the enemies: a column per kind, a row per state (idle, the tell, the act, hurt)
+ *   LANTERNFALL_SHOWCASE=b      the wardens: three columns, two rows; LANTERNFALL_SHOWCASE_STATE picks rest 0, tell 1,
+ *                               act 2, hurt 3 (LANTERNFALL_SHOWCASE_MOVE the move, default each warden's first)
+ *   LANTERNFALL_SHOWCASE_ZOOM=k the camera k times closer (enlarged); LANTERNFALL_SHOWCASE_ROWS=a,b only rows a..b
+ * Each cell gets a lantern-like light where the hero would stand. The room's own enemies, warden and heroes are hidden. */
+static int showcase_mode(void) {
+  static int m = -1;
+  if (m < 0) {
+    const char *e = getenv("LANTERNFALL_SHOWCASE");
+    m = !e ? 0 : e[0] == 'b' ? 2 : 1;
+  }
+  return m;
+}
+static float showcase_zoom(void) {
+  const char *e = getenv("LANTERNFALL_SHOWCASE_ZOOM");
+  return e ? (float)atof(e) : 1;
+}
+static void draw_showcase(int region, float t) {
+  int mode = showcase_mode(), r0 = 0, r1 = 3;
+  const char *rows = getenv("LANTERNFALL_SHOWCASE_ROWS");
+  if (rows) sscanf(rows, "%d,%d", &r0, &r1);
+  int tick = (int)(t * 60);
+  if (mode == 1) {
+    float sx = 3.0f, sy = 2.5f;
+    int nr = r1 - r0 + 1;
+    for (int r = r0; r <= r1; r++)
+      for (int k = 0; k < EN_KINDS; k++) {
+        enemy e = { .kind = (uint8_t)k, .alive = 1, .hp = 3, .hp_max = 3 };
+        e.x = g_cam.position.x + ((float)k - (EN_KINDS - 1) * 0.5f) * sx;
+        e.y = g_cam.position.y + ((float)(r - r0) - (float)(nr - 1) * 0.5f) * sy + 1.0f;
+        e.facing_left = (uint8_t)(k & 1);
+        if (k == EN_FLYER) e.y -= 0.5f;
+        e.state = r == 1 ? ES_TELL : r == 2 ? ES_ACT : ES_IDLE;
+        e.t = (int16_t)(r == 1 ? 10 + tick % 20 : tick % 40);
+        if (r == 3) e.flash = 8, e.state = ES_REST;
+        e.hx = e.x, e.hy = e.y, e.vx = e.x + 2, e.vy = e.y;
+        if (r == r0) light(e.x - 1.2f, g_cam.position.y, 9, rgba(1, 0.85f, 0.6f, 1), 0.3f, true); /* (one lantern per column) */
+        draw_enemy(&e, region, t);
+        VS.enemies++;
+      }
+  } else {
+    int st = getenv("LANTERNFALL_SHOWCASE_STATE") ? atoi(getenv("LANTERNFALL_SHOWCASE_STATE")) : 0;
+    int mv = getenv("LANTERNFALL_SHOWCASE_MOVE") ? atoi(getenv("LANTERNFALL_SHOWCASE_MOVE")) : -1;
+    static const uint8_t FIRST[NBOSSES] = { BM_CHARGE, BM_SWEEP_LOW, BM_SWEEP_HIGH, BM_DIVE, BM_DIVE, BM_PILLARS };
+    int only = getenv("LANTERNFALL_SHOWCASE_ONLY") ? atoi(getenv("LANTERNFALL_SHOWCASE_ONLY")) : -1;
+    for (int i = 0; i < NBOSSES; i++) {
+      int cx = i % 3, cy = i / 3;
+      if (only >= 0 ? i != only : cy < r0 || cy > r1) continue;
+      boss b = { .active = true, .alive = true, .idx = (uint8_t)i, .hp = 20, .hp_max = 20 };
+      b.x = g_cam.position.x + ((float)cx - 1) * 9.5f;
+      b.y = g_cam.position.y + (r0 == r1 ? 2.5f : (float)cy * 8.0f - 2.0f);
+      if (only >= 0) b.x = g_cam.position.x, b.y = g_cam.position.y + 2.0f;
+      b.facing_left = (uint8_t)(cx == 2);
+      b.move = (uint8_t)(mv >= 0 ? mv : FIRST[i]);
+      b.state = (uint8_t)(st == 1 ? ES_TELL : st == 2 ? ES_ACT : ES_REST);
+      b.t = (int16_t)(st == 1 ? boss_tell_ticks(b.move) * 2 / 3 : tick % 30);
+      if (st == 3) b.flash = 6;
+      light(b.x - 3.5f, b.y - 2.5f, 10, rgba(1, 0.85f, 0.6f, 1), 0.3f, true);
+      draw_boss(&b, t);
+    }
+  }
+}
+
 void view_draw(const sim *s, float t) {
   double tv0 = now_ms();
   memset(&VS, 0, sizeof VS);
@@ -1490,10 +1557,11 @@ void view_draw(const sim *s, float t) {
   draw_pickups(s, t, x0, x1, y0, y1);
   shot_lights(s);
   cw_r2d_use_layer(L_ACTORS);
-  for (int i = 0; i < s->nen; i++)
-    if (s->en[i].alive) draw_enemy(s, &s->en[i], t), VS.enemies++;
-  draw_boss(s, t);
-  for (int i = s->players - 1; i >= 0; i--) {
+  if (showcase_mode()) draw_showcase(region, t);
+  for (int i = 0; i < s->nen && !showcase_mode(); i++)
+    if (s->en[i].alive) draw_enemy(&s->en[i], region, t), VS.enemies++;
+  if (!showcase_mode()) draw_boss(&s->b, t);
+  for (int i = s->players - 1; i >= 0 && !showcase_mode(); i--) {
     const player *p = &s->p[i];
     if (p->state == PS_GRAPPLE && p->anchor >= 0 && p->anchor < s->pw.nanchors) { /* the line */
       const ent *a = s->pw.anchors[p->anchor];
