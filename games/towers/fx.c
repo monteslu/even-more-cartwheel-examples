@@ -504,10 +504,10 @@ void fx_events(sim *s) {
       break;
     case EV_SPLIT: burst(FX.gore, x, 0.6f, z, 0, 1, 0), burst(FX.heal, x, 0.3f, z, 0, 1, 0); break;
     case EV_LEAK: {
-      /* a leak: the core's ring, an amber light and sparks, at most one every half second however many pour in (a
+      /* a leak: the core's ring, an amber light and sparks, at most one a second however many pour in (a
        * stream of leaks would otherwise pulse the core several times a second); the pads rumble for each */
       if (FX.strobe || FX.tick >= FX.leak_next) {
-        FX.leak_next = FX.tick + 30;
+        FX.leak_next = FX.tick + 60;
         ring(x, z, 5.0f, 0.5f);
         flash(s->core_x, 3, s->core_y, 120, 1.0f, FX.strobe ? 0.3f : 0.62f, FX.strobe ? 0.25f : 0.35f); /* amber: never a red flash */
         burst(FX.sparkle, s->core_x, 1.5f, s->core_y, 0, 1, 0);

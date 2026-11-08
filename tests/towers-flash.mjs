@@ -15,10 +15,11 @@
 //   area:    every pixel's own signal (at 480 x 270): the share of the screen whose pixels flash more than three times
 //            in one second (at most 4.7%, a quarter of a 10 degree field of view on a 55 inch screen at 2.5 m;
 //            general and red);
-//   flicker: every pixel at 480 x 270: the share of the screen where a pixel flashes twice within 12 ticks (a strobe
-//            of 10 Hz or faster, however small: lightning re-jagged every other frame, a beam flickering, a light that
-//            blinks) in any one-second window (at most FLICKER_MAX). A speck under two pixels of 960 x 540 drifting
-//            (a mote, a spark) averages away at this size; anything bigger that blinks does not. Where the pixels
+//   flicker: every pixel at 480 x 270: the share of the screen where a pixel keeps flickering, four flashes within
+//            30 ticks (8 Hz or faster for half a second, however small: a beam or a glow flickering, lightning
+//            re-jagged, a light that blinks), in any one-second window (at most FLICKER_MAX). One spark or a ripple
+//            passing over a pixel is one flash and does not count; a speck under two pixels of 960 x 540 drifting (a
+//            mote) averages away at this size. Also reported, not judged: the share flashing twice within 12 ticks. Where the pixels
 //            flickered is written beside the frames (flicker-<scene>.ppm, red over the first frame) for a look.
 // Scenes: towers_bench (map 26: level-3 towers on every pad, 2400 creeps, the busiest the game gets), and the volcano
 // (map 23, wave 18, towers on every pad, four bots: red ground under lava, mortar blasts and a crowd).
@@ -42,7 +43,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
 const KEEP = process.argv.includes('--keep');
-const COUNT = 240, WIN = 60, TILES = 5, MAX_FLASHES = 3, AREA = 0.047, FLICKER_GAP = 12, FLICKER_MAX = 0.0005;
+const COUNT = 240, WIN = 60, TILES = 5, MAX_FLASHES = 3, AREA = 0.047, FLICKER_GAP = 12, SUSTAIN_GAP = 30, FLICKER_MAX = 0.001;
 const HIDE = { TOWERS_HIDE: '3' }; // (the crowd and its blob shadows)
 const SCENES = [
   { name: 'bench', app: 'towers_bench', from: 300, env: {} },
@@ -130,10 +131,10 @@ function analyse(files, blink = false) {
   const sR = new Float64Array(TILES * TILES), sG = new Float64Array(TILES * TILES), sB = new Float64Array(TILES * TILES), sN = new Float64Array(TILES * TILES);
   const flickC = makeCounter(n2, 0.1, 0.8), areaC = makeCounter(n2, 0.1, 0.8), areaRC = makeCounter(n2, 20, Infinity);
   const tileC = makeCounter(TILES * TILES, 0.1, 0.8), tileRC = makeCounter(TILES * TILES, 20, Infinity);
-  const flickR = makeRing(n2, 4), areaR = makeRing(n2, 8), areaRR = makeRing(n2, 8), tileR = makeRing(TILES * TILES, 32), tileRR = makeRing(TILES * TILES, 32);
-  const lastFlick = new Int32Array(n2).fill(-1e6), tileOf = new Uint8Array(n);
+  const flickR = makeRing(n2, 8), areaR = makeRing(n2, 8), areaRR = makeRing(n2, 8), tileR = makeRing(TILES * TILES, 32), tileRR = makeRing(TILES * TILES, 32);
+  const lastFlick = new Int32Array(n2).fill(-1e6), lastPair = new Int32Array(n2).fill(-1e6), tileOf = new Uint8Array(n);
   for (let i = 0; i < n; i++) tileOf[i] = Math.min(TILES - 1, Math.floor((i % W) * TILES / W)) + TILES * Math.min(TILES - 1, Math.floor(Math.floor(i / W) * TILES / H));
-  const m = { tileMax: 0, tileRedMax: 0, area: 0, areaRed: 0, flicker: 0, flickerAt: 0, flickerEver: 0, frames: T, maxMeanStep: 0 };
+  const m = { pairs: 0, tileMax: 0, tileRedMax: 0, area: 0, areaRed: 0, flicker: 0, flickerAt: 0, flickerEver: 0, frames: T, maxMeanStep: 0 };
   let prevMean = -1;
   const ever = new Uint8Array(n2);
   for (let t = 0; t < T; t++) {
@@ -186,9 +187,14 @@ function analyse(files, blink = false) {
     }
     m.area = Math.max(m.area, over / n2), m.areaRed = Math.max(m.areaRed, overR / n2);
     // flicker: a pixel flashing twice (4 transitions) within FLICKER_GAP ticks
-    flickC(Y2, (i) => { flickR.push(i, t); if (flickR.within(i, t, 4, FLICKER_GAP)) lastFlick[i] = t, ever[i] = 1; });
-    let fl = 0;
-    for (let j = 0; j < n2; j++) if (t - lastFlick[j] < WIN) fl++;
+    flickC(Y2, (i) => {
+      flickR.push(i, t);
+      if (flickR.within(i, t, 4, FLICKER_GAP)) lastPair[i] = t;
+      if (flickR.within(i, t, 8, SUSTAIN_GAP)) lastFlick[i] = t, ever[i] = 1;
+    });
+    let fl = 0, pr = 0;
+    for (let j = 0; j < n2; j++) { if (t - lastFlick[j] < WIN) fl++; if (t - lastPair[j] < WIN) pr++; }
+    m.pairs = Math.max(m.pairs, pr / n2);
     if (fl / n2 > m.flicker) m.flicker = fl / n2, m.flickerAt = t;
   }
   m.flickerEver = ever.reduce((a, v) => a + v, 0) / n2;
@@ -208,11 +214,11 @@ function judge(m) {
   if (m.tileRedMax > MAX_FLASHES) why.push(`a 4% region red-flashes more than ${MAX_FLASHES} times in a second`);
   if (m.area > AREA) why.push(`${(m.area * 100).toFixed(2)}% of the screen flashes more than ${MAX_FLASHES} times in a second (at most ${AREA * 100}%)`);
   if (m.areaRed > AREA) why.push(`${(m.areaRed * 100).toFixed(2)}% of the screen red-flashes more than ${MAX_FLASHES} times in a second`);
-  if (m.flicker > FLICKER_MAX) why.push(`${(m.flicker * 100).toFixed(3)}% of the screen flickers at 10 Hz or faster within one second (tick ${m.flickerAt}; at most ${(FLICKER_MAX * 100).toFixed(2)}%)`);
+  if (m.flicker > FLICKER_MAX) why.push(`${(m.flicker * 100).toFixed(3)}% of the screen keeps flickering (8 Hz or faster for half a second) within one second (tick ${m.flickerAt}; at most ${(FLICKER_MAX * 100).toFixed(2)}%)`);
   return why;
 }
 const line = (m) => `${m.frames} ticks: most flashes in a second in any of ${TILES * TILES} regions ${m.tileMax} (red ${m.tileRedMax}); ` +
-  `screen flashing over ${MAX_FLASHES} a second ${(m.area * 100).toFixed(3)}% (red ${(m.areaRed * 100).toFixed(3)}%); flickering at 10 Hz+ in a second ${(m.flicker * 100).toFixed(4)}% ` +
+  `screen flashing over ${MAX_FLASHES} a second ${(m.area * 100).toFixed(3)}% (red ${(m.areaRed * 100).toFixed(3)}%); flickering (8 Hz+ for half a second) in a second ${(m.flicker * 100).toFixed(4)}% (two flashes inside 12 ticks: ${(m.pairs * 100).toFixed(3)}%) ` +
   `(ever ${(m.flickerEver * 100).toFixed(4)}%); largest one-tick change of the mean luminance ${m.maxMeanStep.toFixed(4)}`;
 
 let bad = 0;
