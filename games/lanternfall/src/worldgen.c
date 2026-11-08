@@ -537,8 +537,9 @@ static bool secret_pocket(int ri, int side, int floor_y, const uint8_t *keep) {
 }
 
 /* a ladder of one-way ledges from the floor at (x, floor_y) up to a surface at top_y around x */
-/* the same out in the room: a low mound of rock on level floor, its sides hidden rock, a tablet inside */
-static bool secret_mound(int ri, int x0, int base_y, const uint8_t *keep) {
+/* the same out in the room: a low mound of rock on level floor, its sides hidden rock, a tablet inside (or, cracked,
+ * a stone box with a cracked lid and the tablet in sight inside) */
+static bool secret_mound(int ri, int x0, int base_y, const uint8_t *keep, bool cracked) {
   room *rm = &W->rooms[ri];
   int X0 = rm->x * CELL_W, Wd = rm->w * CELL_W;
   int floor_y = base_y - 3; /* the ground's top under it: the floor or a step (the same for all of it) */
@@ -548,8 +549,14 @@ static bool secret_mound(int ri, int x0, int base_y, const uint8_t *keep) {
     for (int y = floor_y - 7; y <= floor_y - 1; y++)
       if (tile(x, y) != T_EMPTY) return false;
   }
-  fill(x0, floor_y - 4, x0 + 5, floor_y - 4, T_SOLID);
-  fill(x0, floor_y - 3, x0 + 5, floor_y - 1, T_SECRET);
+  if (cracked) { /* a cache in plain sight under a cracked lid: the plunge opens it (something new on the way back) */
+    fill(x0, floor_y - 4, x0 + 5, floor_y - 1, T_SOLID);
+    fill(x0 + 1, floor_y - 4, x0 + 4, floor_y - 4, T_CRACKED);
+    fill(x0 + 1, floor_y - 3, x0 + 4, floor_y - 1, T_EMPTY);
+  } else {
+    fill(x0, floor_y - 4, x0 + 5, floor_y - 4, T_SOLID);
+    fill(x0, floor_y - 3, x0 + 5, floor_y - 1, T_SECRET);
+  }
   add_ent(EK_PICKUP, PK_LORE, (uint8_t)(lore_n++ % NLORE), HOLD_FLOOR, ri, (float)(x0 + 3), (float)floor_y); /* (a tablet lies on the floor: no pedestal) */
   return true;
 }
@@ -744,7 +751,7 @@ static void carve_room(int ri) {
   if ((rm->kind == RK_PLAIN || rm->kind == RK_HALL) && !flooded && chance(30)) {
     int side = rint_(0, 1);
     if (!secret_pocket(ri, side, floor_y, keep) && !secret_pocket(ri, 1 - side, floor_y, keep))
-      for (int tries = 0; tries < 8 && !secret_mound(ri, rint_(X0 + 6, X0 + Wd - 12), floor_y, keep); tries++) {}
+      for (int tries = 0, cr = chance(45); tries < 8 && !secret_mound(ri, rint_(X0 + 6, X0 + Wd - 12), floor_y, keep, cr); tries++) {}
   }
   compose(ri, keep, false);
   /* platforms in the air: one-way ledges (some broken in two), and islands of rock with tapered undersides, never
