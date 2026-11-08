@@ -288,12 +288,12 @@ static void fixed_update(void *u, double dt) {
   if (H.intro_t > 0) H.intro_t -= (float)DT;
   if (H.trial_t > 0) H.trial_t -= (float)DT;
   if (S.won) H.won_t += (float)DT;
-#ifndef LANTERNFALL_AUTOPILOT
   { /* LANTERNFALL_MAP_AT=n (development, stills of the map): the map opens at play frame n */
     static int map_at = -1, frames;
     if (map_at < 0) map_at = getenv("LANTERNFALL_MAP_AT") ? atoi(getenv("LANTERNFALL_MAP_AT")) : 0;
     if (map_at && ++frames == map_at) H.map_open = true;
   }
+#ifndef LANTERNFALL_AUTOPILOT
   /* the map and the shrine's menu hold the game still */
   if (cw_action_just_pressed(0, G.map) && !H.menu_open) { H.map_open = !H.map_open; sfx(SFX_MAP, 0.5f); return; }
   if (H.map_open) {
