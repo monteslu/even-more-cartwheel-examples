@@ -391,7 +391,7 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       V.ring->mesh.base.render_order = 10;
     }
     { /* the level halos: a thin glowing torus, laid flat */
-      t3_geometry *g = t3_torus_geometry_new(1.0f, 0.07f, 6, 32, 6.2831853f);
+      t3_geometry *g = t3_torus_geometry_new(1.0f, 0.14f, 6, 32, 6.2831853f); /* (a tube three pixels thick: a thinner one crawls as it aliases) */
       t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } });
       V.halo = imesh("LevelHalos", geo_colored(g, 1, 1, 1), mat_glow(), MAXT * 3);
     }
@@ -463,9 +463,9 @@ void view_map(const sim *s) {
   memset(V.hit, 0, sizeof V.hit);
   memset(V.lvl_seen, 0, sizeof V.lvl_seen);
   for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
-  { /* the crowd's edge in the value opposite the ground: dark ink on the pale and middling grounds, a pale rim of the
-     * kind's hue on the dark basalt and the violet vale, so a late crowd parts into bodies on every theme */
-    bool dark = (V.theme == MP_THEME_VOLCANO || V.theme == MP_THEME_CRYSTAL) && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
+  { /* the crowd's edge in the value opposite the path it walks: dark ink on the pale and middling paths, a pale rim of
+     * the kind's hue on the snowfields' dark frozen earth, so a late crowd parts into bodies on every theme */
+    bool dark = V.theme == MP_THEME_SNOW && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
     for (int k = 0; k < CK_KINDS; k++) {
       if (!V.k[k].edge_mat) continue;
       t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
@@ -705,8 +705,8 @@ static void sync_towers(const sim *s, float time) {
       put_s(V.halo, nhalo, x, base + 0.35f * TSC * grow, z, 0, 0.62f * TSC, 1, 0.62f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
       if (t->level >= 3) {
         put_s(V.halo, nhalo, x, base + 0.7f * TSC * grow, z, 0, 0.56f * TSC, 1, 0.56f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, hc);
-        float cy = hy + 0.95f * TSC * grow + 0.05f * cw_sin(time * 1.5f + (float)k);
-        put_s(V.halo, nhalo, x, cy, z, time * 0.6f, 0.38f * TSC, 2.2f, 0.38f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, (t3_color){ hc.r * 1.6f, hc.g * 1.6f, hc.b * 1.6f });
+        float cy = hy + 0.95f * TSC * grow;
+        put_s(V.halo, nhalo, x, cy, z, 0, 0.42f * TSC, 1.6f, 0.42f * TSC), t3_instanced_mesh_set_color_at(V.halo, nhalo++, (t3_color){ hc.r * 1.4f, hc.g * 1.4f, hc.b * 1.4f });
       }
     }
     /* a shadow cast away from the sun (north-west light: south-east of the tower), and the tower's glow on the ground */

@@ -133,14 +133,14 @@ The effects (fx.c, view.c):
   and lets it cool), no flash is red (a leak flashes amber), and a pooled light is only ever taken back when it has
   dimmed. The explosions' own flash light starts at its peak, so it is off and the blasts swell a pooled light
   instead. tests/towers-flash.mjs holds it (below).
-- Levels read at a glance: a glowing ring round the base at II; at III a second ring and a crown turning over the
+- Levels read at a glance: a glowing ring round the base at II; at III a second ring and a crown over the
   head, in the branch's hue (B branches glow in a second hue: arc white-cyan, blizzard white, prism gold, napalm
   red-orange). An upgrade lifts the tower and settles it over half a second.
 - Kills: the body tips over onto its side and sinks into the ground over half a second, darkening (a shade fades into
   its wisp), and a coin rises off it. Each wave's banner says what each player did in the wave before it (kills and
   damage), in their colours.
-- The crowd's edge takes the value opposite its ground (dark ink on the pale and middling grounds, a pale rim of the
-  kind's hue on the volcano and the crystal vale); a boss stands in a red ring, an ogre in a red glow;
+- The crowd's edge takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
+  the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring, an ogre in a red glow;
   tests/towers-crowd.mjs holds the crowd off its ground on every theme.
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters
   ice shards off each creep it catches; the tower's reach glows faintly on the ground.

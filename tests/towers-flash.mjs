@@ -15,10 +15,11 @@
 //   area:    every pixel's own signal (at 480 x 270): the share of the screen whose pixels flash more than three times
 //            in one second (at most 4.7%, a quarter of a 10 degree field of view on a 55 inch screen at 2.5 m;
 //            general and red);
-//   flicker: every pixel at 960 x 540: the share of the screen where a pixel flashes twice within 12 ticks (a strobe
-//            of 10 Hz or faster, however small: lightning re-jagged every other frame, a light that blinks) in any
-//            one-second window (at most FLICKER_MAX). Motion is not flicker: a creep walking past a pixel darkens
-//            it for a quarter of a second or more.
+//   flicker: every pixel at 480 x 270: the share of the screen where a pixel flashes twice within 12 ticks (a strobe
+//            of 10 Hz or faster, however small: lightning re-jagged every other frame, a beam flickering, a light that
+//            blinks) in any one-second window (at most FLICKER_MAX). A speck under two pixels of 960 x 540 drifting
+//            (a mote, a spark) averages away at this size; anything bigger that blinks does not. Where the pixels
+//            flickered is written beside the frames (flicker-<scene>.ppm, red over the first frame) for a look.
 // Scenes: towers_bench (map 26: level-3 towers on every pad, 2400 creeps, the busiest the game gets), and the volcano
 // (map 23, wave 18, towers on every pad, four bots: red ground under lava, mortar blasts and a crowd).
 // CONTROLS, which must fail: the bench with TOWERS_STROBE_CONTROL=1 (the old effects: lightning re-jagged every other
@@ -27,7 +28,7 @@
 // Run: node tests/towers-flash.mjs [webgpu] [--keep]   (holds the GPU suite lock; frames in out/towers-flash, removed
 // after each scene unless --keep, which keeps them; a few frames of each scene are always kept in out/towers-flash/keep)
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readPng } from './towers-look.mjs';
@@ -127,14 +128,14 @@ function analyse(files, blink = false) {
   const W = f0.w, H = f0.h, n = W * H, w2 = W >> 1, h2 = H >> 1, n2 = w2 * h2, T = files.length;
   const Y = new Float32Array(n), Y2 = new Float32Array(n2), R2 = new Float32Array(n2), tY = new Float32Array(TILES * TILES), tR = new Float32Array(TILES * TILES);
   const sR = new Float64Array(TILES * TILES), sG = new Float64Array(TILES * TILES), sB = new Float64Array(TILES * TILES), sN = new Float64Array(TILES * TILES);
-  const flickC = makeCounter(n, 0.1, 0.8), areaC = makeCounter(n2, 0.1, 0.8), areaRC = makeCounter(n2, 20, Infinity);
+  const flickC = makeCounter(n2, 0.1, 0.8), areaC = makeCounter(n2, 0.1, 0.8), areaRC = makeCounter(n2, 20, Infinity);
   const tileC = makeCounter(TILES * TILES, 0.1, 0.8), tileRC = makeCounter(TILES * TILES, 20, Infinity);
-  const flickR = makeRing(n, 4), areaR = makeRing(n2, 8), areaRR = makeRing(n2, 8), tileR = makeRing(TILES * TILES, 32), tileRR = makeRing(TILES * TILES, 32);
-  const lastFlick = new Int32Array(n).fill(-1e6), tileOf = new Uint8Array(n);
+  const flickR = makeRing(n2, 4), areaR = makeRing(n2, 8), areaRR = makeRing(n2, 8), tileR = makeRing(TILES * TILES, 32), tileRR = makeRing(TILES * TILES, 32);
+  const lastFlick = new Int32Array(n2).fill(-1e6), tileOf = new Uint8Array(n);
   for (let i = 0; i < n; i++) tileOf[i] = Math.min(TILES - 1, Math.floor((i % W) * TILES / W)) + TILES * Math.min(TILES - 1, Math.floor(Math.floor(i / W) * TILES / H));
   const m = { tileMax: 0, tileRedMax: 0, area: 0, areaRed: 0, flicker: 0, flickerAt: 0, flickerEver: 0, frames: T, maxMeanStep: 0 };
   let prevMean = -1;
-  const ever = new Uint8Array(n);
+  const ever = new Uint8Array(n2);
   for (let t = 0; t < T; t++) {
     const { px } = t ? readPng(files[t]) : f0;
     const lit = blink && Math.floor(t / 3) % 2 === 1;
@@ -185,12 +186,20 @@ function analyse(files, blink = false) {
     }
     m.area = Math.max(m.area, over / n2), m.areaRed = Math.max(m.areaRed, overR / n2);
     // flicker: a pixel flashing twice (4 transitions) within FLICKER_GAP ticks
-    flickC(Y, (i) => { flickR.push(i, t); if (flickR.within(i, t, 4, FLICKER_GAP)) lastFlick[i] = t, ever[i] = 1; });
+    flickC(Y2, (i) => { flickR.push(i, t); if (flickR.within(i, t, 4, FLICKER_GAP)) lastFlick[i] = t, ever[i] = 1; });
     let fl = 0;
-    for (let i = 0; i < n; i++) if (t - lastFlick[i] < WIN) fl++;
-    if (fl / n > m.flicker) m.flicker = fl / n, m.flickerAt = t;
+    for (let j = 0; j < n2; j++) if (t - lastFlick[j] < WIN) fl++;
+    if (fl / n2 > m.flicker) m.flicker = fl / n2, m.flickerAt = t;
   }
-  m.flickerEver = ever.reduce((a, v) => a + v, 0) / n;
+  m.flickerEver = ever.reduce((a, v) => a + v, 0) / n2;
+  m.map = (path) => { /* where it flickered: red over the first frame (480 x 270) */
+    const out = Buffer.alloc(n2 * 3);
+    for (let j = 0; j < n2; j++) {
+      const i = ((j / w2) | 0) * 2 * W + (j % w2) * 2, g = f0.px[i * 3 + 1] >> 1;
+      out[j * 3] = ever[j] ? 255 : g, out[j * 3 + 1] = ever[j] ? 0 : g, out[j * 3 + 2] = ever[j] ? 0 : g;
+    }
+    writeFileSync(path, Buffer.concat([Buffer.from(`P6 ${w2} ${h2} 255\n`), out]));
+  };
   return m;
 }
 function judge(m) {
@@ -232,6 +241,7 @@ for (const sc of SCENES) {
   { /* the effects alone: every measure */
     const cap = await capture(sc, 'effects', HIDE);
     const m = analyse(cap.files), w = judge(m);
+    m.map(join(ROOT, 'out', 'towers-flash', 'keep', `flicker-${sc.name}-${GPU}.ppm`));
     if (w.length) { bad++; console.log(`FAIL ${sc.name} ${GPU} effects ${line(m)}\n     ${w.join('; ')}`); } else console.log(`ok   ${sc.name} ${GPU} effects, no strobe: ${line(m)}`);
     cap.done();
   }
@@ -239,6 +249,7 @@ for (const sc of SCENES) {
 {
   const cap = await capture(SCENES[0], 'strobe', { ...HIDE, TOWERS_STROBE_CONTROL: '1' });
   const m = analyse(cap.files), w = judge(m);
+  m.map(join(ROOT, 'out', 'towers-flash', 'keep', `flicker-strobe-${GPU}.ppm`));
   if (w.length) console.log(`ok   control fails as it must (TOWERS_STROBE_CONTROL, the old effects): ${w.join('; ')}\n     ${line(m)}`);
   else { bad++; console.log(`CONTROL PASSED (a failure): the old flicker went unseen: ${line(m)}`); }
   cap.done();
