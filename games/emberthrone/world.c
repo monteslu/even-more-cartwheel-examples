@@ -1196,7 +1196,8 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
   /* the terrain out of the picture: its node moved far down (the terrain follows its node every tick; Terrain3D ignores
    * visible, so NOTERRAIN moves it too) */
-  if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
+  /* (no probe takes the terrain out: Terrain3D ignores visible, its node carries the regions, and its origin follows
+   * the node every tick) */
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
@@ -1212,7 +1213,7 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_SHADOW32")) cw_node_set(W_sun, "shadow_distance", cw_val_float(32));
   if (getenv("ADV_PROBE_SHADOWSMALL")) cw_node_set(W_sun, "shadow_size", cw_val_int(1024));
   if (getenv("ADV_PROBE_BLOOMLV")) cw_node_set(W_post, "bloom_levels", cw_val_int(3));
-  if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "visible", cw_val_bool(false));
+  if (getenv("ADV_PROBE_NOLAMPS")) for (int i = 0; i < nlamps; i++) cw_node_set(LAMPS[i], "energy", cw_val_float(0));
   if (getenv("ADV_PROBE_NOPREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(false));
   if (getenv("ADV_PROBE_PREPASS")) cw_node_set(W_post, "depth_prepass", cw_val_bool(true));
   if (getenv("ADV_PROBE_NOAA")) cw_node_set(W_post, "aa", cw_val_enum("NONE"));
@@ -1532,25 +1533,7 @@ static void build_flora(void) {
 /* the trees' level of detail from the camera, every frame (render only): full crowns near, impostor crowns farther,
  * nothing past FLORA_FAR (the fog has them by then) */
 struct cw_terrain *world_terrain(void) { return W_terrain; }
-/* the lamps, lanterns, shrine lights and fires are lit only within LAMP_NEAR of the camera: their pools of light are
- * a few metres across, and farther off they are a handful of pixels under the daylight (a light still costs the
- * clusters and every ground fragment in its reach). ADV_LAMPS_ALL keeps them all lit (for the frame diff). */
-#define LAMP_NEAR 45.0f
-static void lamps_near(float x, float z) {
-  static int all = -1, lit[64];
-  static t3_vec3 pos[64];
-  if (all < 0) {
-    all = getenv("ADV_LAMPS_ALL") || getenv("ADV_PROBE_LAMPSALL") || getenv("ADV_PROBE_NOLAMPS");
-    for (int i = 0; i < nlamps; i++) pos[i] = cw_node3d_position(LAMPS[i]), lit[i] = 1;
-  }
-  if (all) return;
-  for (int i = 0; i < nlamps; i++) {
-    int on = dist2(x, z, pos[i].x, pos[i].z) < LAMP_NEAR * LAMP_NEAR;
-    if (on != lit[i]) cw_node_set(LAMPS[i], "visible", cw_val_bool(on)), lit[i] = on;
-  }
-}
 void world_flora_lod(float x, float z) {
-  lamps_near(x, z);
   static int off = -1;
   if (off < 0) off = getenv("ADV_PROBE_NOTREES") != NULL;
   if (off) return;
