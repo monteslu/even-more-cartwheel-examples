@@ -9,7 +9,7 @@
 #   lanternfall_feel     measures the movement: jump heights, distances, coyote time, jump buffer (native only)
 #   lanternfall_soak     the rules and the bot with no window and no GPU (native only)
 set(EX_SIM src/sim.c src/player.c src/reach.c src/bot.c src/world.c src/regions.c)
-set(EX_SRC src/main.c src/view.c src/art.c src/hud.c src/audio.c ${EX_SIM})
+set(EX_SRC src/main.c src/view.c src/art.c src/paint.c src/creatures.c src/hud.c src/audio.c ${EX_SIM})
 cw_add_app(lanternfall SOURCES ${EX_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(lanternfall_auto SOURCES ${EX_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 target_compile_definitions(lanternfall_auto PRIVATE LANTERNFALL_AUTOPILOT=1)

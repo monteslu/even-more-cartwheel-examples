@@ -31,10 +31,16 @@ function rooms() {
   return pick;
 }
 
+const painted = [];
 function shot(out, env, gpu = 'gl') {
   const e = { ...process.env, CW_FRAMES: String(env.frames || 90), CW_WARMUP_SPREAD: '0', SDL_AUDIODRIVER: 'dummy', CW_RENDER_SCALE: String(env.scale || 1.5),
     CW_SCREENSHOT: out, CW_GPU: gpu, LANTERNFALL_IDLE: '1', LANTERNFALL_NO_HUD: '1', ...env.vars };
-  return new Promise((ok) => spawn(join(BIN, 'lanternfall_auto'), [], { env: e, stdio: 'ignore' }).on('exit', (c) => ok(c)));
+  return new Promise((ok) => {
+    const p = spawn(join(BIN, 'lanternfall_auto'), [], { env: e, stdio: ['ignore', 'ignore', 'pipe'] });
+    let err = '';
+    p.stderr.on('data', (d) => (err += d));
+    p.on('exit', (c) => { const m = /creatures painted in (\d+) ms/.exec(err); if (m) painted.push(+m[1]); ok(c); });
+  });
 }
 
 /** every sheet: name -> { vars, scale, frames } */
@@ -42,10 +48,10 @@ export function sheets(pick) {
   const S = {};
   const room = (r) => String(pick[r]);
   for (const r of [0, 2, 4, 5, 9, 11]) S[`enemies-r${r}`] = { vars: { LANTERNFALL_ROOM: room(r), LANTERNFALL_SHOWCASE: 'e' } };
-  S['enemies-near-a'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.4', LANTERNFALL_SHOWCASE_ROWS: '0,1' } };
-  S['enemies-near-b'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.4', LANTERNFALL_SHOWCASE_ROWS: '2,3' } };
+  S['enemies-near-a'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.0', LANTERNFALL_SHOWCASE_ROWS: '0,1' } };
+  S['enemies-near-b'] = { vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.0', LANTERNFALL_SHOWCASE_ROWS: '2,3' } };
   S['enemies-4k'] = { scale: 3, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e' } };
-  for (let f = 0; f < 4; f++) S[`enemies-motion-${f}`] = { frames: 90 + f * 5, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.4', LANTERNFALL_SHOWCASE_ROWS: '0,1' } };
+  for (let f = 0; f < 4; f++) S[`enemies-motion-${f}`] = { frames: 90 + f * 5, vars: { LANTERNFALL_ROOM: room(0), LANTERNFALL_SHOWCASE: 'e', LANTERNFALL_SHOWCASE_ZOOM: '2.0', LANTERNFALL_SHOWCASE_ROWS: '0,1' } };
   for (let st = 0; st < 4; st++) S[`wardens-s${st}`] = { vars: { LANTERNFALL_ROOM: room(9), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_STATE: String(st) } };
   for (let i = 0; i < 6; i++) S[`warden${i}-near`] = { vars: { LANTERNFALL_ROOM: room([3, 2, 4, 5, 7, 12][i] ?? 0), LANTERNFALL_SHOWCASE: 'b', LANTERNFALL_SHOWCASE_ONLY: String(i), LANTERNFALL_SHOWCASE_ZOOM: '1.8', LANTERNFALL_SHOWCASE_STATE: '1' } };
   return S;
@@ -61,7 +67,7 @@ if (!dir) {
   const list = Object.entries(sheets(pick)).filter(([n]) => !only || n.includes(only));
   for (let i = 0; i < list.length; i += 2)
     await Promise.all(list.slice(i, i + 2).map(([n, s]) => shot(join(dir, `${n}.png`), s, opt('--gpu') || 'gl')));
-  console.log(`captured ${list.length} sheets into ${dir}`);
+  console.log(`captured ${list.length} sheets into ${dir}; creatures painted in ${painted.length ? Math.min(...painted) : '?'} to ${painted.length ? Math.max(...painted) : '?'} ms`);
   if (argv.includes('--capture')) process.exit(0);
 }
 const files = readdirSync(dir).filter((f) => f.endsWith('.png'));

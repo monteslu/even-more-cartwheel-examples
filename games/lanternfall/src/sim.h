@@ -191,6 +191,7 @@ void sim_restore(sim *s, const save_state *in);
 /* sizes for drawing */
 float enemy_hw(int kind);
 float enemy_hh(int kind);
+int enemy_tell_ticks(int kind); /* how long its tell lasts (drawing: how far into it) */
 float boss_hw(int idx);
 float boss_hh(int idx);
 int boss_tell_ticks(int move);

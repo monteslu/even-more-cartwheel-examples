@@ -74,6 +74,7 @@ static const enemy_def EDEF[EN_KINDS] = {
 };
 float enemy_hw(int k) { return EDEF[k].hw; }
 float enemy_hh(int k) { return EDEF[k].hh; }
+int enemy_tell_ticks(int k) { return EDEF[k].tell; }
 
 static bool enemy_ground(const sim *s, const enemy *e) {
   float hw = EDEF[e->kind].hw * 0.9f;

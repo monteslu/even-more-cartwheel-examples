@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "art.h"
+#include "creatures.h"
 #include "view.h"
 
 cw_camera2d g_cam;
@@ -64,6 +65,7 @@ static void emit(float x, float y, float vx, float vy, float life, float size, c
   if (np >= MAXPART) return;
   P[np++] = (part){ x, y, vx, vy, life, life, size, frand() * 6.28f, (frand() - 0.5f) * 6, grav, c, (uint8_t)kind, add };
 }
+void view_emit(float x, float y, float vx, float vy, float life, float size, cw_color c, bool add, float grav) { emit(x, y, vx, vy, life, size, c, 0, add, grav); }
 static void burst(float x, float y, int n, float speed, float life, float size, cw_color c, bool add, float grav) {
   for (int i = 0; i < n; i++) {
     float a = frand() * 6.2832f, s = speed * (0.3f + 0.7f * frand());
@@ -78,6 +80,7 @@ static float last_hp_t[MAXP];
 
 void view_init(void) {
   art_init();
+  creatures_init();
   if (getenv("LANTERNFALL_NO_GI")) g_gi = false; /* (the perf breakdown) */
   np = 0;
 }
@@ -112,7 +115,7 @@ void view_camera(const sim *s, float dt, bool snap) {
     if (s->p[i].active) tx += s->p[i].x, ty += s->p[i].y - 1.2f, n++;
   if (n) tx /= (float)n, ty /= (float)n;
   tx += s->p[0].vx * 0.18f;
-  if (s->room >= 0) { /* the room's walls bound the view */
+  if (s->room >= 0 && !showcase_mode()) { /* the room's walls bound the view */
     const room *r = &s->w->rooms[s->room];
     float x0 = (float)(r->x * CELL_W) + vw * 0.5f, x1 = (float)((r->x + r->w) * CELL_W) - vw * 0.5f;
     float y0 = (float)(r->y * CELL_H) + vh * 0.5f, y1 = (float)((r->y + r->h) * CELL_H) - vh * 0.5f;
@@ -166,6 +169,7 @@ static void light(float x, float y, float r, cw_color c, float e, bool shadows) 
   VS.lights++;
 }
 /* things that glow: they ignore the lights (emission) and go past 1 (intensity) so the bloom picks them up */
+void view_light(float x, float y, float r, cw_color c, float e, bool shadows) { light(x, y, r, c, e, shadows); }
 static void glowing(float intensity) {
 #ifdef LANTERNFALL_R2D_V2
   cw_r2d_set_emissive(intensity > 1 ? 1.0f : 0.0f);
@@ -1154,7 +1158,23 @@ static void draw_enemy(const enemy *e, int region, float t) {
   }
 }
 
+/* LANTERNFALL_CREATURES_FLAT=1 (development): the old flat shapes, the creature check's control */
+static bool flat_creatures(void) {
+  static int f = -1;
+  if (f < 0) f = getenv("LANTERNFALL_CREATURES_FLAT") != NULL;
+  return f;
+}
+static void enemy_art(const enemy *e, int region, float t) {
+  if (flat_creatures()) draw_enemy(e, region, t);
+  else creature_enemy(e, region, t);
+}
+
 /* ── the wardens ── */
+static void draw_boss(const boss *b, float t);
+static void boss_art(const boss *b, int region, float t) {
+  if (flat_creatures()) draw_boss(b, t);
+  else creature_boss(b, region, t);
+}
 static void draw_boss(const boss *b, float t) {
   if (!b->active) return;
   float f = b->facing_left ? -1.0f : 1.0f, x = b->x, y = b->y, hw = boss_hw(b->idx), hh = boss_hh(b->idx);
@@ -1453,7 +1473,7 @@ static void draw_showcase(int region, float t) {
         if (r == 3) e.flash = 8, e.state = ES_REST;
         e.hx = e.x, e.hy = e.y, e.vx = e.x + 2, e.vy = e.y;
         if (r == r0) light(e.x - 1.2f, g_cam.position.y, 9, rgba(1, 0.85f, 0.6f, 1), 0.3f, true); /* (one lantern per column) */
-        draw_enemy(&e, region, t);
+        enemy_art(&e, region, t);
         VS.enemies++;
       }
   } else {
@@ -1467,14 +1487,14 @@ static void draw_showcase(int region, float t) {
       boss b = { .active = true, .alive = true, .idx = (uint8_t)i, .hp = 20, .hp_max = 20 };
       b.x = g_cam.position.x + ((float)cx - 1) * 9.5f;
       b.y = g_cam.position.y + (r0 == r1 ? 2.5f : (float)cy * 8.0f - 2.0f);
-      if (only >= 0) b.x = g_cam.position.x, b.y = g_cam.position.y + 2.0f;
+      if (only >= 0) b.x = g_cam.position.x, b.y = g_cam.position.y + (i == 3 || i == 4 ? 0 : 1.2f); /* (on the floor; the fliers above it) */
       b.facing_left = (uint8_t)(cx == 2);
       b.move = (uint8_t)(mv >= 0 ? mv : FIRST[i]);
       b.state = (uint8_t)(st == 1 ? ES_TELL : st == 2 ? ES_ACT : ES_REST);
       b.t = (int16_t)(st == 1 ? boss_tell_ticks(b.move) * 2 / 3 : tick % 30);
       if (st == 3) b.flash = 6;
       light(b.x - 3.5f, b.y - 2.5f, 10, rgba(1, 0.85f, 0.6f, 1), 0.3f, true);
-      draw_boss(&b, t);
+      boss_art(&b, region, t);
     }
   }
 }
@@ -1559,8 +1579,9 @@ void view_draw(const sim *s, float t) {
   cw_r2d_use_layer(L_ACTORS);
   if (showcase_mode()) draw_showcase(region, t);
   for (int i = 0; i < s->nen && !showcase_mode(); i++)
-    if (s->en[i].alive) draw_enemy(&s->en[i], region, t), VS.enemies++;
-  if (!showcase_mode()) draw_boss(&s->b, t);
+    if (s->en[i].alive) enemy_art(&s->en[i], region, t), VS.enemies++;
+  creatures_draw_remnants(t);
+  if (!showcase_mode()) boss_art(&s->b, region, t);
   for (int i = s->players - 1; i >= 0 && !showcase_mode(); i--) {
     const player *p = &s->p[i];
     if (p->state == PS_GRAPPLE && p->anchor >= 0 && p->anchor < s->pw.nanchors) { /* the line */
@@ -1604,6 +1625,7 @@ void view_draw(const sim *s, float t) {
     }
     if (p->state == PS_DASH) cw_r2d_rect((cw_rect){ p->x - (p->dash_dir > 0 ? 2.5f : 0), p->y - 1.3f, 2.5f, 0.9f }, rgba(0.6f, 0.9f, 1, 0.25f));
   }
+  creatures_fx(s, t);
   draw_tells(s, t);
   glowing(3.0f);
   draw_shots(s, t);
@@ -1654,6 +1676,7 @@ void view_draw(const sim *s, float t) {
 /* ── effects from events ── */
 void view_events(const sim *s) {
   int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
+  creatures_events(s, region);
   cw_color acc = hexc(REGIONS[region].accent, 1), top = hexc(REGIONS[region].top, 1);
   for (int i = 0; i < s->players; i++) {
     const player *p = &s->p[i];
@@ -1707,6 +1730,7 @@ void view_events(const sim *s) {
 }
 
 void view_tick(const sim *s, float dt) {
+  creatures_tick(dt);
   if (flash_t > 0) flash_t -= dt * 2.5f;
 #ifdef LANTERNFALL_R2D_V2
   for (int i = 0; i < 8; i++) if (waves[i].age > 0 && waves[i].age <= 1) waves[i].age += dt * 1.6f;
