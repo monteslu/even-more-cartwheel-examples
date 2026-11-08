@@ -1,6 +1,8 @@
 /* pinball (working title): three original tables, one to four players taking turns, on cartwheel and three.c.
  *
- *   select    choose a table and how many play (each table's best scores beside it)
+ *   select    the title's Play goes straight here, on the table last played: choose a table and how many play, or
+ *             practice (the ball always comes back), and the launch button plays (two presses from the title to the
+ *             plunger)
  *   play      flippers on the face buttons (west, east), the shoulders, the d-pad and the triggers; hold the launch
  *             button to pull the plunger and let go to fire, and once no ball waits on it a fresh press flips both;
  *             nudge the cabinet (too much tilts it); the dot display and the scores beside the table
@@ -26,6 +28,7 @@
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
+#include "backbox.h"
 #include "dmd.h"
 #include "game.h"
 #include "sound.h"
@@ -42,6 +45,7 @@ typedef struct hs_entry { int64_t score; char name[4]; } hs_entry;
 typedef struct save_data {
   hs_entry best[NTABLES][5];
   int32_t last_table, last_players;
+  int32_t played;          /* a game has been started (the first start defaults to one player, not practice) */
 } save_data;
 
 #define FLH 24
@@ -97,13 +101,21 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 
 static uint32_t ticks_run; /* fixed ticks since the app started */
 
+/* every pad drives a seat: players take turns on one pad passed round or each on their own (any seat's buttons play) */
+static void seat_pads(void) {
+  for (int i = 1; i < MAXP; i++) cw_input_assign(i, i, 0);
+}
+
 static void begin_game(void) {
   G.rng = G.rng * 1664525u + 1013904223u + ticks_run * 2654435761u;
-  game_new(&G.g, G.sel_table, G.sel_players, G.rng);
+  game_new(&G.g, G.sel_table, G.sel_players < 1 ? 1 : G.sel_players, G.rng);
+  G.g.practice = G.sel_players == 0;
+  seat_pads();
   G.phase = PH_PLAY, G.phase_t = 0;
   memset(G.spin_last, 0, sizeof G.spin_last);
   music_start(G.g.T.th.music_style, G.g.T.th.music_root);
-  save()->last_table = G.sel_table, save()->last_players = G.sel_players;
+  save()->last_table = G.sel_table, save()->last_players = G.sel_players, save()->played = 1;
+  backbox_table(&G.g.T);
 #if !defined(PINBALL_AUTOPILOT)
   cw_shell_save_commit();
 #endif
@@ -115,13 +127,18 @@ static void start(int players, void *u) {
   G.sel_players = CW_CLAMP(players, 1, MAXP);
 #ifdef PINBALL_AUTOPILOT
   G.sel_table = getenv("PINBALL_TABLE") ? CW_CLAMP(atoi(getenv("PINBALL_TABLE")), 0, NTABLES - 1) : PINBALL_BENCH ? PINBALL_BENCH_TABLE : 0;
+  if (G.sel_players < 1) G.sel_players = 1;
   if (getenv("PINBALL_PLAYERS")) G.sel_players = CW_CLAMP(atoi(getenv("PINBALL_PLAYERS")), 1, MAXP);
   begin_game();
 #else
   G.phase = PH_SELECT, G.phase_t = 0;
   int last = save()->last_table;
   G.sel_table = last >= 0 && last < NTABLES ? last : 0;
+  G.sel_players = CW_CLAMP(save()->last_players, 0, MAXP);
+  if (save()->last_players == 0 && save()->last_table == 0 && !save()->played) G.sel_players = 1; /* a first start: one player */
+  seat_pads();
   game_new(&G.g, G.sel_table, 1, 1); /* the table behind the choice */
+  backbox_table(&G.g.T);
 #endif
 }
 
@@ -142,8 +159,10 @@ static void init(void *u) {
   cw_project_load_input();
   G.fl = cw_action_find("flip_left"), G.fr = cw_action_find("flip_right"), G.launch = cw_action_find("launch"), G.both = cw_action_find("flip_both");
   G.nudge = cw_action_find("nudge"), G.nudge_l = cw_action_find("nudge_left"), G.nudge_r = cw_action_find("nudge_right");
-  cw_shell_init(&(cw_shell_desc){ .title = "PINBALL", .subtitle = "three tables, one to four players", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
+  /* one seat in the shell (no join screen: players take turns, so the table select counts them) and every pad plays
+   * from the table select on (begin_game seats them) */
+  cw_shell_init(&(cw_shell_desc){ .title = "PINBALL", .subtitle = "three tables, one to four players", .max_players = 1, .shared_screen = true,
+                                  .game_save_size = sizeof(save_data), .game_save_version = 2, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -227,6 +246,42 @@ static void read_input(input *in) {
 #endif
 }
 
+/* ── rumble ──────────────────────────────────────────────────────────── */
+
+/* the pad feels the machine: a tap for each flip and coil, a thump for a drain, a long roll for a jackpot, multiball
+ * or the wizard mode. Never the camera: the picture stays still. The player whose turn it is feels it (and the first
+ * seat, which holds the keyboard's pad when the others have none). A strong rumble is not cut short by a tap. */
+static struct { int until; float strength; } RB;
+static void rumble(float low, float high, int ms) {
+  int now = (int)ticks_run, end = now + ms * 60 / 1000;
+  float s = low + high;
+  if (now < RB.until && s < RB.strength) return;
+  RB.until = end, RB.strength = s;
+  int p = G.g.cur;
+  if (cw_input_player_pad(p) < 0) p = 0;
+  cw_input_rumble(p, low, high, ms);
+}
+static void rumble_events(const game *g) {
+  for (int k = 0; k < g->nfx; k++) {
+    float v = g->fx[k].v;
+    switch (g->fx[k].kind) {
+    case FX_FLIP: rumble(0.0f, 0.22f, 45); break;
+    case FX_POP: rumble(0.3f, 0.25f, 60); break;
+    case FX_SLING: rumble(0.25f, 0.3f, 55); break;
+    case FX_KICKOUT: case FX_HOLE: case FX_KICKBACK: rumble(0.35f, 0.2f, 90); break;
+    case FX_DROP_RESET: rumble(0.2f, 0.1f, 70); break;
+    case FX_LAUNCH: rumble(0.2f + 0.3f * fminf(1, v), 0.1f, 110); break;
+    case FX_DRAIN: rumble(0.55f, 0.05f, 260); break;
+    case FX_NUDGE: rumble(0.6f, 0.15f, 120); break;
+    case FX_TOY_HIT: rumble(0.45f, 0.35f, 160); break;
+    case FX_JACKPOT: case FX_WIZARD_SHOT: case FX_MODE_DONE: rumble(0.7f, 0.45f, 380); break;
+    case FX_MULTIBALL: case FX_WIZARD: rumble(0.8f, 0.4f, 650); break;
+    case FX_TILT: rumble(1.0f, 0.2f, 700); break;
+    default: break;
+    }
+  }
+}
+
 /* ── the high score table ────────────────────────────────────────────── */
 
 static int hs_slot(int table, int64_t score) {
@@ -257,6 +312,7 @@ static void entry_commit(void) {
 }
 
 static void game_finished(void) {
+  if (G.g.practice) { G.phase = PH_OVER, G.phase_t = 0; return; } /* practice keeps no score */
   /* the players by score, best first, each offered a place */
   G.entry_n = G.g.players, G.entry_i = 0;
   for (int i = 0; i < G.entry_n; i++) G.entry_order[i] = i;
@@ -286,8 +342,9 @@ static void fixed_update(void *u, double dt) {
     if (dx) {
       G.sel_table = (G.sel_table + dx + NTABLES) % NTABLES, sound_menu(0);
       game_new(&G.g, G.sel_table, 1, 1);
+      backbox_table(&G.g.T);
     }
-    if (dy) G.sel_players = CW_CLAMP(G.sel_players + dy, 1, MAXP), sound_menu(0);
+    if (dy) G.sel_players = CW_CLAMP(G.sel_players + dy, 0, MAXP), sound_menu(0); /* 0: practice */
     if (ui("ui_accept") || pressed(G.launch)) sound_menu(1), begin_game();
     break;
   }
@@ -299,7 +356,18 @@ static void fixed_update(void *u, double dt) {
       if (G.g.balls_in_play < 3 && G.g.tick % 45 == 0) game_launch_ball(&G.g);
     }
     game_step(&G.g, &in);
+#ifdef PINBALL_AUTOPILOT
+    if (PINBALL_BENCH && getenv("PINBALL_FLASH_STORM")) { /* tests/pinball-flash.mjs: the wizard mode's every shot pulsing, and
+                                                         * the big events fired far faster than play can */
+      game *g = &G.g;
+      if (G.phase_t == 30) game_test_light_wizard(g), game_test_event(g, EV_HOLE, g->T.mode_hole, 1);
+      static const int BIG[6] = { FX_JACKPOT, FX_MODE_SHOT, FX_LOCK, FX_SKILL, FX_MULTIBALL, FX_RAMP_DONE };
+      if (G.phase_t % 4 == 0 && g->nfx < 62) g->fx[g->nfx].kind = (uint8_t)BIG[(G.phase_t / 4) % 6], g->fx[g->nfx].a = 0, g->fx[g->nfx].v = 1, g->nfx++;
+      if (G.phase_t % 3 == 0 && g->nfx < 62 && g->T.npop) g->fx[g->nfx].kind = FX_POP, g->fx[g->nfx].a = (int16_t)g->T.pops[(G.phase_t / 3) % g->T.npop], g->fx[g->nfx].v = 1, g->nfx++;
+    }
+#endif
     sound_events(&G.g);
+    rumble_events(&G.g);
     music_level(G.g.multiball ? 3 : G.g.mode >= 0 ? 2 : G.g.state == GS_PLAY ? 1 : 0);
     /* the spinners tick as their plates turn */
     for (int i = 0; i < G.g.T.nel; i++) {
@@ -334,6 +402,7 @@ static void fixed_update(void *u, double dt) {
       sound_menu(1);
       G.phase = PH_SELECT, G.phase_t = 0;
       game_new(&G.g, G.sel_table, 1, 1);
+      backbox_table(&G.g.T);
       music_start(0, 110.0f), music_level(0);
     }
     break;
@@ -381,44 +450,82 @@ static void dmd_fit(dmd *d, const char *s, int y, int scale, int v) {
   dmd_text_c(d, s, 64, y, scale, v);
 }
 
+/* the dot display. Nothing on it blinks: a message slides in and its words brighten over a third of a second, a
+ * big award has a soft band of light sweeping across behind it (one pass a second), a letter being chosen is
+ * underlined. PINBALL_OLD_STROBE: the blinking it had (the flash check's control). */
+static int ease_in(int t, int len, int from, int to) { /* a level easing from `from` to `to` over len ticks */
+  if (t >= len) return to;
+  float k = (float)t / (float)len;
+  k = k * k * (3 - 2 * k);
+  return from + (int)((float)(to - from) * k + 0.5f);
+}
+
+static void dmd_sweep(dmd *d, int t) { /* a soft band of dim dots crossing the panel, once a second */
+  int cx = (t * 128 / 60) % 192 - 32;
+  for (int x = cx - 12; x <= cx + 12; x++) {
+    if (x < 0 || x >= DMD_W) continue;
+    int v = 4 - abs(x - cx) / 3;
+    if (v <= 0) continue;
+    for (int y = 0; y < DMD_H; y += 2)
+      if (!d->dot[y][x]) dmd_set(d, x, y + ((x / 2) & 1), v);
+  }
+}
+
 static void dmd_draw(void) {
   dmd *d = &G.D;
   const game *g = &G.g;
   dmd_clear(d);
   char a[48], b[48];
-  int t = g->tick;
   if (G.phase == PH_SELECT) {
-    dmd_fit(d, table_name(G.sel_table), 3, 2, 15);
-    snprintf(a, sizeof a, "%d PLAYER%s", G.sel_players, G.sel_players > 1 ? "S" : "");
+    dmd_fit(d, table_name(G.sel_table), 3, 2, ease_in(G.phase_t, 20, 6, 15));
+    if (G.sel_players == 0) snprintf(a, sizeof a, "PRACTICE");
+    else snprintf(a, sizeof a, "%d PLAYER%s", G.sel_players, G.sel_players > 1 ? "S" : "");
     dmd_text_c(d, a, 64, 23, 1, 9);
   } else if (G.phase == PH_ENTRY) {
     snprintf(a, sizeof a, "PLAYER %d  HIGH SCORE", G.entry_player + 1);
     dmd_text_c(d, a, 64, 1, 1, 12);
     for (int i = 0; i < 3; i++) {
       char c[2] = { G.entry_name[i], 0 };
+#ifdef PINBALL_OLD_STROBE
       bool on = i != G.entry_pos || (G.phase_t / 12) % 2;
       dmd_text(d, c, 40 + i * 18, 11, 2, on ? 15 : 4);
+#else
+      dmd_text(d, c, 40 + i * 18, 11, 2, i == G.entry_pos ? 15 : i < G.entry_pos ? 11 : 6);
+#endif
       if (i == G.entry_pos) dmd_rect(d, 40 + i * 18, 27, 10, 1, 15);
     }
   } else if (g->msg != MSG_NONE && G.phase == PH_PLAY) {
     int mt = g->msg_t;
+#ifdef PINBALL_OLD_STROBE
     bool blink = (mt / 6) % 2;
+    int hi = blink ? 15 : 6, slide = 0;
+#else
+    int hi = ease_in(mt, 20, 5, 15), slide = mt < 10 ? (10 - mt) * (10 - mt) : 0; /* in from the right */
+#endif
     switch (g->msg) {
-    case MSG_JACKPOT: case MSG_MULTIBALL: case MSG_SKILL: case MSG_EXTRA:
+    case MSG_JACKPOT: case MSG_MULTIBALL: case MSG_SKILL: case MSG_EXTRA: case MSG_WIZARD:
+#ifdef PINBALL_OLD_STROBE
       if (blink || g->msg == MSG_MULTIBALL) dmd_fit(d, g->msg_a, g->msg_value ? 1 : 9, 2, 15);
-      if (g->msg_value) fmt_score(g->msg_value, a, sizeof a), dmd_text_c(d, a, 64, 18, 2, 13);
-      else if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 25, 1, 10);
+#else
+      dmd_fit(d, g->msg_a, g->msg_value ? 1 : 9, 2, hi);
+#endif
+      if (g->msg_value) fmt_score(g->msg_value, a, sizeof a), dmd_text_c(d, a, 64 + slide, 18, 2, 13);
+      else if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64 + slide, 25, 1, 10);
+#ifdef PINBALL_OLD_STROBE
       for (int k = 0; k < 6; k++) { /* sparks */
         int sx = (int)((uint32_t)(k * 2654435761u + (uint32_t)mt * 40503u) % 128u), sy = (int)((uint32_t)(k * 97u + (uint32_t)mt * 13u) % 32u);
         dmd_set(d, sx, sy, 15);
       }
+#else
+      dmd_sweep(d, mt);
+#endif
       break;
     case MSG_MODE:
-      dmd_fit(d, g->msg_a, 2, 2, 15);
-      dmd_text_c(d, g->msg_b, 64, 22, 1, mt < 30 && blink ? 15 : 10);
+      dmd_fit(d, g->msg_a, 2, 2, hi);
+      dmd_text_c(d, g->msg_b, 64 + slide, 22, 1, mt < 30 ? ease_in(mt, 30, 4, 13) : 10);
       break;
     case MSG_TILT: case MSG_WARN:
-      dmd_fit(d, g->msg_a, g->msg_b[0] ? 2 : 9, 2, blink ? 15 : 6);
+      dmd_fit(d, g->msg_a, g->msg_b[0] ? 2 : 9, 2, hi);
       if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 23, 1, 12);
       break;
     case MSG_BONUS:
@@ -429,28 +536,36 @@ static void dmd_draw(void) {
       break;
     case MSG_BIG:
       dmd_text_c(d, g->msg_a, 64, 1, 1, 11);
-      if (g->msg_value) fmt_score(g->msg_value, a, sizeof a), dmd_text_c(d, a, 64, 10, 2, 15);
+      if (g->msg_value) fmt_score(g->msg_value, a, sizeof a), dmd_text_c(d, a, 64 + slide, 10, 2, hi);
       dmd_text_c(d, g->msg_b, 64, 25, 1, 9);
       break;
     default:
-      if (dmd_text_width(g->msg_a, 2) > 126) dmd_text_c(d, g->msg_a, 64, g->msg_b[0] ? 6 : 12, 1, 15);
-      else dmd_fit(d, g->msg_a, g->msg_b[0] ? 3 : 9, 2, 15);
+      if (dmd_text_width(g->msg_a, 2) > 126) dmd_text_c(d, g->msg_a, 64 + slide, g->msg_b[0] ? 6 : 12, 1, hi);
+      else dmd_fit(d, g->msg_a, g->msg_b[0] ? 3 : 9, 2, hi);
       if (g->msg_b[0]) dmd_text_c(d, g->msg_b, 64, 23, 1, 11);
       break;
     }
   } else {
-    /* the current player's score, big; the ball and the mode below */
+    /* the current player's score, big; the ball, the mode, the next goal below */
     const player_state *p = &g->P[g->cur];
     fmt_score(p->score, a, sizeof a);
     int sc = dmd_text_width(a, 2) > 124 ? 1 : 2;
     dmd_text_c(d, a, 64, sc == 2 ? 3 : 8, sc, 15);
+    char hv[24];
     if (G.phase == PH_OVER) snprintf(b, sizeof b, "GAME OVER");
+    else if (g->wizard) snprintf(b, sizeof b, "%s  %s", g->T.wizard_name, fmt_score(g->wizard_value, hv, sizeof hv));
+    else if (g->mode >= 0 && g->T.modes[g->mode].kind == MK_HURRY) snprintf(b, sizeof b, "%s %s", g->T.modes[g->mode].name, fmt_score(g->hurry, hv, sizeof hv));
     else if (g->mode >= 0) snprintf(b, sizeof b, "%s  %d", g->T.modes[g->mode].name, (g->mode_t + 59) / 60);
     else if (g->multiball) snprintf(b, sizeof b, "MULTIBALL  JACKPOT IS LIT");
     else if (g->state == GS_PLUNGE) snprintf(b, sizeof b, "SKILL SHOT: THE LIT LANE");
+    else if (g->practice) snprintf(b, sizeof b, "PRACTICE");
     else if (g->players > 1) snprintf(b, sizeof b, "PLAYER %d   BALL %d", g->cur + 1, CW_MIN(p->ball, BALLS_PER_GAME));
     else snprintf(b, sizeof b, "BALL %d", CW_MIN(p->ball, BALLS_PER_GAME));
-    dmd_text_c(d, b, 64, 24, 1, g->mode >= 0 && (t / 20) % 2 ? 13 : 8);
+#ifdef PINBALL_OLD_STROBE
+    dmd_text_c(d, b, 64, 24, 1, g->mode >= 0 && (g->tick / 20) % 2 ? 13 : 8);
+#else
+    dmd_text_c(d, b, 64, 24, 1, g->mode >= 0 || g->wizard ? 13 : 8);
+#endif
   }
   float col[3];
   for (int i = 0; i < 3; i++) col[i] = powf(g->T.th.dmd[i], 1 / 2.2f);
@@ -468,17 +583,44 @@ static cw_text_metrics text(const char *s, float x, float y, float size, cw_colo
   if (al != CW_ALIGN_LEFT) { cw_text_metrics m = cw_font_measure(font, s, &st); x -= al == CW_ALIGN_CENTER ? m.width * 0.5f : m.width; }
   return cw_r2d_text(font, s, cw_v2(x, y), &st);
 }
+static int popcount_modes(int m) { return (m & 1) + (m >> 1 & 1) + (m >> 2 & 1) + (m >> 3 & 1); }
 static cw_color tcol(const float *c, float k, float a) { return rgba(powf(fminf(1, c[0] * k), 1 / 2.2f), powf(fminf(1, c[1] * k), 1 / 2.2f), powf(fminf(1, c[2] * k), 1 / 2.2f), a); }
 
-/* the left panel: the dot display in a bezel, the controls under it */
+/* the left panel: the backbox, as on the machine: the table's lit picture with its name, the dot display under it, in
+ * a cabinet frame with the theme's trim. Its light breathes slowly (a 7 second swell, a few percent) */
 static float panel_dmd(cw_vec2 cs, float u) {
-  const theme *th = &G.g.T.th;
-  float pw = fminf(cs.x * 0.3f, 600 * u), ph = pw / 4.0f;
-  float x = cs.x * 0.165f - pw * 0.5f, y = cs.y * 0.08f;
-  cw_r2d_round_rect(cw_rect_make(x - 14 * u, y - 14 * u, pw + 28 * u, ph + 28 * u), 10 * u, 6, rgba(0.06f, 0.05f, 0.05f, 0.95f));
-  cw_r2d_round_rect_lines(cw_rect_make(x - 14 * u, y - 14 * u, pw + 28 * u, ph + 28 * u), 10 * u, 3 * u, 6, tcol(th->col[2], 0.8f, 0.9f));
-  cw_r2d_sprite(&(cw_sprite){ .texture = G.dmd_tex, .pos = cw_v2(x, y), .size = cw_v2(pw, ph), .color = rgba(1, 1, 1, 1) });
-  return y + ph + 28 * u;
+  const table *T = &G.g.T;
+  const theme *th = &T->th;
+  float pw = fminf(cs.x * 0.3f, 600 * u), ih = pw * (float)BB_H / (float)BB_W, ph = pw / 4.0f;
+  float x = cs.x * 0.165f - pw * 0.5f, y = cs.y * 0.035f, m = 12 * u;
+  float breathe = 0.5f - 0.5f * cosf((float)ticks_run / 60.0f * 6.2832f / 7.0f);
+  cw_rect frame = cw_rect_make(x - m, y - m, pw + 2 * m, ih + ph + 3 * m);
+  cw_r2d_round_rect(cw_rect_make(frame.x - 18 * u, frame.y - 18 * u, frame.w + 36 * u, frame.h + 36 * u), 26 * u, 8, tcol(th->col[2], 0.35f, 0.10f + 0.04f * breathe));
+  cw_r2d_round_rect(frame, 12 * u, 6, rgba(0.05f, 0.04f, 0.045f, 0.97f));
+  cw_r2d_round_rect_lines(frame, 12 * u, 3 * u, 6, tcol(th->col[2], 0.8f, 0.9f));
+  cw_r2d_sprite(&(cw_sprite){ .texture = backbox_texture(), .pos = cw_v2(x, y), .size = cw_v2(pw, ih), .color = rgba(0.92f + 0.08f * breathe, 0.92f + 0.08f * breathe, 0.92f + 0.08f * breathe, 1) });
+  /* the name across the picture's foot */
+  cw_r2d_rect(cw_rect_make(x, y + ih - 64 * u, pw, 64 * u), rgba(0, 0, 0, 0.45f));
+  cw_text_style st = tstyle(48 * u, tcol(th->col[2], 1.5f, 1));
+  st.outline_width = 4 * u;
+  cw_text_metrics tm = cw_font_measure(font, T->name, &st);
+  cw_r2d_text(font, T->name, cw_v2(x + pw * 0.5f - tm.width * 0.5f, y + ih - 60 * u), &st);
+  float dy = y + ih + m;
+  cw_r2d_sprite(&(cw_sprite){ .texture = G.dmd_tex, .pos = cw_v2(x, dy), .size = cw_v2(pw, ph), .color = rgba(1, 1, 1, 1) });
+  return frame.y + frame.h + 18 * u;
+}
+
+/* the next thing to shoot for, in a line */
+static const char *next_goal(const game *g, char *b, int cap) {
+  const player_state *p = &g->P[g->cur];
+  if (g->wizard) snprintf(b, cap, "%s: every shot is lit", g->T.wizard_name);
+  else if (g->mode >= 0) snprintf(b, cap, "%s: %s", g->T.modes[g->mode].name, g->T.modes[g->mode].goal);
+  else if (g->multiball) snprintf(b, cap, "the jackpot shot is lit");
+  else if (p->wizard_lit) snprintf(b, cap, "%s is lit: shoot the scoop", g->T.wizard_name);
+  else if (p->mode_lit) snprintf(b, cap, "%s is lit: shoot the scoop", g->T.modes[p->mode_next % g->T.nmode].name);
+  else if (p->lock_lit) snprintf(b, cap, "the lock is lit");
+  else snprintf(b, cap, "knock down a drop bank to light a mode");
+  return b;
 }
 
 static void hud_play(cw_vec2 cs, float u) {
@@ -487,8 +629,6 @@ static void hud_play(cw_vec2 cs, float u) {
   float bs = 26 * u;
   float y = panel_dmd(cs, u);
   /* under the display: the table, and the controls while they matter */
-  y += 12 * u;
-  y += text(g->T.name, cs.x * 0.165f, y, 34 * u, tcol(th->col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 6 * u;
   bool plunging = false;
   for (int i = 0; i < PB_MAXB; i++) if (g->W.b[i].state == BS_FREE && g->W.b[i].x > 0.219f && g->W.b[i].y < 0.08f) plunging = true;
   if (plunging || g->ball_ticks < 60 * 12) {
@@ -509,9 +649,17 @@ static void hud_play(cw_vec2 cs, float u) {
       y += cw_prompt_text_size(font, also, -1, bs).y + 12 * u;
     }
     cw_prompt_text(font, "{nudge}: nudge (not too hard)", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER);
+    y += cw_prompt_text_size(font, "{nudge}", -1, bs).y + 12 * u;
+  }
+  if (g->practice) { /* how to aim, for a newcomer */
+    cw_text_style st = tstyle(bs * 0.92f, rgba(0.75f, 0.95f, 0.85f, 1));
+    st.align = CW_ALIGN_CENTER, st.wrap_width = cs.x * 0.28f;
+    cw_r2d_text(font, "To aim: hold a flipper up to catch the ball, let go so it rolls down the flipper, and flip again as it "
+                      "passes the middle: earlier sends it across the table, later sends it up the near side.",
+                cw_v2(cs.x * 0.165f - cs.x * 0.14f, y + 10 * u), &st);
   }
   /* the right panel: every player's score, whose turn, the ball */
-  float rx = cs.x * 0.835f, ry = cs.y * 0.08f;
+  float rx = cs.x * 0.835f, ry = cs.y * 0.035f;
   for (int i = 0; i < g->players; i++) {
     const player_state *p = &g->P[i];
     bool now = i == g->cur && G.phase == PH_PLAY;
@@ -532,40 +680,73 @@ static void hud_play(cw_vec2 cs, float u) {
     ry += h + 10 * u;
   }
   ry += 10 * u;
-  /* what is going on: the mode and its clock, multiball, the lock, the bonus */
-  char b[64];
+  /* what is going on: the next goal, then the table's four modes and its wizard mode */
+  char b[96];
   const player_state *p = &g->P[g->cur];
-  if (g->mode >= 0) {
-    snprintf(b, sizeof b, "%s  %d", g->T.modes[g->mode].name, (g->mode_t + 59) / 60);
-    ry += text(b, rx, ry, 32 * u, tcol(th->col[g->mode % 4], 1.4f, 1), CW_ALIGN_CENTER).height;
-    snprintf(b, sizeof b, "%s: %d to go", g->T.modes[g->mode].goal, g->T.modes[g->mode].need - g->mode_hits);
-    ry += text(b, rx, ry, bs, rgba(1, 1, 1, 0.9f), CW_ALIGN_CENTER).height + 8 * u;
+  float w = fminf(cs.x * 0.29f, 560 * u), cx = rx - w * 0.5f;
+  cw_text_style ns = tstyle(bs, rgba(1, 0.95f, 0.75f, 1));
+  ns.wrap_width = w - 24 * u;
+  float gh = cw_font_measure(font, next_goal(g, b, sizeof b), &ns).height;
+  cw_r2d_round_rect(cw_rect_make(cx, ry, w, gh + 50 * u), 8 * u, 6, rgba(0.06f, 0.05f, 0.08f, 0.8f));
+  text("NEXT", cx + 14 * u, ry + 6 * u, 20 * u, tcol(th->col[2], 1.4f, 1), CW_ALIGN_LEFT);
+  cw_r2d_text(font, b, cw_v2(cx + 14 * u, ry + 32 * u), &ns);
+  ry += gh + 62 * u;
+  float mh = 40 * u * (float)(g->T.nmode + 1) + 56 * u;
+  cw_r2d_round_rect(cw_rect_make(cx, ry, w, mh), 8 * u, 6, rgba(0.03f, 0.03f, 0.05f, 0.75f));
+  text("MODES", cx + 14 * u, ry + 6 * u, 20 * u, tcol(th->col[2], 1.4f, 1), CW_ALIGN_LEFT);
+  float my = ry + 36 * u;
+  for (int i = 0; i < g->T.nmode; i++) {
+    const mode_def *md = &g->T.modes[i];
+    bool won = p->modes_done >> i & 1, played = p->modes_played >> i & 1, run = g->mode == i;
+    const char *st = run ? "" : won ? "WON" : played ? "PLAYED" : (p->mode_next == i && !g->wizard) ? (p->mode_lit ? "LIT" : "NEXT") : "";
+    cw_color c = run ? tcol(th->col[i % 4], 1.6f, 1) : won ? tcol(th->col[i % 4], 1.2f, 1) : played ? rgba(0.75f, 0.75f, 0.8f, 1) : rgba(0.55f, 0.55f, 0.6f, 1);
+    cw_r2d_circle(cw_v2(cx + 26 * u, my + 15 * u), 8 * u, 16, won || run ? tcol(th->col[i % 4], 1.3f, 1) : rgba(0.25f, 0.25f, 0.3f, 1));
+    text(md->name, cx + 44 * u, my, bs, c, CW_ALIGN_LEFT);
+    if (run) snprintf(b, sizeof b, "%d to go  %ds", md->need - g->mode_hits, (g->mode_t + 59) / 60);
+    else snprintf(b, sizeof b, "%s", st);
+    text(b, cx + w - 14 * u, my, bs * 0.9f, c, CW_ALIGN_RIGHT);
+    my += 40 * u;
   }
+  int np = popcount_modes(p->modes_played);
+  if (g->wizard) snprintf(b, sizeof b, "RUNNING");
+  else if (p->wizard_lit) snprintf(b, sizeof b, "LIT");
+  else snprintf(b, sizeof b, "%d of %d played", np, g->T.nmode);
+  text(g->T.wizard_name, cx + 44 * u, my, bs, g->wizard || p->wizard_lit ? tcol(th->col[2], 1.6f, 1) : rgba(0.6f, 0.6f, 0.68f, 1), CW_ALIGN_LEFT);
+  text(b, cx + w - 14 * u, my, bs * 0.9f, rgba(0.85f, 0.85f, 0.9f, 1), CW_ALIGN_RIGHT);
+  ry += mh + 12 * u;
   if (g->multiball) ry += text("MULTIBALL: the jackpot is lit", rx, ry, bs, tcol(th->col[2], 1.5f, 1), CW_ALIGN_CENTER).height + 4 * u;
   else if (p->lock_lit) ry += text("LOCK IS LIT", rx, ry, bs, tcol(th->col[3], 1.5f, 1), CW_ALIGN_CENTER).height + 4 * u;
-  if (p->mode_lit && g->mode < 0) ry += text("A MODE IS LIT AT THE SCOOP", rx, ry, bs, tcol(th->col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 4 * u;
   snprintf(b, sizeof b, "BONUS X%d", p->bonus_x);
   ry += text(b, rx, ry, bs, rgba(0.85f, 0.85f, 0.9f, 1), CW_ALIGN_CENTER).height;
-  if (g->tilt_warn > 0 && !g->tilted) text(g->tilt_warn == 1 ? "TILT WARNING" : "TILT WARNING 2", rx, ry + 8 * u, bs, rgba(1, 0.4f, 0.3f, 1), CW_ALIGN_CENTER);
+  if (g->practice) ry += text("PRACTICE: the ball always comes back", rx, ry + 6 * u, bs, rgba(0.7f, 0.95f, 0.8f, 1), CW_ALIGN_CENTER).height + 6 * u;
+  if (g->tilt_warn > 0 && !g->tilted) text(g->tilt_warn == 1 ? "TILT WARNING" : "TILT WARNING 2", rx, ry + 8 * u, bs, rgba(1, 0.55f, 0.3f, 1), CW_ALIGN_CENTER);
 }
 
 static void hud_select(cw_vec2 cs, float u) {
-  float y = panel_dmd(cs, u) + 20 * u;
+  float y = panel_dmd(cs, u) + 4 * u;
   float bs = 26 * u, x = cs.x * 0.165f;
   const table *T = &G.g.T;
-  y += text(T->name, x, y, 44 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 4 * u;
   cw_text_style st = tstyle(bs, rgba(1, 1, 1, 0.85f));
   st.align = CW_ALIGN_CENTER, st.wrap_width = cs.x * 0.3f;
   y += cw_r2d_text(font, T->tagline, cw_v2(x - cs.x * 0.15f, y), &st).height + 24 * u;
   cw_prompt_text(font, "{ui_left|ui_right}: table", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
   y += cw_prompt_text_size(font, "{ui_left}", -1, bs).y + 12 * u;
   char b[64];
-  snprintf(b, sizeof b, "{ui_up|ui_down}: players (%d)", G.sel_players);
+  if (G.sel_players == 0) snprintf(b, sizeof b, "{ui_up|ui_down}: practice");
+  else snprintf(b, sizeof b, "{ui_up|ui_down}: players (%d)", G.sel_players);
   cw_prompt_text(font, b, -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
   y += cw_prompt_text_size(font, "{ui_up}", -1, bs).y + 12 * u;
   cw_prompt_text(font, "{ui_accept}: play", -1, cw_v2(x, y), bs, rgba(1, 0.95f, 0.6f, 1), CW_ALIGN_CENTER);
   /* the right: this table's best five */
-  float rx = cs.x * 0.835f, ry = cs.y * 0.1f;
+  float rx = cs.x * 0.835f, ry = cs.y * 0.05f;
+  /* this table's modes and its wizard mode: what it plays like */
+  ry += text("THE MODES", rx, ry, 34 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 8 * u;
+  for (int i = 0; i < T->nmode; i++) {
+    ry += text(T->modes[i].name, rx, ry, 28 * u, tcol(T->th.col[i % 4], 1.4f, 1), CW_ALIGN_CENTER).height;
+    ry += text(T->modes[i].goal, rx, ry, 22 * u, rgba(0.85f, 0.85f, 0.9f, 1), CW_ALIGN_CENTER).height + 8 * u;
+  }
+  ry += text(T->wizard_name, rx, ry, 28 * u, tcol(T->th.col[2], 1.7f, 1), CW_ALIGN_CENTER).height;
+  ry += text("all four played: the wizard mode", rx, ry, 22 * u, rgba(0.85f, 0.85f, 0.9f, 1), CW_ALIGN_CENTER).height + 28 * u;
   ry += text("BEST SCORES", rx, ry, 34 * u, tcol(T->th.col[2], 1.4f, 1), CW_ALIGN_CENTER).height + 12 * u;
   const hs_entry *hb = save()->best[G.sel_table];
   for (int i = 0; i < 5; i++) {
