@@ -364,28 +364,24 @@ ptex pc_finish(pcan *p, float k) {
   int w = p->w, h = p->h;
   ptex out = { .w = w, .h = h };
   uint8_t *col = malloc((size_t)w * h * 4), *nrm = malloc((size_t)w * h * 4), *mat = malloc((size_t)w * h * 4);
-  for (int side = 0; side < 2; side++) {
-    for (int y = 0; y < h; y++)
-      for (int x = 0; x < w; x++) {
-        int sx = side ? w - 1 - x : x;
-        size_t i = (size_t)y * w + sx;
-        const float *C = p->c + 4 * i;
-        float a = C[3];
-        uint8_t *o = col + 4 * ((size_t)y * w + x);
-        o[0] = u8(a > 1e-4f ? C[0] / a : 0), o[1] = u8(a > 1e-4f ? C[1] / a : 0), o[2] = u8(a > 1e-4f ? C[2] / a : 0), o[3] = u8(a);
-        int xl = sx > 0 ? sx - 1 : sx, xr = sx < w - 1 ? sx + 1 : sx, yu = y > 0 ? y - 1 : y, yd = y < h - 1 ? y + 1 : y;
-        float dx = (p->ht[(size_t)y * w + xr] - p->ht[(size_t)y * w + xl]) * k, dy = (p->ht[(size_t)yd * w + sx] - p->ht[(size_t)yu * w + sx]) * k;
-        float nx = -dx, ny = dy, nz = 1, l = sqrtf(nx * nx + ny * ny + nz * nz);
-        if (side) nx = -nx;
-        uint8_t *n = nrm + 4 * ((size_t)y * w + x);
-        n[0] = u8(nx / l * 0.5f + 0.5f), n[1] = u8(ny / l * 0.5f + 0.5f), n[2] = u8(nz / l * 0.5f + 0.5f), n[3] = 255;
-        uint8_t *m = mat + 4 * ((size_t)y * w + x);
-        m[0] = u8(p->em[i]), m[1] = u8(p->sp[i]), m[2] = u8(p->gl[i]), m[3] = 255;
-      }
-    out.t[side] = cw_texture_from_pixels(w, h, col, &(cw_texture_desc){ .mipmaps = true });
-    cw_texture_set_normal_map(out.t[side], nrm);
-    cw_texture_set_material_map(out.t[side], mat);
-  }
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++) {
+      size_t i = (size_t)y * w + x;
+      const float *C = p->c + 4 * i;
+      float a = C[3];
+      uint8_t *o = col + 4 * ((size_t)y * w + x);
+      o[0] = u8(a > 1e-4f ? C[0] / a : 0), o[1] = u8(a > 1e-4f ? C[1] / a : 0), o[2] = u8(a > 1e-4f ? C[2] / a : 0), o[3] = u8(a);
+      int xl = x > 0 ? x - 1 : x, xr = x < w - 1 ? x + 1 : x, yu = y > 0 ? y - 1 : y, yd = y < h - 1 ? y + 1 : y;
+      float dx = (p->ht[(size_t)y * w + xr] - p->ht[(size_t)y * w + xl]) * k, dy = (p->ht[(size_t)yd * w + x] - p->ht[(size_t)yu * w + x]) * k;
+      float nx = -dx, ny = dy, nz = 1, l = sqrtf(nx * nx + ny * ny + nz * nz);
+      uint8_t *n = nrm + 4 * ((size_t)y * w + x);
+      n[0] = u8(nx / l * 0.5f + 0.5f), n[1] = u8(ny / l * 0.5f + 0.5f), n[2] = u8(nz / l * 0.5f + 0.5f), n[3] = 255;
+      uint8_t *m = mat + 4 * ((size_t)y * w + x);
+      m[0] = u8(p->em[i]), m[1] = u8(p->sp[i]), m[2] = u8(p->gl[i]), m[3] = 255;
+    }
+  out.t = cw_texture_from_pixels(w, h, col, &(cw_texture_desc){ .mipmaps = true });
+  cw_texture_set_normal_map(out.t, nrm);
+  cw_texture_set_material_map(out.t, mat);
   free(col), free(nrm), free(mat);
   return out;
 }

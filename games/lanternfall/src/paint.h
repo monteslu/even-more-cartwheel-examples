@@ -3,7 +3,7 @@
  * its cool edge to its lit middle, a soft key light from above), carries a material texture (fur, chitin, scales,
  * feathers, cloth, brass, glass, bark, skin...), casts a soft contact shadow on what is under it, and may glow. A
  * finished canvas becomes a colour texture with a normal map (from the height) and a material map (emission,
- * specular, gloss), painted for each facing (the renderer does not turn a mirrored sprite's normals).
+ * specular, gloss). A sprite facing left draws it with flip_x (the renderer turns a flipped or rotated sprite's normals).
  * Render code: libm is fine here. */
 #ifndef LANTERNFALL_PAINT_H
 #define LANTERNFALL_PAINT_H
@@ -53,8 +53,8 @@ void pc_stroke(pcan *p, const float *xy, int n, float r0, float r1, const pstyle
 /* a curved leaf / blade / feather between a and b bulging w at its middle (bend: sideways bow of its spine) */
 void pc_leaf(pcan *p, float ax, float ay, float bx, float by, float w, float bend, const pstyle *s);
 
-/* the finished art: a texture for each facing (left mirrored, its normals mirrored too), mipmapped */
-typedef struct ptex { cw_texture t[2]; int w, h; } ptex; /* t[0] facing right, t[1] facing left */
+/* the finished art: one texture, painted facing right, mipmapped (flip_x faces it left) */
+typedef struct ptex { cw_texture t; int w, h; } ptex;
 ptex pc_finish(pcan *p, float normal_k);
 
 /* noise (also for callers): value noise 0..1, fbm */

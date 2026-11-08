@@ -1,5 +1,5 @@
 /* lanternfall: the creatures (creatures.h). Painted at PPT pixels a tile (4K draws a tile at 120), mipmapped for
- * smaller screens. Every part is painted facing right; a creature facing left draws the mirrored copies.
+ * smaller screens. Every part is painted facing right; a creature facing left draws it flipped (flip_x).
  *
  * Who they are (original designs):
  *   crawler   an ember-seamed husk beetle: armour plates over a furnace-hot body, the seams glow as it rears
@@ -82,7 +82,7 @@ static void putx(const part *p, float lx, float ly, float a, float sx, float sy,
   cw_vec2 w = W(lx, ly);
   float px = left ? 1 - p->px : p->px;
   col.a *= alpha;
-  Q[nq++] = (qd){ .s = { .texture = p->tx.t[left ? 1 : 0], .pos = w, .size = { p->w * sx * D.s, p->h * sy * D.s }, .pivot = { px, p->py }, .rotation = D.f * a, .color = col },
+  Q[nq++] = (qd){ .s = { .texture = p->tx.t, .pos = w, .size = { p->w * sx * D.s, p->h * sy * D.s }, .pivot = { px, p->py }, .rotation = D.f * a, .color = col, .flip_x = left },
                   .glow = glow, .rim = rim };
 }
 static void put(const part *p, float lx, float ly, float a, float sx, float sy) { putx(p, lx, ly, a, sx, sy, false, 0, D.tint, true); }

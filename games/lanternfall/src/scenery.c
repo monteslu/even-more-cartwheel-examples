@@ -236,7 +236,7 @@ void scenery_decal(int material, float x, float y, uint32_t h, cw_color body, fl
 #ifdef LANTERNFALL_R2D_V2
   if (d->glow) cw_r2d_set_intensity(1.6f);
 #endif
-  cw_r2d_sprite(&(cw_sprite){ .texture = d->tx.t[flip], .pos = { x, y }, .size = { d->w * sc, d->h * sc }, .pivot = { 0.5f, 0.5f }, .rotation = rot, .color = c });
+  cw_r2d_sprite(&(cw_sprite){ .texture = d->tx.t, .pos = { x, y }, .size = { d->w * sc, d->h * sc }, .pivot = { 0.5f, 0.5f }, .rotation = rot, .color = c, .flip_x = flip });
 #ifdef LANTERNFALL_R2D_V2
   if (d->glow) cw_r2d_set_intensity(1);
 #endif
@@ -500,7 +500,7 @@ static void paint_props(void) {
 }
 
 static void pput(const prop_part *p, float x, float y, float rot, float sx, float sy, bool flip, cw_color c) {
-  cw_r2d_sprite(&(cw_sprite){ .texture = p->tx.t[flip], .pos = { x, y }, .size = { p->w * sx, p->h * sy }, .pivot = { flip ? 1 - p->px : p->px, p->py }, .rotation = rot, .color = c });
+  cw_r2d_sprite(&(cw_sprite){ .texture = p->tx.t, .pos = { x, y }, .size = { p->w * sx, p->h * sy }, .pivot = { flip ? 1 - p->px : p->px, p->py }, .rotation = rot, .color = c, .flip_x = flip });
 }
 static cw_color cmul(cw_color a, float k) { return (cw_color){ fminf(1, a.r * k), fminf(1, a.g * k), fminf(1, a.b * k), a.a }; }
 static cw_color cmix(cw_color a, cw_color b, float t) { return pc_mix(a, b, t); }
@@ -992,7 +992,7 @@ static void paint_landmarks(void) {
 
 bool scenery_landmark(int region, float x, float y, float t, float *lamp_x, float *lamp_y) {
   int m = region_material(region);
-  if (!LM[m].body.tx.t[0].id) return false;
+  if (!LM[m].body.tx.t.id) return false;
   const region_info *g = &REGIONS[region];
   cw_color white = { 1, 1, 1, 1 }, acc = pc_hex(g->accent);
   pput(&LM[m].body, x, y, 0, 1, 1, false, pc_mix(white, pc_hex(g->top), 0.12f));
@@ -1061,7 +1061,7 @@ static void paint_tablets(void) {
 }
 
 bool scenery_tablet(bool map, float x, float y, float t) {
-  if (!TB.slab[map].tx.t[0].id) return false;
+  if (!TB.slab[map].tx.t.id) return false;
   cw_color white = { 1, 1, 1, 1 }, glow = map ? (cw_color){ 0.55f, 1, 0.7f, 1 } : (cw_color){ 1, 0.82f, 0.5f, 1 };
   pput(&TB.slab[map], x, y, 0, 1, 1, false, white);
 #ifdef LANTERNFALL_R2D_V2
@@ -1077,7 +1077,7 @@ bool scenery_tablet(bool map, float x, float y, float t) {
 /* the landmark's body, drawn small on the map (the HUD layer: unlit) */
 bool scenery_landmark_icon(int region, float x, float y, float h, cw_color tint) {
   int m = region_material(region);
-  if (!LM[m].body.tx.t[0].id) return false;
+  if (!LM[m].body.tx.t.id) return false;
   float k = h / LM[m].body.h;
   pput(&LM[m].body, x, y, 0, k, k, false, tint);
   return true;
@@ -1132,5 +1132,5 @@ void scenery_map_paper(float w, float h, float a) {
   if (!PAPER.id) paint_map();
   cw_r2d_sprite(&(cw_sprite){ .texture = PAPER, .pos = { 0, 0 }, .size = { w, h }, .color = { 1, 1, 1, a } });
   float s = h * 0.13f;
-  cw_r2d_sprite(&(cw_sprite){ .texture = ROSE.tx.t[0], .pos = { w - s * 0.75f - h * 0.05f, h * 0.05f + s * 0.75f }, .size = { s * 1.5f, s * 1.5f }, .pivot = { 0.5f, 0.5f }, .color = { 1, 1, 1, a * 0.85f } });
+  cw_r2d_sprite(&(cw_sprite){ .texture = ROSE.tx.t, .pos = { w - s * 0.75f - h * 0.05f, h * 0.05f + s * 0.75f }, .size = { s * 1.5f, s * 1.5f }, .pivot = { 0.5f, 0.5f }, .color = { 1, 1, 1, a * 0.85f } });
 }
