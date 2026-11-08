@@ -925,7 +925,7 @@ static void scatter_bodies(void) {
           if (layer == 4) { col_box(rg, q[0], q[1] + 0.25f * sc, q[2], 0.35f * sc, 0.25f * sc, 0.35f * sc, q[4]); continue; } /* a stone */
           col_box(rg, q[0], q[1] + 1.5f * sc, q[2], 0.3f * sc, 1.5f * sc, 0.3f * sc, 0); /* the trunk */
           if (layer == 1) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.4f * sc, 4.8f * sc);
-          if (layer == 2) crown(rg, q[0], q[1], q[2], 1.3f * sc, 2.0f * sc, 3.4f * sc);
+          if (layer == 2) crown(rg, q[0], q[1], q[2], 1.8f * sc, 2.0f * sc, 3.4f * sc); /* (the stacked cones are 1.7 m round at the bottom) */
           if (layer == 3) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.2f * sc, 3.8f * sc);
         }
       }
@@ -1253,15 +1253,15 @@ void world_page(float x, float z, int region) {
 typedef struct look { float fog[3], density, amb[3], amb_e, sky[3], gnd[3], hemi, sun[3], sun_e, expo; } look;
 static const look LOOK[RG_COUNT] = {
   /* the meadow: a clear gold morning, blue-white haze */
-  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.1f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.75f, { 1, 0.93f, 0.8f }, 4.0f, 1.74f },
+  { { 0.5f, 0.66f, 0.92f }, 0.0018f, { 1, 0.95f, 0.85f }, 0.1f, { 0.6f, 0.76f, 1 }, { 0.42f, 0.38f, 0.22f }, 0.6f, { 1, 0.93f, 0.8f }, 4.0f, 1.84f },
   /* the canyon: amber light, a cool lavender haze and blue shadows against the orange rock */
-  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.42f },
+  { { 0.7f, 0.66f, 0.86f }, 0.0022f, { 0.55f, 0.65f, 1 }, 0.5f, { 0.7f, 0.68f, 0.95f }, { 0.6f, 0.36f, 0.2f }, 0.8f, { 1, 0.82f, 0.6f }, 3.4f, 1.56f },
   /* the marsh: teal and violet, a thicker cool mist */
-  { { 0.3f, 0.56f, 0.6f }, 0.0038f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
+  { { 0.3f, 0.56f, 0.6f }, 0.003f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
   /* the keep: a crimson sunset, ember haze */
-  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 0.94f },
+  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 1.06f },
   /* the heights: cold bright air, blue shadows on the snow */
-  { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.35f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.7f, { 1, 0.96f, 0.9f }, 3.2f, 0.78f },
+  { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.22f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.5f, { 1, 0.96f, 0.9f }, 3.2f, 0.74f },
   /* the underway: lantern light under the roof */
   { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 2.0f },
   /* the spire's downs: wind, a high clear sky */
@@ -1409,8 +1409,15 @@ static void add_tree(int rg, int sp, float x, float z, float s, float yaw, float
   tree *t = &TREE[ntree++];
   *t = (tree){ x, world_height(x, z) - 0.25f * s, z, yaw, s, phase, sp, rg };
   col_box(rg, x, t->y + 1.5f * s, z, 0.32f * s, 1.5f * s, 0.32f * s, 0);
-  float cr = sp == SP_PINE || sp == SP_FIR ? 1.4f : sp == SP_GLOWCAP ? 1.9f : sp == SP_DEEPWOOD ? 3.0f : 2.0f;
-  float cy = sp == SP_PINE || sp == SP_FIR ? 3.6f : sp == SP_DEEPWOOD ? 8.0f : sp == SP_GLOWCAP ? 4.1f : SP_PIVOT[sp] + 1.4f;
+  if (sp == SP_PINE || sp == SP_FIR) { /* the conifers' tiers run from 1.4 m to 6.2 m and are widest at the bottom
+    * (tools/make-world-assets.mjs): a wide box for the low tiers, a narrow one for the top, so the camera never stops
+    * inside the needles */
+    crown(rg, x, t->y, z, 2.5f * s, 1.2f * s, 2.4f * s);
+    crown(rg, x, t->y, z, 1.4f * s, 1.5f * s, 5.0f * s);
+    return;
+  }
+  float cr = sp == SP_GLOWCAP ? 1.9f : sp == SP_DEEPWOOD ? 3.0f : 2.0f;
+  float cy = sp == SP_DEEPWOOD ? 8.0f : sp == SP_GLOWCAP ? 4.1f : SP_PIVOT[sp] + 1.4f;
   crown(rg, x, t->y, z, cr * s, 1.3f * s, cy * s);
 }
 static void place_trees(void) {

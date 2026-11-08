@@ -8,7 +8,7 @@
  * (they fade in and out). A blade leaves a ribbon through the arc where its blow is live (the rules' hit window), the
  * heroes' and the bosses'. A blow's hit-stop stops every clip with the world. A shield bearer carries its shield up in
  * front while it holds and drops it when it is knocked aside; a slinger's stones fly with a short streak; a marsh
- * lurker waits under the water and rises. */
+ * lurker waits in a pool, head and shoulders above the water, and rises. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -430,7 +430,9 @@ void view_fixed(void) {
     if (nochars < 0) nochars = getenv("ADV_PROBE_NOCHARS") != NULL;
     bool near = !nochars && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 45 * 45); /* farther than 45 m a foe is a few pixels in the haze */
     bool lurk = a->role == R_LURKER && (a->state == ST_IDLE_HOME || a->state == ST_ROAR);
-    if (lurk && a->state == ST_IDLE_HOME) near = false; /* under the water */
+    /* a lurker waiting in a pool: only its head and shoulders above the water, still (it cannot be locked or struck
+     * until it rises: the rules say so; the player sees what waits there) */
+    const float sunk = 1.35f * GEN_SCALE[a->kind];
     cw_node_set(r->root, "visible", cw_val_bool(near));
     VST.drawn += near;
     { /* a foe casts the sun's shadow only near the camera (the cascades reach 40 m; a far caster redraws them for a
@@ -446,7 +448,8 @@ void view_fixed(void) {
     }
     if (!r->rd && !r->still) {
       t3_vec3 at = a->mv.position;
-      if (lurk && a->state == ST_ROAR) { float k = 1 - (float)a->st_t / (float)CW_MAX(1, a->st_len); at.y -= 2.1f * k * k; } /* rising out of the water */
+      if (lurk && a->state == ST_IDLE_HOME) at.y -= sunk;
+      if (lurk && a->state == ST_ROAR) { float k = 1 - (float)a->st_t / (float)CW_MAX(1, a->st_len); at.y -= sunk * k * k; } /* rising out of the water */
       cw_node3d_set_position(r->root, at);
       cw_node3d_set_rotation(r->root, (t3_vec3){ 0, a->yaw, 0 });
     }
