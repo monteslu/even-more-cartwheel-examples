@@ -16,6 +16,7 @@
 
 #include "art.h"
 #include "creatures.h"
+#include "scenery.h"
 #include "view.h"
 
 cw_camera2d g_cam;
@@ -79,6 +80,7 @@ static float last_hp_t[MAXP];
 void view_init(void) {
   art_init();
   creatures_init();
+  scenery_init();
   if (getenv("LANTERNFALL_NO_GI")) g_gi = false; /* (the perf breakdown) */
   np = 0;
 }
@@ -526,6 +528,16 @@ static void draw_tiles(const sim *s, float x0, float y0, float x1, float y1, flo
     }
   for (int k = 0; k < nrb; k++)
     if (RBS[k].ni) cw_r2d_triangles(A.rock[RBS[k].region], RBS[k].v, RBS[k].nv, RBS[k].i, RBS[k].ni);
+  /* features set into the rock two tiles deep or more (scenery.c): no stretch of rock one repeating pattern */
+  for (int y = ty0; y <= ty1 && !perf_off("decal"); y++)
+    for (int x = tx0; x <= tx1; x++) {
+      if (!w_in(x, y) || rockin[y][x] < 2 || !t_solid(s->t[y][x]) || s->t[y][x] == T_BOSSDOOR || s->t[y][x] == T_SEAL) continue;
+      uint32_t h = fhash((uint32_t)x * 2654435761u, (uint32_t)y * 40503u + 7u);
+      if ((h % 100u) >= 16u) continue;
+      int region = tile_region(s, x, y);
+      scenery_decal(region_material(region), (float)x + 0.5f, (float)y + 0.5f, h / 100u, corner_colour(rock_body(region, s->t[y][x]), x, y), rockin[y][x] >= 3 ? 3.6f : 2.0f);
+      VS.sprites++;
+    }
   /* what lies on the rock: lips, cracks; ledges, thorns, molten channels */
   for (int y = ty0; y <= ty1; y++)
     for (int x = tx0; x <= tx1; x++) {
