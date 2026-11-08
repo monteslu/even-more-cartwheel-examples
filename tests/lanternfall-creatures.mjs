@@ -76,6 +76,8 @@ if (!dir) {
   /* the check needs four sheets and the same four with the old flat shapes; --capture draws every sheet */
   const CHECK = ['enemies-r0', 'enemies-r0-empty', 'enemies-r0-mask', 'wardens-s0', 'wardens-s0-empty', 'wardens-s0-mask'];
   const only = opt('--only'), all = sheets(pick);
+  /* (over the room's rock and sky alone: a lamp the world puts behind a cell must not decide the measure) */
+  for (const n of CHECK) all[n] = { ...all[n], vars: { ...all[n].vars, LANTERNFALL_SHOWCASE_PLAIN: '1' } };
   const list = Object.entries(all).filter(([n]) => (argv.includes('--capture') ? !only || n.includes(only) : CHECK.includes(n)));
   if (!argv.includes('--capture')) {
     mkdirSync(join(dir, 'flat'), { recursive: true });

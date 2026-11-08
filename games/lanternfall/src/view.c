@@ -31,6 +31,8 @@ static double now_ms(void) {
 }
 static float cur_tint[3];
 static int showcase_mode(void);
+/* LANTERNFALL_SHOWCASE_PLAIN: the showcase over the room's rock and sky alone (no lamps, no props behind a creature) */
+static bool showcase_plain(void) { return showcase_mode() && getenv("LANTERNFALL_SHOWCASE_PLAIN") != NULL; }
 static bool flat_props(void);
 static float showcase_zoom(void);
 
@@ -1681,6 +1683,7 @@ void view_draw(const sim *s, float t) {
   for (int i = 0; i < s->w->nents; i++) {
     const ent *e = &s->w->ents[i];
     if (e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
+    if (showcase_plain()) continue; /* (the creature check: the room's rock and sky, none of its lamps or props) */
     int er = s->w->rooms[e->room].region;
     if (e->kind == EK_PROP) draw_prop(e, &REGIONS[er], t);
     else if (e->kind == EK_LAMP) draw_lamp(e, &REGIONS[er], t, true);
@@ -1722,7 +1725,7 @@ void view_draw(const sim *s, float t) {
   draw_barriers(s, x0, y0, x1, y1, t);
   for (int i = 0; i < s->w->nents; i++) { /* halos round every light source, and the shrines' warmth */
     const ent *e = &s->w->ents[i];
-    if (e->kind != EK_LAMP || e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
+    if (e->kind != EK_LAMP || showcase_plain() || e->x < x0 - 3 || e->x > x1 + 3 || e->y < y0 - 4 || e->y > y1 + 6) continue;
     cw_color acc = hexc(REGIONS[s->w->rooms[e->room].region].accent, 1);
     if (acc.r - acc.b < 0.2f) acc = mixc(acc, rgba(1, 0.72f, 0.4f, 1), 0.7f); /* (as the lamp) */
     if (e->sub == 8 && e->hold == HOLD_FLOOR) acc = rgba(0.45f, 0.75f, 1, 1); /* (a pilot light: blue) */
