@@ -3,9 +3,12 @@ name = Pinball
 app = pinball
 main_scene = scenes/main.cwscene
 app_id = org.cartwheel.pinball
-; the flippers: the shoulders, the d-pad's sides, the outer face buttons (and the triggers where a pad has them)
+; the flippers: the shoulders, the d-pad's sides, the face buttons (west left, east right), and the triggers where a
+; pad has them
 input.flip_left = key:lshift, key:z, key:left, pad:lshoulder, pad:left, pad:west, axis:lt+@0.4
 input.flip_right = key:rshift, key:slash, key:right, pad:rshoulder, pad:right, pad:east, axis:rt+@0.4
+; both flippers at once: the launch button once no ball waits on the plunger (south, d-pad down, Space, the down arrow)
+input.flip_both = key:space, key:down, pad:south, pad:down
 ; the plunger: hold, let go to fire
 input.launch = key:space, key:enter, key:down, pad:south, pad:down, axis:ly+@0.6
 ; nudging the cabinet: forward, and the sides on the stick

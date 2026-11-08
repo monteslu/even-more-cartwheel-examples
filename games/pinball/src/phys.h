@@ -60,6 +60,10 @@ typedef struct pb_flipper {
   float e, mu;
   bool held, on;
   int16_t tag;
+  /* timing (the latency gate reads it): the time since the coil last switched on or off, and when the flipper got
+   * where that switch sends it (-1 while it is still on its way) */
+  bool coil_was;
+  float coil_t, reach_t;
 } pb_flipper;
 
 enum { BS_OFF, BS_FREE, BS_PATH, BS_HELD };
