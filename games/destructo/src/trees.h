@@ -15,4 +15,7 @@ void trees_init(void);                                   /* the leaf, needle and
 void trees_build(cw_node parent, const tree_spot *s, int n); /* at most two species; the meshes go under parent */
 void trees_clear(void);                                  /* parent was freed */
 void trees_sway(float t);                                /* every frame: the wind, t in seconds */
+/* grass: tufts of alpha-cut blades (two crossed cards each) in one static mesh under parent */
+typedef struct grass_tuft { float x, y, z, yaw, w, h; t3_color c; } grass_tuft;
+void grass_build(cw_node parent, const grass_tuft *t, int n);
 #endif

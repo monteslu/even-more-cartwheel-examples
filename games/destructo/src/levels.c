@@ -27,7 +27,7 @@ const level_def LEVELS[NLEVELS] = {
   { "Glass House", K_SCAFFOLD, 53, 2, 2, 2, { 5, 1, 1 }, 28, 1 },
   { "Step Shrine", K_PYRAMID, 61, 4, 1, 2, { 4, 1, 1 }, 30, 2 },
   { "Mill Bridge", K_BRIDGE, 71, 2, 2, 3, { 5, 1, 1 }, 30, 0 },
-  { "The Gatehouse", K_CASTLE, 83, 2, 2, 4, { 5, 1, 1 }, 34, 1 },
+  { "The Gatehouse", K_CASTLE, 83, 2, 2, 3, { 5, 1, 1 }, 34, 1 },
   { "Watch Pair", K_WALL, 97, 4, 3, 4, { 5, 2, 1 }, 32, 2 },
   { "Tall Order", K_TOWER, 101, 5, 2, 2, { 6, 1, 1 }, 34, 0 },
   { "Iron Frame", K_SCAFFOLD, 113, 3, 3, 2, { 5, 1, 2 }, 32, 1 },
@@ -48,9 +48,13 @@ const level_def LEVELS[NLEVELS] = {
   { "Citadel", K_CASTLE, 251, 5, 5, 4, { 8, 2, 3 }, 44, 1 },
   { "Grand Steps", K_PYRAMID, 263, 8, 4, 5, { 7, 2, 3 }, 40, 2 },
   { "Iron Bridge", K_BRIDGE, 271, 5, 5, 5, { 8, 2, 3 }, 42, 0 },
-  { "Glass Works", K_SCAFFOLD, 277, 6, 5, 3, { 8, 2, 3 }, 40, 1 },
+  { "Glass Works", K_SCAFFOLD, 277, 6, 5, 2, { 8, 2, 3 }, 40, 1 },
   { "The Last Fort", K_CASTLE, 283, 6, 6, 5, { 9, 3, 3 }, 46, 2 },
 };
+
+/* the share of the structure that counts as brought down (game_mark), by kit: each kit has a level the bot (which
+ * aims at the crystals, not at a collapse) brings down this far within par (tests/destructo-levels.mjs) */
+const float KIT_MARK[K_COUNT] = { [K_TOWER] = 0.5f, [K_WALL] = 0.35f, [K_BRIDGE] = 0.25f, [K_CASTLE] = 0.25f, [K_SCAFFOLD] = 0.5f, [K_PYRAMID] = 0.15f, [K_KEEP] = 0.4f };
 
 const level_def *level_get(int i) {
   if (i < 0) i = 0;
@@ -530,6 +534,33 @@ static void build_keep(game *g, const level_def *L) {
   }
 }
 
+/* powder kegs against the structure's foot (from the eighth level, every third level): a shot that finds one sets
+ * off a blast, and a blast that reaches the next sets that off too. Each stands on the ground where nothing else is,
+ * within a block's reach of the structure, on the launcher's half so it can be seen */
+static void place_kegs(game *g, const level_def *L, int n) {
+  float ext = 3;
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive) { t3_vec3 p = g->b[i].home; float r = sqrtf(p.x * p.x + p.z * p.z); if (r > ext) ext = r; }
+  int placed = 0;
+  t3_vec3 last = { 1e9f, 0, 1e9f };
+  for (int k = 0; k < 400 && placed < n; k++) {
+    float a = (hashf(L->seed * 977u + (uint32_t)k * 31u) - 0.5f) * 2.4f; /* toward the launcher (+z) */
+    float r = ext * (0.35f + 0.75f * hashf(L->seed * 131u + (uint32_t)k * 17u));
+    t3_vec3 c = { r * sinf(a), KEG_HALF + 0.004f, r * cosf(a) };
+    if (placed > 0) { /* the next keg near the last: a chain */
+      float dx = c.x - last.x, dz = c.z - last.z;
+      if (dx * dx + dz * dz > 2.8f * 2.8f) continue;
+    }
+    cw_qshape3d q = cw_qshape3d_box(c, v3(KEG_HALF * 0.85f + 0.06f, KEG_HALF - 0.02f, KEG_HALF * 0.85f + 0.06f), (t3_quat){ 0, 0, 0, 1 });
+    cw_phys_filter f = cw_phys_filter_layers(1u << 1);
+    cw_shape3d hit[1];
+    if (cw_world3d_overlap(g->w, &q, &f, hit, 1) > 0) continue; /* something is there */
+    cw_qshape3d near = cw_qshape3d_box(c, v3(KEG_HALF + 0.9f, KEG_HALF, KEG_HALF + 0.9f), (t3_quat){ 0, 0, 0, 1 });
+    if (cw_world3d_overlap(g->w, &near, &f, hit, 1) == 0) continue; /* out in the open: not against the structure */
+    if (game_add_keg(g, c.x, c.z) >= 0) placed++, last = c;
+  }
+}
+
 void level_build(game *g, const level_def *L) {
   rnd_state = L->seed * 2654435761u + 12345u;
   style.wall = P_NONE, style.trim = P_TRIM_CREAM, style.base = P_DARK_STONE, style.roof = P_ROOF_RED, style.banner = 0, style.timber = false, style.tall_roof = false;
@@ -544,4 +575,6 @@ void level_build(game *g, const level_def *L) {
   case K_KEEP: build_keep(g, L); break;
   default: build_tower(g, L); break;
   }
+  int li = (int)(L - LEVELS);
+  if (li >= 7 && li % 3 == 1) place_kegs(g, L, li >= 19 ? 3 : 2);
 }
