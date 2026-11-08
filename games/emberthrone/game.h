@@ -217,6 +217,7 @@ void sim_teleport_party(float x, float z);
 bool view_init_step(cw_node root, int *done, int *total);
 void view_sync(float alpha);
 void view_camera(cw_node cam, float alpha, float aspect);
+void view_lod(cw_node cam, int height); /* each figure's level of detail from its size on the screen */
 bool view_screen(t3_vec3 p, float *u, float *v);
 void view_reset(void);
 extern bool g_hide_hud;
