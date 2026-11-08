@@ -2,7 +2,6 @@
 name = Destructo
 app = destructo
 main_scene = scenes/main.cwscene
-version = 0.1.0
 app_id = org.cartwheel.destructo
 ; aiming: the d-pad or the left stick turns and raises the launcher
 input.aim_left = key:left, key:a, pad:left, axis:lx-@0.25

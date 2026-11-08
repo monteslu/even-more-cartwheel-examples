@@ -2,7 +2,6 @@
 name = Towers
 app = towers
 main_scene = scenes/main.cwscene
-version = 0.1.0
 app_id = org.cartwheel.towers
 ; gameplay actions: a cursor that hops between pads (stick or d-pad), the four face buttons as the build diamond
 ; (north, west, east, south; on the keyboard I, J, L, K sit as a diamond), a shoulder to call the next wave; the

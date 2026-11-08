@@ -127,6 +127,16 @@ scripts/build.sh          # build/native and build/cart-wgpu (the carts)
 
 `AGENTS.md` has the test commands and the rules for showing controls.
 
+Every cart's manifest says which version it is, and the build works it out
+from the checkout (the engine's `cw_add_app`): a build of a `v*` tag is that
+version (`0.9.0`), any other build the last tag plus the commit
+(`0.9.0-dev.g1a2b3c4`), so a cart built locally or from `main` is never taken
+for a release. Pushing a `v*` tag builds the carts again at the tag, checks
+that every one carries the tag's version (`tests/cart-version.mjs`), and
+publishes them as a GitHub release, its notes taken from
+[CHANGELOG.md](CHANGELOG.md). The tagged commit must have a green run on
+`main`.
+
 ## License
 
 MIT, see `LICENSE`. Each game's `CREDITS` file lists what it builds on.

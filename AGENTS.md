@@ -12,6 +12,7 @@ pinned in `scripts/deps.lock` and ship as dual GL + WebGPU carts (`.wasc`).
 | `scripts/build.sh [app ...]` | builds `build/native` (this machine) and `build/cart-wgpu` (the cart that ships); `TARGETS=native` for one tree |
 | `node tests/gate.mjs --gates-file <game>-gates.json [gate ...]` | runs a game's gates: the same run on every host it names, frames and debug state compared, each with a control run that must fail |
 | `node tests/cart-smoke.mjs <game>` | a short headless run of each game's cart (what CI runs) |
+| `node tests/cart-version.mjs [game ...]` | every cart's manifest carries this build's version (below), with a control that must fail |
 | `node deps/cartwheel-engine/tools/check-prompts.mjs games/<game>` | the prompt check below (CI runs it for every game listed in `PROMPT_GAMES`) |
 
 Gates and screenshots that use the GPU go through the engine's GPU lock:

@@ -2,7 +2,6 @@
 name = Pinball
 app = pinball
 main_scene = scenes/main.cwscene
-version = 0.1.0
 app_id = org.cartwheel.pinball
 ; the flippers: the shoulders, the d-pad's sides, the outer face buttons (and the triggers where a pad has them)
 input.flip_left = key:lshift, key:z, key:left, pad:lshoulder, pad:left, pad:west, axis:lt+@0.4
