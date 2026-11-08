@@ -19,12 +19,15 @@
       "native",
       "romdev"
     ],
-    "note": "A person's start: Play on the title, a pad joins, Start, the table chosen with South, the plunger held a second and let go, then the flippers on the shoulders and the d-pad. The ball's whole path (game.hash) must be the same bits on every host. The control never pulls the plunger.",
+    "note": "A person's start: Play on the title, the table select (the table last played) with South, the plunger held a second and let go, then the flippers on the shoulders and the d-pad: two presses from the title to the plunger (game.launches 1). The ball's whole path (game.hash) must be the same bits on every host. The control never pulls the plunger.",
     "webgpu": {
       "hosts": [
         "native",
         "romdev"
       ]
+    },
+    "expect": {
+      "game.launches": 1
     }
   },
   {

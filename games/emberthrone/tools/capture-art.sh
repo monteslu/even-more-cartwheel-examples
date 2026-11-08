@@ -13,5 +13,5 @@ shot() { [ "$WANT" = "  " ] || [[ "$WANT" == *" $1 "* ]] || return 0; local name
 shot meadow 1 260 & shot fight 6 520 & wait
 shot marsh 20 330 & shot keep 180 260 & wait
 shot boss 22 700 & shot vista 2 200 ADV_CAM_DIST=16 ADV_CAM_PITCH=-0.32 & wait
-shot hero 1 200 ADV_CAM_DIST=2.6 ADV_CAM_PITCH=-0.05 ADV_CAM_YAW=3.4 & wait
+shot hero 1 170 ADV_CAM_KIND=0 ADV_CAM_H=1.3 ADV_CAM_DIST=2.5 ADV_CAM_PITCH=-0.05 ADV_CAM_YAW=3.35 & wait
 ls "$O"

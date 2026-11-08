@@ -32,7 +32,7 @@ im(src('vista'), ...words(150), '-gravity', 'north', '-annotate', '+0+120', TITL
 im(src('hero'), '-gravity', 'center', '-crop', '720x1080+0+0', '+repage', '-resize', '800x1200!', ...words(66), '-gravity', 'north', '-annotate', '+0+80', TITLE,
   '-quality', '90', join(ART, 'cover.jpg'));
 // icon: the hero's head and shoulders, square
-im(src('hero'), '-gravity', 'center', '-crop', '640x640+0-120', '+repage', '-resize', '512x512', join(ART, 'icon.png'));
+im(src('hero'), '-gravity', 'center', '-crop', '520x520-70-30', '+repage', '-resize', '512x512', join(ART, 'icon.png'));
 // logo: the name on transparency
 im('-size', '2200x300', 'xc:none', ...words(190), '-gravity', 'center', '-annotate', '+0+0', TITLE, '-trim', '+repage', join(ART, 'logo.png'));
 writeFileSync(join(ART, 'art.json'), JSON.stringify({

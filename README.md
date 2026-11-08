@@ -33,9 +33,11 @@ shares, grounding, the baked light and a clear by two bots.
 ![pinball: the Coral Deep table with its two ramps](docs/screenshots/pinball.jpg)
 
 Pinball for one to four players taking turns (working title), on three
-original tables: Coral Deep, Star Foundry and Neon Fair. Ramps, pop bumpers,
-drop targets, four modes per table, a three-ball multiball, nudge and tilt, and
-a saved top five per table. The ball runs on the game's own solver, swept and
+original tables: Coral Deep, Star Foundry and Neon Fair, each with its own toy
+(a creature that rises from the playfield, a magnet under a turning forge ring,
+a high striker), its own four modes and a wizard mode. Ramps, pop bumpers, drop
+targets, a three-ball multiball, nudge and tilt, goals kept as stars, rumble,
+and a saved top five per table, in a dim arcade beside a painted backbox. The ball runs on the game's own solver, swept and
 substepped so it never passes through a wall or a flipper at any speed.
 
 ### skate
@@ -79,13 +81,16 @@ stone, glass and steel, up to a few thousand blocks each, stand in
 settings of their own (highlands, a meadow, a river gorge, sea cliffs, a
 quarry, desert mesas, a snowy pass). A launcher fires shot, heavy balls and
 charges at the crystals hidden inside; blocks break into pieces, dust and
-shards and the structures come down on the engine's Box3D. 30 levels, each
-checked to stand still for a minute, float nothing and fall to the bot within
-par.
+shards, red powder kegs set each other off, and the structures come down on
+the engine's Box3D. A level is judged once the dust has settled: the third
+star is for bringing the structure down, and the last shot can be watched
+again in slow motion. Free fire opens every structure with ammunition without
+end. 30 levels, each checked to stand still for a minute, float nothing and
+fall to the bot within par.
 
 ### Ember Throne
 
-![Ember Throne: the wayfarer and the warden at the keep's brazier, a raider coming at them](docs/screenshots/emberthrone.jpg)
+![Ember Throne: the wayfarer at the keep's brazier between a brute and a lancer](docs/screenshots/emberthrone.jpg)
 
 A third-person action adventure through one connected world for one player,
 with a second able to drop in. The wanderer gathers the Sun Key and the Moon Key

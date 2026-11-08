@@ -5,7 +5,8 @@
  *   lanternfall_bench  the perf gate's scene: a warden fight in a lamp-lit arena with both players (carts read no
  *                   environment, so the scene is chosen at build time)
  * Environment (development, native): LANTERNFALL_ROOM=n starts in room n; LANTERNFALL_ABILITIES=hex grants abilities;
- * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art). */
+ * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art);
+ * LANTERNFALL_MAP_AT=n opens the map at play frame n. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,6 +22,7 @@
 #include "cartwheel/pipeline.h"
 #include "cartwheel/platform.h"
 #include "cartwheel/project.h"
+#include "cartwheel/render2d.h"
 #include "cartwheel/prompt.h"
 #include "cartwheel/quality.h"
 #include "cartwheel/scene_file.h"
@@ -133,7 +135,7 @@ static void init(void *u) {
   G.jump = cw_action_find("jump"), G.attack = cw_action_find("attack"), G.dash = cw_action_find("dash"), G.shoot = cw_action_find("shoot");
   G.grapple = cw_action_find("grapple"), G.map = cw_action_find("map");
   cw_shell_init(&(cw_shell_desc){ .title = "LANTERNFALL", .subtitle = "light the old city again", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_state), .game_save_version = 1, .start = start, .players_changed = players_changed,
+                                  .game_save_size = sizeof(save_state), .game_save_version = 2, .start = start, .players_changed = players_changed,
                                   .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background });
   cw_font font = cw_ui_font_sans();
   cw_prompt_set_font(font);
@@ -188,6 +190,7 @@ static void read_input(pinput in[MAXP]) {
     in[i].attack = cw_action_just_pressed(i, G.attack);
     in[i].shoot = cw_action_just_pressed(i, G.shoot);
     in[i].dash = cw_action_just_pressed(i, G.dash);
+    in[i].dash_held = cw_action_pressed(i, G.dash);
     in[i].grapple = cw_action_just_pressed(i, G.grapple);
     bool up = in[i].my < 0;
     in[i].interact = up && !G.up_was[i] && S.p[i].on_ground;
@@ -196,7 +199,15 @@ static void read_input(pinput in[MAXP]) {
 #endif
 }
 
-/* sounds, banners and cards from the tick's events */
+/* pad rumble: every blow is felt in the hands (the camera never shakes) */
+static void rumble(int seat, float low, float high, int ms) {
+  if (seat >= 0 && seat < S.players && cw_shell_seat_taken(seat)) cw_input_rumble(seat, low, high, ms);
+}
+static void rumble_all(float low, float high, int ms) {
+  for (int i = 0; i < S.players; i++) rumble(i, low, high, ms);
+}
+
+/* sounds, banners, cards and rumble from the tick's events */
 static void react(void) {
   for (int i = 0; i < S.players; i++) {
     uint32_t e = S.p[i].ev;
@@ -204,7 +215,10 @@ static void react(void) {
     if (e & (PE_DJUMP | PE_WALLJ)) sfx(SFX_DJUMP, 0.5f);
     if ((e & PE_LAND) && S.p[i].land_v > 14) sfx(SFX_LAND, fminf(0.6f, S.p[i].land_v / 40));
     if (e & PE_DASH) sfx(SFX_DASH, 0.5f);
-    if (e & PE_POUND_LAND) sfx(SFX_POUND, 0.8f);
+    if (e & PE_POUND_LAND) sfx(SFX_POUND, 0.8f), rumble(i, 0.9f, 0.5f, 160);
+    if ((e & PE_LAND) && S.p[i].land_v > 20) rumble(i, 0.35f, 0.1f, 70);
+    if (e & PE_SPRINT) sfx_pitch(SFX_DASH, 0.5f, 1.3f), rumble(i, 0.1f, 0.4f, 90);
+    if (e & PE_DASH) rumble(i, 0.0f, 0.3f, 60);
     if (e & PE_SPLASH) sfx(SFX_SPLASH, 0.5f);
     if (e & PE_STROKE) sfx(SFX_STROKE, 0.4f);
     if (e & PE_GRAPPLE) sfx(SFX_GRAPPLE, 0.5f);
@@ -214,10 +228,22 @@ static void react(void) {
     const event *e = &S.ev[i];
     switch (e->kind) {
     case EV_STRIKE: sfx_pitch(SFX_STRIKE, 0.45f, 0.9f + 0.1f * (float)(S.tick % 3)); break;
-    case EV_HIT: sfx(SFX_HIT, 0.5f); break;
-    case EV_KILL: sfx(SFX_KILL, 0.5f); break;
+    case EV_HIT: sfx_pitch(SFX_HIT, 0.55f, e->a == 2 ? 1.6f : 1.0f), rumble(e->b, 0.25f, 0.45f, 60); break;
+    case EV_KILL: sfx(SFX_KILL, 0.6f), rumble(e->b, 0.55f, 0.6f, 110); break;
+    case EV_PARRY: sfx_pitch(SFX_HIT, 0.5f, 1.8f), rumble(e->a, 0.1f, 0.6f, 50); break;
+    case EV_BOUNCE: sfx_pitch(SFX_DJUMP, 0.45f, 1.25f), rumble(e->a, 0.15f, 0.3f, 50); break;
+    case EV_ECHO: sfx_pitch(SFX_SAVE, 0.6f, e->a ? 1.2f : 0.7f); if (e->a) rumble_all(0.3f, 0.3f, 200); break;
+    case EV_KEEPSAKE: H.card_kind = CARD_KEEPSAKE, H.card_arg = e->a, H.card_dye = e->b, H.card_t = 6; break;
+    case EV_CHARM:
+      if (e->b == 0) H.card_kind = CARD_CHARM, H.card_arg = e->a, H.card_t = 6;
+      else sfx(SFX_SAVE, 0.7f), rumble_all(0.6f, 0.2f, 300); /* (the second wind) */
+      break;
+    case EV_TRIAL: H.trial_msg = 0, H.trial_t = 2.5f, sfx(SFX_DOOR, 0.8f), rumble_all(0.6f, 0.1f, 250), music_play(MOOD_BOSS); break;
+    case EV_TRIAL_WAVE: if (e->a > 0) H.trial_msg = 1, H.trial_t = 1.8f; sfx(SFX_ENEMY_TELL, 0.6f); break;
+    case EV_TRIAL_DONE: H.trial_msg = 2, H.trial_t = 2.5f, sfx(SFX_SECRET, 0.8f), rumble_all(0.4f, 0.3f, 200); break;
+    case EV_BOSS_PHASE: sfx(SFX_BOSS_DOWN, 0.7f), rumble_all(1.0f, 0.6f, 450); break;
     case EV_BOLT: sfx(SFX_BOLT, 0.45f); break;
-    case EV_HURT: sfx(SFX_HURT, 0.6f); break;
+    case EV_HURT: sfx(SFX_HURT, 0.6f), rumble(e->a, 0.9f, 0.7f, 180); break;
     case EV_DIE: sfx(SFX_DIE, 0.7f); G.snap = true; break;
     case EV_PICKUP: sfx(SFX_PICKUP, 0.7f), H.card_kind = e->a, H.card_arg = e->b, H.card_t = 5; break;
     case EV_SAVE:
@@ -237,8 +263,8 @@ static void react(void) {
     case EV_BOSS_START: H.boss_idx = e->a, H.boss_t = 3; music_play(MOOD_BOSS); break;
     case EV_BOSS_TELL: sfx(SFX_TELL, 0.5f); break;
     case EV_BOSS_ACT: sfx(SFX_BOSS_ACT, 0.5f); break;
-    case EV_BOSS_HIT: sfx(SFX_HIT, 0.45f); break;
-    case EV_BOSS_DOWN: sfx(SFX_BOSS_DOWN, 0.8f); break;
+    case EV_BOSS_HIT: sfx(SFX_HIT, 0.5f), rumble_all(0.35f, 0.5f, 70); break;
+    case EV_BOSS_DOWN: sfx(SFX_BOSS_DOWN, 0.8f), rumble_all(1.0f, 1.0f, 700); break;
     case EV_ENEMY_TELL: sfx(SFX_ENEMY_TELL, 0.3f); break;
     case EV_SHOT: sfx(SFX_SHOT, 0.3f); break;
     case EV_SEAL: sfx(SFX_DOOR, 0.8f); break;
@@ -250,7 +276,7 @@ static void react(void) {
     H.banner_region = region, H.banner_t = 3.5f;
     G.last_region = region;
   }
-  if (!S.b.active) music_play(region_mood(region));
+  if (!S.b.active && S.trial_room < 0) music_play(region_mood(region));
 }
 
 static void fixed_update(void *u, double dt) {
@@ -259,10 +285,16 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
-  if (H.banner_t > 0) H.banner_t -= (float)DT;
+  if (H.banner_t > 0 && H.intro_t <= 0) H.banner_t -= (float)DT; /* (the region's name waits for the opening lines to close: never text over text) */
   if (H.card_t > 0) H.card_t -= (float)DT;
   if (H.intro_t > 0) H.intro_t -= (float)DT;
+  if (H.trial_t > 0) H.trial_t -= (float)DT;
   if (S.won) H.won_t += (float)DT;
+  { /* LANTERNFALL_MAP_AT=n (development, stills of the map): the map opens at play frame n */
+    static int map_at = -1, frames;
+    if (map_at < 0) map_at = getenv("LANTERNFALL_MAP_AT") ? atoi(getenv("LANTERNFALL_MAP_AT")) : 0;
+    if (map_at && ++frames == map_at) H.map_open = true;
+  }
 #ifndef LANTERNFALL_AUTOPILOT
   /* the map and the shrine's menu hold the game still */
   if (cw_action_just_pressed(0, G.map) && !H.menu_open) { H.map_open = !H.map_open; sfx(SFX_MAP, 0.5f); return; }
@@ -297,7 +329,7 @@ static void fixed_update(void *u, double dt) {
   view_events(&S);
   G.tick = (int32_t)S.tick, G.room = S.room, G.region = S.room >= 0 ? W.rooms[S.room].region : -1, G.abilities = (int32_t)S.abilities;
   G.pickups = 0;
-  for (int k = 0; k < 4; k++) G.pickups += sim_pickups_got(&S, k);
+  for (int k = 0; k < PK_KINDS; k++) G.pickups += sim_pickups_got(&S, k);
   G.bosses = __builtin_popcount(S.bosses_down), G.hp = S.p[0].hp, G.deaths = S.deaths, G.relics = S.relics, G.won = S.won;
   G.px = (int32_t)lroundf(S.p[0].x * 100), G.py = (int32_t)lroundf(S.p[0].y * 100), G.step = B.i, G.hash = S.hash;
 }
@@ -316,6 +348,8 @@ static void render(void *u, double alpha) {
   G.snap = false;
   if (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE || !G.in_match) view_tick(&S, sc == CW_SHELL_PLAY ? 1.0f / 60.0f : 0);
   view_draw(&S, t);
+  static cw_r2d_stats world_stats; /* (the bench: the world pass alone, before the HUD pass) */
+  world_stats = *cw_r2d_get_stats();
   bool show_hud = G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE);
 #ifdef LANTERNFALL_AUTOPILOT
   if (getenv("LANTERNFALL_NO_HUD")) show_hud = false;
@@ -337,6 +371,10 @@ static void render(void *u, double alpha) {
     for (int k = 0; k < np; k++)
       if (pst[k].ran) fprintf(stderr, " %s=%.3f/%.3f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
     fprintf(stderr, "\n");
+    const cw_r2d_stats *rs = &world_stats; /* (the stream: what the world pass asked of the renderer) */
+    fprintf(stderr, "bench_r2d draws=%u batches=%u vertices=%u commands=%u gpu_calls=%u lights=%u\n", rs->draw_calls, rs->batches, rs->vertices, rs->commands,
+            rs->gpu_calls, rs->lights);
+    if (getenv("LANTERNFALL_BENCH_DUMP")) cw_debug_dump_json(getenv("LANTERNFALL_BENCH_DUMP")); /* (with CW_R2D_TIMERS=1: each part's GPU time) */
     G.t_frame = 0, G.t_n = 0, G.t_gpu = 0;
   }
   cw_shell_draw();

@@ -15,6 +15,7 @@
 #define MAXSH 384     /* mortar shells in flight */
 #define MAXEV 8192    /* events for the effects */
 #define MAXGRP 48     /* wave groups still spawning */
+#define MAXFIRE 64    /* napalm fires burning on the path */
 #define FGW (MP_MAX_W * 2) /* flow field cells a side (1 m) */
 #define FGH (MP_MAX_H * 2)
 #define TICK 60.0f
@@ -30,16 +31,27 @@ const char *sim_tower_name(int k);
 /* the four face buttons as the build diamond lays them out */
 enum { A_N, A_W, A_E, A_S, A_KINDS };
 enum { AIM_FIRST, AIM_STRONG, AIM_LAST, AIM_KINDS };
+/* the third level comes in one of two branches, chosen as it is bought: A with the south button, B with the east
+ * (DESIGN.md, towers): bolt storm / arc, frost shatter / blizzard, beam lance / prism, mortar cluster / napalm */
+enum { BR_NONE, BR_A, BR_B };
+const char *sim_branch_name(int kind, int branch);
+const char *sim_branch_does(int kind, int branch); /* a few words: what it does */
 const char *sim_aim_name(int a);
 
 enum { EV_BUILD, EV_UPGRADE, EV_SELL, EV_NOGOLD, EV_HOP, EV_AIM, EV_ZAP, EV_FROST, EV_FREEZE, EV_MORTAR, EV_BOOM, EV_HIT, EV_KILL, EV_LEAK, EV_SPLIT,
-       EV_WAVE, EV_CALL, EV_WON, EV_LOST, EV_HEAL, EV_SPAWN, EV_BEAM_ON };
+       EV_WAVE, EV_CALL, EV_WON, EV_LOST, EV_HEAL, EV_SPAWN, EV_BEAM_ON, EV_FIRE, EV_STUN, EV_POWER };
 /* event fields: a, b small ints, x y where, z w a direction or a second point (each emitter says) */
 typedef struct event { uint8_t kind, a, b; float x, y, z, w; } event;
 
 /* a player's input this tick: the held direction (-1, 0, 1 each way), the four face buttons pressed this tick (A_*),
  * the west button held (selling takes a hold), and the call-the-next-wave button pressed */
-typedef struct input { int8_t dx, dy; bool act[A_KINDS]; bool sell_held; bool wave; } input;
+typedef struct input { int8_t dx, dy; bool act[A_KINDS]; bool sell_held; bool wave, power; } input;
+/* each player's storm (the trigger): lightning down on everything within POWER_R of their cursor's pad, then a cooldown
+ * (DESIGN.md, players and controls) */
+#define POWER_R 5.5f
+#define POWER_CD 1800 /* ticks */
+#define POWER_STUN 30
+float sim_power_damage(int wave); /* a storm's strike on each creep */
 
 typedef struct player {
   bool active;
@@ -47,15 +59,18 @@ typedef struct player {
   int8_t hx, hy;            /* the direction held last tick */
   int hold, sell_t;         /* ticks the direction has been held; ticks the sell button has been held */
   int kills, spent, built;
+  int power_cd; /* ticks until the storm is ready again */
   float dmg;
 } player;
 
 typedef struct tower {
   bool alive;
   uint8_t kind, level, owner, aim; /* level 1..3 */
+  uint8_t branch;                  /* BR_A or BR_B at level 3 (BR_NONE below it; the bench's towers: none, which is A) */
   float x, y, yaw;
   int cd, tgt, beam_t, age, kills, spent, fired, pulses;
   float dmg, beam_k; /* damage done; the beam's ramp (1 .. 3) */
+  int tgt2[2];       /* the prism's split rays: the creeps they burn (-1 none) */
 } tower;
 
 typedef struct creep {
@@ -63,12 +78,15 @@ typedef struct creep {
   uint8_t kind, spawn;
   float hp, maxhp, x, y, face, speed, slow_k;
   int slow_t, frozen, flash, age, heal_cd, bounty, leak, healed; /* healed: the tick it was last healed (heals never stack) */
+  int stun; /* ticks left stunned by an arc bolt (it stands still) */
   uint16_t prog, best; /* steps to the core (the flow field), for aiming at the first; the fewest it has had */
   int stall;           /* ticks since it last got nearer the core (not counting frozen ones) */
   cw_crowd_agent agent;
 } creep;
 
-typedef struct shell { bool alive; uint8_t slot, owner, level; float x0, y0, tx, ty, dmg, r; int t, T; } shell;
+typedef struct shell { bool alive; uint8_t slot, owner, level, branch; float x0, y0, tx, ty, dmg, r; int t, T; } shell;
+/* napalm: a patch of the path burning for a while; everything in it takes dps (armour or not) */
+typedef struct fire { bool alive; uint8_t slot; float x, y, r, dps; int t, T; } fire;
 
 /* a group of a wave still coming out: count creeps of one kind from one gate, one every `every` ticks */
 typedef struct wgroup { bool live, boss; uint8_t kind, spawn; int left, every, cd; float hp; } wgroup;
@@ -85,6 +103,7 @@ typedef struct sim {
   tower tw[MAXT];               /* one a slot (tw[k] stands on m.slot[k]) */
   creep e[MAXE];
   shell sh[MAXSH];
+  fire fire[MAXFIRE];
   wgroup grp[MAXGRP];
   int wave, next_t, core_hp, nenemies, kills, leaks, gold_total;
   int pot; /* bounties not yet shared out: every kill pays the whole team alike (DESIGN.md, the economy) */
@@ -120,11 +139,13 @@ int sim_slot_owner(const sim *s, int slot);        /* who builds on an empty slo
 int sim_tower_cost(int kind, int level);           /* the gold to reach `level` (1: build) */
 int sim_sell_value(const tower *t);
 float sim_tower_range(int kind, int level);
+float sim_tower_reach(const tower *t);            /* this tower's reach (its branch counts) */
 int sim_wave_count(const sim *s);                 /* the map's waves */
 int sim_wave_size(const sim *s, int w);           /* how many creeps wave w (1..) sends */
 int sim_wave_kinds(const sim *s, int w, int out[2]); /* the kinds wave w (1..) brings: their count (1 or 2), into out */
 float sim_creep_radius(int kind);
 void towers_bot(const sim *s, int i, input *in);   /* bot.c */
+extern int g_bot_branch; /* the bots' third-level branch: 0 A (the default), 1 B, 2 each in turn by slot (soak tests) */
 
 /* the tower table (DESIGN.md): per kind and level 1..3 */
 typedef struct tower_stats { int cost[3]; float range[3], dmg[3]; int period[3], extra[3]; } tower_stats;
@@ -155,6 +176,7 @@ t3_vec3 view_muzzle(const sim *s, int slot);    /* where a tower's shot leaves, 
 extern float g_cam_k, g_cam_x, g_cam_z; /* development and key art: the camera's distance as a multiple of the fit, and its offset */
 extern float g_tilt, g_lean;
 extern bool g_hide_cursors;
+extern float g_cursor_k[MAXP]; /* main.c: how much of each cursor's detail shows (labels, reach rings), 0 .. 1 */
 /* fx.c */
 void fx_init(cw_node root);
 void fx_free(void);
@@ -163,6 +185,11 @@ void fx_tick(const sim *s, float time);
 typedef struct fx_stats { int booms, rumbles, bolts; } fx_stats;
 fx_stats fx_get_stats(void);
 extern int g_fx_level;
+extern bool g_strobe_control; /* TOWERS_STROBE_CONTROL (native tests): the old flickering effects, the flash check's control */
 /* lightning: fx.c makes the jagged bolts, view.c draws them (a pool of segments) */
 int fx_bolt_segments(const float **seg); /* each segment 7 floats: x0 y0 z0 x1 y1 z1 width; returns the count */
+/* the fallen: a killed creep's body tips over and sinks into the ground (fx.c keeps them, view.c draws them) */
+typedef struct corpse { float x, z, face, size; uint8_t kind, boss; int age; } corpse;
+#define CORPSE_LIFE 30 /* frames */
+int fx_corpses(const corpse **out); /* the pool (check age < CORPSE_LIFE); returns its size */
 #endif

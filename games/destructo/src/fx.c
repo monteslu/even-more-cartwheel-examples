@@ -8,8 +8,13 @@
  *   charges    a pooled Explosion3D (the engine's kit: fire and smoke flipbooks, sparks, debris, embers, heat
  *              haze, a ground shockwave, a flash light and a scorch mark); the explosion kit's settings follow
  *              hordeshooter's (more-cartwheel-examples). No camera shake: the shooter's pad rumbles instead
- *   crystals   a burst of sparkles and a flash of their light
+ *   crystals   a burst of sparkles and a swell of their light
  *   launch     a muzzle flash and a puff of smoke from the launcher
+ *   collapse   a plume of dust that hangs over the pile, drifts downwind and thins over about ten seconds, and the
+ *              ground marked where the structure came down (crushed stone and dust, splinters under wood)
+ * No strobing (tests/destructo-flash.mjs): every light swells over a tenth of a second or more and fades smoothly,
+ * never steps or flickers. The explosion kit's own flash light is off for that reason (it starts at its peak and
+ * flickers at about 11 Hz); the blast's light here is one of the swelling lights.
  * Each kind is one system of burst slots (one simulation pass and one draw for the pool). A frame fires at most a
  * few bursts of each kind: a collapse of a thousand blocks makes a cloud, not a thousand clouds. */
 #include <math.h>
@@ -23,16 +28,23 @@
 
 #define BOOMS 3
 #define LIGHTS 6
+#define MARKS 28
 
 static struct {
   bool ready;
   cw_node root;
   cw_node boom[BOOMS];
   int nboom;
-  cw_node dust_warm, dust_pale, dust_big, chips[M_COUNT], sparks, glass, sparkle, muzzle, smoke;
+  cw_node dust_warm, dust_pale, dust_big, plume, chips[M_COUNT], sparks, glass, sparkle, muzzle, smoke;
   cw_node light[LIGHTS];
-  float light_e[LIGHTS], light_e0[LIGHTS];
+  float light_t[LIGHTS], light_peak[LIGHTS], light_rise[LIGHTS], light_fall[LIGHTS];
   int nl;
+  /* ground marks: a pool of decals, the oldest reused */
+  cw_node mark[MARKS];
+  t3_vec3 mark_at[MARKS];
+  float mark_t[MARKS], mark_size[MARKS], mark_a[MARKS];
+  int nmark, plume_wait, plumes;
+  bool frame_dirty;
   int per_tick[16];
   float rum_low, rum_high;
   int rum_ms, rum_player;
@@ -76,18 +88,18 @@ static cw_node bnode(const char *name, const char *const *kv, int seed, int slot
 static const char *const DUST_WARM[] = { "amount", "10", "lifetime", "2.6", "lifetime_random", "0.3", "explosiveness", "0.9", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.35", "direction", "vec3(0, 1, 0)", "spread", "110", "speed_min", "0.4", "speed_max", "2.0",
   "gravity", "vec3(0, 0.25, 0)", "damping", "1.6", "blend", "ALPHA", "soft_distance", "0.5", "size", "1.6", "size_random", "0.4",
-  "size_curve", "\"0 0.35, 0.25 1, 1 1.6\"", "color_ramp", "\"0 0.82 0.66 0.48 0, 0.08 0.78 0.62 0.45 0.65, 1 0.7 0.6 0.5 0\"",
+  "size_curve", "\"0 0.35, 0.25 1, 1 1.6\"", "color_ramp", "\"0 0.82 0.66 0.48 0, 0.2 0.78 0.62 0.45 0.6, 1 0.7 0.6 0.5 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.25", "turbulence", "0.5", "turbulence_scale", "0.4", NULL };
 static const char *const DUST_PALE[] = { "amount", "10", "lifetime", "3.0", "lifetime_random", "0.3", "explosiveness", "0.9", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.4", "direction", "vec3(0, 1, 0)", "spread", "120", "speed_min", "0.4", "speed_max", "2.2",
   "gravity", "vec3(0, 0.2, 0)", "damping", "1.5", "blend", "ALPHA", "soft_distance", "0.5", "size", "1.9", "size_random", "0.4",
-  "size_curve", "\"0 0.35, 0.25 1, 1 1.7\"", "color_ramp", "\"0 0.93 0.9 0.84 0, 0.08 0.88 0.85 0.8 0.6, 1 0.8 0.78 0.75 0\"",
+  "size_curve", "\"0 0.35, 0.25 1, 1 1.7\"", "color_ramp", "\"0 0.8 0.78 0.72 0, 0.2 0.76 0.74 0.7 0.55, 1 0.7 0.68 0.66 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.2", "turbulence", "0.5", "turbulence_scale", "0.4", NULL };
 /* the cloud a falling storey raises: few, big, slow */
 static const char *const DUST_BIG[] = { "amount", "14", "lifetime", "4.5", "lifetime_random", "0.3", "explosiveness", "0.8", "one_shot", "true",
   "emission_shape", "BOX", "emission_extents", "vec3(1.6, 0.2, 1.6)", "direction", "vec3(0, 1, 0)", "spread", "80", "speed_min", "0.5", "speed_max", "2.5",
   "gravity", "vec3(0, 0.15, 0)", "damping", "1.0", "blend", "ALPHA", "soft_distance", "0.8", "size", "3.6", "size_random", "0.4",
-  "size_curve", "\"0 0.4, 0.3 1, 1 1.5\"", "color_ramp", "\"0 0.86 0.8 0.7 0, 0.1 0.84 0.78 0.7 0.55, 1 0.78 0.74 0.68 0\"",
+  "size_curve", "\"0 0.4, 0.3 1, 1 1.5\"", "color_ramp", "\"0 0.66 0.6 0.52 0, 0.25 0.64 0.58 0.52 0.5, 1 0.6 0.56 0.52 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.12", "turbulence", "0.6", "turbulence_scale", "0.3", "camera_fade", "4", NULL };
 static const char *const CHIPS[] = { "amount", "14", "lifetime", "2.0", "lifetime_random", "0.4", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.25", "direction", "vec3(0, 1, 0)", "spread", "100", "speed_min", "2", "speed_max", "7",
@@ -116,11 +128,18 @@ static const char *const SMOKE[] = { "amount", "8", "lifetime", "2.4", "explosiv
   "color_ramp", "\"0 0.9 0.88 0.85 0, 0.1 0.8 0.78 0.76 0.6, 1 0.7 0.7 0.7 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.2", NULL };
 
+/* the plume a collapse leaves: a few big soft puffs that rise a little, drift downwind and thin over 8 to 11 s */
+static const char *const PLUME[] = { "amount", "5", "lifetime", "9.5", "lifetime_random", "0.15", "explosiveness", "0.6", "one_shot", "true",
+  "emission_shape", "BOX", "emission_extents", "vec3(2.4, 0.6, 2.4)", "direction", "vec3(0, 1, 0)", "spread", "60", "speed_min", "0.3", "speed_max", "1.2",
+  "gravity", "vec3(0.32, 0.12, 0.1)", "damping", "0.35", "blend", "ALPHA", "soft_distance", "1.5", "size", "6.5", "size_random", "0.3",
+  "size_curve", "\"0 0.5, 0.25 1, 1 1.9\"", "color_ramp", "\"0 0.6 0.55 0.48 0, 0.12 0.58 0.54 0.48 0.36, 0.6 0.56 0.53 0.5 0.22, 1 0.55 0.53 0.5 0\"",
+  "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.05", "turbulence", "0.35", "turbulence_scale", "0.2", "camera_fade", "6", NULL };
+
 /* the explosion kit (Explosion3D's children), as hordeshooter tunes it */
 static const char *const K_FIRE[] = { "amount", "12", "lifetime", "1.3", "explosiveness", "1", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "0.9", "direction", "vec3(0, 1, 0)", "spread", "180", "speed_min", "0.4", "speed_max", "2.2",
   "gravity", "vec3(0, 1.6, 0)", "damping", "2.2", "size", "5.0", "size_random", "0.35", "size_curve", "\"0 0.5, 0.3 1, 1 1.2\"",
-  "color_ramp", "\"0 1 1 1 0, 0.06 1 1 1 1, 0.75 1 0.85 0.8 0.85, 1 1 0.7 0.6 0\"", "energy", "1.6",
+  "color_ramp", "\"0 1 0.9 0.75 0, 0.3 1 0.85 0.65 0.9, 0.75 1 0.75 0.6 0.75, 1 1 0.65 0.5 0\"", "energy", "1.0",
   "texture", "\"fx/fire.png\"", "motion_texture", "\"fx/fire_mv.png\"", "hframes", "8", "vframes", "8", "spin", "0.25", "soft_distance", "0.8", NULL };
 static const char *const K_SMOKE[] = { "amount", "20", "lifetime", "4.5", "lifetime_random", "0.2", "explosiveness", "0.75", "one_shot", "true",
   "emission_shape", "SPHERE", "emission_radius", "1.0", "direction", "vec3(0, 1, 0)", "spread", "120", "speed_min", "1", "speed_max", "4",
@@ -148,7 +167,7 @@ static cw_node boom_node(int seed) {
   cw_node_add_child(FX.root, e);
   cw_node_set(e, "autostart", cw_val_bool(false));
   cw_node_set(e, "duration", cw_val_float(4.5f));
-  cw_node_set(e, "flash_energy", cw_val_float(220.0f));
+  cw_node_set(e, "flash_energy", cw_val_float(0)); /* the blast's light swells and fades here (light_swell): the kit's flickers */
   cw_node_set(e, "flash_color", cw_val_color(1, 0.65f, 0.3f, 1));
   cw_node_set(e, "flash_range", cw_val_float(18.0f));
   cw_node_set(e, "flash_duration", cw_val_float(0.55f));
@@ -180,6 +199,19 @@ void fx_init(cw_node root) {
   FX.dust_warm = bnode("DustWarm", DUST_WARM, 300, 24);
   FX.dust_pale = bnode("DustPale", DUST_PALE, 330, 24);
   FX.dust_big = bnode("DustBig", DUST_BIG, 360, 10);
+  FX.plume = bnode("Plume", PLUME, 380, 8);
+  for (int i = 0; i < MARKS; i++) {
+    cw_node d = FX.mark[i] = cw_node_new("Decal3D", "GroundMark");
+    cw_node_add_child(FX.root, d);
+    cw_node_set(d, "blend", cw_val_enum("MULTIPLY"));
+    cw_node_set(d, "size", cw_val_vec3(1, 1, 0.8f));
+    cw_node_set(d, "edge_fade", cw_val_float(0.3f));
+    cw_node_set(d, "normal_fade", cw_val_float(0.5f));
+    cw_node_set(d, "color", cw_val_color(1, 1, 1, 0));
+    cw_node_set(d, "visible", cw_val_bool(false));
+    cw_node3d_set_rotation(d, (t3_vec3){ -1.5707963f, 0, 0 });
+    cw_node3d_set_position(d, (t3_vec3){ 0, -60, 0 });
+  }
   static const float chip_col[M_COUNT][3] = { { 0.62f, 0.38f, 0.18f }, { 0.62f, 0.6f, 0.56f }, { 0.6f, 0.9f, 1 }, { 0.75f, 0.2f, 0.12f }, { 1, 0.3f, 0.85f } };
   for (int m = 0; m < M_COUNT; m++) {
     if (m == M_GLASS || m == M_TARGET) continue;
@@ -204,11 +236,50 @@ void fx_init(cw_node root) {
 
 static bool budget(int kind, int max) { return FX.per_tick[kind]++ < max; }
 
-static void flash(t3_vec3 at, float e, float r, float g, float b) {
+/* a light that swells to its peak over rise seconds and fades over fall seconds, both eased (no step, no flicker) */
+static void light_swell(t3_vec3 at, float peak, float range, float rise, float fall, float r, float g, float b) {
   int i = FX.nl++ % LIGHTS;
   cw_node3d_set_position(FX.light[i], at);
   cw_node_set(FX.light[i], "color", cw_val_color(r, g, b, 1));
-  FX.light_e[i] = FX.light_e0[i] = e;
+  cw_node_set(FX.light[i], "range", cw_val_float(range));
+  FX.light_t[i] = 0, FX.light_peak[i] = peak, FX.light_rise[i] = rise, FX.light_fall[i] = fall;
+}
+
+/* a mark on the ground where the structure came down: merged into a near one (it grows and darkens), else the oldest
+ * reused. Fades in over a second; tone: the material's dust (MULTIPLY: the grass under it goes the colour of it) */
+static void ground_mark(t3_vec3 at, float size, int mat) {
+  if (at.y > 1.2f) return;
+  for (int i = 0; i < MARKS; i++) {
+    if (FX.mark_size[i] <= 0) continue;
+    float dx = FX.mark_at[i].x - at.x, dz = FX.mark_at[i].z - at.z;
+    if (dx * dx + dz * dz < FX.mark_size[i] * FX.mark_size[i] * 0.16f) {
+      if (FX.mark_size[i] < 5.5f) FX.mark_size[i] = fminf(5.5f, FX.mark_size[i] + size * 0.15f), FX.frame_dirty = true;
+      FX.mark_a[i] = fminf(0.85f, FX.mark_a[i] + 0.04f);
+      return;
+    }
+  }
+  int i = FX.nmark++ % MARKS;
+  FX.mark_at[i] = (t3_vec3){ at.x, 0, at.z };
+  FX.mark_size[i] = size, FX.mark_t[i] = 0, FX.mark_a[i] = 0.55f;
+  cw_node d = FX.mark[i];
+  static const float tone[M_COUNT][3] = { { 0.86f, 0.74f, 0.58f }, { 0.9f, 0.86f, 0.78f }, { 0.92f, 0.94f, 0.95f }, { 0.7f, 0.66f, 0.62f }, { 0.9f, 0.86f, 0.78f } };
+  int m = mat < M_COUNT ? mat : M_STONE;
+  cw_node_set(d, "color", cw_val_color(tone[m][0], tone[m][1], tone[m][2], 0));
+  cw_node_set(d, "visible", cw_val_bool(true));
+  cw_node3d_set_position(d, (t3_vec3){ at.x, 0.2f, at.z });
+  cw_node3d_set_rotation(d, (t3_vec3){ -1.5707963f, 0, hashf((uint32_t)FX.nmark * 977u) * 6.283f });
+  FX.frame_dirty = true;
+}
+
+/* forget the marks (a new level) */
+void fx_clear(void) {
+  if (!FX.ready) return;
+  for (int i = 0; i < MARKS; i++) {
+    FX.mark_size[i] = 0;
+    cw_node_set(FX.mark[i], "visible", cw_val_bool(false));
+  }
+  for (int i = 0; i < LIGHTS; i++) FX.light_peak[i] = 0, cw_node_set(FX.light[i], "energy", cw_val_float(0));
+  FX.plumes = 0, FX.plume_wait = 0;
 }
 
 static void rumble(int player, float low, float high, int ms) {
@@ -227,6 +298,7 @@ void fx_events(const game *g, int shooter) {
     switch (e->kind) {
     case EV_BREAK:
       big_breaks += e->size > 0.5f;
+      if (e->size > 0.5f && e->p.y < 1.2f) ground_mark(e->p, 1.6f + e->size, e->mat);
       if (budget(0, 3)) cw_particles_burst(e->mat == M_WOOD ? FX.dust_warm : FX.dust_pale, e->p, up), FX.st.dust++;
       if (e->mat < M_COUNT && cw_node_valid(FX.chips[e->mat]) && budget(1, 4)) cw_particles_burst(FX.chips[e->mat], e->p, up), FX.st.chips++;
       if (e->mat == M_STEEL && budget(2, 3)) cw_particles_burst(FX.sparks, e->p, up), FX.st.sparks++;
@@ -239,25 +311,27 @@ void fx_events(const game *g, int shooter) {
     case EV_LAND:
       if (e->mat == M_STEEL && e->speed > 4 && budget(2, 4)) cw_particles_burst(FX.sparks, e->p, e->n), FX.st.sparks++;
       else if (e->a > 3000 && budget(4, 2)) cw_particles_burst(e->mat == M_WOOD ? FX.dust_warm : FX.dust_pale, e->p, up), FX.st.dust++;
+      if (e->kind == EV_LAND && e->a > 6000 && budget(5, 2)) ground_mark(e->p, 1.4f + fminf(1.5f, e->a / 40000.0f), e->mat);
       break;
     case EV_BOOM: {
       cw_node b = FX.boom[FX.nboom++ % BOOMS];
       cw_node3d_set_position(b, e->p);
       cw_node3d_global_transform(b);
       cw_explosion_fire(b);
+      light_swell((t3_vec3){ e->p.x, e->p.y + 1.0f, e->p.z }, 70, 16, 0.4f, 1.3f, 1, 0.62f, 0.3f);
       FX.st.booms++;
       rumble(shooter, 1.0f, 0.45f, 420);
       break;
     }
     case EV_TARGET:
       cw_particles_burst(FX.sparkle, e->p, up);
-      flash(e->p, 60, 1, 0.35f, 0.9f);
+      light_swell(e->p, 50, 10, 0.15f, 0.9f, 1, 0.35f, 0.9f);
       rumble(shooter, 0.3f, 0.7f, 200);
       break;
     case EV_LAUNCH:
       cw_particles_burst(FX.muzzle, e->p, e->n);
       cw_particles_burst(FX.smoke, e->p, e->n);
-      flash(e->p, 30, 1, 0.75f, 0.4f);
+      light_swell(e->p, 22, 8, 0.1f, 0.4f, 1, 0.75f, 0.4f);
       rumble(shooter, 0.55f, 0.25f, 160);
       break;
     default: break;
@@ -272,18 +346,44 @@ void fx_events(const game *g, int shooter) {
     c.x /= n, c.y /= n, c.z /= n;
     cw_particles_burst(FX.dust_big, c, (t3_vec3){ 0, 1, 0 });
     rumble(shooter, 0.6f, 0.2f, 300);
+    /* and the plume that hangs over the pile: one every half second while storeys keep falling, eight at most */
+    if (FX.plume_wait <= 0 && FX.plumes < 8) {
+      cw_particles_burst(FX.plume, (t3_vec3){ c.x, fmaxf(1.0f, c.y * 0.6f), c.z }, (t3_vec3){ 0, 1, 0 });
+      FX.plume_wait = 30, FX.plumes++;
+    }
   }
+  if (FX.plume_wait > 0) FX.plume_wait--;
 }
 
 /* every frame: the flash lights die away; the strongest rumble of the frame goes to the pad */
 void fx_update(float dt) {
   if (!FX.ready) return;
   for (int i = 0; i < LIGHTS; i++) {
-    if (FX.light_e[i] <= 0) continue;
-    FX.light_e[i] -= FX.light_e0[i] * dt * 3.5f;
-    if (FX.light_e[i] < 0) FX.light_e[i] = 0;
-    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i]));
+    if (FX.light_peak[i] <= 0) continue;
+    float t = FX.light_t[i] += dt, e;
+    if (t < FX.light_rise[i]) {
+      float u = t / FX.light_rise[i];
+      e = u * u * (3 - 2 * u);
+    } else {
+      float u = (t - FX.light_rise[i]) / FX.light_fall[i];
+      if (u >= 1) u = 1, FX.light_peak[i] = 0;
+      e = (1 - u) * (1 - u) * (1 + 2 * u); /* 1 - smoothstep */
+    }
+    cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_peak[i] > 0 ? FX.light_peak[i] * e : 0));
   }
+  /* the ground marks fade in over a second */
+  for (int i = 0; i < MARKS; i++) {
+    if (FX.mark_size[i] <= 0) continue;
+    if (FX.mark_t[i] < 1 || FX.frame_dirty) {
+      FX.mark_t[i] = fminf(1, FX.mark_t[i] + dt);
+      float k = FX.mark_t[i] * FX.mark_t[i] * (3 - 2 * FX.mark_t[i]);
+      cw_value c;
+      cw_node_get_prop(FX.mark[i], "color", &c);
+      cw_node_set(FX.mark[i], "color", cw_val_color(c.v[0], c.v[1], c.v[2], FX.mark_a[i] * k));
+      cw_node_set(FX.mark[i], "size", cw_val_vec3(FX.mark_size[i], FX.mark_size[i], 0.8f));
+    }
+  }
+  FX.frame_dirty = false;
   if (FX.rum_low + FX.rum_high > 0) {
     cw_input_rumble(FX.rum_player, FX.rum_low, FX.rum_high, FX.rum_ms);
     FX.st.rumbles++;
@@ -304,6 +404,7 @@ void fx_prime(t3_vec3 under) {
   cw_node3d_global_transform(b);
   cw_explosion_fire(b);
   cw_particles_burst(FX.dust_warm, under, up), cw_particles_burst(FX.dust_pale, under, up), cw_particles_burst(FX.dust_big, under, up);
+  cw_particles_burst(FX.plume, under, up);
   for (int m = 0; m < M_COUNT; m++) if (cw_node_valid(FX.chips[m])) cw_particles_burst(FX.chips[m], under, up);
   cw_particles_burst(FX.glass, under, up), cw_particles_burst(FX.sparks, under, up), cw_particles_burst(FX.sparkle, under, up);
   cw_particles_burst(FX.muzzle, under, up), cw_particles_burst(FX.smoke, under, up);

@@ -18,12 +18,13 @@
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene.h"
+#include "backbox.h"
 #include "geo.h"
+#include "lights.h"
 #include "view.h"
 
 #define NLAMPLIGHT 40
 #define NGI 6
-#define NFLASH 4
 #define NSHAPES 6
 
 static struct {
@@ -43,10 +44,12 @@ static struct {
   cw_node flash_light[NFLASH];
   t3_material *flash_mat[NFLASH];
   int nflash;
-  float flash[NFLASH];
-  float pop_flash[4];
+  pb_lights L;               /* every light's level (lights.c: swells and fades, never a blink) */
   float drop_z[MAXEL];
-  float lamp_level[MAXLAMP]; /* each insert drawn like a bulb: up fast, down slower */
+  float spin_draw[MAXEL];    /* a spinner's drawn turn */
+  /* the toys */
+  cw_node toy, toy_head, toy_ring, puck, bell;
+  t3_material *toy_mat, *eye_mat, *ring_mat, *bell_mat;
   float t;
   t3_vec3 eye, at;
   float fov, aspect;
@@ -169,11 +172,286 @@ static void flipper_outline(const pb_flipper *f, float grow, float (*p)[2], int 
   *n = k;
 }
 
+/* ── the toys ────────────────────────────────────────────────────────── */
+
+/* a mesh under a parent node with a material shared by several pieces (the caller keeps its own reference and
+ * releases it once at the end; the meshes keep it alive) */
+static cw_node sub(cw_node parent, const char *name, t3_geometry *geo, t3_material *m) {
+  t3_retain(m);
+  return piece(parent, name, geo, m, true);
+}
+
+/* Coral Deep's creature: a long neck of scaled plates and a head with lit eyes and a crest, rising out of a slot in
+ * the playfield; Star Foundry's forge ring: a toothed ring over the magnet that turns faster while it holds the ball;
+ * Neon Fair's high striker: a pole with a scale of lamps, a puck and a bell, standing behind the top arc */
+static void build_toy(const game *g) {
+  const table *T = &g->T;
+  const theme *th = &T->th;
+  if (T->toy == TOY_NONE || T->toy_el < 0) return;
+  const elem *e = &T->el[T->toy_el];
+  if (T->toy == TOY_CREATURE) {
+    gb slot = { 0 };
+    t3_vec3 c = tw(e->x, e->y, 0);
+    gb_band(&slot, c.x, 0, c.z, 0.003f, 0.017f, 0.021f, 24);
+    piece(V.table, "CreatureSlot", gb_geometry(&slot), std_mat(0.6f, 0.62f, 0.66f, 0.25f, 1), false);
+    V.toy = cw_node_new("Node3D", "Creature");
+    cw_node_add_child(V.table, V.toy);
+    V.toy_mat = std_mat(th->col[1][0] * 0.55f, th->col[1][1] * 0.55f, th->col[1][2] * 0.55f, 0.35f, 0.15f);
+    V.toy_mat->emissive = lin(th->col[1], 0.05f);
+    gb neck = { 0 };
+    float pts[7][3];
+    for (int k = 0; k < 7; k++) { /* an S of a neck, 9 cm tall */
+      float t = (float)k / 6.0f;
+      pts[k][0] = sinf(t * 2.6f) * 0.012f, pts[k][1] = t * 0.085f, pts[k][2] = -sinf(t * 1.7f) * 0.008f;
+    }
+    gb_tube(&neck, (const float (*)[3])pts, 7, 0.0125f, 14);
+    for (int k = 1; k < 6; k++) gb_band(&neck, pts[k][0], pts[k][1] - 0.004f, pts[k][2], pts[k][1] + 0.002f, 0.011f, 0.0145f, 14); /* plates */
+    sub(V.toy, "CreatureNeck", gb_geometry(&neck), V.toy_mat);
+    V.toy_head = cw_node_new("Node3D", "CreatureHead");
+    cw_node_add_child(V.toy, V.toy_head);
+    cw_node3d_set_position(V.toy_head, (t3_vec3){ pts[6][0], pts[6][1], pts[6][2] });
+    cw_node h = sub(V.toy_head, "Head", t3_sphere_geometry_new(0.017f, 20, 14), V.toy_mat);
+    cw_node3d_set_scale(h, (t3_vec3){ 1.0f, 0.8f, 1.45f });
+    cw_node3d_set_position(h, (t3_vec3){ 0, 0, 0.008f });
+    gb jaw = { 0 };
+    gb_box(&jaw, 0, -0.008f, 0.02f, 0.011f, 0.003f, 0.012f, 0);
+    gb_box(&jaw, 0, 0.015f, -0.004f, 0.0015f, 0.008f, 0.014f, 0); /* the crest */
+    sub(V.toy_head, "Jaw", gb_geometry(&jaw), V.toy_mat);
+    V.eye_mat = std_mat(th->col[2][0], th->col[2][1], th->col[2][2], 0.2f, 0);
+    V.eye_mat->emissive = lin(th->col[2], 1.0f);
+    for (int s = -1; s <= 1; s += 2) {
+      cw_node eye = sub(V.toy_head, "Eye", t3_sphere_geometry_new(0.0035f, 10, 8), V.eye_mat);
+      cw_node3d_set_position(eye, (t3_vec3){ 0.0125f * (float)s, 0.005f, 0.017f });
+    }
+    t3_release(V.eye_mat), t3_release(V.toy_mat); /* the meshes hold them now */
+    cw_node3d_set_position(V.toy, tw(e->x, e->y, -0.11f));
+  } else if (T->toy == TOY_MAGNET) {
+    V.toy_ring = cw_node_new("Node3D", "ForgeRing");
+    cw_node_add_child(V.table, V.toy_ring);
+    cw_node3d_set_position(V.toy_ring, tw(e->x, e->y, 0.034f));
+    gb r = { 0 };
+    gb_band(&r, 0, -0.004f, 0, 0.004f, 0.026f, 0.033f, 36);
+    for (int k = 0; k < 6; k++) { /* teeth */
+      float a = (float)k * CW_PI / 3.0f;
+      gb_box(&r, cosf(a) * 0.036f, 0, sinf(a) * 0.036f, 0.004f, 0.003f, 0.004f, -a);
+    }
+    V.ring_mat = std_mat(th->col[0][0] * 0.5f + 0.2f, th->col[0][1] * 0.5f + 0.15f, th->col[0][2] * 0.5f + 0.1f, 0.3f, 0.85f);
+    piece(V.toy_ring, "Ring", gb_geometry(&r), V.ring_mat, true);
+    gb posts = { 0 };
+    for (int k = 0; k < 3; k++) {
+      float a = (float)k * 2.0944f + 0.5f;
+      t3_vec3 c = tw(e->x + cosf(a) * 0.04f, e->y + sinf(a) * 0.04f, 0);
+      gb_cyl(&posts, c.x, 0, c.z, 0.03f, 0.0022f, 8, true);
+    }
+    piece(V.table, "RingPosts", gb_geometry(&posts), std_mat(0.75f, 0.75f, 0.78f, 0.25f, 1), true);
+    gb plate = { 0 };
+    t3_vec3 c = tw(e->x, e->y, 0);
+    gb_band(&plate, c.x, 0, c.z, 0.0015f, 0.008f, 0.022f, 28); /* the magnet's pole face under the playfield's clear window */
+    piece(V.table, "MagnetFace", gb_geometry(&plate), std_mat(0.35f, 0.33f, 0.36f, 0.3f, 1), false);
+  } else if (T->toy == TOY_STRIKER) {
+    t3_vec3 c = tw(e->x, e->y, 0);
+    gb pole = { 0 };
+    gb_cyl(&pole, c.x, 0, c.z, 0.17f, 0.004f, 12, true);
+    gb_box(&pole, c.x, 0.006f, c.z, 0.022f, 0.006f, 0.014f, 0); /* the base */
+    piece(V.table, "StrikerPole", gb_geometry(&pole), std_mat(0.85f, 0.85f, 0.88f, 0.2f, 1), true);
+    gb scale = { 0 };
+    for (int k = 0; k < 8; k++) gb_box(&scale, c.x, 0.02f + (float)k * 0.018f, c.z - 0.006f, 0.011f, 0.006f, 0.0015f, 0);
+    t3_material *sm = std_mat(th->col[0][0], th->col[0][1], th->col[0][2], 0.4f, 0);
+    sm->emissive = lin(th->col[0], 0.25f);
+    piece(V.table, "StrikerScale", gb_geometry(&scale), sm, false);
+    V.puck = piece(V.table, "Puck", t3_sphere_geometry_new(0.008f, 14, 10), std_mat(0.95f, 0.8f, 0.3f, 0.25f, 0.6f), true);
+    gb bell = { 0 };
+    gb_dome(&bell, 0, 0, 0, 0.016f, 18);
+    gb_cyl(&bell, 0, -0.004f, 0, 0.0f, 0.016f, 18, false);
+    V.bell_mat = std_mat(1.0f, 0.78f, 0.3f, 0.18f, 1);
+    V.bell = piece(V.table, "Bell", gb_geometry(&bell), V.bell_mat, true);
+    cw_node3d_set_position(V.bell, tw(e->x, e->y, 0.178f));
+  }
+}
+
+static void view_toys(const game *g) {
+  const table *T = &g->T;
+  const theme *th = &T->th;
+  if (T->toy == TOY_NONE || T->toy_el < 0) return;
+  const elem *e = &T->el[T->toy_el];
+  float lit = V.L.part[T->toy_el].v;
+  if (T->toy == TOY_CREATURE && cw_node_valid(V.toy)) {
+    float h = g->toy_h, fl = (float)g->toy_flinch / 30.0f;
+    cw_node3d_set_position(V.toy, tw(e->x, e->y, -0.11f + h * 0.11f));
+    float sway = sinf(V.t * 1.3f) * 0.18f * h, nod = sinf(V.t * 2.1f) * 0.08f - fl * 0.5f;
+    cw_node3d_set_rotation(V.toy, (t3_vec3){ -fl * 0.25f, sway, sinf(V.t * 0.9f) * 0.06f });
+    if (cw_node_valid(V.toy_head)) cw_node3d_set_rotation(V.toy_head, (t3_vec3){ nod, sway * 0.6f, 0 });
+    if (V.eye_mat) V.eye_mat->emissive = lin(th->col[2], 0.6f + h * 1.6f + lit * 2.0f);
+    if (V.toy_mat) V.toy_mat->emissive = lin(th->col[1], 0.04f + lit * 0.5f);
+  } else if (T->toy == TOY_MAGNET && cw_node_valid(V.toy_ring)) {
+    cw_node3d_set_rotation(V.toy_ring, (t3_vec3){ 0, g->magnet_spin, 0 });
+    bool armed = g->mode >= 0 ? T->modes[g->mode].kind == MK_TOY : g->wizard;
+    if (V.ring_mat) V.ring_mat->emissive = lin(th->col[0], (armed ? 0.5f : 0.05f) + (g->magnet_ball >= 0 ? 1.2f : 0) + lit * 0.8f);
+  } else if (T->toy == TOY_STRIKER && cw_node_valid(V.puck)) {
+    cw_node3d_set_position(V.puck, tw(e->x, e->y - 0.008f, 0.02f + g->puck_h * 0.148f));
+    float ring = g->bell_t < 40 ? 1.0f - (float)g->bell_t / 40.0f : 0; /* the bell glows as it rings, fading */
+    if (V.bell_mat) V.bell_mat->emissive = lin(th->col[2], ring * 2.5f);
+    if (cw_node_valid(V.bell)) cw_node3d_set_rotation(V.bell, (t3_vec3){ 0, 0, sinf((float)g->bell_t * 0.5f) * 0.12f * ring });
+  }
+}
+
+/* ── the room ────────────────────────────────────────────────────────── */
+
+/* a piece of the room: drawn by the camera only (layer 2, as the balls): the mirror ball's probe sees the table, not
+ * the room, so the room costs the probe nothing */
+static cw_node room_piece(cw_node parent, const char *name, t3_geometry *g, t3_material *m, bool shadow) {
+  cw_node n = piece(parent, name, g, m, shadow);
+  cw_node_set(n, "layers", cw_val_int(2));
+  return n;
+}
+
+#define FLOOR_Y (-0.86f) /* the floor, under the playfield (world y) */
+#define NNEON 6
+
+static struct { t3_material *neon[NNEON]; float base[NNEON][3]; int n; } R;
+
+/* an unlit picture card (a neighbour's playfield and backbox: they glow by themselves in the dim room) */
+static t3_material *card_mat(uint8_t *px, int w, int h, float k) {
+  t3_texture *tex = t3_texture_new(w, h, px);
+  free(px);
+  tex->color_space = T3_SRGB_COLOR_SPACE;
+  t3_material *m = t3_mesh_basic_material_new(0xffffff);
+  m->color = (t3_color){ k, k, k };
+  t3_material_set_map(m, tex);
+  t3_release(tex);
+  return m;
+}
+
+/* a flat card: centre, half width (x) and half length (z), lying flat (up = 0) or standing facing +z */
+static t3_geometry *card_geo(float hw, float hl, bool standing) {
+  t3_geometry *pg = t3_plane_geometry_new(hw * 2, hl * 2, 1, 1);
+  if (!standing) {
+    t3_mat4 rx = { { 1, 0, 0, 0, 0, 0, -1, 0, 0, 1, 0, 0, 0, 0, 0, 1 } };
+    t3_geometry_apply_matrix4(pg, &rx);
+  }
+  return pg;
+}
+
+/* the dark arcade carpet: deep blue-black with scattered small shapes in the table's colours */
+static uint8_t *carpet(const theme *th) {
+  enum { CW = 256 };
+  uint8_t *px = malloc(CW * CW * 4);
+  for (int y = 0; y < CW; y++)
+    for (int x = 0; x < CW; x++) {
+      float r = 0.018f, gg = 0.016f, b = 0.03f;
+      for (int k = 0; k < 18; k++) { /* the shapes: rings and dots, tiling */
+        uint32_t h = (uint32_t)k * 2654435761u;
+        float cx = (float)(h & 255), cy = (float)((h >> 8) & 255), rad = 4 + (float)((h >> 16) & 7);
+        float dx = fabsf((float)x - cx), dy = fabsf((float)y - cy);
+        dx = fminf(dx, CW - dx), dy = fminf(dy, CW - dy);
+        float d = sqrtf(dx * dx + dy * dy);
+        bool on = (k & 1) ? fabsf(d - rad) < 1.2f : d < rad * 0.5f;
+        if (on) { const float *c = th->col[k % 4]; r = c[0] * 0.22f, gg = c[1] * 0.22f, b = c[2] * 0.22f; }
+      }
+      uint8_t *o = px + (y * CW + x) * 4;
+      o[0] = (uint8_t)(powf(r, 1 / 2.2f) * 255), o[1] = (uint8_t)(powf(gg, 1 / 2.2f) * 255), o[2] = (uint8_t)(powf(b, 1 / 2.2f) * 255), o[3] = 255;
+    }
+  return px;
+}
+
+/* a cabinet body: two sides and a front from the playfield's edges down toward the floor, four legs, at x0 (world),
+ * shifted back by dz; wood: its colour */
+static void cabinet_body(cw_node parent, float x0, float dz, const float *wood, const float *stripe) {
+  gb b = { 0 };
+  float zt = TABLE_MID - 1.1f + dz, zb = TABLE_MID + dz + 0.02f, zc = (zt + zb) * 0.5f, hl = (zb - zt) * 0.5f;
+  for (int s = -1; s <= 1; s += 2) gb_box(&b, x0 + (float)s * 0.29f, -0.17f, zc, 0.012f, 0.2f, hl, 0); /* sides */
+  gb_box(&b, x0, -0.17f, zb, 0.3f, 0.2f, 0.012f, 0);   /* front */
+  gb_box(&b, x0, -0.36f, zc, 0.3f, 0.012f, hl, 0);     /* bottom */
+  for (int s = -1; s <= 1; s += 2)
+    for (int e = 0; e < 2; e++) gb_cyl(&b, x0 + (float)s * 0.26f, FLOOR_Y, e ? zb - 0.04f : zt + 0.04f, -0.36f, 0.018f, 10, false);
+  room_piece(parent, "CabinetBody", gb_geometry(&b), std_mat(wood[0] * 0.7f, wood[1] * 0.7f, wood[2] * 0.7f, 0.5f, 0), false);
+  (void)stripe;
+}
+
+/* the machine standing in a dim arcade: its own body and legs, a carpet, two other machines either side glowing, and
+ * a back wall of slow neon (each sign swells over several seconds, never a blink) */
+static void build_room(const game *g) {
+  const table *T = &g->T;
+  const theme *th = &T->th;
+  cw_node room = cw_node_new("Node3D", "Room");
+  cw_node_add_child(V.table, room);
+  cabinet_body(room, 0, 0, th->wood, th->col[2]);
+  { /* the floor */
+    t3_material *m = std_mat(1, 1, 1, 0.9f, 0);
+    t3_texture *tex = t3_texture_new(256, 256, carpet(th));
+    tex->color_space = T3_SRGB_COLOR_SPACE, tex->wrap_s = tex->wrap_t = T3_REPEAT, tex->repeat = (t3_vec2){ 10, 10 };
+    t3_material_set_map(m, tex);
+    t3_release(tex);
+    cw_node n = room_piece(room, "Floor", card_geo(3.0f, 3.0f, false), m, false);
+    cw_node3d_set_position(n, (t3_vec3){ 0, FLOOR_Y, -0.6f });
+  }
+  /* the neighbours: the other two tables, their playfields and backboxes lit */
+  int k = 0;
+  for (int other = 0; other < NTABLES; other++) {
+    if (other == g->table_id) continue;
+    table *nt = malloc(sizeof *nt);
+    table_build(nt, other);
+    float x0 = k ? 0.9f : -0.9f, dz = -0.15f;
+    cabinet_body(room, x0, dz, nt->th.wood, nt->th.col[2]);
+    int w, h;
+    uint8_t *px = art_paint(nt, &w, &h);
+    cw_node pf = room_piece(room, "NeighbourPlayfield", card_geo(0.26f, 0.545f, false), card_mat(px, w, h, 0.32f), false);
+    cw_node3d_set_position(pf, (t3_vec3){ x0, 0.002f, dz });
+    cw_node bb = room_piece(room, "NeighbourBackbox", card_geo(0.28f, 0.175f, true), card_mat(backbox_paint(nt), BB_W, BB_H, 0.55f), false);
+    cw_node3d_set_position(bb, (t3_vec3){ x0, 0.32f, TABLE_MID - 1.1f + dz - 0.02f });
+    gb box = { 0 };
+    gb_box(&box, x0, 0.3f, TABLE_MID - 1.1f + dz - 0.08f, 0.3f, 0.24f, 0.05f, 0);
+    room_piece(room, "NeighbourBackboxBody", gb_geometry(&box), std_mat(nt->th.wood[0] * 0.5f, nt->th.wood[1] * 0.5f, nt->th.wood[2] * 0.5f, 0.5f, 0), false);
+    free(nt);
+    k++;
+  }
+  /* the back wall and its neon */
+  {
+    gb wall = { 0 };
+    gb_box(&wall, 0, 0.2f, -2.2f, 3.0f, 1.2f, 0.02f, 0);
+    room_piece(room, "BackWall", gb_geometry(&wall), std_mat(0.03f, 0.028f, 0.035f, 0.9f, 0), false);
+    R.n = 0;
+    for (int i = 0; i < NNEON; i++) {
+      gb nb = { 0 };
+      float cx = -1.9f + (float)i * 0.76f, cy = -0.25f + (float)(i % 2) * 0.22f;
+      if (i % 3 == 0) { /* a ring */
+        float p[25][3];
+        for (int q = 0; q < 25; q++) { float a = (float)q / 24 * 6.2832f; p[q][0] = cx + cosf(a) * 0.16f, p[q][1] = cy + sinf(a) * 0.16f, p[q][2] = -2.17f; }
+        gb_tube(&nb, (const float (*)[3])p, 25, 0.012f, 6);
+      } else if (i % 3 == 1) { /* a zigzag */
+        float p[7][3];
+        for (int q = 0; q < 7; q++) p[q][0] = cx - 0.24f + (float)q * 0.08f, p[q][1] = cy + (q & 1 ? 0.08f : -0.08f), p[q][2] = -2.17f;
+        gb_tube(&nb, (const float (*)[3])p, 7, 0.012f, 6);
+      } else { /* a star */
+        float p[11][3];
+        for (int q = 0; q < 11; q++) { float a = (float)q / 10 * 6.2832f + 1.5708f, r = q & 1 ? 0.07f : 0.17f; p[q][0] = cx + cosf(a) * r, p[q][1] = cy + sinf(a) * r, p[q][2] = -2.17f; }
+        gb_tube(&nb, (const float (*)[3])p, 11, 0.012f, 6);
+      }
+      t3_material *m = t3_mesh_basic_material_new(0xffffff);
+      const float *c = th->col[i % 4];
+      R.base[i][0] = c[0], R.base[i][1] = c[1], R.base[i][2] = c[2];
+      m->color = (t3_color){ c[0] * 1.4f, c[1] * 1.4f, c[2] * 1.4f };
+      R.neon[i] = m;
+      room_piece(room, "Neon", gb_geometry(&nb), m, false);
+      R.n++;
+    }
+  }
+}
+
+/* the neon breathes: each sign swells and fades over 6 to 11 seconds, out of step with the others */
+static void room_sync(void) {
+  for (int i = 0; i < R.n; i++) {
+    float period = 6.0f + (float)i * 1.0f, k = 1.0f + 0.35f * sinf(V.t * 6.2832f / period + (float)i * 1.7f);
+    if (R.neon[i]) R.neon[i]->color = (t3_color){ R.base[i][0] * 1.4f * k, R.base[i][1] * 1.4f * k, R.base[i][2] * 1.4f * k };
+  }
+}
+
 void view_build(const game *g) {
   const table *T = &g->T;
   if (cw_node_valid(V.table)) cw_node_free(V.table);
   memset(V.part, 0, sizeof V.part), memset(V.part_mat, 0, sizeof V.part_mat);
-  memset(V.flash, 0, sizeof V.flash), memset(V.pop_flash, 0, sizeof V.pop_flash);
+  V.toy = V.toy_head = V.toy_ring = V.puck = V.bell = (cw_node){ 0 };
+  V.toy_mat = V.eye_mat = V.ring_mat = V.bell_mat = NULL;
   V.table = cw_node_new("Node3D", "Table");
   cw_node_add_child(V.root, V.table);
   const theme *th = &T->th;
@@ -307,7 +585,8 @@ void view_build(const game *g) {
     case EK_SPINNER: {
       gb b = { 0 };
       gb_box(&b, 0, -0.008f, 0, e->w * 0.45f, 0.008f, 0.0008f, 0);
-      t3_material *m = std_mat(0.9f, 0.9f, 0.92f, 0.15f, 1);
+      /* brushed, not a mirror: a mirror plate turning catches the light in sharp glints */
+      t3_material *m = std_mat(0.7f, 0.7f, 0.72f, 0.55f, 0.6f);
       cw_node n = piece(V.table, "Spinner", gb_geometry(&b), m, true);
       cw_node3d_set_position(n, tw(e->x, e->y, 0.024f));
       V.part[i] = n;
@@ -464,6 +743,10 @@ void view_build(const game *g) {
     cw_node3d_set_position(V.flash_light[V.nflash], tw(d->x, d->y, d->z + 0.02f));
     V.nflash++;
   }
+  lights_reset(&V.L, V.nflash);
+  build_toy(g);
+  memset(&R, 0, sizeof R);
+  build_room(g);
   /* what the mirror ball sees above it: the cabinet's lit canopy, bright tubes over a dark board. On a layer only the
    * reflection probe draws (the camera never shows it) */
   {
@@ -505,23 +788,14 @@ void view_sync(const game *g, float alpha, float dt) {
   const table *T = &g->T;
   const theme *th = &T->th;
   V.t += dt;
-  /* events light things */
-  for (int k = 0; k < g->nfx; k++) {
-    int kind = g->fx[k].kind;
-    if (kind == FX_POP) {
-      for (int p = 0; p < T->npop; p++) if (T->pops[p] == g->fx[k].a) V.pop_flash[p] = 1;
-    }
-    float big = kind == FX_JACKPOT || kind == FX_MULTIBALL || kind == FX_MODE_DONE || kind == FX_EXTRA || kind == FX_SKILL ? 1.0f
-              : kind == FX_MODE_START || kind == FX_MODE_SHOT || kind == FX_LOCK || kind == FX_RAMP_DONE || kind == FX_HOLE || kind == FX_KICKBACK || kind == FX_LANES ? 0.7f : 0;
-    if (big > 0)
-      for (int f = 0; f < V.nflash; f++)
-        if (kind != FX_RAMP_DONE || f == (g->tick % V.nflash)) V.flash[f] = fmaxf(V.flash[f], big);
-  }
+  /* every light's level this frame */
+  lights_step(&V.L, g);
   /* balls */
   for (int i = 0; i < PB_MAXB; i++) {
     const pb_ball *b = &g->W.b[i];
     if (b->state == BS_OFF) { cw_node3d_set_position(V.ball[i], tw(0, -5, 0)); continue; }
     float x = b->pwx + (b->wx - b->pwx) * alpha, y = b->pwy + (b->wy - b->pwy) * alpha, z = b->pwz + (b->wz - b->pwz) * alpha;
+    if (b->state == BS_HELD && b->held_tag == T->toy_el && T->toy == TOY_MAGNET) z = 0.006f + 0.002f * sinf(V.t * 3); /* in the magnet's grip */
     cw_node3d_set_position(V.ball[i], tw(x, y, z + PB_R));
   }
   /* flippers */
@@ -535,48 +809,48 @@ void view_sync(const game *g, float alpha, float dt) {
       V.drop_z[i] += (target - V.drop_z[i]) * fminf(1, dt * (e->down ? 30.0f : 14.0f));
       t3_vec3 c = tw(e->x, e->y, V.drop_z[i]);
       cw_node3d_set_position(V.part[i], c);
-      if (V.part_mat[i]) V.part_mat[i]->emissive = lin(th->col[e->col], 0.15f + e->flash * 3);
+      if (V.part_mat[i]) V.part_mat[i]->emissive = lin(th->col[e->col], 0.15f + V.L.part[i].v * 2.2f);
     } else if (e->kind == EK_TARGET) {
-      if (V.part_mat[i]) V.part_mat[i]->emissive = lin(th->col[e->col], 0.15f + e->flash * 3);
+      if (V.part_mat[i]) V.part_mat[i]->emissive = lin(th->col[e->col], 0.15f + V.L.part[i].v * 2.2f);
       float a = e->ang * CW_PI / 180.0f, k = e->flash * 0.003f;
       cw_node3d_set_position(V.part[i], tw(e->x - cosf(a) * k, e->y - sinf(a) * k, 0));
     } else if (e->kind == EK_SPINNER) {
       float a = e->ang * CW_PI / 180.0f; /* the plate turns about the line across the lane */
       t3_vec3 ax = { cosf(a), 0, -sinf(a) };
-      float s = sinf(e->spin * 0.5f), c = cosf(e->spin * 0.5f);
+      /* drawn turning at most 0.6 turns a second: a plate whirling faster would flash its face at the player many
+       * times a second (the rules count the real turns; the sound ticks them) */
+      V.spin_draw[i] += cw_clampf(e->spin_v, -3.8f, 3.8f) * dt;
+      float s = sinf(V.spin_draw[i] * 0.5f), c = cosf(V.spin_draw[i] * 0.5f);
       t3_quat qa = { ax.x * s, ax.y * s, ax.z * s, c }, qy = { 0, sinf(a * 0.5f), 0, cosf(a * 0.5f) };
       cw_node3d_set_quaternion(V.part[i], t3_quat_multiply(qa, qy));
     } else if (e->kind == EK_POP && V.part_mat[i]) {
-      V.part_mat[i]->emissive = lin(th->col[e->col], 0.6f + e->flash * 6);
+      V.part_mat[i]->emissive = lin(th->col[e->col], 0.6f + V.L.part[i].v * 3.5f);
     }
   }
   if (cw_node_valid(V.plunger)) cw_node3d_set_position(V.plunger, tw(0.2375f, -0.065f - g->plunge * 0.035f, 0));
   /* pop lights */
-  for (int p = 0; p < T->npop && p < 4; p++) {
-    V.pop_flash[p] = fmaxf(0, V.pop_flash[p] - dt * 6);
-    if (cw_node_valid(V.pop_light[p])) cw_node_set(V.pop_light[p], "energy", cw_val_float(0.004f + V.pop_flash[p] * 0.05f));
-  }
-  /* flashers */
+  for (int p = 0; p < T->npop && p < NPOPL; p++)
+    if (cw_node_valid(V.pop_light[p])) cw_node_set(V.pop_light[p], "energy", cw_val_float(0.004f + V.L.pop[p].v * 0.04f));
+  /* flashers: a swell and a fade (lights.c), lighting their own corner of the table */
   for (int f = 0; f < V.nflash; f++) {
-    V.flash[f] = fmaxf(0, V.flash[f] - dt * 3.5f);
-    float k = V.flash[f] > 0 ? V.flash[f] * (0.6f + 0.4f * ((int)(V.t * 30) & 1)) : 0;
-    cw_node_set(V.flash_light[f], "energy", cw_val_float(k * 0.4f));
+    float k = V.L.flash[f].v;
+    cw_node_set(V.flash_light[f], "energy", cw_val_float(k * 0.2f));
     const decor *d = NULL;
     int n = 0;
     for (int i = 0; i < T->ndec; i++) if (T->dec[i].kind == DC_FLASHER && n++ == f) d = &T->dec[i];
-    if (d) V.flash_mat[f]->emissive = lin(th->col[d->col], 0.3f + k * 12);
+    if (d) V.flash_mat[f]->emissive = lin(th->col[d->col], 0.3f + k * 7);
   }
-  /* GI: dims on a tilt, flickers when the ball drains */
-  float gi = g->tilted ? 0.15f : g->state == GS_BONUS ? 0.6f : 1.0f;
-  for (int i = 0; i < NGI; i++) cw_node_set(V.gi[i], "energy", cw_val_float(0.035f * gi));
+  /* GI: the general illumination breathes (dims for a drain, a tilt, a mode's start; back over half a second) */
+  for (int i = 0; i < NGI; i++) cw_node_set(V.gi[i], "energy", cw_val_float(0.035f * V.L.gi.v));
+  view_toys(g);
+  room_sync();
   /* inserts: brightness follows the rules' lamp states, smoothed like a bulb */
   int nl = 0;
   static int order[MAXLAMP];
   V.st.lamps_lit = 0;
   for (int i = 0; i < T->nlamp; i++) {
     const lamp *l = &T->lamps[i];
-    float want = game_flash(g, i), *lv = &V.lamp_level[i];
-    *lv += (want - *lv) * fminf(1, dt * (want > *lv ? 40.0f : 14.0f));
+    float *lv = &V.L.lamp[i].v;
     t3_instanced_mesh *im = V.lamp_im[l->shape];
     if (!im) continue;
     float k = 0.25f + *lv * 3.2f; /* lit: the insert colour run past one into the bloom, still coloured */
@@ -590,7 +864,7 @@ void view_sync(const game *g, float alpha, float dt) {
       const lamp *l = &T->lamps[order[i]];
       cw_node3d_set_position(V.lamp_light[i], tw(l->x, l->y, 0.01f));
       cw_node_set(V.lamp_light[i], "color", cw_val_color(th->col[l->col][0], th->col[l->col][1], th->col[l->col][2], 1));
-      cw_node_set(V.lamp_light[i], "energy", cw_val_float(V.lamp_level[order[i]] * 0.004f * (l->size / 0.01f)));
+      cw_node_set(V.lamp_light[i], "energy", cw_val_float(V.L.lamp[order[i]].v * 0.004f * (l->size / 0.01f)));
     } else cw_node_set(V.lamp_light[i], "energy", cw_val_float(0));
   }
   V.st.lights = NGI + V.nflash + T->npop + (nl < NLAMPLIGHT ? nl : NLAMPLIGHT);
@@ -607,9 +881,8 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt) {
   float want = cw_clampf((high - 0.35f) / 0.6f, 0, 1);
   V.cam_follow += (want - V.cam_follow) * fminf(1, dt * 1.5f);
   float f = V.cam_follow * 0.06f;
-  /* the table's shove when nudged */
-  float sh = g->nudge_t > 0 ? (float)g->nudge_t / 18.0f : 0;
-  float nx = g->nudge_x * sh * 0.004f, ny = sh * 0.003f;
+  /* a nudge never moves the camera (the pad rumbles instead: main.c) */
+  float nx = 0, ny = 0;
   float k = g_cam_k;
   V.eye = tw(-0.017f + nx, -0.56f * k + f * 0.5f + ny, 1.0f * k);
   V.at = tw(-0.017f + nx, 0.45f + f + ny, 0);

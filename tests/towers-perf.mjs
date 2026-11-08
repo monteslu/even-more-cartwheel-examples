@@ -1,7 +1,8 @@
 // towers perf gate: towers_bench (a late map, towers at their third level on every slot, 2400 creeps kept on its paths
 // and the waves still coming, four bots at the controls) at 1920x1080, High, natively on the test GPU (the 890M), GL and
 // WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame
-// windows) at 4.3 ms, with at least 2000 creeps alive and drawn.
+// windows) at 4.3 ms (4.5 on WebGPU, whose decals pass is timed since engine v0.38.8), with at least 2000 creeps alive
+// and drawn.
 //   the bench map (26, the crystal vale) on both GLs, then one late map of every other theme (TOWERS_MAP) the same way.
 // Every run must draw everything (no "not in any program table" line) and keep its crowd. Controls, which must fail:
 // GL at 3840x2160 (4 times the pixels), WebGPU against an impossible 1 ms bound, and the bench held to 3000 creeps.
@@ -22,7 +23,9 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 const quick = process.argv.includes('--quick');
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
 const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/towers_bench.json'), 'utf8')).binary;
-const BOUND = 4.3, CROWD = 2000;
+// WebGPU: the decals pass (the scorches) costs about 0.2 ms more there than on GL, and engine v0.38.8 first timed it on
+// WebGPU (before, it read 0), so the WebGPU bound carries it
+const BOUND = 4.3, BOUND_WGPU = 4.5, CROWD = 2000;
 
 function run(gpu, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '600', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', TOWERS_BENCH: '1', TOWERS_NO_HUD: '1',
@@ -52,10 +55,10 @@ const check = (name, r, bound, mustFail = false, most = Infinity) => {
 };
 const g = run('gl'), w = run('webgpu');
 check('bench map 26 GL', g, BOUND);
-check('bench map 26 WebGPU', w, BOUND);
+check('bench map 26 WebGPU', w, BOUND_WGPU);
 if (!quick)
-  for (const map of [5, 10, 15, 20, 30]) for (const gpu of ['gl', 'webgpu']) check(`map ${map} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { TOWERS_MAP: String(map) }), BOUND);
+  for (const map of [5, 10, 15, 20, 30]) for (const gpu of ['gl', 'webgpu']) check(`map ${map} ${gpu === 'gl' ? 'GL' : 'WebGPU'}`, run(gpu, { TOWERS_MAP: String(map) }), gpu === 'gl' ? BOUND : BOUND_WGPU);
 check('GL at 3840x2160 (4 times the pixels)', run('gl', { CW_RENDER_SCALE: '3' }), BOUND, true);
 check('WebGPU against 1 ms', w, 1, true);
-check('the bench held to 1500 creeps', w, BOUND, true, 1500);
+check('the bench held to 1500 creeps', w, BOUND_WGPU, true, 1500);
 process.exit(bad ? 1 : 0);

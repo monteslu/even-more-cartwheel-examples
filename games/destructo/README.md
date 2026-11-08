@@ -2,10 +2,13 @@
 
 Bring structures down. Towers, walls, bridges, castles, scaffolds and stepped pyramids of wood, stone, glass and steel,
 hundreds to a few thousand blocks each, stand on a field. You have a launcher, a few rounds of shot, a heavy ball or
-two and some charges. Every structure hides glowing crystals: bring them all down within par for three stars.
+two and some charges. Every structure hides glowing crystals: bring them all down to clear it. Red powder kegs stand
+against the foot of some structures: a keg that is hit goes off, and its blast sets off the next.
 
 One to four players take turns at the one launcher on the one structure: together (co-op: one count of shots against
-par) or against each other (versus: each shot scores for whoever fired it).
+par), against each other (versus: each shot scores for whoever fired it), or at a party (steady hands: ammunition
+without end, each turn must bring at least one block down, a turn that brings none is a strike and two strikes put you
+out, and whoever brings a crystal down is out; the last one in wins).
 
 ## Playing
 
@@ -16,6 +19,36 @@ par) or against each other (versus: each shot scores for whoever fired it).
 | north | the ammunition: shot, heavy ball, charge |
 | west, held | the wide view of the structure |
 | south | fire |
+
+On the result card, north watches the last shot again and any button skips the replay. On the select screen west
+turns on free fire: every structure open, ammunition without end, nothing judged.
+
+### Results and stars
+
+A level is judged once its world is still (at most two bodies awake for a third of a second; a turn's settle ends
+after 15 s whatever still moves), never while the structure is falling. The share of the structure brought down is
+counted by volume over every block the level placed (crystals not counted): a block is down when it is broken, gone
+off the field, or more than its own size (and at least 0.6 m) from where it settled before play. Each kit has a mark:
+half a tower or a scaffold, two fifths of a keep, about a third of a wall, a quarter of a castle or a bridge, 15% of a
+stepped pyramid. The HUD shows the share against the mark while you play.
+
+| Stars | Needs |
+|---|---|
+| one | every crystal down |
+| two | ... within par |
+| three | ... and the structure brought down to its mark |
+
+The card says BROUGHT DOWN when the mark is reached and CRYSTALS DOWN when the crystals fell with the structure
+mostly standing. It slides in at the right edge, clear of the pile.
+
+### Instant replay
+
+The simulation is deterministic, so the replay needs no saved world: a second game is made the way the level was and
+stepped with the inputs the players gave (only the ticks something was held are logged). While the players aim it
+catches up a few milliseconds a frame, while the live world is quiet; while a shot flies it waits on the tick before
+that shot was fired. When the level is judged it therefore stands where the last shot started. The replay follows the
+shot, turns slowly round the impact in slow motion for the first second and a quarter after it, and ends on exactly
+the state the live game was judged on (every block's pose to the bit, the counters and the scores).
 
 The aim path shows the first part of the shot's flight, as the world will fly it. Charges go off on the first thing
 they touch and push and break everything within about four and a half metres; shot that breaks what it hits keeps the
@@ -36,6 +69,7 @@ speed the break did not use and goes on through.
   the weight of a solid slab; a six-storey tower's roof stands on its top floor, since every course more on it is a
   lean that creeps), battlements, trim courses, timber-framed top storeys, a castle gate under a steel lintel, brick piers with cream caps, a turquoise-banded pyramid with a gilded
   shrine; banners on poles ride the blocks they stand on; windows are glass bricks lit from inside.
+- `src/replay.c`: the instant replay (above).
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
   ball into what holds it up, then holds and taps the aim buttons until the launcher points there.
@@ -48,7 +82,12 @@ speed the break did not use and goes on through.
   `tools/gen-grade.mjs`); trees of layered foliage (alpha-cut leaf, needle and frond cards made at start-up, their
   normals out from each clump so a crown shades like a volume): oaks, birches, spruces, snow-laden firs and date
   palms, two species a setting, swaying in the wind; a column of light over every standing crystal; dust, chips, shards, sparks and the engine's explosion kit, all fired once
-  under the ground at load so no effect compiles its programs mid-game; sounds made in code.
+  under the ground at load so no effect compiles its programs mid-game; a plume of dust that hangs over a collapse,
+  drifts downwind and thins over about ten seconds; the ground marked where the structure came down; broken pieces
+  showing their raw inside; grass on green ground round the yard; the sea under the headland as the engine's water;
+  sounds made in code.
+- No strobing. Every light swells over a tenth of a second or more and eases out, never steps or flickers; the
+  explosion kit's own flash light is off (it starts at its peak and flickers). No screen shake: the pad rumbles.
 
 ## What Box3D can do here (tools/physcheck.c, tests/destructo-physics.mjs)
 
@@ -95,8 +134,10 @@ collapse: about 2.3 ms a step at worst over the collapse windows.
 | Command | Checks |
 |---|---|
 | `node tests/destructo-physics.mjs` | the measurements above, each with a control that must fail |
-| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par |
-| `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth |
+| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
+| `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep |
+| `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
+| `node tests/destructo-flash.mjs` | every frame of Great Keep's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
 | `node tests/destructo-perf.mjs` | the GPU frame at 1920x1080 on High during a castle's collapse, GL and WebGPU, on the 890M |
 | `node tests/destructo-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms, natively and in the cart on romdev |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) |

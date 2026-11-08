@@ -14,3 +14,6 @@ standard+trans+shadow+ds+l1001+xcluster_gi
 standard+l1001+xcluster_gi
 basic+instbig+ds+icol
 basic+ds
+basic+map
+standard+map+rep+shadow+l1001+xcluster_plain_gi
+standard+map+rep+shadow+l1001+xcluster_gi

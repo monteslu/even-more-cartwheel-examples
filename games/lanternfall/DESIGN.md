@@ -22,9 +22,29 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
   | tide charm | a flooded passage from floor to ceiling (without the charm the cold pushes you back out) |
   | grapple line | a 24-tile chasm under a beam of anchors |
   | the seal | the heart's doors, open once five wardens have fallen |
-- **Set pieces** per region: the warden's arena with its prize behind a sealed far door, item rooms, save shrines,
-  side branches behind a later ability's gate (the upgrades that reward backtracking), and hidden walls (a strike
-  breaks them) with relics behind.
+- **Set pieces** per region: the warden's arena with its prize behind a sealed far door, item rooms, save shrines
+  (thirteen in all), side branches behind a later ability's gate (the upgrades that reward backtracking), and hidden
+  walls (a strike breaks them) with relics behind.
+- **Hand-shaped rooms** (`src/pieces.h`, drawn as text and mirrored to face their door) are laid into every region,
+  each for a purpose:
+  | purpose | rooms |
+  |---|---|
+  | a view | the region's landmark (its beacon tower in the region's own building: a lighthouse, a great hollow tree, a crystal spire, a clockwork tower, a coral spire or a sky spire; marked on the map) with its map stone by the door, on a way through |
+  | a reward in plain sight | a shelf six tiles up (the second jump), past an eleven-tile thorn pit under a low roof (the dash), on a sheer pillar (wall climbing), in a vault under a cracked lid (the plunge), behind a wall of deep water (the tide charm), on an island high over thorns under anchors (the grapple line) |
+  | a challenge | a wall, then a thorn pit under a low roof (second jump and dash together); a spire to climb, then a leap over thorns |
+  | a threat | an ambush: walkers on the floor, spitters on ledges, a moth, the reward past them |
+  The rewards in plain sight sit in the regions found early, so each one is seen long before the ability that reaches
+  it, and every return trip has something waiting.
+- **Shortcuts**: gate rooms inside the early regions, so each ability cuts a corner through ground already walked (the
+  grapple line has one in each of five regions).
+- **Hidden alcoves**: about a room in four has one: a face of hidden rock against a wall with no door, or a low mound
+  out in the room, with a tablet of the old city's story inside (forty-eight lines, `LORE` in `src/regions.c`); some
+  mounds are stone boxes with a cracked lid and the tablet in sight inside, for the plunge on the way back.
+- **Warden arenas** have a flat floor (the wardens move along it) and one-way ledges laid out for each warden: low
+  ones a single jump reaches for the Moss Warden, two tiers for the Brass Sentinel, high ground over the Tide
+  Serpent's dives, anchors under the Sky Warden's roof, a climb of ledges round the Heart of Thorns.
+- **No blind drops**: a thorn pit never lies at the foot of a tall room (a fall from its top would meet it out of view),
+  no trapdoor leads down into a gate of thorns, and a step by a wall runs into it (no slot left beside it).
 - A **spine** of cells joins every doorway a region needs, branches grow off it, and the cells are cut into rooms of
   one to three cells, joined by doors in a spanning tree plus a few loops.
 - Each room is **carved**: walls, door openings, ledges under doors above the floor, ladders of one-way ledges up to
@@ -40,8 +60,12 @@ before, so going back is progress: earlier dead ends become shortcuts and side r
   halls in Glasswater and the Tidal Halls are flooded: wading pools from wall to wall.
 
 The abilities come in this order: the spark (ranged, at the start), the second jump (behind the Moss Warden), the dash
-(behind the Glass Mantis), wall climbing, the plunge (behind the Brass Sentinel), the tide charm (behind the Tide
-Serpent), the grapple line. The Sky Warden is the fifth beacon; the Heart of Thorns is the end.
+(behind the Glass Mantis), the grapple line (in Mirelight Fen), wall climbing (behind the Brass Sentinel), the plunge
+(in the Ember Forge), the tide charm (behind the Tide Serpent). The Sky Warden is the fifth beacon; the Heart of
+Thorns is the end.
+
+The finds: health (heart leaves), energy (lantern oil), relics (each of the first eleven a charm), a map stone in each
+region's view room (its rooms show on the map before you see them) and the tablets of the story.
 
 ## The proof
 
@@ -54,12 +78,21 @@ land on the same tile. It proves, stage by stage from the start with no abilitie
 - every place reached at a stage can get back to the start at that stage (no soft lock);
 - every pickup and every warden is reached;
 - every gate room's far half cannot be reached with only the abilities that come before its own, and can with it;
-- every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says (nothing floats).
+- every prop, lamp, pickup, shrine, anchor and ground enemy is held by the tile it says (nothing floats);
+- see before reach: every ability reaches two or more rewards that were on screen at an earlier stage (the camera's
+  own rule: 32 x 18 tiles round the player inside the room's walls; a reward inside hidden rock is not seen);
+- shortcuts: every ability opens a gate whose two sides were both reached before it;
+- set pieces: every region has a hand-shaped room, and the walk reaches it;
+- blind drops: no move falls into thorns below where it left the ground that were on screen neither as it left nor
+  at the top of its flight (any tile of the thorns' run along their row on screen counts).
 
 It writes the bot's route (`assets/route.bin`): the moves from the start through every pickup, shrine and warden,
-the Heart of Thorns last of all.
-`tests/lanternfall-world.mjs` checks both shipped files are current, and runs five broken worlds that must each fail
-for their own reason.
+the Heart of Thorns last of all. The route keeps out of the Heartwood until five wardens have fallen, and goes on with
+the next stage's moves once it takes a new way to move.
+`tests/lanternfall-world.mjs` checks both shipped files are current, and runs nine broken worlds that must each fail
+for their own reason: the grapple gates' anchors taken out, two prizes swapped, a pit dug by the start, a lamp lifted
+off its ceiling, a wall gate lowered, the set pieces' rewards taken out, thorns beside the landing under trapdoors, a
+region's set pieces forgotten, the gates inside a region walled up.
 
 ## Movement
 
@@ -74,29 +107,64 @@ Measured by `tools/feel.c` (`tests/lanternfall-feel.mjs`), each with a control t
 | run jump | 7.1 tiles; with the second jump 10.8 |
 | dash | 4.8 tiles in 10 ticks, once per airtime |
 | ceiling corners | a head that clips a corner is carried round it |
+| dash off a wall | 4.8 tiles straight off a wall you cling to (climbing and the dash chain) |
+| sprint (a charm) | a dash held on into the run keeps going at 1.45x; a jump keeps the speed |
 
-Wall climbing clings when you hold toward a wall in the air, climbs on up and down, and goes over the top. The plunge
+Wall climbing clings when you hold toward a wall in the air, climbs on up and down, goes over the top, and the dash
+throws you straight off it. The plunge
 is down + dash in the air. In deep water the tide charm swims; without it the cold sends you back to the last firm
 ground. The grapple line catches the nearest anchor overhead, swings, reels on up and down, and lets go with a jump.
 
 ## Combat
 
-A strike (west) in front, up or down (in the air; a downward strike bounces off what it hits, thorns too), and cuts
-small thrown things out of the air. The spark (north) costs energy; strikes refill it and it creeps back on its own.
+A strike (west) in front, up or down (in the air; a downward strike bounces off what it hits, thorns too, and gives the
+dash back), and cuts small thrown things out of the air. A blow that lands holds the whole world still a moment (4
+ticks, 6 for a kill, 7 for a blow taken: both sides feel it), throws the enemy back about a tile (further for a kill,
+less for a knight, never off its ledge) and pushes you back a little; presses made during the hold are kept. Each blow,
+kill, hurt and plunge rumbles the pad; the camera never shakes. The spark (north) costs energy; strikes refill it and it creeps back on its own.
 Down + spark on the ground mends a leaf of health for two energy. Enemies show their tells: the crawler rears up
 before it charges, the spitter swells, the moth's wings flare before it swoops, the hopper crouches, the knight raises
-its spear (and turns strikes from the front with its shield). A strike breaks off an attack in progress.
+its spear (and turns strikes from the front with its shield). A strike breaks off an attack in progress. Four more,
+one idea each: the puff drifts, soft (a touch bumps you, landing on it bounces you), then every puff swells and
+bristles with thorns on one shared breath; only a strike from above hurts it. The dropper hangs from a ceiling,
+shivers when you pass under, falls and bursts, then lies stunned. The burrower is a ripple of dust under the floor that
+follows you, stops, and bursts up where it stopped; then it is out and open to blows. The eye charges while a line
+shows the row it will burn, then burns it.
+
+Each region has its own cast of four kinds (worldgen.c `CAST`). Creatures struck down stay down until you rest at a
+shrine or fall. An item room that holds an upgrade (not a warden's prize) is a **trial**: its doors lock once you are
+inside, two waves of the region's guardians come for you, and the find is yours once they fall.
+
+**Charms.** Each relic found gives the next charm, in this order: the long wick (the strike reaches further), the
+cutting dash (the dash hurts what it passes and nothing touches you in it), the runner's stride (a held dash runs on
+as a sprint), ember harvest (kills fill energy), swift mend, updraft (a higher bounce), thorn ward (a blow taken bursts
+out), quick hand, twin spark, quake (the plunge's shock reaches twice as far), second wind (once a rest, a killing blow
+leaves a leaf). A relic past the eleventh is a **keepsake** of the lamplighters: its card reads a line of their story
+(27 of them), and every third keepsake dyes the lamplighter's scarf a new colour (looks only; health and energy
+come from heart leaves and lantern oil alone).
+
+**A fall** leaves your lantern's flame at your last firm ground, holding a measure of your energy: go back and touch it
+to take the measure back (a second fall moves it).
 
 Wardens use a shared set of moves, each with a tell long enough to read (never under 26 ticks): a charge, a leap that
 sends ground waves, a volley (the Moss Warden lobs spores at glowing marks), rain from marked spots, a sweep along the
 floor (jump it) or at head height (stay down), a dive at a marked point, summoned helpers, eruptions at marked spots.
+At half health a warden staggers (open to blows for a moment, its shots cleared), then fights its second phase: one
+more move in its rotation and every third move chained straight into the next.
+
+`tools/rules.c` (`tests/lanternfall-rules.mjs`) measures these rules on a small test world, each with a control that
+turns the rule off and must fail: the hold, knockback, recoil, the puff, creatures staying down, the trial, the
+warden's stagger and second phase, the first charm, the flame.
 
 ## Saves, travel, the map
 
 Up beside a shrine rests there: full health, a save, and the shrine's waystone lit; the shrine's menu travels to any
-lit shrine. The save keeps abilities, finds, the walls and floors broken, the wardens fallen, the rooms seen. Back
-opens the map: every room seen, its doors, the finds in it (a dot until taken, a ring after), the shrines, the
-wardens, you.
+lit shrine. The save keeps abilities, finds, the walls and floors broken, the wardens fallen, the rooms seen, the finds
+seen, the map stones and tablets. Back opens the map, a painted chart (aged vellum, a gold border, a compass rose, a wash of each known region's colour), which fills in as you go: every room seen (and, faint, the rooms
+of a region whose map stone you hold), its doors, a ring across each gate, each region's landmark and name, the
+shrines, the wardens, you, and the finds you have seen: a dot in a pulsing ring while not yet reached (a reward seen
+across a gap waits there for the ability that reaches it), a faint ring once taken. Finds never seen stay off the map.
+Its foot counts rooms, finds, finds seen but not yet reached, tablets and beacons.
 
 ## Two players
 
@@ -112,8 +180,46 @@ with ore in the Clockwork Deep, porous coral, billowing cloudstone), its body re
 neighbours always join (corners open on two sides are rounded, so rock masses read as boulders); the bright lips of
 walkable surfaces, ledges, thorns and molten channels, a rough cave rock for the back wall, and six parallax families: ragged ridges, a
 colonnade of arches, trees of every size, crystal spires, machinery (gears, pipes, stacks) and growth hanging from
-above, each feature placed by hash so no two are alike. The hero, enemies and wardens are skeletons of shapes animated
-every frame (`src/view.c`).
+above, each feature placed by hash so no two are alike (the trees with bark, forking branches and crowns of leaf
+clusters; the arches of coursed masonry, chipped, with ivy over their tops).
+
+**Creatures.** The hero, every enemy and every warden are skeletons of painted parts (`src/creatures.c`), posed every
+frame from the simulation. The parts are painted in code at start-up by a small painter (`src/paint.c`): signed
+distance shapes, each shaded as a rounded form (a value ramp from a cool edge to a lit middle, a soft key light from
+above), carrying a material (fur, chitin, scales, warts, veins, feathers, brass, cloth, glass, bark, skin, moss,
+membrane, stone), casting a soft contact shadow on what is under it, with a normal map from its height and a material
+map (emission for eyes, glands and cores; specular for chitin, glass and brass). Painted at 128 pixels a tile (4K draws
+a tile at 120) and mipmapped; each part is painted for both facings, since the lights do not turn a mirrored sprite's
+normals. Every creature has a rim of its region's light along its top edges (so it reads against the dark rock), a
+tint of its region, and a growth of the region's material on the backs of the crawler and the hopper.
+
+| | |
+|---|---|
+| the hero | a hooded lamplighter: long coat and cape in the player's colour, a deep hood with two bright eyes, scarf, satchel, boots, a lamplighter's pole with the lantern swinging on its hook (steady through the run; dimmer as a strike sweeps it) |
+| crawler | an ember-seamed husk beetle: five armour plates over a furnace-hot body; it rears, the seams brightening, and charges with its antennae swept back |
+| spitter | a lantern pod: a rooted gourd with glowing veins and a sac inside; it leans away and swells, the lip-petals peeling back, then recoils as it spits |
+| moth | a dusk moth: a furred body, patterned wings whose eyespots brighten as it holds them up before the swoop |
+| hopper | a lamp toad: warty, with amber eyes; its throat glows as it crouches, and it leaps with its legs thrown out behind |
+| knight | a hollow sentinel: old city-watch armour walked by a wisp behind its visor, a tower shield with the lantern emblem, a spear with a pennant |
+| puff | a thistle puff: a ball of tinted down round a dark seed; the thorns push out through the down as it swells |
+| dropper | a drip bulb: a glassy sac of glowing sap on a silk thread, a ring of little legs at its top |
+| burrower | a heave of earth and pebbles; out, a head of stone plates and teeth |
+| eye | a lantern eye: a great glassy eye on a fleshy stalk between bark lids |
+| the wardens | a hunched beast of bark and moss with root antlers and glowing fungi; a mantis of glass with lit scythe edges; a clockwork giant with a furnace grille and turning gears; a frilled eel with glowing lateral lights; a great pale bird with a lantern crest and tail streamers; a heart-shaped seed of flesh in writhing thorn vines |
+
+Every tell is the attack's anticipation exaggerated (the rear, the swell, the raised spear, the scythes overhead, the
+coil) with a glow that grows as the attack nears, never a longer wait. A warden's stagger at half health slumps it, eased
+in and out, with motes circling over it; its second phase leans its rim and tint toward its own glow and sends embers of
+it up, steady. A death: the parts fly apart, turn and fall as they burn out to embers. `tests/lanternfall-creatures.mjs`
+measures each creature's own pixels at game scale (from the same frame drawn as flat silhouettes): 120 colours or more
+and 4 levels of fine detail (2.5 while hurt); the old flat shapes must fail.
+
+**Scenery.** Features are set into the rock's body (`src/scenery.c`): embedded boulders, crack networks, lenses of
+strata, fossil shells, pebbles, moss, roots, crystals, glowing ore, old gears, shells and barnacles, cloud wisps, each
+material its own set, placed by hash two tiles deep in the rock or more, so no stretch of rock is one repeating pattern.
+The props are painted too: the lamplighter statues on their plinths, garden trees, crystal clusters, machines with a
+turning gear and a pumping piston, shelves of books, boulders, mushrooms, ferns, grass and flowers (these sway in the
+wind). Every one-way ledge shows what holds it: a bracket from a wall beside it, chains from the ceiling, else roots.
 
 **Rock.** The rock is drawn as one mass: each tile corner is shaded by how deep in the rock it sits and by a slow grain
 across the world (no tile grid shows), and in the warm regions the deep rock leans toward the cool accent. Under every
@@ -144,6 +250,16 @@ of local contrast; frames flattened halfway to their mean must fail.
 
 Lamps, the lantern, shots and pickups are 2D lights on the lit layers; glows and particles go on an additive layer
 over them.
+
+**Nothing strobes.** No wash of colour ever covers the screen; a strike's sweep is a soft ribbon, the dash a faint smear; a struck creature takes a pale tint that eases off over
+its flash ticks, a hurt hero a soft shimmer that swells and fades about twice a second, a tell's eye one swell per
+tell, the marks of a warden's rain a slow swell; impact stars are small and fade. `tests/lanternfall-flash.mjs` captures
+every frame of three seconds of a warden fight and measures it with the engine's flash check (WCAG 2.3.1's general and
+red flash thresholds over a sixth of the screen, small lights switching together, regular flicker); a quarter of the
+screen blinking at 5 Hz and an 8 Hz full-screen strobe must fail. `tests/lanternfall-flashes.mjs` follows every
+creature closer: two seconds of every enemy and every warden struck every ten ticks with their tells and attacks
+running, and both heroes hurt, striking and mending, held to the same bounds again on regions a 24th of the screen; the
+same scenes drawn with full white hit flashes and the old blink must fail.
 
 ## The bot
 

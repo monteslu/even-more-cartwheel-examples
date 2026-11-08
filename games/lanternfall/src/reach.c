@@ -60,6 +60,9 @@ void moves_init(void) {
         for (int l = 0; l < 3; l++)
           for (int c = 0; c < 3; c += 2)
             add((move){ .dir = (int8_t)d, .run = RUNS[r], .hold = 20, .air = 255, .grapple = GT[g], .release = RL[l], .chain = (uint8_t)c, .swim = 2, .need = AB_GRAPPLE });
+  /* a dash straight off a wall it clings to (after the others: the bot names moves by their index) */
+  for (int d = -1; d <= 1; d += 2)
+    for (int c = 0; c < 2; c++) add((move){ .dir = (int8_t)d, .run = 4, .hold = 20, .air = 255, .climb = 1, .cdash = (uint8_t)(c ? 34 : 14), .swim = 2, .need = AB_CLIMB | AB_DASH });
 }
 
 bool move_input(const move *m, int t, const player *p, int *phase, pinput *in) {
@@ -123,6 +126,11 @@ bool move_input(const move *m, int t, const player *p, int *phase, pinput *in) {
   if (m->climb && k >= 2) {
     in->mx = (int8_t)d;
     in->my = -1;
+    if (m->cdash && k >= m->cdash) {
+      in->my = 0;
+      in->mx = (int8_t)(k < m->cdash + 14 ? -d : 0);
+      if (k == m->cdash) in->dash = true;
+    }
     if (m->walljump && k >= m->walljump) {
       in->my = 0;
       in->mx = (int8_t)(k < m->walljump + 12 ? -d : 0);
