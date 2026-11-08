@@ -130,10 +130,10 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
                    mp_ty(&S.m, S.e[i].y), S.e[i].prog, S.e[i].hp, S.e[i].age, S.e[i].frozen, S.e[i].slow_t);
     }
     if (S.state == ST_WON) {
-      int n = 0;
-      for (int q = 0; q < S.m.nslot; q++) n += S.tw[q].alive;
-      printf("clear: map %d held in %.1f min (%d waves, %d kills, core %d of %d, %d towers, most creeps %d)\n", M.num, (float)S.map_ticks / 3600.0f, S.m.waves, S.kills,
-             S.core_hp, CORE_HP, n, S.most_alive);
+      int n = 0, ba = 0, bb = 0;
+      for (int q = 0; q < S.m.nslot; q++) n += S.tw[q].alive, ba += S.tw[q].alive && S.tw[q].branch == BR_A, bb += S.tw[q].alive && S.tw[q].branch == BR_B;
+      printf("clear: map %d held in %.1f min (%d waves, %d kills, core %d of %d, %d towers (third level: %d A, %d B), most creeps %d)\n", M.num, (float)S.map_ticks / 3600.0f,
+             S.m.waves, S.kills, S.core_hp, CORE_HP, n, ba, bb, S.most_alive);
       return 0;
     }
     if (S.state == ST_LOST) {

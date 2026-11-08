@@ -8,7 +8,7 @@
 //   parting:     the crowd's own local contrast (each pixel's luma against its 9 x 9 neighbourhood, crowd pixels only):
 //                at least PART_MIN, so the bodies part from one another (an edge round each) instead of running
 //                together into one band.
-// CONTROL, which must fail: the snowfields with TOWERS_OLD_INK=1 (the dark ink edge on their dark path, as before).
+// CONTROL, which must fail: the snowfields with TOWERS_OLD_INK=1 (the old thin dark ink edge on their dark path).
 // Run: node tests/towers-crowd.mjs [webgpu]   (holds the GPU suite lock; frames in out/towers-crowd)
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -25,7 +25,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
 const MAPS = { meadow: 5, autumn: 10, desert: 15, snow: 20, volcano: 25, crystal: 30 };
-const VALUE_MIN = 1.35, PART_MIN = 0.03, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' };
+const VALUE_MIN = 1.35, PART_MIN = 0.055, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' };
 const dir = join(ROOT, 'out', 'towers-crowd', GPU);
 mkdirSync(dir, { recursive: true });
 

@@ -139,7 +139,7 @@ The effects (fx.c, view.c):
 - Kills: the body tips over onto its side and sinks into the ground over half a second, darkening (a shade fades into
   its wisp), and a coin rises off it. Each wave's banner says what each player did in the wave before it (kills and
   damage), in their colours.
-- The crowd's edge takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
+- The crowd's edge is thicker (7.5 cm, a packed crowd parts into bodies) and takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
   the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring, an ogre in a red glow;
   tests/towers-crowd.mjs holds the crowd off its ground on every theme.
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters

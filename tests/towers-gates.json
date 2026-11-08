@@ -1,7 +1,7 @@
 [
   {
     "name": "towers-match",
-    "note": "towers_auto: two bots hold map 1 for 2400 ticks: they hop their cursors across their own shares, build, upgrade and call a wave, and the creeps come down the path on the crowd. Everything named is simulation, so every host agrees on it. The control is one frame short.",
+    "note": "towers_auto: two bots hold map 1 for 2400 ticks: they hop their cursors across their own shares, build, upgrade and call a wave, and the creeps come down the path on the crowd. Everything named is simulation, so every host agrees on it (kills, gold and hash pinned again when the towers began to help each other and the bots to call the storm: more kills, so more bounty). The control is one frame short.",
     "app": "towers_auto",
     "frames": 2400,
     "maxGt16": 0.3,
@@ -34,11 +34,11 @@
       "game.map": 1,
       "game.wave": 1,
       "game.towers": 4,
-      "game.kills": 52,
+      "game.kills": 63,
       "game.core": 20,
       "player.gold": [
-        73,
-        73,
+        78,
+        78,
         0,
         0
       ],
@@ -48,7 +48,7 @@
         0,
         0
       ],
-      "game.hash": 3864001107
+      "game.hash": 2369417707
     }
   },
   {
