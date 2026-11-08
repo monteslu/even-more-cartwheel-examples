@@ -8,7 +8,7 @@
 typedef struct hud_state {
   int banner_region;      /* the region whose name shows (-1 none) */
   float banner_t;
-  int card_kind, card_arg; /* the pickup card */
+  int card_kind, card_arg; /* the pickup card (kind 4: a charm, arg its CH_*) */
   float card_t;
   bool map_open;
   bool menu_open;         /* the shrine: rest, or travel to another lit shrine */
@@ -18,6 +18,8 @@ typedef struct hud_state {
   float boss_t;           /* the warden's name rises */
   int boss_idx;
   float won_t;
+  float trial_t;          /* a trial's words: the doors shut (msg 0), a wave (1), the way open (2) */
+  int trial_msg;
 } hud_state;
 
 void hud_init(cw_font font);

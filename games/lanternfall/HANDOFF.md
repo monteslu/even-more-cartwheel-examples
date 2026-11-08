@@ -55,6 +55,18 @@
 - GI field back to an eighth: on engine v0.38 it is the cheaper share (bench GL 3.16-3.27 -> 2.96-3.09 ms, WebGPU
   3.72-3.77 -> 3.12-3.19 ms).
 
+## Fun round (2026-11-07, branch lanternfall-fun)
+- Combat and movement round: hit-stop (sim `hitstop`, the bot and the soak skip held ticks), knockback (`enemy.kb`),
+  recoil (`player.recoil_t`), four new kinds (EN_PUFF, EN_DROPPER, EN_BURROWER, EN_EYE; drawing in view.c
+  `draw_enemy_extra`), region casts (worldgen.c `CAST`, which keeps the generator's draw count so layouts hold),
+  trials (sim.c `trial_update`), charms (`CH_*`, relics in order), warden stagger and second phase, creatures
+  staying down until a rest (`sim.slain`), the flame left where you fall (`sim.echo`), a dash off a wall
+  (player.c, and two checker moves appended at the end of the move list).
+- Save version 2 (the save grew charms, trials, the flame).
+- `LANTERNFALL_SOAK_TIMELINE=1` prints the moments a player notices by game second; `LANTERNFALL_SOAK_FAR=1` widens
+  the trace's enemy list. The soak's FAIL line names the trial and lists the enemies left.
+- `g_rules_off` (sim.h RULE_*) turns one rule off for tools/rules.c's controls.
+
 ## Debugging switches
 - Fast looks without the GPU lock: `node tests/lanternfall-look.mjs` (lavapipe, out/look-lanternfall/r<region>.png), or
   run lanternfall_auto on lavapipe by hand (SDL_VIDEODRIVER=offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,
