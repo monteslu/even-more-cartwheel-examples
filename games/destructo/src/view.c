@@ -42,6 +42,7 @@ static struct {
   bool cam_init;
   int last_state;
   float orbit;
+  float rp_orbit;    /* the replay camera's turn round the impact */
   int built_level;
   float pal[M_COUNT][3];
   view_stats st;
@@ -284,7 +285,7 @@ void view_init(cw_node root) {
     V.blk[m] = imesh(world, MATS[m].name, geo, mt, MAXBLK, m != M_GLASS);
   }
   {
-    t3_material *rm = std_mat(1, 1, 1, 0.82f, 0);
+    t3_material *rm = std_mat(1, 1, 1, 0.66f, 0); /* glazed tile and slate: the sky shows in them (they went black in flight) */
     t3_texture *tx = roof_texture();
     t3_material_set_map(rm, tx);
     t3_release(tx);
@@ -422,7 +423,7 @@ static const setting *SET;
 
 /* the paints (game.h P_*), linear colours */
 static const float PAINT[P_COUNT][3] = {
-  [P_ROOF_RED] = { 0.42f, 0.1f, 0.045f }, [P_ROOF_SLATE] = { 0.045f, 0.055f, 0.08f }, [P_ROOF_COPPER] = { 0.1f, 0.36f, 0.3f },
+  [P_ROOF_RED] = { 0.42f, 0.1f, 0.045f }, [P_ROOF_SLATE] = { 0.075f, 0.09f, 0.125f }, [P_ROOF_COPPER] = { 0.1f, 0.36f, 0.3f },
   [P_TRIM_CREAM] = { 0.72f, 0.6f, 0.4f }, [P_TIMBER] = { 0.12f, 0.065f, 0.035f }, [P_PLASTER] = { 0.72f, 0.66f, 0.54f },
   [P_GOLD] = { 1.0f, 0.68f, 0.12f }, [P_TURQUOISE] = { 0.04f, 0.42f, 0.46f }, [P_BRICK] = { 0.45f, 0.15f, 0.08f },
   [P_DARK_STONE] = { 0.2f, 0.2f, 0.23f }, [P_SAND_STONE] = { 0.68f, 0.5f, 0.3f }, [P_ROSE_STONE] = { 0.62f, 0.38f, 0.32f },
@@ -716,6 +717,12 @@ void view_sync(const game *g, float alpha) {
       const float *p = paint[(k->tint >> 3) & 3];
       col = (t3_color){ p[0] * dmg, p[1] * dmg, p[2] * dmg };
     }
+    /* a piece of a broken block shows its inside: fresh pale stone, raw splintered wood */
+    if (k->gen && (m == M_WOOD || m == M_STONE)) {
+      static const float raw[2][3] = { { 0.6f, 0.45f, 0.27f }, { 0.6f, 0.57f, 0.51f } };
+      const float *r = raw[m == M_STONE];
+      col = (t3_color){ col.r + (r[0] - col.r) * 0.4f, col.g + (r[1] - col.g) * 0.4f, col.b + (r[2] - col.b) * 0.4f };
+    }
     t3_instanced_mesh_set_color_at(im, s, col);
   }
   int inst = 0;
@@ -908,6 +915,49 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   cw_node_set(camera, "far", cw_val_float(600));
   float dx = V.eye.x - V.at.x, dy = V.eye.y - V.at.y, dz = V.eye.z - V.at.z;
   V.st.cam_dist = sqrtf(dx * dx + dy * dy + dz * dz);
+}
+
+/* the replay's camera: close behind and beside the shot in flight, then a low, slow turn round where it hit on a
+ * longer lens while the slow motion runs, widening as the structure settles. cut: the replay's first frame */
+void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, bool slow, bool cut, float alpha) {
+  t3_vec3 eye, at;
+  float ext = g->extent, top = g->top, k = 3;
+  t3_vec3 mid = { 0, top * 0.42f, 0 };
+  if (cut) V.rp_orbit = 0;
+  if (g->proj_hit_tick < 0 && g->proj_live) {
+    cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);
+    t3_vec3 v = g->proj_vel;
+    float vl = sqrtf(v.x * v.x + v.z * v.z) + 1e-3f;
+    t3_vec3 vd = { v.x / vl, 0, v.z / vl };
+    eye = (t3_vec3){ x.p.x - vd.x * 6 - vd.z * 3.2f, x.p.y + 1.6f, x.p.z - vd.z * 6 + vd.x * 3.2f };
+    at = (t3_vec3){ x.p.x + vd.x * 5, x.p.y, x.p.z + vd.z * 5 };
+    k = 8;
+  } else {
+    t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
+    c = lerp3(c, mid, 0.35f);
+    V.rp_orbit += dt * (slow ? 0.05f : 0.14f);
+    float settle = cw_clampf((float)(g->tick - g->proj_hit_tick) / 400.0f, 0, 1);
+    float r = (ext * 1.05f + 6) * (1 + 0.45f * settle);
+    float a = -0.9f + V.rp_orbit;
+    eye = (t3_vec3){ c.x + sinf(a) * r, fmaxf(1.4f, top * (0.25f + 0.25f * settle) + 1.5f), c.z + cosf(a) * r };
+    at = (t3_vec3){ c.x, fmaxf(1.2f, c.y * 0.75f), c.z };
+    k = 2.2f;
+  }
+  V.wind += dt;
+  trees_sway(V.wind);
+  if (cut || !V.cam_init) V.eye = eye, V.at = at, V.cam_init = true;
+  float t = 1 - expf(-k * dt);
+  V.eye = lerp3(V.eye, eye, t);
+  V.at = lerp3(V.at, at, t);
+  if (V.eye.y < 0.6f) V.eye.y = 0.6f;
+  V.aspect = aspect;
+  cw_node3d_set_position(camera, V.eye);
+  cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
+  float want_fov = slow ? 36.0f : 46.0f;
+  if (cut) V.fov = want_fov;
+  V.fov += (want_fov - V.fov) * (1 - expf(-2 * dt));
+  cw_node_set(camera, "fov", cw_val_float(V.fov));
+  V.last_state = -1; /* back in play the camera eases from here */
 }
 
 bool view_screen(t3_vec3 p, float *u, float *v) {

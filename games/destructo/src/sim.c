@@ -154,6 +154,7 @@ static void kill_block(game *g, int i) {
     target_down(g, k->target);
   }
   if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); }
+  if (k->tag && k->target < 0) g->vol_gone += k->vol;
   cw_body3d_destroy(k->body);
   k->alive = 0;
   g->nalive--;
@@ -263,6 +264,7 @@ void game_new(game *g, int level, int players, int mode) {
   g->rng = g->L->seed;
   level_build(g, g->L);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->muzzle = v3(0, 1.7f, g->L->range);
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
   g->ammo_sel = A_SHOT;
@@ -286,6 +288,10 @@ void game_settle(game *g, int ticks) {
   for (int t = 0; t < ticks; t++) cw_world3d_step(g->w, TICK);
   (void)none;
   g->state = st;
+  game_settle_finish(g);
+}
+
+void game_settle_finish(game *g) {
   /* where everything rests now is home */
   for (int i = 0; i < g->nb; i++)
     if (g->b[i].alive) g->b[i].home = cw_body3d_transform(g->b[i].body).p;
@@ -310,7 +316,7 @@ t3_vec3 game_block_pos(const game *g, int i) { return cw_body3d_transform(g->b[i
 void game_fire(game *g) {
   int a = g->ammo_sel;
   if (g->ammo[a] <= 0 || g->proj_live) return;
-  g->ammo[a]--;
+  if (!g->sandbox) g->ammo[a]--;
   t3_vec3 d = game_aim_dir(g);
   float sp = game_speed(g);
   cw_body3d_def bd = cw_body3d_default_def();
@@ -480,11 +486,63 @@ static void tally(game *g) {
   }
 }
 
+/* the state itself, apart from the world it lives in (the world's own hash folds in body ids, which carry the
+ * world's index, so two worlds stepping the same never hash alike): every block slot, its pose's bits, the counters */
+uint32_t game_state_hash(const game *g) {
+  uint32_t h = hash32((uint32_t)g->tick * 0x9e3779b9u ^ (uint32_t)g->nb);
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    h = hash32(h ^ (uint32_t)k->alive ^ ((uint32_t)k->mat << 8) ^ ((uint32_t)k->gen << 16));
+    if (!k->alive) continue;
+    cw_xform3 x = cw_body3d_transform(k->body);
+    float f[7] = { x.p.x, x.p.y, x.p.z, x.q.x, x.q.y, x.q.z, x.q.w };
+    uint32_t u[7];
+    memcpy(u, f, sizeof u);
+    for (int j = 0; j < 7; j++) h = hash32(h ^ u[j]);
+  }
+  h = hash32(h ^ (uint32_t)g->shots ^ ((uint32_t)g->broken << 12) ^ ((uint32_t)g->tgt_left << 24));
+  for (int p = 0; p < g->players; p++) h = hash32(h ^ (uint32_t)g->P[p].score);
+  return h;
+}
+
 bool game_over(const game *g) { return g->state == GS_WON || g->state == GS_LOST; }
 
+/* a placed block standing away from home: more than its own size, and at least 0.6 m (the tally's rule) */
+static bool block_moved(const game *g, const block *k) {
+  t3_vec3 p = cw_body3d_transform(k->body).p;
+  float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
+  return vlen(vsub(p, k->home)) > lim;
+}
+
+float game_mark(const game *g) { return KIT_MARK[g->L->kind]; }
+
+float game_share(const game *g) {
+  if (g->vol_total <= 0) return 0;
+  float v = g->vol_gone;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (k->alive && k->tag && k->target < 0 && block_moved(g, k)) v += k->vol;
+  }
+  return fminf(1, v / g->vol_total);
+}
+
+/* The stars, given once the world is still (game_over is only true then):
+ *   1  every crystal is down
+ *   2  ... within par
+ *   3  ... and the structure is brought down (the level's mark of it, game_mark)
+ * The control (old_rules) is the rule before the fix: three for any clear within par, two within par + 2. */
 int game_stars(const game *g) {
   if (g->state != GS_WON) return 0;
-  return g->shots <= g->L->par ? 3 : g->shots <= g->L->par + 2 ? 2 : 1;
+  if (g->old_rules) return g->shots <= g->L->par ? 3 : g->shots <= g->L->par + 2 ? 2 : 1;
+  if (g->shots > g->L->par) return 1;
+  return g->judged_share >= game_mark(g) ? 3 : 2;
+}
+
+int game_result(const game *g) {
+  if (g->state == GS_LOST) return RES_LOST;
+  if (g->state != GS_WON) return RES_NONE;
+  if (g->old_rules) return RES_BROUGHT_DOWN;
+  return g->judged_share >= game_mark(g) ? RES_BROUGHT_DOWN : RES_CLEARED;
 }
 
 void game_step(game *g, const input *in) {
@@ -545,12 +603,15 @@ void game_step(game *g, const input *in) {
     if (!g->proj_live || (g->proj_hit_tick >= 0 && g->tick - g->proj_hit_tick > 40) || g->state_t > 60 * 6) g->state = GS_SETTLE, g->state_t = 0, g->settle_quiet = 0;
   } else if (g->state == GS_SETTLE) {
     int awake = st.awake_bodies - (g->proj_live ? 1 : 0);
-    g->settle_quiet = awake <= 2 ? g->settle_quiet + 1 : 0;
-    if (g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999;
-    if (g->settle_quiet > 20 || g->state_t > 60 * 9) {
+    g->settle_quiet = awake <= SETTLE_AWAKE ? g->settle_quiet + 1 : 0;
+    if (g->old_rules && g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999; /* the control: judged while it falls */
+    if (g->settle_quiet > SETTLE_QUIET || g->state_t > SETTLE_MAX) {
       proj_end(g);
       tally(g);
-      if (g->tgt_left == 0) g->state = GS_WON;
+      g->judged_awake = awake;
+      g->judged_share = game_share(g);
+      if (g->sandbox) g->state = GS_AIM; /* free fire: never judged */
+      else if (g->tgt_left == 0) g->state = GS_WON;
       else if (ammo_left(g) == 0) g->state = GS_LOST;
       else {
         g->state = GS_AIM;

@@ -90,6 +90,22 @@ static bool in_view(const game *g, int t, t3_vec3 at) {
 static void plan(game *g, bot_state *b) {
   int t = -1;
   for (int i = 0; i < g->ntgt; i++) if (!g->tgt[i].down) { t = i; break; }
+  if (t < 0 && g->sandbox) { /* free fire with every crystal down: a block still standing, any ammunition */
+    int n = 0, pick = -1, want = (int)(hash32((uint32_t)g->shots * 7919u + 13u) % 997u);
+    for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) n++;
+    if (n == 0) return;
+    want %= n;
+    for (int i = 0; i < g->nb && pick < 0; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0 && want-- == 0) pick = i;
+    b->plan_tgt = 0;
+    b->want_ammo = pick_ammo(g, g->shots % NAMMO);
+    b->want_power = 1.0f, b->lob = false;
+    b->aim_at = cw_body3d_transform(g->b[pick].body).p;
+    b->solved = false;
+    float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
+    b->want_yaw = cw_atan2(-dx, -dz), b->want_pitch = 0.1f;
+    b->planned = true, b->wait = 0;
+    return;
+  }
   if (t < 0) return;
   b->plan_tgt = t;
   target_state *ts = &g->tgt[t];

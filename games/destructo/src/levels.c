@@ -27,7 +27,7 @@ const level_def LEVELS[NLEVELS] = {
   { "Glass House", K_SCAFFOLD, 53, 2, 2, 2, { 5, 1, 1 }, 28, 1 },
   { "Step Shrine", K_PYRAMID, 61, 4, 1, 2, { 4, 1, 1 }, 30, 2 },
   { "Mill Bridge", K_BRIDGE, 71, 2, 2, 3, { 5, 1, 1 }, 30, 0 },
-  { "The Gatehouse", K_CASTLE, 83, 2, 2, 4, { 5, 1, 1 }, 34, 1 },
+  { "The Gatehouse", K_CASTLE, 83, 2, 2, 3, { 5, 1, 1 }, 34, 1 },
   { "Watch Pair", K_WALL, 97, 4, 3, 4, { 5, 2, 1 }, 32, 2 },
   { "Tall Order", K_TOWER, 101, 5, 2, 2, { 6, 1, 1 }, 34, 0 },
   { "Iron Frame", K_SCAFFOLD, 113, 3, 3, 2, { 5, 1, 2 }, 32, 1 },
@@ -48,9 +48,13 @@ const level_def LEVELS[NLEVELS] = {
   { "Citadel", K_CASTLE, 251, 5, 5, 4, { 8, 2, 3 }, 44, 1 },
   { "Grand Steps", K_PYRAMID, 263, 8, 4, 5, { 7, 2, 3 }, 40, 2 },
   { "Iron Bridge", K_BRIDGE, 271, 5, 5, 5, { 8, 2, 3 }, 42, 0 },
-  { "Glass Works", K_SCAFFOLD, 277, 6, 5, 3, { 8, 2, 3 }, 40, 1 },
+  { "Glass Works", K_SCAFFOLD, 277, 6, 5, 2, { 8, 2, 3 }, 40, 1 },
   { "The Last Fort", K_CASTLE, 283, 6, 6, 5, { 9, 3, 3 }, 46, 2 },
 };
+
+/* the share of the structure that counts as brought down (game_mark), by kit: each kit has a level the bot (which
+ * aims at the crystals, not at a collapse) brings down this far within par (tests/destructo-levels.mjs) */
+const float KIT_MARK[K_COUNT] = { [K_TOWER] = 0.5f, [K_WALL] = 0.35f, [K_BRIDGE] = 0.25f, [K_CASTLE] = 0.25f, [K_SCAFFOLD] = 0.5f, [K_PYRAMID] = 0.15f, [K_KEEP] = 0.4f };
 
 const level_def *level_get(int i) {
   if (i < 0) i = 0;

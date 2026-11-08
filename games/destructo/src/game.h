@@ -157,6 +157,15 @@ typedef struct game {
   float step_ms, step_ms_max;
   float tick_ms, world_ms, pre_ms, post_ms; /* wall time of the last game_step and its parts (profiling only: host-dependent, never fed back) */
   uint32_t hash;
+  /* how much of the structure is down: the volume of every block the level placed (crystals not counted), and of
+   * those the shot has broken or lost off the field (game_share adds the ones standing away from home) */
+  float vol_total, vol_gone;
+  /* the judgement, made once the world is still (GS_SETTLE ends when at most SETTLE_AWAKE bodies have been awake for
+   * SETTLE_QUIET ticks): what it saw */
+  int judged_awake;
+  float judged_share;
+  bool sandbox;      /* free fire: ammunition without end, the level never judged (the select screen's choice) */
+  bool old_rules;    /* tests only: the rules before the fix (the level judged 1.5 s after its last crystal fell, stars by shots alone): the result check's control */
   float extent;      /* the structure's radius (camera) */
   float top;         /* its height */
   /* events this tick */
@@ -175,12 +184,27 @@ void game_new(game *g, int level, int players, int mode);
 void game_free(game *g);
 void game_step(game *g, const input *in);
 void game_settle(game *g, int ticks);       /* step with no input (a level settling before play) */
+void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */
 int game_awake(const game *g);
 t3_vec3 game_aim_dir(const game *g);
 float game_speed(const game *g);
 t3_vec3 game_block_pos(const game *g, int i);
 bool game_over(const game *g);
+uint32_t game_state_hash(const game *g); /* the blocks' poses and the counters, apart from the world they live in (replays) */
 int game_stars(const game *g);
+/* the share of the structure (by volume, crystals not counted) brought down: broken, lost off the field, or standing
+ * more than its own size (and at least 0.6 m) from where it settled before play. Live: the HUD and the judgement */
+float game_share(const game *g);
+/* the level's mark: the share that counts as "brought down" (and the third star needs), by kit (levels.c): half a
+ * tower or a scaffold, less of a wall or a castle, a sixth of a solid stepped pyramid */
+extern const float KIT_MARK[K_COUNT];
+float game_mark(const game *g);
+#define SETTLE_AWAKE 2    /* the world is still: this many bodies awake at most ... */
+#define SETTLE_QUIET 20   /* ... for this many ticks */
+#define SETTLE_MAX (60 * 15) /* a turn's settle ends after 15 s whatever moves (jitter must not hang the game) */
+/* the level's headline once judged: won and brought down, won with the structure mostly standing, or lost */
+enum { RES_NONE, RES_BROUGHT_DOWN, RES_CLEARED, RES_LOST };
+int game_result(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);
 int game_add_target(game *g, t3_vec3 centre);
