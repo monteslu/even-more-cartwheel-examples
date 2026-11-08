@@ -697,6 +697,7 @@ static void populate(int ri) {
     int x = rint_(X0 + 8, X0 + Wd - 9), y = surface_at(ri, x);
     if (y < 0) continue;
     uint32_t r4 = rnd() % 10u;
+    if (region == R_GATE || region == R_ROOTWAY) (void)rnd(); /* (the draw the old cast took here: the rest of the world stays as it was) */
     int kind = CAST[region][r4 < 4 ? 0 : r4 < 7 ? 1 : r4 < 9 ? 2 : 3];
     if (kind == EN_PUFF) { /* a puff drifts in open air, clear of anywhere to stand (its thorny breath must not sit on a ledge) */
       int hy = y - 6;
