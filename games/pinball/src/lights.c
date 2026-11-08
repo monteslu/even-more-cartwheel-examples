@@ -83,7 +83,7 @@ void lights_step(pb_lights *L, const game *g) {
       for (int f = 0; f < L->nflash; f++) {
         if (kind == FX_RAMP_DONE && f != (g->tick % L->nflash)) continue; /* a ramp: one flasher, not all */
         if (L->flash_cool[f] > 0) continue; /* fired a moment ago: it is still fading, never re-lit */
-        L->flash_want[f] = fmaxf(L->flash_want[f], big), L->flash_hold[f] = 6, L->flash_cool[f] = GLOW_TURN * 2;
+        L->flash_want[f] = fmaxf(L->flash_want[f], big), L->flash_hold[f] = 6, L->flash_cool[f] = 80; /* once in 1.3 s at most */
       }
     if ((kind == FX_MODE_START || kind == FX_WIZARD || kind == FX_MULTIBALL) && L->gi_cool == 0) L->gi_dip = 40, L->gi_cool = 240; /* a breath, at most every 4 s */
   }

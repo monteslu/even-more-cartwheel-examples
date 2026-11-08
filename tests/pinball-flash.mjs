@@ -9,9 +9,10 @@
 // 2. The pictures (pinball_bench with PINBALL_FLASH_STORM: Star Foundry with three balls, the wizard mode's every shot
 //    pulsing, the big events fired every few frames and the pops every three) drawn frame by frame at 960 x 540 for
 //    1.5 seconds and measured against the photosensitive flash rules (WCAG 2.3.1's general and red flash thresholds):
-//      tiles   every 16 x 16 pixel tile's relative luminance followed through time: a turn is a move of 0.1 or more
-//              from its last extreme the other way with the darker side under 0.8; no tile may turn more than 3 times
-//              in any second
+//      tiles   every 16 x 16 pixel tile's relative luminance followed through time (each frame the median of it and
+//              its two neighbours in time: a ball crossing a tile in one frame is motion, not a flash; any light on
+//              for two frames or more still counts): a turn is a move of 0.1 or more from its last extreme the other
+//              way with the darker side under 0.8; no tile may turn more than 3 times in any second
 //      blocks  the screen cut into a 6 x 6 grid, every 2 x 2 block of it (a ninth of the screen, past the area a flash
 //              must cover to count): no block may flash (two opposing turns) at all, and none may pass 3 red flashes
 //              in any second (red share 0.8 or more, (R - G - B) x 320, a change of 20)
@@ -109,7 +110,8 @@ function measure(files, blink) {
     blocks.push(L), reds.push(R);
   });
   let worstTile = 0, where = '';
-  tiles.forEach((s, t) => { const v = inSec(turns(s, 0.1, 0.8)); if (v > worstTile) worstTile = v, where = `tile ${t % tw},${Math.floor(t / tw)}`; });
+  const med3 = (s) => s.map((v, i) => i === 0 || i === s.length - 1 ? v : [s[i - 1], v, s[i + 1]].sort((a, b) => a - b)[1]);
+  tiles.forEach((s, t) => { const v = inSec(turns(med3(s), 0.1, 0.8)); if (v > worstTile) worstTile = v, where = `tile ${t % tw},${Math.floor(t / tw)}`; });
   let flashes = 0, worstRed = 0;
   for (let by = 0; by < G - 1; by++)
     for (let bx = 0; bx < G - 1; bx++) {

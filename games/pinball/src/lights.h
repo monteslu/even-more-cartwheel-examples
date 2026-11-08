@@ -6,7 +6,7 @@
  * at most once every GLOW_TURN ticks: three turns in any second at the most, however fast the rules toggle it (a
  * player tapping the flippers moves the lit lanes a dozen times a second; a ball rattling in the pops hits them as
  * often). A lamp the rules pulse (lit for a shot, a running mode) is a smooth wave of at most 1.1 cycles a second.
- * Flashers rise over a few frames, hold and fade, and fire at most three times a second. Deterministic: ticks only. */
+ * Flashers rise over a few frames, hold and fade, and fire again only after 1.3 s. Deterministic: ticks only. */
 #ifndef PINBALL_LIGHTS_H
 #define PINBALL_LIGHTS_H
 #include "game.h"
