@@ -5,6 +5,9 @@ Code, parks, trick names and the four skaters: original to this repository (MIT,
 - The skaters are made by tools/chars/make-skaters.mjs, the character generator of the brawler example in
   more-cartwheel-examples (our own code, MIT), copied here with four skaters' proportions and outfits.
 - The ragdolls (src/rag.c) follow the brawler example's.
+- The riders' posing (src/pose.c) takes its angles and timings from published skateboarding studies and coaching
+  guides, and from joint angles measured in the CMU Graphics Lab Motion Capture Database's skateboarding takes
+  (mocap.cs.cmu.edu, subject 134; free for all uses). No motion data is copied into the game.
 - The procedural texture pipeline (src/gfx.c) follows the arena and derby examples' (our own code, MIT).
 - Built on cartwheel-engine and three.c (MIT); Box3D (MIT) moves the ragdolls.
 
