@@ -10,6 +10,9 @@
  *       position, no creep off the path, counts that agree with the tables, gold never below nothing, every tower on
  *       a slot. A line a game minute (map, wave, creeps, kills, leaks, resident memory). Exit 0 = nothing broke.
  * TOWERS_BOT_BRANCH=0|1|2: the bots' third-level branch (A, B, or each in turn by slot; game.h g_bot_branch).
+ * TOWERS_BOT=newcomer: every seat played as a first-time player plays it (newcomer.c), for the difficulty check.
+ * TOWERS_OLD_DIFFICULTY=1: the waves as they were (every boss at full strength, gates sending alike, no word on a new kind): the
+ *     newcomer check's control. TOWERS_SEED=n: the clear run's first seed.
  * TOWERS_SOAK_INJECT=1 puts a NaN into a creep's health from tick 4000 (the first alive) (the control: the checks must catch it). */
 #include <math.h>
 #include <stdio.h>
@@ -96,11 +99,15 @@ static bool load_map(int n, tdmap *m) {
 
 static sim S;
 static tdmap M;
+static bool g_newcomer; /* TOWERS_BOT=newcomer: every seat a first-time player (newcomer.c) */
 
 static void step(int players) {
   input in[MAXP];
   memset(in, 0, sizeof in);
-  for (int i = 0; i < players; i++) towers_bot(&S, i, &in[i]);
+  for (int i = 0; i < players; i++) {
+    if (g_newcomer) towers_newcomer(&S, i, &in[i]);
+    else towers_bot(&S, i, &in[i]);
+  }
   sim_step(&S, in);
   S.ev_n = 0; /* (no effects here to read them) */
 }
@@ -111,6 +118,7 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
   free(t);
   sim_init(&S, players, seed);
   sim_map_start(&S, &M);
+  towers_newcomer_reset(), g_newcomer_seed = seed;
   long total = (long)minutes * 3600;
   for (long k = 0; k < total; k++) {
     step(players);
@@ -149,13 +157,15 @@ static int clear_once(const char *file, int players, int minutes, uint32_t seed)
 static int clear_run(const char *file, int players, int minutes, int tries) {
   int r = 1;
   for (int k = 0; k < tries && r == 1; k++) {
-    r = clear_once(file, players, minutes, 4242u + (uint32_t)k * 7919u);
+    r = clear_once(file, players, minutes, (getenv("TOWERS_SEED") ? (uint32_t)atoi(getenv("TOWERS_SEED")) : 4242u) + (uint32_t)k * 7919u);
     if (r == 0 && k) printf("clear: (on try %d)\n", k + 1);
   }
   return r;
 }
 
 int main(int argc, char **argv) {
+  g_newcomer = getenv("TOWERS_BOT") && !strcmp(getenv("TOWERS_BOT"), "newcomer");
+  g_old_difficulty = getenv("TOWERS_OLD_DIFFICULTY") != NULL;
   if (getenv("TOWERS_BOT_BRANCH")) g_bot_branch = CW_CLAMP(atoi(getenv("TOWERS_BOT_BRANCH")), 0, 2);
   cw_jobs_init(3);
   if (argc > 2 && !strcmp(argv[1], "--clear")) return clear_run(argv[2], argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 40, argc > 5 ? CW_CLAMP(atoi(argv[5]), 1, 3) : 3);

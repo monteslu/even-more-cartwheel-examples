@@ -69,6 +69,8 @@ static struct {
   float aspect, dist;
   cw_node core_light, portal_light[MP_MAXSPAWN], beam_light[8];
   float hit[MAXE];             /* each creep's hit glow, eased (render only) */
+  float off[MAXE][2];          /* each creep drawn a little apart from those it presses on (eased, render only) */
+  bool old_crowd;              /* TOWERS_OLD_CROWD (native tests): the crowd as it was, the crowd check's control */
   float gate_k[MP_MAXSPAWN];   /* each gate's glow, eased toward live or quiet */
   float core_hurt, core_ph;    /* the core's health as shown (eased) and its throb's phase */
   /* each beam: how far it is on (eased), where it was last drawn, and the ghost of the last one fading where it was 
@@ -251,8 +253,18 @@ static void kind_load(int k) {
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
   kv->r = kv->c.rad;
-  t3_material *m = t3_mesh_lambert_material_new(0xffffff);
-  m->vertex_colors = true;
+  /* the body: a matte standard surface with a rim of the kind's hue lifted toward white along its silhouette, so each body
+   * stands off the one beside it and the ground in a packed crowd (the old crowd: lambert, no rim) */
+  t3_material *m;
+  if (V.old_crowd) m = t3_mesh_lambert_material_new(0xffffff), m->vertex_colors = true;
+  else {
+    m = mat_std(0.8f, 0.0f);
+    cw_rim_light_desc rd = cw_rim_light_default();
+    t3_color kr = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
+    rd.color = (t3_color){ 0.45f * kr.r + 0.55f, 0.45f * kr.g + 0.55f, 0.45f * kr.b + 0.55f };
+    rd.strength = 0.9f, rd.power = 2.2f, rd.near = 0, rd.far = 1, rd.close = 1;
+    cw_rim_light_apply(m, &rd);
+  }
   t3_material *em = t3_mesh_basic_material_new(0xffffff);
   em->side = T3_BACK_SIDE;
   t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
@@ -321,6 +333,7 @@ bool view_init_step(cw_node root, int *done_, int *total) {
     V.root = cw_node_new("Node3D", "View");
     cw_node_add_child(root, V.root);
     V.map_built = -1;
+    V.old_crowd = getenv("TOWERS_OLD_CROWD") != NULL;
     read_muzzles();
   } else if (s >= S_KINDS && s < S_TOWERS) {
     kind_load(s - S_KINDS);
@@ -461,6 +474,7 @@ void view_map(const sim *s) {
   for (int k = 0; k < MAXT; k++) V.beam[k] = (beamv){ .tgt = -1, .ray = { -1, -1 } };
   for (int i = 0; i < 8; i++) V.beam_light_slot[i] = -1;
   memset(V.hit, 0, sizeof V.hit);
+  memset(V.off, 0, sizeof V.off);
   memset(V.lvl_seen, 0, sizeof V.lvl_seen);
   for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
   { /* the crowd's edge in the value opposite the path it walks: dark ink on the pale and middling paths, a pale rim of
@@ -561,12 +575,54 @@ static void shadow_at(float x, float z, float r, float strength) {
 
 /* ── per frame ──────────────────────────────────────────────────────── */
 
+static const float SIZE[CK_KINDS] = { 0.9f, 1.05f, 1.1f, 1.0f, 1.15f, 1.45f, 1.15f, 1.65f }; /* small swarms, fat bloaters, big ogres */
+/* a packed crowd drawn as bodies: each creep is drawn a little apart from the ones it overlaps (their drawn sizes, not
+ * the crowd's radii: a big body on a small radius overlaps its neighbours), eased so nothing jumps and never more
+ * than SPREAD_MAX from where the rules have it (render only: the rules never see it). At most SPREAD_N neighbours a
+ * creep, from the rules' own grid of 2 m cells */
+#define SPREAD_MAX 0.45f
+#define SPREAD_N 14
+static void spread_creeps(const sim *s) {
+  const int W = s->m.w, H = s->m.h;
+  for (int i = 0; i < MAXE; i++) {
+    const creep *e = &s->e[i];
+    if (!e->alive) continue;
+    if (e->age <= 1) { V.off[i][0] = V.off[i][1] = 0; continue; }
+    float ri = V.k[e->kind].r * SIZE[e->kind] * (e->boss ? 2.2f : 1.0f) * 0.62f, px = 0, pz = 0;
+    int cx = CW_CLAMP(mp_tx(&s->m, e->x), 0, W - 1), cy = CW_CLAMP(mp_ty(&s->m, e->y), 0, H - 1), seen = 0;
+    /* this cell and the neighbour cells on the creep's side of it */
+    int sx = e->x - mp_wx(&s->m, cx) > 0 ? 1 : -1, sy = e->y - mp_wz(&s->m, cy) > 0 ? 1 : -1;
+    const int DX[4] = { 0, sx, 0, sx }, DY[4] = { 0, 0, sy, sy };
+    for (int c = 0; c < 4 && seen < SPREAD_N; c++) {
+      int qx = cx + DX[c], qy = cy + DY[c];
+      if (qx < 0 || qy < 0 || qx >= W || qy >= H) continue;
+      for (int k = s->cell_start[qy * W + qx]; k < s->cell_start[qy * W + qx + 1] && seen < SPREAD_N; k++) {
+        int j = s->cell_idx[k];
+        const creep *o = &s->e[j];
+        if (j == i || !o->alive) continue;
+        float dx = (e->x + V.off[i][0]) - (o->x + V.off[j][0]), dz = (e->y + V.off[i][1]) - (o->y + V.off[j][1]);
+        float rr = ri + V.k[o->kind].r * SIZE[o->kind] * (o->boss ? 2.2f : 1.0f) * 0.62f, d2 = dx * dx + dz * dz;
+        if (d2 >= rr * rr) continue;
+        seen++;
+        float d = sqrtf(d2);
+        if (d < 1e-3f) dx = h01((uint32_t)i, 9) - 0.5f, dz = h01((uint32_t)i, 10) - 0.5f, d = sqrtf(dx * dx + dz * dz) + 1e-4f;
+        float push = (rr - d) / rr; /* 0 touching .. 1 on top of it */
+        px += dx / d * push, pz += dz / d * push;
+      }
+    }
+    float tx = V.off[i][0] + px * 0.12f, tz = V.off[i][1] + pz * 0.12f, l = sqrtf(tx * tx + tz * tz);
+    if (l > SPREAD_MAX) tx *= SPREAD_MAX / l, tz *= SPREAD_MAX / l;
+    /* drift back toward the rules' position when nothing presses (so a thinning crowd closes up) */
+    V.off[i][0] = tx * (px == 0 && pz == 0 ? 0.92f : 1.0f), V.off[i][1] = tz * (px == 0 && pz == 0 ? 0.92f : 1.0f);
+  }
+}
+
 static void sync_creeps(const sim *s, float time) {
   static int cnt[CK_KINDS][MB_MAXF];
   memset(cnt, 0, sizeof cnt);
   int drawn = 0;
   static const float RATE[CK_KINDS] = { 2.6f, 1.5f, 2.4f, 1.8f, 1.4f, 1.0f, 1.2f, 0.9f };
-  static const float SIZE[CK_KINDS] = { 0.9f, 1.05f, 1.1f, 1.0f, 1.15f, 1.45f, 1.15f, 1.65f }; /* small swarms, fat bloaters, big ogres */
+  if (!V.old_crowd) spread_creeps(s);
   for (int i = 0; i < MAXE; i++) {
     const creep *e = &s->e[i];
     if (!e->alive) continue;
@@ -579,14 +635,17 @@ static void sync_creeps(const sim *s, float time) {
     t3_instanced_mesh *im = kv->im[fr];
     if (!im || cnt[e->kind][fr] >= im->instance_matrix->count) continue;
     int n = cnt[e->kind][fr]++;
-    float sc = SIZE[e->kind] * (e->boss ? 2.2f : 1.0f) * (e->flash > 0 ? 1.08f : 1.0f);
+    /* each body its own: a size and a shade of its kind's colour of its own (a crowd of one kind is a crowd of figures) */
+    float vary = V.old_crowd ? 1.0f : 0.93f + 0.14f * h01((uint32_t)i, 11), shade = V.old_crowd ? 1.0f : 0.78f + 0.44f * h01((uint32_t)i, 12);
+    float sc = SIZE[e->kind] * vary * (e->boss ? 2.2f : 1.0f) * (e->flash > 0 ? 1.08f : 1.0f);
     float yaw = -e->face + 1.5708f;
     float y = e->kind == CK_SHADE ? 0.12f + 0.08f * cw_sin(time * 2.2f + (float)i) : 0;
-    put_up(im, n, e->x, y, e->y, yaw, sc);
+    float ox = V.old_crowd ? 0 : V.off[i][0], oz = V.old_crowd ? 0 : V.off[i][1];
+    put_up(im, n, e->x + ox, y, e->y + oz, yaw, sc);
     t3_color gl = view_light_at(e->x, e->y);
     float lm = CW_MAX(gl.r, CW_MAX(gl.g, gl.b)), lk = lm > 1.4f ? 1.4f / lm : 1.0f;
     const float *kb = KIND_BODY[e->kind];
-    t3_color c = { gl.r * lk * kb[0], gl.g * lk * kb[1], gl.b * lk * kb[2] };
+    t3_color c = { gl.r * lk * kb[0] * shade, gl.g * lk * kb[1] * shade, gl.b * lk * kb[2] * shade };
     if (g_strobe_control && e->flash > 0) c = (t3_color){ 3.5f, 3.0f, 2.6f }; /* (the control: a white pop on every hit) */
     else if (e->frozen > 0) c = (t3_color){ 1.4f, 1.9f, 2.6f };
     else if (e->stun > 0) c = (t3_color){ c.r * 0.5f + 1.1f, c.g * 0.5f + 0.9f, c.b * 0.5f + 1.6f }; /* stunned by an arc: lit violet-white */
@@ -600,9 +659,9 @@ static void sync_creeps(const sim *s, float time) {
       if (!g_strobe_control) c = (t3_color){ c.r + (2.6f - c.r) * k, c.g + (2.3f - c.g) * k, c.b + (2.0f - c.b) * k };
     }
     t3_instanced_mesh_set_color_at(im, n, c);
-    if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x, e->y, 0.4f * sc, 0.55f);
-    if (e->boss) ring(e->x, 0.06f, e->y, 1.6f, (t3_color){ 2.4f, 0.5f, 0.45f }); /* a boss stands in a ring of its colour */
-    else if (e->kind != CK_SKITTER && ((i & 1) == 0 || s->nenemies < 1200)) shadow_at(e->x, e->y, 0.3f * sc, 0.4f); /* (the swarm casts none) */
+    if (e->boss || e->kind == CK_OGRE || e->kind == CK_BLOATER) shadow_at(e->x + ox, e->y + oz, 0.4f * sc, 0.55f);
+    if (e->boss) ring(e->x + ox, 0.06f, e->y + oz, 1.6f, (t3_color){ 2.4f, 0.5f, 0.45f }); /* a boss stands in a ring of its colour */
+    else if (e->kind != CK_SKITTER && ((i & 1) == 0 || s->nenemies < 1200)) shadow_at(e->x + ox, e->y + oz, 0.3f * sc, 0.4f); /* (the swarm casts none) */
     drawn++;
   }
   { /* the fallen: each body tips over onto its side and sinks into the ground, darkening, over half a second */

@@ -11,12 +11,16 @@
 // walking through a region that small change it as a flash would.)
 // Scenes: towers_bench (map 26: level-3 towers on every pad, 2400 creeps, the busiest the game gets), and the volcano
 // (map 23, wave 18, towers on every pad, four bots: red ground under lava, mortar blasts and a crowd).
+// The storm (a player's power, lightning down on everything round the cursor): four storms called within 1.3 seconds
+// on the volcano (TOWERS_STORMS: one a seat, at set ticks), judged on its own past WCAG with margin: at most 2 flashes in
+// a second in any region (WCAG allows 3), its strikes and light swelling in slowly; its control, TOWERS_OLD_STORM=1 (the
+// old quick strikes and light, which sat at the 3 a second bound), must fail that margin.
 // CONTROLS, which must fail: every capture under the engine's 8 Hz full-screen strobe, and the bench with
 // TOWERS_STROBE_CONTROL=1 (the old effects: lightning re-jagged every other frame, step-on flash lights, a beam
 // flickering at 7 Hz, hit creeps popping white).
-// Run: node tests/towers-flash.mjs [webgpu]   (holds the GPU suite lock)
+// Run: node tests/towers-flash.mjs [webgpu] [--storm]   (holds the GPU suite lock; --storm: the storm scene alone)
 import { fileURLToPath } from 'node:url';
-import { inSuiteLock, captureRun, gate, mustFail } from './lib/flash-run.mjs';
+import { inSuiteLock, captureRun, gate, mustFail, analyseFrames, judgeFlash, describeFlash } from './lib/flash-run.mjs';
 
 inSuiteLock('towers-flash', fileURLToPath(import.meta.url));
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
@@ -31,9 +35,29 @@ const capture = (sc, label, extra = {}) => captureRun({ app: sc.app, from: sc.fr
   name: `towers-${sc.name}-${label}`, scale: 4, env: { ...BASE, ...sc.env, ...extra } });
 
 let bad = 0;
-for (const sc of SCENES) {
+const STORM_ONLY = process.argv.includes('--storm'); // (the storm scene and its control alone)
+for (const sc of STORM_ONLY ? [] : SCENES) {
   bad += gate(`${sc.name} ${GPU} with the crowd, ${COUNT} frames`, await capture(sc, 'real')) ? 0 : 1;
   bad += gate(`${sc.name} ${GPU} effects alone, ${COUNT} frames`, await capture(sc, 'effects', HIDE), {}, FINE) ? 0 : 1;
 }
-bad += mustFail('the bench\'s effects as they were, TOWERS_STROBE_CONTROL', await capture(SCENES[0], 'strobe', { ...HIDE, TOWERS_STROBE_CONTROL: '1' }), {}, FINE) ? 0 : 1;
+{ /* the storm, with margin */
+  const STORM = { name: 'storm', app: 'towers_auto', from: 600, env: { TOWERS_MAP: '23', TOWERS_WAVE: '18', TOWERS_PLAYERS: '4', TOWERS_STORMS: '640,655,700,715' } };
+  const MARGIN = { maxFlashes: 2 };
+  const margin = (label, run) => {
+    const m = analyseFrames(run.w, run.h, run.frames, MARGIN), why = judgeFlash(m).filter((p) => !/proves nothing/.test(p));
+    const f = analyseFrames(run.w, run.h, run.frames, { ...MARGIN, grid: FINE.fine }), wf = judgeFlash(f).filter((p) => !/proves nothing/.test(p));
+    return { why: [...why, ...wf.map((p) => `(${FINE.fine} x ${FINE.fine} grid) ${p}`)], line: `${describeFlash(m)}; on the fine grid ${describeFlash(f)}` };
+  };
+  const s = await capture(STORM, 'real'), e = await capture(STORM, 'effects', HIDE);
+  bad += gate(`storm ${GPU} with the crowd, ${COUNT} frames`, s) ? 0 : 1;
+  for (const [label, run] of [['with the crowd', s], ['effects alone', e]]) {
+    const r = margin(label, run);
+    if (r.why.length) bad++, console.log(`FAIL storm ${GPU} ${label}, at most 2 flashes a second: ${r.why.join('; ')}\n     ${r.line}`);
+    else console.log(`ok   storm ${GPU} ${label}, at most 2 flashes a second: ${r.line}`);
+  }
+  const old = margin('old', await capture(STORM, 'old-storm', { ...HIDE, TOWERS_OLD_STORM: '1' }));
+  if (old.why.length) console.log(`ok   control fails as it must (TOWERS_OLD_STORM, the old quick storm): ${old.why[0]}\n     ${old.line}`);
+  else bad++, console.log(`CONTROL PASSED (a failure): the old storm keeps the margin: ${old.line}`);
+}
+if (!STORM_ONLY) bad += mustFail('the bench\'s effects as they were, TOWERS_STROBE_CONTROL', await capture(SCENES[0], 'strobe', { ...HIDE, TOWERS_STROBE_CONTROL: '1' }), {}, FINE) ? 0 : 1;
 process.exit(bad ? 1 : 0);

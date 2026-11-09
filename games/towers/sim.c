@@ -681,12 +681,52 @@ static void add_group(sim *s, int kind, int count, int spawn, int every, float h
       return;
     }
 }
+/* a kind the map has not sent before: the "next" line names it with what it does and the tower that answers it (main.c) */
+static const char *const KIND_HINT[CK_KINDS] = { "a swarm: mortars hit many at once", "", "quick: frost slows them", "armoured: beams burn through",
+                                                 "they heal those round them: mortars", "they burst into a swarm: mortars", "they shrug off frost: beams",
+                                                 "heavy and armoured: beams" };
+static const int KIND_COUNTER[CK_KINDS] = { TK_MORTAR, -1, TK_FROST, TK_BEAM, TK_MORTAR, TK_MORTAR, TK_BEAM, TK_BEAM };
+const char *sim_kind_hint(int kind) { return KIND_HINT[CW_CLAMP(kind, 0, CK_KINDS - 1)]; }
+int sim_kind_counter(int kind) { return KIND_COUNTER[CW_CLAMP(kind, 0, CK_KINDS - 1)]; }
+int sim_wave_new_kind(const sim *s, int w) {
+  if (w < 2 || w > s->m.waves || kinds_by(s, w) == kinds_by(s, w - 1)) return -1;
+  return s->m.kind[kinds_by(s, w) - 1];
+}
 int sim_wave_kinds(const sim *s, int w, int out[2]) {
   if (w < 1 || w > s->m.waves) return 0;
   int avail = kinds_by(s, w);
   out[0] = s->m.kind[(w - 1) % avail], out[1] = s->m.kind[avail - 1];
   return out[0] == out[1] ? 1 : 2;
 }
+/* how far the maps have taught the boss: 0 on the first map, 1 from map 12 on. A first map's boss is a lesson (half the
+ * health and a little quicker than its crowd); the later maps' bosses have all their strength (DESIGN.md, waves) */
+/* a wave's creeps over the gates, each gate's share by the length of its road to the core: a gate a short walk from the
+ * core sends fewer, so every road is the same test (a gate beside the core once sent as many as the far one, and they
+ * were through before the towers had them) */
+static void gate_split(const sim *s, int count, int out[MP_MAXSPAWN]) {
+  int ns = CW_CLAMP(s->m.nspawn, 1, MP_MAXSPAWN);
+  if (g_old_difficulty) { /* (evenly, as they were) */
+    for (int g = 0; g < ns; g++) out[g] = count / ns + (g < count % ns);
+    return;
+  }
+  float len[MP_MAXSPAWN], sum = 0;
+  for (int g = 0; g < ns; g++) {
+    float x, y;
+    mp_gate_pos(&s->m, g, &x, &y);
+    int c = flow_cell(s, x, y);
+    len[g] = c >= 0 && s->flow[c] < 0xffff ? CW_MAX((float)s->flow[c], 4.0f) : 1.0f;
+    sum += len[g];
+  }
+  int given = 0, far = 0;
+  for (int g = 0; g < ns; g++) {
+    out[g] = (int)((float)count * len[g] / sum);
+    given += out[g];
+    if (len[g] > len[far]) far = g;
+  }
+  out[far] += count - given; /* (what rounding left over: the longest road) */
+}
+bool g_old_difficulty; /* tests (towers_soak TOWERS_OLD_DIFFICULTY): the waves as they were, the newcomer check's control */
+static float boss_k(const sim *s) { return g_old_difficulty ? 1.0f : cw_smoothstep(4.0f, 18.0f, (float)s->m.num); }
 static void start_wave(sim *s) {
   if (s->wave >= s->m.waves) return;
   int w = ++s->wave;
@@ -703,14 +743,16 @@ static void start_wave(sim *s) {
     int k = kinds[j];
     float weight = k == CK_OGRE ? 6.0f : k == CK_BLOATER ? 3.0f : k == CK_SKITTER ? 0.34f : k == CK_SPORELING ? 1.6f : 1.0f;
     int count = CW_MAX(1, (int)((float)share[j] / weight));
+    int gc[MP_MAXSPAWN];
+    gate_split(s, count, gc);
     for (int g = 0; g < ns; g++) { /* split over the gates */
-      int c = count / ns + (g < count % ns);
+      int c = gc[g];
       if (c <= 0) continue;
       add_group(s, k, c, g, (int)(secs * TICK / (float)c), CK[k].hp * hm, false);
     }
   }
   if (w % 10 == 0 || w == s->m.waves) /* a heavy at the tail: the last wave's boss */
-    add_group(s, CK_OGRE, 1, w % ns, 1, CK[CK_OGRE].hp * hm * (w == s->m.waves ? 9.0f : 4.0f), true);
+    add_group(s, CK_OGRE, 1, w % ns, 1, CK[CK_OGRE].hp * hm * (w == s->m.waves ? 2.5f + 6.5f * boss_k(s) : 2.0f + 2.0f * boss_k(s)), true);
   /* every wave pays every player (a share each) */
   int n = 0;
   for (int i = 0; i < MAXP; i++) n += s->p[i].active;
@@ -748,7 +790,7 @@ static void waves_step(sim *s, const input in[MAXP]) {
     int c = spawn_creep(s, gr->kind, gr->hp, x + j, y + k, bounty);
     if (c < 0) c = spawn_creep(s, gr->kind, gr->hp, x, y, bounty);
     if (c < 0) continue; /* full: again next tick */
-    if (gr->boss) s->e[c].boss = true, s->e[c].leak = 10, s->e[c].speed *= 1.5f;
+    if (gr->boss) s->e[c].boss = true, s->e[c].leak = 10, s->e[c].speed *= 1.25f + 0.25f * boss_k(s);
     ev(s, EV_SPAWN, x, y, 0, 0, gr->kind, gr->spawn);
     if (--gr->left <= 0) gr->live = false;
   }

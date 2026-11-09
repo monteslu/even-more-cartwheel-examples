@@ -308,6 +308,16 @@ static void read_input(input in[MAXP]) {
   for (int i = 0; i < G.S.players; i++) {
 #ifdef TOWERS_AUTOPILOT
     towers_bot(&G.S, i, &in[i]);
+    { /* tests (the flash check's storm scene): TOWERS_STORMS=t1,t2,..: seat i calls its storm at map tick ti (and the
+       * bots call none of their own) */
+      static int at[MAXP] = { -2 };
+      if (at[0] == -2) {
+        for (int k = 0; k < MAXP; k++) at[k] = -1;
+        const char *e = getenv("TOWERS_STORMS");
+        for (int k = 0; e && *e && k < MAXP; k++) { at[k] = atoi(e); e = strchr(e, ','); if (e) e++; }
+      }
+      if (at[0] >= 0) in[i].power = G.S.map_ticks == at[i];
+    }
 #else
     if (!cw_shell_seat_taken(i)) continue;
     cw_vec2 m = cw_input_vector(i, G.move[0], G.move[1], G.move[2], G.move[3], CW_DEADZONE_RADIAL, 0.5f);
@@ -639,7 +649,12 @@ static void hud(void) {
         static const char *const KN[CK_KINDS] = { "skitters", "ghouls", "hounds", "imps", "sporelings", "bloaters", "shades", "ogres" };
         bool boss = (G.S.wave + 1) % 10 == 0 || G.S.wave + 1 == G.S.m.waves;
         snprintf(b, sizeof b, "next: %s%s%s%s", KN[ks[0]], nk > 1 ? " and " : "", nk > 1 ? KN[ks[1]] : "", boss ? ", and a boss" : "");
-        pill(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, rgba(1, 0.85f, 0.7f, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+        cw_vec2 nsz = pill(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, rgba(1, 0.85f, 0.7f, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+        int nw = sim_wave_new_kind(&G.S, G.S.wave + 1);
+        if (nw >= 0 && sim_kind_hint(nw)[0]) { /* a kind not met on this map yet: what it does, and what answers it */
+          snprintf(b, sizeof b, "new: %s, %s", KN[nw], sim_kind_hint(nw));
+          pill(b, -1, cs.x * 0.5f, ny + tsz.y + nsz.y + 8 * u, 0.5f, 0.0f, bs, rgba(1, 0.95f, 0.6f, 1), rgba(0.02f, 0.03f, 0.06f, 0.6f));
+        }
       }
     } else if (G.S.state == ST_PLAY && G.S.next_t < 0)
       pill("THE LAST WAVE", -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 0.7f, 0.5f, 1), rgba(0.02f, 0.03f, 0.06f, 0.6f));

@@ -93,7 +93,9 @@ whole map on one screen, a fixed camera per map.
 - The storm is something to do during the wave, for every player: lightning comes down on every creep within 5.5 m
   of the cursor's pad (60 a creep, 9 more each wave, through no armour), stunning all but bosses for half a second;
   then it charges for 30 seconds (a bar under the player's panel, "storm" with its button when ready). Its kills are
-  the player's. The bots use it on fifteen creeps or a boss.
+  the player's. The bots use it on fifteen creeps or a boss. Its strikes and its light swell in over a quarter of a
+  second and die away over more than a second: a slow surge of light, never a crack, so four storms called at once stay
+  at two flashes a second at most in any part of the screen (tests/towers-flash.mjs, the storm scene).
 - Players join at any time with the join button on a free pad (the engine's shell).
 
 ## Towers
@@ -142,6 +144,9 @@ The effects (fx.c, view.c):
 - The crowd's edge takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
   the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring;
   tests/towers-crowd.mjs holds the crowd off its ground on every theme.
+- A packed crowd reads as figures, not a carpet: each body has a rim of its kind's hue lifted toward white along its
+  silhouette (a matte standard surface), a size and a shade of its own, and is drawn a little apart from the bodies it
+  overlaps (at most 0.45 m from where the rules have it, eased; render only).
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters
   ice shards off each creep it catches; the tower's reach glows faintly on the ground.
 - Beam: a white-hot core and a magenta glow from the emitter to the creep, swelling in on a new creep and fading out
@@ -164,9 +169,15 @@ The effects (fx.c, view.c):
 | shade | 24 | 3.1 | 3 | 1 | shrugs off half the cold, never freezes |
 | ogre | 230 | 1.3 | 15 | 3 | armour 6; the boss is an ogre two and a half times the size (every tenth wave and the last) |
 
+A boss has the health of 2 to 4 ogres of its wave (the last wave's 2.5 to 9) and walks 1.25 to 1.5 times as fast: the
+low end on the first maps, where a boss is a lesson, rising over maps 4 to 18 to the full strength from there on.
+
 Health climbs with the wave (diff x (1 + 0.08 k + 0.002 k^2), k the wave less one); a wave sends
-30 x 1.19^k x diff^0.5 creeps (skitters three for one, ogres one for six) over 10 to 22 seconds from every gate. The
-map's kinds arrive in its order, a new one every few waves. Creeps are agents of the engine's crowd on the map's
+30 x 1.19^k x diff^0.5 creeps (skitters three for one, ogres one for six) over 10 to 22 seconds, shared over the gates
+by the length of each gate's road to the core (a gate a short walk from the core sends fewer, so every road is the same
+test). The map's kinds arrive in its order, a new one every few waves; the "next" line under the wave clock names a
+kind the map has not sent before with what it does and the tower that answers it ("new: imps, armoured: beams burn
+through"). Creeps are agents of the engine's crowd on the map's
 navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), steered by one flow field from the core; the crowd keeps them apart.
 
 ## Waves, gold and the core
@@ -198,6 +209,10 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
 - Waves climb from 10 (map 1) to 25 (map 30) and the creeps' kinds widen from three to all eight. The first ten maps
   keep a gentle difficulty curve; from map 11, `tools/tune-maps.mjs` bisects each map's difficulty on the soak build
   so two bots hold it but lose some of the core: none on map 11, 14 of 20 on map 30 (`tools/map-diffs.json`).
+- The difficulty as a first-time player meets it (`tests/towers-newcomer.mjs`): `newcomer.c` plays a seat from what the
+  screen shows at a person's pace (a second or two to decide, a hop a press, a look before it builds, a few seconds
+  watching; never a wave called early, a sale or the aim changed; the storm found late). It holds maps 1 to 7 alone and
+  in two on every seed, and at most half the runs of maps 16 to 30 alone; the bots of the map check hold them all.
 - `tools/mapview` (`towers_mapview`) builds a map exactly as the game does and bakes its lightmap (the sun, sky, lamps,
   glows and the props' shadows); the bake records the hash of what it baked.
 - `tools/check-maps.mjs` (CI) fails a broken map: every gate reaches the core, every pad beside the path and reaching

@@ -143,9 +143,17 @@ float sim_tower_reach(const tower *t);            /* this tower's reach (its bra
 int sim_wave_count(const sim *s);                 /* the map's waves */
 int sim_wave_size(const sim *s, int w);           /* how many creeps wave w (1..) sends */
 int sim_wave_kinds(const sim *s, int w, int out[2]); /* the kinds wave w (1..) brings: their count (1 or 2), into out */
+int sim_wave_new_kind(const sim *s, int w);       /* the kind wave w brings for the first time on this map, or -1 */
+const char *sim_kind_hint(int kind);              /* what a new kind does and the tower that answers it ("" none) */
+int sim_kind_counter(int kind);                   /* that tower (TK_*), or -1 */
 float sim_creep_radius(int kind);
 void towers_bot(const sim *s, int i, input *in);   /* bot.c */
 extern int g_bot_branch; /* the bots' third-level branch: 0 A (the default), 1 B, 2 each in turn by slot (soak tests) */
+/* newcomer.c: a seat played as a first-time player plays it (what the screen shows, at a person's pace; its own state) */
+void towers_newcomer(const sim *s, int i, input *in);
+void towers_newcomer_reset(void);
+extern uint32_t g_newcomer_seed;
+extern bool g_old_difficulty; /* tests: the waves as they were before the newcomer tuning (the newcomer check's control) */
 
 /* the tower table (DESIGN.md): per kind and level 1..3 */
 typedef struct tower_stats { int cost[3]; float range[3], dmg[3]; int period[3], extra[3]; } tower_stats;

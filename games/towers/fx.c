@@ -37,9 +37,16 @@
 #define MAXCORPSE 400 /* (12 a frame for 30 frames: never one taken back mid-fall) */
 
 /* a strike: its two jagged shapes (offsets of each inner point across and up), morphed from one to the other over its life */
-typedef struct bolt { float p[BOLT_SEGS + 1][3], j[2][BOLT_SEGS + 1][2]; int n, life, life0; float a[3], b[3], w; } bolt;
+typedef struct bolt { float p[BOLT_SEGS + 1][3], j[2][BOLT_SEGS + 1][2]; int n, life, life0, in; float a[3], b[3], w; } bolt;
 #define BOLT_LIFE 16 /* frames: a strike swells in over 2 and fades over the rest */
 #define FLASH_IN 4   /* frames a flash light takes to swell to its peak */
+/* the storm (a player's power): its strikes and its light swell in slowly and die away slowly, a slow surge of light
+ * rather than a crack, so a storm called on a busy map (four players, a storm each) keeps well under three flashes a
+ * second in any part of the screen (tests/towers-flash.mjs: the storm scene) */
+#define STORM_BOLT_LIFE 46 /* frames */
+#define STORM_BOLT_IN 14
+#define STORM_LIGHT_IN 16
+#define STORM_LIGHT_LEN 80
 
 static struct {
   bool ready;
@@ -51,9 +58,10 @@ static struct {
   cw_node motes;
   int motes_theme;
   float light_e[LIGHTS], light_peak[LIGHTS]; /* each flash light's energy now and its peak */
-  int light_age[LIGHTS], light_len[LIGHTS];  /* frames since it began; frames it lasts */
+  int light_age[LIGHTS], light_len[LIGHTS], light_in[LIGHTS]; /* frames since it began; frames it lasts; frames it swells */
   int nl;
   bool strobe; /* TOWERS_STROBE_CONTROL: the old flicker, for the flash check's control */
+  bool old_storm; /* TOWERS_OLD_STORM: the storm's old quick strikes and light (at the three-a-second bound), the storm check's control */
   bolt bolts[MAXBOLT];
   int nbolt_next;
   float seg[MAXBOLT * BOLT_SEGS * 7];
@@ -317,6 +325,7 @@ void fx_init(cw_node root) {
   fx_free();
   FX.rng = 12345;
   FX.strobe = g_strobe_control = getenv("TOWERS_STROBE_CONTROL") && atoi(getenv("TOWERS_STROBE_CONTROL"));
+  FX.old_storm = FX.strobe || getenv("TOWERS_OLD_STORM");
   FX.root = cw_node_new("Node3D", "FX");
   cw_node_add_child(root, FX.root);
   cw_node ls = cw_node_new("LightingSettings", "Lighting");
@@ -376,10 +385,10 @@ static void rumble_send(void) {
 
 fx_stats fx_get_stats(void) { return (fx_stats){ FX.booms_total, FX.rumbles, FX.bolts_total }; }
 
-/* a light that swells to e over FLASH_IN frames and fades out over `len` (smooth both ways: never a step). It takes the
+/* a light that swells to e over `in` frames (FLASH_IN for most) and fades out over `len` (smooth both ways: never a step). It takes the
  * dimmest light of the pool, and gives way when even that one is still brighter than a quarter of e (so a light is never
  * yanked away while bright) */
-static void flash_len(float x, float y, float z, float e, float r, float g, float b, int len) {
+static void flash_in(float x, float y, float z, float e, float r, float g, float b, int len, int in) {
   if (g_fx_level <= 0 && e < 40) return;
   int i = FX.nl++ % LIGHTS;
   if (!FX.strobe) {
@@ -389,9 +398,10 @@ static void flash_len(float x, float y, float z, float e, float r, float g, floa
   }
   cw_node3d_set_position(FX.light[i], (t3_vec3){ x, y, z });
   cw_node_set(FX.light[i], "color", cw_val_color(r, g, b, 1));
-  FX.light_peak[i] = e, FX.light_age[i] = 0, FX.light_len[i] = len;
+  FX.light_peak[i] = e, FX.light_age[i] = 0, FX.light_len[i] = len, FX.light_in[i] = in;
   FX.light_e[i] = FX.strobe ? e : CW_MAX(FX.light_e[i], 0.01f);
 }
+static void flash_len(float x, float y, float z, float e, float r, float g, float b, int len) { flash_in(x, y, z, e, r, g, b, len, FLASH_IN); }
 static void flash(float x, float y, float z, float e, float r, float g, float b) { flash_len(x, y, z, e, r, g, b, 14 + (int)(e * 0.08f)); }
 static void blast(float x, float z, float r, bool big) {
   FX.booms_total++;
@@ -424,7 +434,7 @@ static void bolt_new(const float a[3], const float b[3], float w, int life) {
   bolt *bl = &FX.bolts[FX.nbolt_next++ % MAXBOLT];
   memcpy(bl->a, a, sizeof bl->a), memcpy(bl->b, b, sizeof bl->b);
   float dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
-  bl->w = w, bl->life = bl->life0 = life;
+  bl->w = w, bl->life = bl->life0 = life, bl->in = 2;
   bl->n = CW_CLAMP((int)(sqrtf(dx * dx + dy * dy + dz * dz) / 0.55f), 3, BOLT_SEGS);
   bolt_jag(bl, 0), bolt_jag(bl, 1);
   FX.bolts_total++;
@@ -465,7 +475,9 @@ void fx_events(sim *s) {
       else
         a[0] = x, a[1] = 0.8f, a[2] = z;
       float w = e->b == 200 ? 1.1f : (1.0f - 0.08f * (float)e->b) * (0.8f + 0.2f * (float)e->a);
-      bolt_new(a, b, w, FX.strobe ? 9 : BOLT_LIFE);
+      bool storm = e->b == 200 && !FX.old_storm;
+      bolt_new(a, b, w, FX.strobe ? 9 : storm ? STORM_BOLT_LIFE : BOLT_LIFE);
+      if (storm) FX.bolts[(FX.nbolt_next - 1) % MAXBOLT].in = STORM_BOLT_IN;
       if (FX.frame_hits++ < (lvl >= 2 ? 40 : 20)) burst(FX.spark, e->z, 0.8f, e->w, 0, 1, 0);
       break;
     }
@@ -533,7 +545,9 @@ void fx_events(sim *s) {
     case EV_SPAWN: if (lvl >= 2 && (FX.tick & 3) == 0) burst(FX.wisp, x, 0.8f, z, 0, 1, 0); break;
     case EV_HOP: break;
     case EV_POWER: /* the storm: a ring of charge over the ground, a cold-white light swelling over it, the pad rumbles */
-      ring(x, z, e->z, 0.6f), flash_len(x, 4, z, 70, 0.7f, 0.8f, 1.0f, 40), burst(FX.wisp, x, 1.0f, z, 0, 1, 0);
+      ring(x, z, e->z, 0.6f), burst(FX.wisp, x, 1.0f, z, 0, 1, 0);
+      if (FX.old_storm) flash_len(x, 4, z, 70, 0.7f, 0.8f, 1.0f, 40);
+      else flash_in(x, 4, z, 70, 0.7f, 0.8f, 1.0f, STORM_LIGHT_LEN, STORM_LIGHT_IN);
       if (e->a < MAXP) rumble(e->a, 0.5f, 0.3f, 220);
       break;
     case EV_STUN: if (FX.frame_hits++ < 30) burst(FX.spark, x, 0.9f, z, 0, 1, 0); break;
@@ -581,7 +595,8 @@ void fx_tick(const sim *s, float time) {
       w = bl->w * (0.35f + 0.65f * k) * (bl->life > bl->life0 - 2 ? 1.4f : 1.0f);
     } else {
       bolt_shape(bl, (float)age / (float)(bl->life0 - 1));
-      float in = CW_MIN((float)(age + 1) / 2.0f, 1.0f), out = k * k * (3 - 2 * k);
+      float in = CW_MIN((float)(age + 1) / (float)bl->in, 1.0f), out = k * k * (3 - 2 * k);
+      in = in * in * (3 - 2 * in);
       w = bl->w * 1.3f * in * out;
     }
     for (int j = 0; j < bl->n && FX.nseg < MAXBOLT * BOLT_SEGS; j++) {
@@ -630,12 +645,12 @@ void fx_tick(const sim *s, float time) {
       FX.light_e[i] *= 0.8f;
       if (FX.light_e[i] <= 0.5f) FX.light_e[i] = 0;
     } else { /* in over FLASH_IN frames, out over the rest (smoothstep both ways) */
-      int a = ++FX.light_age[i], len = CW_MAX(FX.light_len[i], FLASH_IN + 1);
-      float u = a <= FLASH_IN ? (float)a / FLASH_IN : 1.0f - (float)(a - FLASH_IN) / (float)(len - FLASH_IN);
+      int a = ++FX.light_age[i], fin = CW_MAX(FX.light_in[i], 1), len = CW_MAX(FX.light_len[i], fin + 1);
+      float u = a <= fin ? (float)a / (float)fin : 1.0f - (float)(a - fin) / (float)(len - fin);
       u = CW_CLAMP(u, 0.0f, 1.0f);
       float target = FX.light_peak[i] * u * u * (3 - 2 * u);
       /* (a light taken while still dim never drops first: it rises from where it was) */
-      FX.light_e[i] = a <= FLASH_IN ? CW_MAX(target, FX.light_e[i]) : target;
+      FX.light_e[i] = a <= fin ? CW_MAX(target, FX.light_e[i]) : target;
       if (a >= len) FX.light_e[i] = 0;
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_e[i]));
