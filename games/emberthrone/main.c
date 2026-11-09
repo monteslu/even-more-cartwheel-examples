@@ -499,6 +499,10 @@ static void render(void *u, double alpha) {
   G.t_last = now, G.t_n++;
   if (getenv("ADV_BENCH") && sc == CW_SHELL_PLAY) {
     static int n;
+    static double g_sum, g_max; /* each frame's GPU total over the window (one frame alone is not the window) */
+    float gpu = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
+    g_sum += gpu;
+    if (gpu > g_max) g_max = gpu;
     if (++n % 120 == 0) {
       cw_render3d_stats rs;
       cw_render3d_get_stats(cw_scene_app_tree(), &rs);
@@ -509,7 +513,8 @@ static void render(void *u, double alpha) {
       fprintf(stderr, "bench_terrain patches=%d far=%d culled=%d scatter_inst=%d scatter_draws=%d select_ms=%.2f scatter_ms=%.2f upload_ms=%.2f\n", ts.patches, ts.patches_far, ts.patches_culled, ts.scatter_instances, ts.scatter_draws, ts.select_ms, ts.scatter_ms, ts.upload_ms);
       const cw_pass_stat *pst;
       int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
-      fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
+      fprintf(stderr, "bench_passes gpu_total=%.2f gpu_mean=%.2f gpu_max=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())), g_sum / 120, g_max);
+      g_sum = g_max = 0;
       for (int k = 0; k < np; k++)
         if (pst[k].gpu_ms_avg > 0.005f || pst[k].cpu_ms_avg > 0.3f) fprintf(stderr, " %s=%.2f/%.2f/%.2f%s", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg, pst[k].gpu_ms, pst[k].ran ? "" : "~");
       fprintf(stderr, "\n");
