@@ -60,12 +60,14 @@ jobs:
           TARGETS=native scripts/build.sh towers_soak
           node games/towers/tools/check-maps.mjs --soak build/native/games/towers/towers_soak
       # skate's board against ramp physics (a naive one-step solver must fail) and its parks: nothing floats, every
-      # line skated by a bot through the real controls; the controls (parks broken on purpose) must each fail
+      # line skated by a bot through the real controls; the controls (parks broken on purpose) must each fail; a near
+      # miss at a runnable pace is run out on foot (every miss a fall must fail)
       - name: Check skate's physics and parks
         run: |
           TARGETS=native scripts/build.sh skate_check
           node tests/skate-physics.mjs
           node tests/skate-parks.mjs
+          node tests/skate-runout.mjs
       # pinball's ball and flippers: nothing through a wall or a firing flipper (a naive one-step solver must fail),
       # and the flipper buttons live until the ball has gone (the rule that killed them at the drain line must fail)
       - name: Check pinball's physics and flippers
