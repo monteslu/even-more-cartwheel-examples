@@ -195,6 +195,8 @@ static int model_parts(const char *file, const char *name, t3_instanced_mesh **s
       for (int g = 0; g < MB_MAXG; g++) parts[g] = g < c.ngroup ? c.geo[g][f] : NULL;
       cop_separate_model(parts, MB_MAXG, 0.005f);
     }
+    for (int f = 0; f < n; f++)
+      for (int g = 0; g < c.ngroup && g < MB_MAXG; g++) mb_sort_tris(c.geo[g][f]);
     for (int f = 0; f < n; f++) {
       surf[f] = c.geo[0][f] ? imesh(name, t3_retain(c.geo[0][f]), mat_std(rough, 0.15f), cap) : NULL;
       if (glow) glow[f] = c.ngroup > 1 && c.geo[1][f] ? imesh(name, t3_retain(c.geo[1][f]), mat_glow(), cap) : NULL;
@@ -284,6 +286,7 @@ static void kind_load(int k) {
   mb_chr_simplify(&kv->c, 0, 0.14f); /* a creep is 20 to 40 pixels across: a third of its triangles do */
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
+  for (int f = 0; f < kv->nwalk && f < MB_MAXF; f++) mb_sort_tris(kv->c.geo[0][f]); /* (before the edge copies the order) */
   kv->r = kv->c.rad;
   t3_material *m = t3_mesh_lambert_material_new(0xffffff);
   m->vertex_colors = true;

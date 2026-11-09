@@ -232,9 +232,13 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
 - One flow field a map on a 1 m grid; the engine crowd keeps the creeps apart. No per-creep path planning.
 - Creeps drawn as instanced meshes, one per animation frame and kind, vertex animation baked into `.cwchar`; their
   edges are unlit hulls sharing the bodies' instance buffers. Towers, pads, shells, beams and lightning instanced too.
+- The creeps' and the towers' triangles are drawn top first (the camera looks down, and a creep leans its up toward
+  it), so a body's lower faces fail the depth test under its upper ones before they are shaded: 0.13 to 0.2 ms of the
+  crowd's GPU time on the 890M, with the same picture.
 - The ground and path baked and drawn unlit; moving lights clustered and pooled on the ground as splats.
 - Perf gate (`tests/towers-perf.mjs`): towers at level 3 on every pad of a late map, 2400 creeps kept on its paths,
-  1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame (3.89 to 4.26 ms measured across six maps).
+  1920 x 1080 High on the 890M, GL and WebGPU, bounded at 4.3 ms of GPU a frame on GL (3.73 to 3.97 ms measured
+  across six maps) and 4.5 on WebGPU (3.95 to 4.19).
 
 ## Photosensitivity
 

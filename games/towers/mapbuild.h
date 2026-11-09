@@ -31,6 +31,7 @@ typedef struct mb_chr { int nclip, ngroup, nf[MB_MAXC], first[MB_MAXC], total; t
 bool mb_chr_load(mb_chr *c, const char *path); /* false (logged) when it cannot be read */
 void mb_chr_free(mb_chr *c);
 void mb_chr_simplify(mb_chr *c, int g, float cell); /* fewer triangles for a model seen small (one topology kept) */
+void mb_sort_tris(t3_geometry *g);                  /* its triangles top first (the camera looks down): fewer hidden faces shaded */
 t3_color mb_lin(float r, float g, float b);
 
 #define MB_MARGIN 3 /* tiles of scenery drawn round the map (the camera sees past its edges) */

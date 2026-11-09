@@ -80,6 +80,30 @@ bool mb_chr_load(mb_chr *c, const char *path) {
   free(buf);
   return true;
 }
+/* a model's triangles drawn top first. The camera looks down on the map (and the creeps lean their up toward it), so
+ * a body's upper faces are drawn before the lower ones they cover, and those fail the depth test before they are
+ * shaded: the crowd's bodies and the towers drawn top first cost the 890M 0.13 to 0.2 ms less a bench frame, with the
+ * same picture (only where two faces of one model sit at exactly the same depth can the other one win the pixel).
+ * Ties keep a fixed order (by index), so every C library's qsort gives one order. TOWERS_OLD_ORDER=1 (development,
+ * A/B timing) leaves the order as loaded */
+static const float *g_sort_y;
+static int tri_by_height(const void *a, const void *b) {
+  const uint16_t *p = a, *q = b;
+  float ya = g_sort_y[p[0] * 3 + 1] + g_sort_y[p[1] * 3 + 1] + g_sort_y[p[2] * 3 + 1];
+  float yb = g_sort_y[q[0] * 3 + 1] + g_sort_y[q[1] * 3 + 1] + g_sort_y[q[2] * 3 + 1];
+  if (ya != yb) return ya > yb ? -1 : 1;
+  for (int i = 0; i < 3; i++)
+    if (p[i] != q[i]) return p[i] < q[i] ? -1 : 1;
+  return 0;
+}
+void mb_sort_tris(t3_geometry *g) {
+  static int old = -1;
+  if (old < 0) old = getenv("TOWERS_OLD_ORDER") && atoi(getenv("TOWERS_OLD_ORDER"));
+  if (old || !g || !g->index || g->index->type != T3_UINT16 || !g->attributes[T3_ATTR_POSITION]) return;
+  g_sort_y = t3_attribute_f32(g->attributes[T3_ATTR_POSITION]);
+  qsort(g->index->array, (size_t)g->index->count / 3, sizeof(uint16_t) * 3, tri_by_height);
+  g->index->version++;
+}
 /* fewer triangles for a model seen small: vertices clustered on a grid of `cell` metres (from the first frame, so every
  * frame keeps one topology), each cluster kept as its first vertex, the triangles that collapse dropped */
 void mb_chr_simplify(mb_chr *c, int g, float cell) {

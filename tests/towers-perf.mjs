@@ -2,7 +2,8 @@
 // and the waves still coming, four bots at the controls) at 1920x1080, High, natively on the test GPU (the 890M), GL and
 // WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (the mean of the bench's last three 120-frame
 // windows) at 4.3 ms (4.5 on WebGPU, whose decals pass is timed since engine v0.38.8), with at least 2000 creeps alive
-// and drawn.
+// and drawn. Each line also reports every frame's GPU time over those windows (the bench's gpu_window and gpu_worst):
+// its mean and its worst frame.
 //   the bench map (26, the crystal vale) on both GLs, then one late map of every other theme (TOWERS_MAP) the same way.
 // Every run must draw everything (no "not in any program table" line) and keep its crowd. Controls, which must fail:
 // GL at 3840x2160 (4 times the pixels), WebGPU against an impossible 1 ms bound, and the bench held to 3000 creeps.
@@ -42,9 +43,13 @@ async function run(gpu, extra = {}) {
   const err = r.stderr || '';
   if (pin) pin.check('native', (/WebGPU adapter: (.*)/.exec(err) || [])[1]);
   else if (gl) gl.check('native', err);
-  const win = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
+  const lines = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3);
+  const win = lines.map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
+  // (reported beside the bound's samples: every frame's GPU time over those windows, its mean and its worst)
+  const every = lines.map((l) => +(/gpu_window=([\d.]+)/.exec(l) || [])[1]), worst = Math.max(...lines.map((l) => +(/gpu_worst=([\d.]+)/.exec(l) || [])[1]));
   const last = err.split('\n').filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  return { clock, status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN, enemies: +((/enemies=(\d+)/.exec(last) || [])[1]),
+  return { clock, status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN,
+    every: every.length ? every.reduce((a, b) => a + b, 0) / every.length : NaN, worst, enemies: +((/enemies=(\d+)/.exec(last) || [])[1]),
     drawn: +((/drawn=(\d+)/.exec(last) || [])[1]), skipped: /in none of the app's program tables|have no program/.test(err),
     passes: err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }
@@ -52,7 +57,7 @@ async function run(gpu, extra = {}) {
 let bad = 0;
 const check = (name, r, bound, mustFail = false, most = Infinity) => {
   const within = r.status === 0 && !r.skipped && r.enemies >= CROWD && r.drawn >= CROWD && r.enemies <= most && r.gpu > 0 && r.gpu <= bound;
-  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.enemies} creeps (${r.drawn} drawn), status ${r.status}, ${r.clock}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}; every frame: mean ${r.every.toFixed(2)}, worst ${r.worst.toFixed(2)}), ${r.enemies} creeps (${r.drawn} drawn), status ${r.status}, ${r.clock}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);

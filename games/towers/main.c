@@ -767,7 +767,12 @@ static void render(void *u, double alpha) {
   G.t_last = now;
   G.t_n++;
   if (getenv("TOWERS_BENCH") && sc == CW_SHELL_PLAY) {
-    static int n;
+    static int n, gn;
+    static double gsum, gmax;
+    { /* every frame's latest GPU time over the window: its mean and its worst (the line's gpu_total is one frame's) */
+      float g = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
+      if (g > 0) gsum += g, gn++, gmax = g > gmax ? g : gmax;
+    }
     if (++n % 120 == 0) {
       cw_render3d_stats rs;
       cw_render3d_get_stats(cw_scene_app_tree(), &rs);
@@ -782,7 +787,8 @@ static void render(void *u, double alpha) {
       fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
       for (int k = 0; k < np; k++)
         if (pst[k].ran && (pst[k].gpu_ms_avg > 0.02f || pst[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
-      fprintf(stderr, "\n");
+      fprintf(stderr, " gpu_window=%.2f gpu_worst=%.2f\n", gn ? gsum / gn : 0.0, gmax);
+      gsum = gmax = 0, gn = 0;
       fflush(stderr);
       G.t_sim = G.t_view = G.t_fx = G.t_frame = 0;
       G.t_n = 0;
