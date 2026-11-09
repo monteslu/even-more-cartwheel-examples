@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.12.0
+
+- **All 3D games**: no surface fights another for the depth test. Faces laid flush on others (props' parts, the rock's
+  folds, signs and sidewalks, the pinball table's walls and cabinet, the buildings' trims) are layered apart when the
+  game builds, so the speckle where they met is gone; surfaces that look the same where they overlap are left alone.
+  A depth-fighting check runs in CI.
+- **Characters**: athletic proportions across the cast, measured by a new check against an athletic adult (heads,
+  shoulders over waist, limb taper, hands and feet at a real size):
+  - **skate**: the four riders, with closer-fitting tees, sleeves and trouser legs.
+  - **Ember Throne**: the cast's arms at full length and their sleeves and breeches tapered. The brute and the two
+    bosses carry their size in the chest, back and shoulders.
+  - **towers**: the ghoul, imp, shade and ogre rebuilt, with the ogre a muscular brute. Walkers keep a foot on the
+    ground in every frame. The desert's crowd flags take the pale edge the snowfields have.
+  - **Lanternfall**: the lamplighter, the knight and the Brass Sentinel; the statues are now carved figures.
+- **skate**: the board is a street deck in its real proportions: a thinner deck with gentler kicks, low dark trucks,
+  smaller matte wheels and open space under it. A check measures it from the game camera against a real board.
+- **towers**: creeps and towers draw their upper faces first, so the scene costs less on GL and WebGPU with the same
+  picture.
+- Engine v0.39.2: GL's depth prepass writes depth only (Ember Throne's meadow costs less on GL), and romdev test runs
+  wait as long as their frames take.
+
 ## 0.11.0
 
 - **towers**: the difficulty is tuned for a first-time player. A boss is a lesson on the first maps and grows to its
