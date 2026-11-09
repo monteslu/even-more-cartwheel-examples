@@ -3,7 +3,8 @@
 // the test GPU (the 890M), GL and WebGPU, with the pipeline's GPU pass timers; then the same from seven more places
 // (the meadow, the canyon ring with the Thornwarden, the glowcap wood, the heights, the underway, the spire, the keep's
 // throne with the Ember King: ADV_FROM).
-// Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows) at 4.5 ms, every run drawing
+// Bounds the frame's GPU time (the mean of the bench's last three 120-frame windows, each window the mean of its frames'
+// GPU totals, not one frame of it; the worst frame is printed beside it) at 4.5 ms, every run drawing
 // everything (no "not in any program table" line) with its characters on screen. Controls, which must fail: GL at
 // 3840x2160 (4 times the pixels) and WebGPU against an impossible 1 ms bound.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs). Run: node tests/emberthrone-perf.mjs [--quick]
@@ -35,9 +36,11 @@ function run(gpu, extra = {}) {
   const err = r.stderr || '';
   if (pin) pin.check('native', (/WebGPU adapter: (.*)/.exec(err) || [])[1]);
   else if (gl) gl.check('native', err);
-  const win = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]);
+  const pl = err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-3);
+  const win = pl.map((l) => +(/gpu_mean=([\d.]+)/.exec(l) || [])[1]);
+  const peak = Math.max(...pl.map((l) => +(/gpu_max=([\d.]+)/.exec(l) || [])[1]));
   const last = err.split('\n').filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  return { status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN, rigs: +((/rigs=(\d+)/.exec(last) || [])[1]),
+  return { status: r.status, gpu: win.length ? win.reduce((a, b) => a + b, 0) / win.length : NaN, peak, rigs: +((/rigs=(\d+)/.exec(last) || [])[1]),
     tris: +((/tris=(\d+)/.exec(last) || [])[1]), draws: +((/draws=(\d+)/.exec(last) || [])[1]),
     skipped: /in none of the app's program tables|have no program|NOT DRAWN/.test(err), passes: err.split('\n').filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }
@@ -45,7 +48,7 @@ function run(gpu, extra = {}) {
 let bad = 0;
 const check = (name, r, bound, mustFail = false) => {
   const within = r.status === 0 && !r.skipped && r.rigs >= RIGS && r.gpu > 0 && r.gpu <= bound;
-  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.rigs} characters, ${r.draws} draws, ${(r.tris / 1e6).toFixed(2)} M triangles, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}; worst frame ${r.peak.toFixed(2)}), ${r.rigs} characters, ${r.draws} draws, ${(r.tris / 1e6).toFixed(2)} M triangles, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);

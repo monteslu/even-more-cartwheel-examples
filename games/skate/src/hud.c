@@ -214,12 +214,13 @@ void hud_setup(const ui_state *ui, int players) {
   text("SKATE", cs.x * 0.5f, y, 96 * u, rgba(1, 0.82f, 0.3f, 1), CW_ALIGN_CENTER);
   y += 110 * u;
   float pw = fminf(cs.x * 0.6f, 900 * u), px = cs.x * 0.5f - pw * 0.5f;
-  const char *labels[3] = { "MODE", "PARK", "SKATER" };
-  char vals[3][64];
-  snprintf(vals[0], sizeof vals[0], "%s", MODE_NAMES[ui->mode]);
-  snprintf(vals[1], sizeof vals[1], "%s", PARK_NAMES[ui->park]);
-  snprintf(vals[2], sizeof vals[2], "%s", SKIN_NAMES[ui->skin[0]]);
-  for (int r = 0; r < 3; r++) {
+  const char *labels[ROWS] = { "MODE", "PARK", "SKATER", "STANCE" };
+  char vals[ROWS][64];
+  snprintf(vals[ROW_MODE], sizeof vals[0], "%s", MODE_NAMES[ui->mode]);
+  snprintf(vals[ROW_PARK], sizeof vals[0], "%s", PARK_NAMES[ui->park]);
+  snprintf(vals[ROW_SKATER], sizeof vals[0], "%s", SKIN_NAMES[ui->skin[0]]);
+  snprintf(vals[ROW_STANCE], sizeof vals[0], "%s", ui->goofy[0] ? "goofy" : "regular");
+  for (int r = 0; r < ROWS; r++) {
     bool sel = ui->row == r;
     float h = big + 24 * u;
     cw_r2d_round_rect(cw_rect_make(px, y, pw, h), 14 * u, 6, sel ? rgba(0.1f, 0.12f, 0.2f, 0.85f) : BG);
@@ -244,14 +245,15 @@ void hud_setup(const ui_state *ui, int players) {
   if (players > 1) {
     float cw = fminf(cs.x / (float)players, 420 * u), x0 = cs.x * 0.5f - cw * (float)players * 0.5f;
     for (int i = 0; i < players; i++) {
-      float x = x0 + cw * (float)i + 8 * u, w = cw - 16 * u, h = 120 * u;
+      float x = x0 + cw * (float)i + 8 * u, w = cw - 16 * u, h = 150 * u;
       cw_r2d_round_rect(cw_rect_make(x, y + 20 * u, w, h), 12 * u, 6, BG);
       snprintf(b, sizeof b, "P%d", i + 1);
       text(b, x + w * 0.5f, y + 28 * u, body, pcol(i, 1), CW_ALIGN_CENTER);
       text(SKIN_NAMES[ui->skin[i]], x + w * 0.5f, y + 28 * u + body * 1.2f, body * 1.2f, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+      text(ui->goofy[i] ? "goofy" : "regular", x + w * 0.5f, y + 28 * u + body * 2.5f, body, rgba(0.8f, 0.85f, 1, 1), CW_ALIGN_CENTER);
     }
-    y += 150 * u;
-    pill("{steer_left|steer_right} each player: your skater", -1, cs.x * 0.5f, y, 0.5f, 0, 28 * u, rgba(1, 1, 1, 1), BG);
+    y += 180 * u;
+    pill("{steer_left|steer_right} each player: your skater   {steer_up|steer_down} your stance", -1, cs.x * 0.5f, y, 0.5f, 0, 28 * u, rgba(1, 1, 1, 1), BG);
     y += 50 * u;
   }
   pill("{ui_up|ui_down} choose   {ui_left|ui_right} change   {ui_accept} skate", 0, cs.x * 0.5f, cs.y - 90 * u, 0.5f, 0, 30 * u, rgba(1, 1, 1, 1), BG);

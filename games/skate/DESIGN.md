@@ -20,7 +20,10 @@ A flip pressed on the ground pops and flips at once. In the air the stick spins 
 Landings are judged: the board's heading against the run along the surface (within 26 degrees clean, 46 sketchy and
 slower, more a bail), its up against the surface, a flip still turning or a grab still held (a bail), how hard it came
 down. A trick adds its points to the combo; the combo's sum is multiplied by its count of tricks and banked a fifth of
-a second after a landing that a manual or a grind does not link. A bail loses the combo. The same trick twice in one
+a second after a landing that a manual or a grind does not link. A bail loses the combo. A landing missed by a
+little (just past sketchy, a flip a few frames short, a grab let go late) at a pace a skater can run off (under 7 m/s)
+onto ground flat enough to run on is a run-out: the rider steps off and runs it out on foot and is back on the board
+at a jog after 0.9 s, where a fall takes 1.6 (tests/skate-runout.mjs). The same trick twice in one
 combo is worth half, then a quarter.
 
 Modes: free skate (no clock), score attack (two minutes, the park's seven goals: three scores, its five tokens, a
@@ -132,7 +135,10 @@ how skaters ride (coaching guides, ollie studies, a motion-capture set of a skat
 
 - **Stance**: side on, feet about shoulder width, the front foot just behind the front bolts turned 40 degrees toward
   the nose, the back foot across the back bolts, knees bent about 50 degrees; the pelvis open 20 degrees toward the
-  nose, the chest 35, the head on round to 70 to look down the run; arms loose, the front one toward the nose.
+  nose, the chest 35, the head on round to 70 to look down the run; arms loose, the front one toward the nose. A
+  rider is regular (the left foot forward) or goofy (the right): the setup's STANCE row for the first player, up or
+  down on the stick for the others. Goofy is posed as regular and mirrored, every bone taking its partner's turn
+  reflected across the body (src/pose.c rig_mirror), so every trick has its goofy twin, a kickflip turning the other way.
 - **Push**: the front foot turns along the board and the body with it; the back foot steps down beside the deck on
   the toe side, drives back past the tail while the front knee bends to 80 degrees, lifts and swings forward; arms
   swing against the legs; after the last push the back foot comes back over the deck onto the tail.
@@ -149,7 +155,8 @@ how skaters ride (coaching guides, ollie studies, a motion-capture set of a skat
   the hips over the rolling truck, that knee bent, the other leg straighter.
 - **Bails**: the body braces as it goes (knees bent, chin tucked, arms in), and a ragdoll (src/rag.c, after the
   brawler's) tumbles from that pose over the park's triangles, presentation only; the camera follows the body from
-  further back.
+  further back. **Run-outs**: the rider turns to run, strides on the ground with the arms pumping (about 1.1 m a
+  stride), the board rolling on ahead and slowing until the rider catches it and steps back on.
 
 The wheels turn with the speed. A landing kicks up a puff of dust; a grind throws sparks. For judging the posing,
 tools/strips.sh lays frames of every state side by side (tools/strip.mjs: the native app paused and stepped on its

@@ -86,6 +86,7 @@ typedef struct rider_pose {
   float board_pitch, tail_drop;                                 /* the ollie's pop, on the board */
   int grab;
 } rider_pose;
+#define RIG_MAXB 96
 typedef struct rig {
   bool bound;
   cw_pose pose;
@@ -102,6 +103,15 @@ typedef struct rig {
   t3_quat board_q, deck_q;
   t3_vec3 board_p, deck_p;
   rider_pose s; /* smoothed */
+  /* goofy: the right foot forward. The body is posed as a regular rider and then mirrored (pose.c rig_mirror): each
+     bone takes its partner's turn from rest reflected left to right, and the whole turned to face the heel edge */
+  bool goofy;
+  int nb;
+  int mate[RIG_MAXB];         /* each bone's partner on the other side (itself on the middle line) */
+  t3_quat rest_mrot[RIG_MAXB]; /* the rest pose, model space */
+  t3_vec3 rest_mpos[RIG_MAXB];
+  /* a run-out (a near miss landed on foot): the stride's phase */
+  float run_ph;
 } rig;
 bool rig_bind(rig *r, t3_object *model);
 /* the body, and the board's placement under it (board_q, board_p), from the board's state */
@@ -125,7 +135,10 @@ int rag_live(void);
 void rag_step(void); /* one step of the ragdolls' world (a tick) */
 
 /* ── hud.c ─────────────────────────────────────────────────────────────── */
-typedef struct ui_state { int mode, park, row, skin[MAXP], best; } ui_state;
+/* the setup's rows: the mode, the park, the first player's skater and stance (the others pick theirs on their own pads) */
+enum { ROW_MODE, ROW_PARK, ROW_SKATER, ROW_STANCE, ROWS };
+typedef struct ui_state { int mode, park, row, skin[MAXP], best; bool goofy[MAXP]; } ui_state;
+extern bool g_view_goofy[MAXP]; /* each seat's stance as drawn: true right foot forward (main.c sets it) */
 void hud_setup(const ui_state *ui, int players);
 void hud_results(const sim *S, int players, int best, bool new_best);
 void audio_music(bool on);
