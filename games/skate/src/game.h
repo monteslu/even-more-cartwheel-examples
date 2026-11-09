@@ -298,6 +298,8 @@ typedef struct skater {
   v3 bail_v;          /* the velocity it bailed at (the ragdoll's push) */
   int bails;
   const char *bail_why; /* the last bail's cause (tests, tuning) */
+  bool runout;        /* this bail is a run-out: a near miss stepped off and run out on foot, not a fall */
+  int runouts;
   /* the combo */
   combo cb;
   int link_t;         /* ticks left to link after landing */
@@ -339,6 +341,9 @@ void sk_spawn(skater *s, const park *k, int spawn_i);
 void sk_place(skater *s, const park *k, v3 p, float yaw, float speed);
 void sk_step(skater *s, const park *k, const input *in);
 void sk_force_bail(skater *s); /* development: a wipeout now (screenshots of the ragdoll) */
+#define RUNOUT_TICKS 54     /* a run-out's length (skater.c) */
+void sk_force_runout(skater *s); /* development: a run-out now (frame strips of the run) */
+extern bool g_no_runout;       /* the run-out check's control: every near miss falls (skate_check runout) */
 /* names */
 const char *sk_state_name(int st);
 /* the combo text ("Twistflip + 360 + Twin Truck") into out */

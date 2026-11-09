@@ -29,6 +29,7 @@ const float PLAYER_COL[MAXP][3] = { { 1.0f, 0.45f, 0.12f }, { 0.15f, 0.7f, 1.0f 
 
 int g_view_shadow_size = 4096;
 view_metrics g_view_metrics;
+bool g_view_goofy[MAXP];
 float g_cam_k = 1, g_cam_side = 0; /* development and key art: a closer camera, off to one side */
 
 typedef struct seat {
@@ -799,6 +800,10 @@ static t3_quat qaxis(v3 ax, float a) {
 }
 
 /* the skater between ticks */
+static float sstep_v(float a, float b, float x) {
+  float t = clampf((x - a) / (b - a), 0, 1);
+  return t * t * (3 - 2 * t);
+}
 static void interp(const skater *a, const skater *b, float al, v3 *p, v3 *f, v3 *u) {
   bool jump = vlen(vsub(a->p, b->p)) > 3.0f; /* a reset or a respawn: no slide across the park */
   if (jump) al = 1;
@@ -962,7 +967,20 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     v3 p, f, u;
     interp(&prev[i], k, alpha, &p, &f, &u);
     v3 bp = p, bf = f, bu = u; /* the board's own placement (a bail throws it off the rider) */
-    if (k->st == SK_BAIL && VW.k) {
+    float run_w = 0, roll_d = 0; /* a run-out: the rider turned to run (0 .. 1), the board rolled on ahead of it (metres) */
+    if (k->st == SK_BAIL && k->runout && VW.k) {
+      /* a run-out: the board rolls on ahead on its wheels while the rider runs after it, and is back under the feet as
+         the rider steps on again */
+      phit gh;
+      v3 n = park_ground(VW.k, p, 0.5f, 3.0f, &gh) ? gh.n : V(0, 1, 0);
+      float bt = (float)k->bail_t + alpha;
+      roll_d = 1.4f * cw_sin(PI_F * clampf(bt / (float)RUNOUT_TICKS, 0, 1));
+      v3 ff = vperp(f, n);
+      if (vlen(ff) < 0.2f) ff = vperp(V(1, 0, 0), n);
+      ff = vnorm(ff);
+      bp = vadd(park_ground(VW.k, p, 0.5f, 3.0f, &gh) ? gh.p : p, vmul(ff, roll_d)), bf = ff, bu = n;
+      run_w = sstep_v(0, 8, bt) * (1 - sstep_v((float)RUNOUT_TICKS - 12, (float)RUNOUT_TICKS, bt));
+    } else if (k->st == SK_BAIL && VW.k) {
       /* a bail: the board gets away from the rider, lying on the ground and spinning out as it slides */
       phit gh;
       v3 n = park_ground(VW.k, p, 0.5f, 3.0f, &gh) ? gh.n : V(0, 1, 0);
@@ -990,11 +1008,12 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
         p = vsub(c, vmul(u, 0.6f));
       }
     }
+    s->rig.goofy = g_view_goofy[i];
     if (s->rig.bound) rig_pose(&s->rig, k, dt, t); /* the body, and the board's own placement under it */
     if (k->st == SK_BAIL) place_board(s, k, bp, bf, bu, t);
     else place_board(s, k, p, f, u, t);
     /* the wheels turn with the speed (8 cm across); a landing kicks up a puff of dust */
-    if (k->st != SK_BAIL) VW.wheel_a[i] += vlen(k->v) * dt / 0.028f;
+    if (k->st != SK_BAIL || k->runout) VW.wheel_a[i] += vlen(k->v) * dt / 0.028f;
     VW.wheel_a[i] = fmodf(VW.wheel_a[i], 2 * PI_F);
     for (int w = 0; w < 4; w++)
       if (s->wheel[w]) s->wheel[w]->quaternion = qaxis(V(0, 0, 1), -VW.wheel_a[i]), s->wheel[w]->matrix_world_needs_update = true;
@@ -1007,6 +1026,7 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     /* the rider stands on the deck, turned with the board (not its flips) */
     v3 side = vcross(f, u);
     t3_quat q = quat_basis(f, u, side);
+    if (run_w > 0) q = t3_quat_slerp(q, quat_basis(vmul(side, -1), u, f), run_w); /* running: facing the run */
     v3 rp = vadd(p, vmul(u, DECK_Y));
     cw_node3d_set_position(s->rider, rp);
     cw_node3d_set_quaternion(s->rider, q);

@@ -10,6 +10,9 @@
  *                               line is skateable (a bot skates it through the real controls and does its feature: the
  *                               grind, the gap, the air, the manual). Then the controls: a piece lifted, a wall across a
  *                               rail's approach, a kicker too short for its gap: each must fail.
+ *   skate_check runout          landings on the flat: a near miss at a pace a skater can run off is run out on foot and
+ *                               the rider is back on the board rolling; too fast, or the board right across the run,
+ *                               is a fall; a clean one rolls away. SKATE_NO_RUNOUT=1 (the control): every miss falls.
  *   skate_check soak <min> <players> [park]
  *                               bots skate every park in turn for <min> game minutes: no NaN, nobody leaves the park or
  *                               falls through it, memory flat. SKATE_SOAK_INJECT=1 puts a NaN in a velocity (the control). */
@@ -309,6 +312,63 @@ static int cmd_phys(void) {
            total, bad_land, lock_in, lock_n, lock_out);
     g_phys = keep;
   }
+  return 0;
+}
+
+/* ── run-outs ───────────────────────────────────────────────────────────── */
+
+/* one landing on flat ground: the board turned `off` radians from the way it flies at `speed` m/s, coming down from
+   0.6 m. What became of it: 0 rolled away, 1 ran it out (on foot, then back on the board rolling), 2 fell */
+static int landing_shot(float speed, float off, int *back_on, float *on_speed) {
+  park k;
+  memset(&k, 0, sizeof k);
+  test_rail(&k); /* (its flat ground; the rail is far off the line) */
+  skater s;
+  memset(&s, 0, sizeof s);
+  sk_place(&s, &k, V(-12, 0, 0), 0, 0);
+  s.st = SK_AIR;
+  s.p.y += 0.6f;
+  v3 dir = V(1, 0, 0);
+  s.v = vmul(dir, speed);
+  s.v.y = 0;
+  s.f = V(cw_cos(off), 0, cw_sin(off));
+  s.u = V(0, 1, 0);
+  s.takeoff = s.p, s.takeoff_y = s.p.y;
+  int what = -1, t_bail = -1;
+  *back_on = 0, *on_speed = 0;
+  for (int t = 0; t < TPS * 4; t++) {
+    sk_step(&s, &k, &NOIN);
+    if (what < 0 && s.st == SK_ROLL) { what = 0; break; }
+    if (what < 0 && s.st == SK_BAIL) what = s.runout ? 1 : 2, t_bail = t;
+    if (what > 0 && s.st == SK_ROLL) { *back_on = t - t_bail, *on_speed = vlen(s.v); break; }
+  }
+  park_free(&k);
+  return what;
+}
+static int cmd_runout(void) {
+  /* near misses at a pace that can be run off (sideways by a little past what rolls away), the same too fast, a board
+     right across the run, and a clean one */
+  int near_slow = 0, near_n = 0, fast_fell = 0, fast_n = 0, across_fell = 0, clean = 0, back_max = 0;
+  float on_max = 0;
+  const float SLOW[3] = { 3.0f, 4.5f, 6.0f }, NEAR[3] = { 0.9f, 1.0f, 1.15f };
+  for (int a = 0; a < 3; a++)
+    for (int b = 0; b < 3; b++) {
+      int back;
+      float on;
+      int w = landing_shot(SLOW[a], NEAR[b], &back, &on);
+      near_n++, near_slow += w == 1;
+      if (w == 1 && back > back_max) back_max = back;
+      if (w == 1 && on > on_max) on_max = on;
+      int b2;
+      float o2;
+      fast_n++, fast_fell += landing_shot(9.0f + 2.0f * (float)a, NEAR[b], &b2, &o2) == 2;
+    }
+  int b3;
+  float o3;
+  across_fell = landing_shot(4.0f, 1.5f, &b3, &o3) == 2;
+  clean = landing_shot(5.0f, 0.15f, &b3, &o3) == 0;
+  printf("{\"near\":%d,\"near_n\":%d,\"fast_fell\":%d,\"fast_n\":%d,\"across_fell\":%d,\"clean\":%d,\"back_ticks\":%d,\"on_speed\":%.2f,\"runout_ticks\":%d}\n", near_slow,
+         near_n, fast_fell, fast_n, across_fell, clean, back_max, (double)on_max, RUNOUT_TICKS);
   return 0;
 }
 
@@ -673,6 +733,7 @@ int main(int argc, char **argv) {
     return 0;
   }
   if (argc >= 2 && !strcmp(argv[1], "phys")) return cmd_phys();
+  if (argc >= 2 && !strcmp(argv[1], "runout")) { g_no_runout = getenv("SKATE_NO_RUNOUT") != NULL; return cmd_runout(); }
   if (argc >= 2 && !strcmp(argv[1], "auto")) return cmd_auto(argc > 2 ? atoi(argv[2]) : 0, argc > 3 ? atoi(argv[3]) : 2, argc > 4 ? atoi(argv[4]) : 1500);
   if (argc >= 2 && !strcmp(argv[1], "script")) return cmd_script(argc > 2 ? atoi(argv[2]) : 71);
   if (argc >= 2 && !strcmp(argv[1], "parks")) return cmd_parks(argc > 2 ? atoi(argv[2]) : -1);

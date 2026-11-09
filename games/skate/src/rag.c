@@ -90,7 +90,7 @@ int rag_live(void) { return live; }
 void rag_tick(int i, const skater *s, rig *r, cw_node model_node, const t3_mat4 *m) {
   (void)model_node;
   if (!world.id || !r->bound) return;
-  bool down = s->st == SK_BAIL;
+  bool down = s->st == SK_BAIL && !s->runout; /* (a run-out is run on foot: pose.c) */
   if (down && !RD[i]) {
     cw_pose_update_model(&r->pose);
     cw_ragdoll_def def = cw_ragdoll_default_def(PARTS, NPARTS);

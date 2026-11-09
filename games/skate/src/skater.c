@@ -20,6 +20,8 @@
  * Tricks and the combo: a flip, a grab, a spin, a grind, a manual and a gap each add points; the combo's sum is
  * multiplied by its number of tricks and banked a moment after a landing that is not linked by a manual or a grind.
  * A bail loses it. Repeats in one combo are worth less each time. */
+#include <string.h>
+
 #include "game.h"
 
 physparams g_phys;
@@ -51,6 +53,11 @@ const char *const MANUAL_NAMES[] = { "Wheelie", "Nose Wheelie" };
 #define CONVEX_BREAK 0.20f
 #define LINK_TICKS 12
 #define BAIL_TICKS 96
+/* a run-out: a landing missed by a little at a speed a skater can run off (under about 7 m/s, 15 mph) onto ground
+   flat enough to run on steps off and runs it out on foot (the coaching notes: "run it out at low speed") instead of
+   falling: the combo is lost as in any bail, the rider is back on in 0.9 s instead of 1.6 */
+#define RUNOUT_SPEED 7.0f
+bool g_no_runout;
 #define CAPTURE_R 0.55f
 
 static int dir_of(float sx, float sy) {
@@ -182,10 +189,18 @@ void sk_spawn(skater *s, const park *k, int i) {
 
 static void bail(skater *s);
 void sk_force_bail(skater *s) { s->bail_why = "forced"; bail(s); }
+void sk_force_runout(skater *s) {
+  if (s->st == SK_BAIL) return;
+  v3 v = s->v;
+  s->bail_why = "forced run-out";
+  bail(s);
+  s->runout = true, s->runouts++, s->v = s->bail_v = V(v.x, 0, v.z);
+}
 static void bail(skater *s) {
   if (s->st == SK_BAIL) return;
   s->bail_v = s->v;
   s->st = SK_BAIL;
+  s->runout = false;
   s->bail_t = 0;
   s->bails++;
   s->manual = false;
@@ -197,9 +212,10 @@ static void bail(skater *s) {
 
 static void bail_step(skater *s, const park *k) {
   s->bail_t++;
-  /* the body tumbles (rag.c shows it); the simulation's point slides to a stop on the ground under it */
+  /* the body tumbles (rag.c shows it); the simulation's point slides to a stop on the ground under it (a run-out: the
+     rider's strides brake it more gently, to a jog) */
   phit h;
-  s->v = vmul(s->v, 0.94f);
+  s->v = vmul(s->v, s->runout ? (vlen(s->v) > 1.4f ? 0.96f : 1.0f) : 0.94f);
   s->v.y -= GRAV * TICK_DT;
   v3 np = vmad(s->p, s->v, TICK_DT);
   if (park_cast(k, vadd(s->p, V(0, 0.3f, 0)), vsub(np, s->p), (1u << SURF_WALL) | (1u << SURF_RIDE), &h) && h.fn.y < 0.5f) {
@@ -215,18 +231,20 @@ static void bail_step(skater *s, const park *k) {
   }
   s->p = np;
   if (s->p.y < k->lo.y - 5) s->p = s->safe_p, s->v = V(0, 0, 0);
-  if (s->bail_t >= BAIL_TICKS) {
-    /* back on the board: here if the ground is flat enough, else where it last rolled on the flat */
+  if (s->bail_t >= (s->runout ? RUNOUT_TICKS : BAIL_TICKS)) {
+    /* back on the board: here if the ground is flat enough, else where it last rolled on the flat (a run-out steps
+       back on at a jog, heading the way it ran) */
     v3 at = s->safe_p;
-    float yaw = s->safe_yaw;
+    float yaw = s->safe_yaw, speed = 0;
     if (park_ground(k, s->p, 0.5f, 2.0f, &h) && h.n.y > 0.97f) {
       at = h.p;
       v3 fl = V(s->bail_v.x, 0, s->bail_v.z);
       if (vlen(fl) > 0.5f) yaw = yaw_of(vnorm(fl));
+      if (s->runout) speed = fminf(vlen(V(s->v.x, 0, s->v.z)), 1.5f);
     }
-    int keep_bails = s->bails;
-    sk_place(s, k, at, yaw, 0);
-    s->bails = keep_bails;
+    int keep_bails = s->bails, keep_runouts = s->runouts;
+    sk_place(s, k, at, yaw, speed);
+    s->bails = keep_bails, s->runouts = keep_runouts;
   }
 }
 
@@ -286,7 +304,15 @@ static bool land(skater *s, const park *k, const phit *h) {
   s->tri = h->tri;
   s->u = n;
   if (why) {
+    /* a near miss at a pace it can run off, onto ground flat enough to run on: a run-out, not a fall */
+    bool near = (!strcmp(why, "landed sideways") && err < 1.25f) || (!strcmp(why, "mid flip") && s->flip_t >= FLIPS[s->flip].len - 9) ||
+                (!strcmp(why, "holding the board") && s->grab_t < 30) || (!strcmp(why, "board not under feet") && upc > 0.3f);
     bail(s);
+    if (near && !g_no_runout && sp < RUNOUT_SPEED && vn < 7.0f && n.y > 0.94f) {
+      s->runout = true, s->runouts++;
+      s->v = vt, s->bail_v = vt;
+      if (sp > 0.5f) s->f = vnorm(vt); /* the way it runs */
+    }
     return false;
   }
   s->v = vt;

@@ -41,7 +41,7 @@ enum { PH_SETUP, PH_RUN, PH_RESULTS };
 
 typedef struct save_data {
   int32_t best[PARK_COUNT], best_combo[PARK_COUNT];
-  uint8_t skin[MAXP], mode, park, pad[2];
+  uint8_t skin[MAXP], mode, park, goofy, pad; /* goofy: a bit a seat (the right foot forward) */
 } save_data;
 
 static struct {
@@ -110,6 +110,8 @@ static void begin_run(void) {
   save_data *sd = cw_shell_game_save();
   sd->mode = (uint8_t)G.ui.mode, sd->park = (uint8_t)G.ui.park;
   for (int i = 0; i < MAXP; i++) sd->skin[i] = (uint8_t)G.ui.skin[i];
+  sd->goofy = 0;
+  for (int i = 0; i < MAXP; i++) sd->goofy |= (uint8_t)(G.ui.goofy[i] << i);
   cw_shell_save_commit();
 }
 
@@ -125,12 +127,13 @@ static void start(int players, void *u) {
   G.in_match = true;
   save_data *sd = cw_shell_game_save();
   G.ui.mode = sd->mode % MODE_COUNT, G.ui.park = sd->park % PARK_COUNT;
-  for (int i = 0; i < MAXP; i++) G.ui.skin[i] = sd->skin[i] % NSKINS;
+  for (int i = 0; i < MAXP; i++) G.ui.skin[i] = sd->skin[i] % NSKINS, G.ui.goofy[i] = (sd->goofy >> i) & 1;
   if (!sd->skin[1] && !sd->skin[2] && !sd->skin[3]) for (int i = 0; i < MAXP; i++) G.ui.skin[i] = i % NSKINS;
 #if AUTO
   G.ui.mode = env_int("SKATE_MODE", SKATE_BENCH ? MODE_FREE : players > 1 ? MODE_BATTLE : MODE_ATTACK);
   G.ui.park = env_int("SKATE_PARK", SKATE_BENCH ? PARK_MEGA : PARK_SUNNY) % PARK_COUNT;
-  for (int i = 0; i < MAXP; i++) G.ui.skin[i] = i % NSKINS;
+  /* the bots: the second and fourth ride goofy (SKATE_GOOFY=<bits> sets the seats) */
+  for (int i = 0; i < MAXP; i++) G.ui.skin[i] = i % NSKINS, G.ui.goofy[i] = (env_int("SKATE_GOOFY", 0xA) >> i) & 1;
   begin_run();
 #else
   G.phase = PH_SETUP;
@@ -297,8 +300,8 @@ static void read_input(input in[MAXP]) {
 static void setup_update(void) {
   ui_state *ui = &G.ui;
   int p1 = 0;
-  if (cw_action_just_pressed(p1, G.ui_up)) ui->row = (ui->row + 2) % 3, audio_menu(0);
-  if (cw_action_just_pressed(p1, G.ui_down)) ui->row = (ui->row + 1) % 3, audio_menu(0);
+  if (cw_action_just_pressed(p1, G.ui_up)) ui->row = (ui->row + ROWS - 1) % ROWS, audio_menu(0);
+  if (cw_action_just_pressed(p1, G.ui_down)) ui->row = (ui->row + 1) % ROWS, audio_menu(0);
   int d = cw_action_just_pressed(p1, G.ui_right) - cw_action_just_pressed(p1, G.ui_left);
   if (d) {
     audio_menu(0);
@@ -307,12 +310,14 @@ static void setup_update(void) {
       ui->park = (ui->park + PARK_COUNT + d) % PARK_COUNT;
       park_go(ui->park, MODE_FREE, G.players);
     }
-    if (ui->row == 2) ui->skin[0] = (ui->skin[0] + NSKINS + d) % NSKINS, view_rigs(ui->skin, G.players);
+    if (ui->row == ROW_SKATER) ui->skin[0] = (ui->skin[0] + NSKINS + d) % NSKINS, view_rigs(ui->skin, G.players);
+    if (ui->row == ROW_STANCE) ui->goofy[0] = !ui->goofy[0];
   }
   for (int i = 1; i < G.players; i++) {
     if (!cw_shell_seat_taken(i)) continue;
     int e = cw_action_just_pressed(i, G.steer[1]) - cw_action_just_pressed(i, G.steer[0]);
     if (e) ui->skin[i] = (ui->skin[i] + NSKINS + e) % NSKINS, view_rigs(ui->skin, G.players), audio_menu(0);
+    if (cw_action_just_pressed(i, G.steer[2]) || cw_action_just_pressed(i, G.steer[3])) ui->goofy[i] = !ui->goofy[i], audio_menu(0);
   }
   save_data *sd = cw_shell_game_save();
   ui->best = sd->best[ui->park];
@@ -338,6 +343,7 @@ static void run_update(void) {
   double t0 = wall();
   sim_step(&G.S, in);
   if (AUTO && getenv("SKATE_BAIL_AT") && G.S.tick == atoi(getenv("SKATE_BAIL_AT"))) sk_force_bail(&G.S.s[0]), fprintf(stderr, "bench: forced bail at tick %d\n", G.S.tick);
+  if (AUTO && getenv("SKATE_RUNOUT_AT") && G.S.tick == atoi(getenv("SKATE_RUNOUT_AT"))) sk_force_runout(&G.S.s[0]), fprintf(stderr, "bench: forced run-out at tick %d\n", G.S.tick);
   if (AUTO && getenv("SKATE_VERT_EVERY") && G.S.tick % atoi(getenv("SKATE_VERT_EVERY")) == 0) { /* development: skater 0 sent at a vert wall (x,z,yaw,speed) */
     float x = -14, z = 0, yaw = 0, sp = 9.5f;
     if (getenv("SKATE_VERT_AT")) sscanf(getenv("SKATE_VERT_AT"), "%f,%f,%f,%f", &x, &z, &yaw, &sp);
@@ -418,6 +424,7 @@ static void render(void *u, double alpha) {
   G.t += dt;
   if (G.built) {
     double t0 = wall();
+    for (int i = 0; i < MAXP; i++) g_view_goofy[i] = G.ui.goofy[i];
     if (G.in_match && (G.phase == PH_RUN || G.phase == PH_RESULTS)) {
       view_frame(&G.S, G.prev, sc == CW_SHELL_PLAY ? (float)alpha : 1.0f, G.players, sc == CW_SHELL_PLAY ? dt : 0);
       audio_roll(&G.S, G.players, sc == CW_SHELL_PLAY && G.phase == PH_RUN);

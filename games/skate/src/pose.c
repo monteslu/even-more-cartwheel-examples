@@ -87,8 +87,50 @@ bool rig_bind(rig *r, t3_object *model) {
   r->s.knee = 0.75f, r->s.open = 0.45f, r->s.front_yaw = 0.7f, r->s.front_x = 0.17f, r->s.back_x = -0.22f, r->s.drop_air = 0.1f;
   r->board_q = (t3_quat){ 0, 0, 0, 1 };
   r->last_st = -1;
+  /* the mirror's partners (a bone named ...L and one named ...R) and the rest pose in model space */
+  r->nb = p->count < RIG_MAXB ? p->count : 0;
+  for (int i = 0; i < r->nb; i++) {
+    r->mate[i] = i;
+    r->rest_mrot[i] = cw_pose_model_rotation(p, i), r->rest_mpos[i] = cw_pose_model_position(p, i);
+    const char *n = p->name ? p->name[i] : NULL;
+    size_t l = n ? strlen(n) : 0;
+    if (l < 2 || (n[l - 1] != 'L' && n[l - 1] != 'R')) continue;
+    char o[64];
+    if (l >= sizeof o) continue;
+    memcpy(o, n, l + 1);
+    o[l - 1] = n[l - 1] == 'L' ? 'R' : 'L';
+    int j = cw_pose_find(p, o);
+    if (j >= 0) r->mate[i] = j;
+  }
   r->bound = true;
   return true;
+}
+
+/* goofy: the pose mirrored. Each bone takes its partner's turn from rest, reflected across the body's middle (the
+   rider's model is side on: its left and right lie along x), and its partner's place reflected the same way; then the
+   whole turns half round about the vertical, so the rider faces the heel edge with the right foot toward the nose. The
+   board's placement is reflected across its own middle line to match (toe and heel edges swap). Parents first, each
+   set in model space (cw_pose keeps the children with it until their own turn comes). */
+static void rig_mirror(rig *r) {
+  cw_pose *p = &r->pose;
+  if (!r->nb) return;
+  cw_pose_update_model(p);
+  static t3_quat Q[RIG_MAXB];
+  static t3_vec3 X[RIG_MAXB];
+  for (int i = 0; i < r->nb; i++) Q[i] = cw_pose_model_rotation(p, i), X[i] = cw_pose_model_position(p, i);
+  const t3_quat ry = { 0, 1, 0, 0 }; /* half a turn about y */
+  for (int i = 0; i < r->nb; i++) {
+    int j = r->mate[i];
+    t3_quat d = qm(Q[j], qconj(r->rest_mrot[j])); /* the partner's turn from rest, model space */
+    t3_quat dm = { d.x, -d.y, -d.z, d.w };         /* reflected across x = 0 */
+    cw_pose_set_model_rotation(p, i, qm(qm(ry, dm), r->rest_mrot[i]));
+    t3_vec3 want = { X[j].x, X[j].y, -X[j].z }, at = cw_pose_model_position(p, i);
+    cw_pose_translate_model(p, i, vsub(want, at));
+  }
+  cw_pose_update_model(p);
+  /* the board: reflected across its middle line (z = 0) */
+  r->board_q = (t3_quat){ -r->board_q.x, -r->board_q.y, r->board_q.z, r->board_q.w }, r->board_p.z = -r->board_p.z;
+  r->deck_q = (t3_quat){ -r->deck_q.x, -r->deck_q.y, r->deck_q.z, r->deck_q.w }, r->deck_p.z = -r->deck_p.z;
 }
 
 /* the leg's length (hip joint to ankle) at a knee bend of k radians */
@@ -159,8 +201,52 @@ static void foot_on_deck(const rig *r, t3_quat bq, v3 bp, float x, float z, floa
   *frot = qm(qm(bq, qax(V(0, 1, 0), yaw)), rest);
 }
 
+/* a run-out: off the board and running it out on foot, facing the way it runs (view.c turns the rider's root to the
+   run: model +z along it). The strides start as it steps off and close up as it slows and steps back on; the body leans
+   into the run with the arms pumping against the legs; the feet planted on the ground by two-bone IK. The cadence
+   follows the speed (about 1.1 m a stride, never under two strides a second) */
+static void rig_run(rig *r, const skater *k, float dt, float t) {
+  cw_pose *p = &r->pose;
+  float sp = sqrtf(k->v.x * k->v.x + k->v.z * k->v.z), bt = (float)k->bail_t;
+  float gait = sstep(0, 6, bt) * (1 - sstep(RUNOUT_TICKS - 16, RUNOUT_TICKS - 2, bt));
+  r->run_ph += fmaxf(sp / 1.1f, 2.2f) * dt * 0.5f; /* cycles: two strides each */
+  float ph = (r->run_ph - floorf(r->run_ph)) * 2 * PI_F, sn = cw_sin(ph), cs = cw_cos(ph);
+  float amp = gait * clampf(sp / 4.0f, 0.45f, 1.0f);
+  for (int i = 0; i < p->count; i++) p->pos[i] = p->rest_pos[i], p->rot[i] = p->rest_rot[i];
+  float ground = -DECK_Y + r->ankle_h;
+  /* the body: down and forward into the run, a little bob at each footfall */
+  rot(r, r->hips, 0.22f * gait, 0.08f * sn * amp, 0);
+  v3 hp = p->rest_pos[r->hips];
+  p->pos[r->hips] = V(hp.x, hp.y - DECK_Y - 0.06f - 0.05f * gait - 0.025f * fabsf(sn) * amp, hp.z);
+  rot(r, r->spine, 0.12f * gait, -0.12f * sn * amp, 0);
+  rot(r, r->chest, 0.08f * gait, -0.1f * sn * amp, 0);
+  rot(r, r->neck, -0.15f * gait, 0, 0), rot(r, r->head, -0.12f * gait, 0, 0);
+  /* the arms pump against the legs, elbows bent */
+  rot(r, r->ua_l, -0.75f * sn * amp, 0.1f, 0.25f), rot(r, r->la_l, -1.25f * gait - 0.2f, 0, 0);
+  rot(r, r->ua_r, 0.75f * sn * amp, -0.1f, -0.25f), rot(r, r->la_r, -1.25f * gait - 0.2f, 0, 0);
+  cw_pose_update_model(p);
+  /* the feet: one forward while the other drives back, each lifted as it swings through */
+  v3 al = V(r->foot_rest_l.x * 0.9f, ground + 0.16f * fmaxf(0, cs) * amp, 0.42f * sn * amp);
+  v3 ar = V(r->foot_rest_r.x * 0.9f, ground + 0.16f * fmaxf(0, -cs) * amp, -0.42f * sn * amp);
+  cw_ik2_opts o = CW_IK2_OPTS_DEFAULT;
+  o.use_pole = true;
+  o.use_end_rotation = true;
+  o.pole = vadd(al, V(0, 0.45f, 0.6f)), o.end_rotation = r->foot_rot_l;
+  cw_ik_two_bone(p, r->ul_l, r->ll_l, r->f_l, al, &o);
+  o.pole = vadd(ar, V(0, 0.45f, 0.6f)), o.end_rotation = r->foot_rot_r;
+  cw_ik_two_bone(p, r->ul_r, r->ll_r, r->f_r, ar, &o);
+  r->foot_err = 0, r->free_l = r->free_r = 1;
+  (void)t;
+}
+
 void rig_pose(rig *r, const skater *k, float dt, float t) {
   if (!r->bound) return;
+  if (k->st == SK_BAIL && k->runout) {
+    if (r->last_st != SK_BAIL) r->run_ph = 0.0f;
+    r->last_st = k->st;
+    rig_run(r, k, dt, t);
+    return;
+  }
   cw_pose *p = &r->pose;
   rider_pose *s = &r->s;
   float sp = vlen(k->v);
@@ -187,7 +273,7 @@ void rig_pose(rig *r, const skater *k, float dt, float t) {
   float yawv = cw_atan2(-k->f.x, -k->f.z), lean = 0, pump = 0;
   if (k->st == SK_ROLL && sp > 1 && dt > 0) {
     float dy = wrap_pi(yawv - r->last_yaw) / dt;
-    lean = cw_atan(clampf(-dy * sp / GRAV, -1.2f, 1.2f)) * (k->fakie ? -1.0f : 1.0f);
+    lean = cw_atan(clampf(-dy * sp / GRAV, -1.2f, 1.2f)) * (k->fakie ? -1.0f : 1.0f) * (r->goofy ? -1.0f : 1.0f); /* (goofy: posed as regular, then mirrored) */
     /* a transition's curve loads the legs: the surface's normal turning back against the run (concave) */
     v3 du = vmul(vsub(k->u, r->last_u), 1.0f / dt);
     pump = clampf(-vdot(du, vmul(k->v, 1.0f / sp)) * sp / GRAV, -0.6f, 1.2f);
@@ -471,6 +557,7 @@ void rig_pose(rig *r, const skater *k, float dt, float t) {
       else a.pole = V(-0.6f, H, 0.3f), cw_ik_two_bone(p, r->ua_r, r->la_r, r->h_r, hpt, &a);
     }
   }
+  if (r->goofy) rig_mirror(r);
 }
 
 /* where the feet stand, measured on the posed skeleton against the board as drawn: each sole's middle (the ankle plus
@@ -486,8 +573,9 @@ float rig_foot_place(const rig *r, int *which) {
   for (int f = 0; f < 2; f++) {
     if (f == 0 && r->free_l > 0.02f) continue;
     if (f == 1 && (r->free_r > 0.02f || r->s.push_w > 0.02f)) continue;
-    int b = f ? r->f_r : r->f_l;
-    t3_quat rest = f ? r->foot_rot_r : r->foot_rot_l, mr = cw_pose_model_rotation(p, b);
+    bool left = (f == 0) != r->goofy; /* the front foot is the left one (goofy: the right) */
+    int b = left ? r->f_l : r->f_r;
+    t3_quat rest = left ? r->foot_rot_l : r->foot_rot_r, mr = cw_pose_model_rotation(p, b);
     t3_quat rel = qm(mr, qconj(rest));
     v3 ank = cw_pose_model_position(p, b);
     v3 sole = vsub(vadd(ank, vmul(qv(rel, V(0, 0, 1)), FOOT_C)), vmul(qv(rel, V(0, 1, 0)), r->ankle_h));
