@@ -29,7 +29,7 @@ jobs:
     # a v* tag builds its own carts: each cart's manifest carries the version its checkout is (the
     # engine's cw_add_app: the tag on a tag build, <last tag>-dev.g<commit> on any other)
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
