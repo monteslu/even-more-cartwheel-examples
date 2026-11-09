@@ -30,16 +30,21 @@ if (!process.env.CW_GPU_SUITE_INNER) { // one lock hold per table, so the GPU is
 const table = process.argv[process.argv.indexOf('--table') + 1];
 const controls = process.argv.includes('--controls');
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
+// the GPU's clock beside every GPU time: an integrated GPU's clock follows how busy it is, and a run on a loaded machine
+// reads every pass at its floor clock (the engine's docs/guides/profiling.md, GPU timing on an integrated GPU)
+const { gpuClock, clockLine } = await import(join(ENGINE, 'tools/lib/gpu-clock.mjs'));
 const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/pinball_bench.json'), 'utf8')).binary;
 
-function run(gpu, extra = {}) {
+async function run(gpu, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '600', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', PINBALL_BENCH_PRINT: '1', PINBALL_TABLE: table,
     CW_RENDER_SCALE: '1.5', CW_GPU_TIMERS: '1', ...extra };
   const pin = gpu === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();
   if (pin) Object.assign(env, pin.env, { CW_GPU: 'webgpu' });
   else { env.CW_GPU = 'gl'; if (gl) Object.assign(env, gl.env); }
   scrubDisplay(env);
+  const clk = gpuClock();
   const r = spawnSync('timeout', ['-s', 'KILL', '300', exe], { env, encoding: 'utf8', maxBuffer: 1 << 26 });
+  const clock = clockLine(await clk.stop());
   const err = r.stderr || '';
   if (pin) pin.check('native', (/WebGPU adapter: (.*)/.exec(err) || [])[1]);
   else if (gl) gl.check('native', err);
@@ -48,7 +53,7 @@ function run(gpu, extra = {}) {
   const win = pl.map((l) => +(/gpu_mean=([\d.]+)/.exec(l) || [])[1]).sort((a, b) => a - b);
   const peak = Math.max(...pl.map((l) => +(/gpu_max=([\d.]+)/.exec(l) || [])[1]));
   const last = lines.filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  return { status: r.status, gpu: win.length ? win[win.length >> 1] : NaN, peak, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
+  return { clock, status: r.status, gpu: win.length ? win[win.length >> 1] : NaN, peak, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
     lights: +((/lights=(\d+)/.exec(last) || [])[1]), skipped: /in none of the app's program tables|not in any program table/.test(err),
     passes: lines.filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }
@@ -56,16 +61,16 @@ function run(gpu, extra = {}) {
 let bad = 0;
 const check = (name, r, bound, mustFail = false) => {
   const within = r.status === 0 && !r.skipped && r.balls >= 2 && r.gpu > 0 && r.gpu <= bound;
-  const line = `table ${table} ${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}; worst frame ${r.peak.toFixed(2)}), ${r.balls} balls, ${r.lights} lights, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `table ${table} ${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}; worst frame ${r.peak.toFixed(2)}), ${r.balls} balls, ${r.lights} lights, status ${r.status}, ${r.clock}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);
 };
-const gl = run('gl'), wg = run('webgpu');
+const gl = await run('gl'), wg = await run('webgpu');
 check('GL 1920x1080', gl, BOUND);
 check('WebGPU 1920x1080', wg, BOUND);
 if (controls) {
-  check('GL at 3840x2160', run('gl', { CW_RENDER_SCALE: '3' }), BOUND, true);
+  check('GL at 3840x2160', await run('gl', { CW_RENDER_SCALE: '3' }), BOUND, true);
   check('WebGPU against 0.5 ms', wg, 0.5, true);
 }
 process.exit(bad ? 1 : 0);
