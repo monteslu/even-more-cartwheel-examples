@@ -67,7 +67,8 @@ function jointPos(m) {
 const HAIRY = /hair|hat|helmet|band|hood|lash|fur|crown|plume/i; // never part of the body's outline
 const PLATE = /plate|metal|armou?r|bracer|pad/i;                 // armour: kept for the outline, left out of a limb's own thickness
 const SKIN = /skin|face|eye/i;
-const chainOf = (b) => /^(UpperArm|LowerArm|Hand|Fing|Thumb)/.test(b) ? 'arm' + b.slice(-1)
+const sideOf = (b) => (/^Fing([LR])\d$/.exec(b) || /([LR])$/.exec(b))[1];
+const chainOf = (b) => /^(UpperArm|LowerArm|Hand|Fing|Thumb)/.test(b) ? 'arm' + sideOf(b)
   : /^(UpperLeg|LowerLeg|Foot)/.test(b) ? 'leg' + b.slice(-1)
   : b === 'Head' || b === 'Neck' || b === 'HairA' || b === 'HairB' || /^(Jaw|Lid|Brow|Mouth|Lip)/.test(b) ? 'head' : 'trunk';
 
