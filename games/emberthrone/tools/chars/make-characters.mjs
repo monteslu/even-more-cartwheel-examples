@@ -515,7 +515,7 @@ clip('thump', 1.0, false, keyed([
   [0.6, THUMP_HIT, 'in'], [0.68, merge(THUMP_HIT, { UpperArmR: { r: [-1.25, 0.15, -0.3] }, Spine: { r: [0.26, -0.05, 0.05] } }), 'out'], [0.76, THUMP_HIT, 'io'], [1.0, BOXER, 'io']]));
 
 // ── pose to rotation tracks ─────────────────────────────────────────────
-// the wanker's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
+// the heckler's haymaker: a big looping right, wound up from the hip with the whole body turned away (the tell), thrown
 // round in an arc, then the follow-through carries him off balance and he has to catch himself (an opening)
 const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r: [0.05, -0.4, 0] }, Chest: { r: [-0.08, -0.6, 0] }, Head: { r: [-0.05, 0.4, 0] },
   UpperArmR: { r: [0.15, 0.35, -1.25] }, LowerArmR: { r: [-1.35, 0, 0] }, HandR: { r: [0.2, 0, 0] }, UpperArmL: { r: [-0.95, -0.2, 0.35] }, LowerArmL: { r: [-1.5, 0, 0] },
@@ -523,7 +523,7 @@ const HAY_BACK = G({ Hips: { p: [0, -0.1, -0.06], r: [0, 0.45, 0] }, Spine: { r:
 const HAY_HIT = G({ Hips: { p: [0, -0.12, 0.14], r: [0, -0.45, 0] }, Spine: { r: [0.25, 0.5, 0] }, Chest: { r: [0.15, 0.78, 0] }, Head: { r: [0.05, -0.45, 0] },
   UpperArmR: { r: [-1.5, -0.3, -0.6] }, LowerArmR: { r: [-0.55, 0, 0] }, UpperArmL: { r: [-0.3, 0, 0.65] }, LowerArmL: { r: [-1.0, 0, 0] },
   UpperLegL: { r: [-0.75, -0.1, 0.12] }, LowerLegL: { r: [0.7, 0, 0] }, UpperLegR: { r: [0.45, -0.25, -0.12] }, LowerLegR: { r: [0.25, 0, 0] }, FootR: { r: [0.4, 0.3, 0] } });
-// (the wanker's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
+// (the heckler's: B-PT18 a wild flail, not a strong man's punch: the arm nearly straight, the other arm windmilling for balance,
 // and the follow-through spins him round off balance)
 const HAY_OVER = merge(HAY_HIT, { Hips: { p: [0, -0.18, 0.22], r: [0.1, -0.95, 0.12] }, Spine: { r: [0.55, 0.8, 0.1] }, Chest: { r: [0.42, 1.2, 0.08] }, Head: { r: [0.35, -0.7, 0.2] },
   UpperArmR: { r: [-0.9, -0.95, 0.35] }, LowerArmR: { r: [-0.25, 0, 0] }, UpperArmL: { r: [-1.6, 0, 1.4] }, LowerArmL: { r: [-0.3, 0, 0] } });
@@ -1417,7 +1417,7 @@ function materials(glb, sp) {
     P('cuff', 'cloth', 'fab_denim', { tint: c.cuff ?? c.pants, rough: 1, normal: 0.6 }), P('stubble', 'fur', 'fab_hair', { tint: c.hair.map((x, i) => x * 0.6 + c.skin[i] * 0.4), rough: 1 }),
     P('hat', sp.hatFab === 'knit' ? 'cloth' : 'cloth', fab(sp.hatFab ?? 'cloth'), { tint: c.hat ?? c.accent, rough: 1 }),
     P('band', 'cloth', 'fab_cloth', { tint: c.band ?? c.accent, rough: 1 }),
-    // the wanker cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
+    // the heckler cap: red twill with "Dumb" stitched on it, all in its own texture (tools/make-textures.mjs cap_logo)
     // (only in the files that wear it: every listed material and its textures go into each glb)
     ...(sp.hair === 'foamcap' ? [P('capLogo', 'cloth', 'cap_logo', { tint: [1, 1, 1], rough: 1, normal: 0.8 })] : []),
     P('mask', 'cloth', 'fab_cloth', { tint: c.mask ?? c.accent, rough: 1 }), P('pad', 'leather', 'fab_leather', { tint: c.pad ?? c.accent, rough: 0.7 }),
