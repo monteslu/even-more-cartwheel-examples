@@ -490,52 +490,55 @@ static void paint_enemies(void) {
     verd.alpha = 0.45f, verd.soft = 6;
     pstyle gold = sty(0xd8a848, 0x6a4010, 0xfff0b0, 0.6f, TX_METAL, 0.03f, 0.5f);
     gold.spec = 0.9f, gold.gloss = 0.8f, gold.ink = 1;
-    cv(0.3f, 0.6f);
-    cap(0.15f, 0.06f, 0.15f, 0.48f, 0.11f, 0.08f, &steel);
-    el(0.16f, 0.5f, 0.1f, 0.08f, 0, &steel);
-    el(0.15f, 0.3f, 0.09f, 0.12f, 0, &verd);
+    /* the build: an athletic soldier in plate, about 5.7 heads to the helm's top; a breastplate deeper than its
+     * waist, legs to 0.47 of the height, tapered limbs (tests/lanternfall-builds.mjs) */
+    cv(0.3f, 0.64f);
+    cap(0.15f, 0.06f, 0.15f, 0.53f, 0.1f, 0.072f, &steel);
+    el(0.16f, 0.55f, 0.085f, 0.07f, 0, &steel);
+    el(0.15f, 0.32f, 0.08f, 0.11f, 0, &verd);
     E.kthigh = done(0.15f, 0.06f, 3);
-    cv(0.42f, 0.6f);
-    cap(0.15f, 0.04f, 0.15f, 0.44f, 0.085f, 0.07f, &steel);
-    float sab[10] = { 0.05f, 0.44f, 0.26f, 0.44f, 0.38f, 0.52f, 0.36f, 0.57f, 0.05f, 0.57f };
+    cv(0.42f, 0.64f);
+    cap(0.15f, 0.04f, 0.15f, 0.48f, 0.075f, 0.058f, &steel);
+    float sab[10] = { 0.06f, 0.48f, 0.25f, 0.48f, 0.36f, 0.56f, 0.34f, 0.61f, 0.06f, 0.61f };
     poly(sab, 5, 0.01f, &steel);
     E.kshin = done(0.15f, 0.04f, 3);
     cv(0.78f, 0.72f);
     pstyle cloth = sty(0x8a1a2a, 0x2a0610, 0xd85a60, 0.4f, TX_CLOTH, 0.05f, 0.8f);
     cloth.ink = 1.4f, cloth.rim = 0.3f, cloth.shadow = 0.3f;
-    float tb[16] = { 0.16f, 0.04f, 0.62f, 0.04f, 0.7f, 0.5f, 0.66f, 0.68f, 0.52f, 0.6f, 0.39f, 0.7f, 0.24f, 0.6f, 0.1f, 0.68f };
+    float tb[16] = { 0.2f, 0.04f, 0.58f, 0.04f, 0.65f, 0.5f, 0.62f, 0.68f, 0.5f, 0.6f, 0.39f, 0.7f, 0.27f, 0.6f, 0.15f, 0.68f };
     poly(tb, 8, 0.01f, &cloth);
     float tr[6] = { 0.39f, 0.08f, 0.39f, 0.35f, 0.39f, 0.62f };
     stk(tr, 3, 0.02f, 0.018f, &gold);
     E.tabard = done(0.39f, 0.05f, 2.5f);
-    cv(0.86f, 0.86f);
-    float cu[14] = { 0.12f, 0.1f, 0.74f, 0.1f, 0.78f, 0.45f, 0.66f, 0.78f, 0.43f, 0.84f, 0.2f, 0.78f, 0.08f, 0.45f };
+    cv(0.86f, 0.96f);
+    float cu[22] = { 0.23f, 0.06f, 0.6f, 0.06f, 0.67f, 0.28f, 0.64f, 0.48f, 0.58f, 0.64f, 0.61f, 0.84f, 0.43f, 0.9f, 0.26f, 0.84f,
+                     0.29f, 0.64f, 0.26f, 0.45f, 0.23f, 0.26f };
     pstyle ct = steel;
     ct.dome = 1.1f;
-    poly(cu, 7, 0.05f, &ct);
-    el(0.36f, 0.55f, 0.18f, 0.2f, 0.3f, &verd);
-    float fl[6] = { 0.43f, 0.16f, 0.45f, 0.45f, 0.43f, 0.78f };
+    poly(cu, 11, 0.04f, &ct);
+    el(0.38f, 0.6f, 0.1f, 0.14f, 0.3f, &verd);
+    float fl[6] = { 0.45f, 0.1f, 0.47f, 0.45f, 0.44f, 0.86f };
     stk(fl, 3, 0.022f, 0.016f, &gold);
     pstyle lamp = sty(0xffd070, 0xc07010, 0xffffd0, 0.6f, TX_NONE, 0, 0);
     lamp.em = 0.6f, lamp.ink = 1;
-    el(0.45f, 0.36f, 0.06f, 0.08f, 0, &lamp);
-    E.torso = done(0.43f, 0.82f, 3);
-    cv(0.56f, 0.6f);
-    float hm[16] = { 0.1f, 0.18f, 0.24f, 0.05f, 0.4f, 0.05f, 0.52f, 0.2f, 0.52f, 0.5f, 0.42f, 0.56f, 0.12f, 0.56f, 0.06f, 0.4f };
+    el(0.48f, 0.32f, 0.05f, 0.07f, 0, &lamp);
+    E.torso = done(0.43f, 0.86f, 3);
+    cv(0.44f, 0.47f);
+    float hm[16] = { 0.078f, 0.14f, 0.187f, 0.039f, 0.312f, 0.039f, 0.406f, 0.156f, 0.406f, 0.39f, 0.328f, 0.437f, 0.094f, 0.437f, 0.047f, 0.312f };
     pstyle hs = steel;
     hs.dome = 1.2f;
-    poly(hm, 8, 0.04f, &hs);
+    poly(hm, 8, 0.03f, &hs);
     pstyle slit = sty(0x0a0c14, 0, 0, -0.3f, TX_NONE, 0, 0);
-    float sl[4] = { 0.28f, 0.27f, 0.5f, 0.26f };
-    stk(sl, 2, 0.028f, 0.02f, &slit);
+    float sl[4] = { 0.218f, 0.211f, 0.39f, 0.203f };
+    stk(sl, 2, 0.022f, 0.016f, &slit);
     pstyle wisp = sty(0xc0f4ff, 0x4090c0, 0xffffff, 0.3f, TX_NONE, 0, 0);
     wisp.em = 1;
-    float wl[4] = { 0.33f, 0.27f, 0.47f, 0.265f };
-    stk(wl, 2, 0.012f, 0.009f, &wisp);
-    for (int i = 0; i < 5; i++) el(0.46f, 0.35f + 0.035f * (float)i, 0.012f, 0.008f, 0, &slit); /* breaths */
-    float rid[6] = { 0.12f, 0.2f, 0.3f, 0.06f, 0.5f, 0.16f };
-    stk(rid, 3, 0.02f, 0.015f, &gold);
-    E.helm = done(0.3f, 0.52f, 3);
+    float wl[4] = { 0.257f, 0.211f, 0.367f, 0.207f };
+    stk(wl, 2, 0.011f, 0.008f, &wisp);
+    for (int i = 0; i < 5; i++) el(0.359f, 0.273f + 0.027f * (float)i, 0.01f, 0.007f, 0, &slit); /* breaths */
+    float rid[6] = { 0.094f, 0.156f, 0.234f, 0.047f, 0.39f, 0.125f };
+    stk(rid, 3, 0.016f, 0.012f, &gold);
+    E.helm = done(0.234f, 0.406f, 3);
     cv(0.6f, 0.32f);
     pstyle pl = cloth;
     pl.tex_dir = 1.57f;
@@ -564,9 +567,10 @@ static void paint_enemies(void) {
     cap(0.2f, 0.66f, 0.36f, 0.66f, 0.03f, 0.03f, &em);
     for (int i = 0; i < 7; i++) el(0.28f + 0.2f * cosf((float)i * 0.9f), 0.55f + 0.4f * sinf((float)i * 0.9f) * 0.9f, 0.016f, 0.016f, 0, &gold); /* rivets */
     E.shield = done(0.28f, 0.6f, 3);
-    cv(0.26f, 0.5f);
-    cap(0.13f, 0.06f, 0.13f, 0.42f, 0.09f, 0.07f, &steel);
-    el(0.13f, 0.44f, 0.08f, 0.06f, 0, &steel);
+    cv(0.26f, 0.7f);
+    cap(0.13f, 0.06f, 0.13f, 0.6f, 0.052f, 0.04f, &steel);
+    el(0.13f, 0.33f, 0.05f, 0.045f, 0, &steel); /* (the elbow's cop) */
+    el(0.13f, 0.62f, 0.06f, 0.048f, 0, &steel);
     E.karm = done(0.13f, 0.06f, 3);
     cv(2.7f, 0.26f);
     pstyle wood = sty(0x6a4a30, 0x2a1a10, 0xb08a60, 0.6f, TX_BARK, 0.03f, 0.6f);
@@ -585,7 +589,7 @@ static void paint_enemies(void) {
     cv(0.5f, 0.34f);
     pstyle pa = steel;
     pa.dome = 1;
-    el(0.25f, 0.18f, 0.22f, 0.14f, 0, &pa);
+    el(0.25f, 0.18f, 0.19f, 0.12f, 0, &pa);
     float pt[6] = { 0.06f, 0.2f, 0.25f, 0.1f, 0.44f, 0.2f };
     stk(pt, 3, 0.016f, 0.016f, &gold);
     E.pauldron = done(0.25f, 0.16f, 3);
@@ -930,10 +934,10 @@ static void draw_knight(const enemy *e, float t, float tk) {
   bool walk = e->state == ES_IDLE;
   float ph = walk ? t * 6.5f + e->x : 0, bob = walk ? fabsf(sinf(ph)) * 0.035f : 0;
   float lean = -raise * 0.12f + thrust * 0.22f;
-  float hipy = -0.98f - bob + thrust * 0.06f, hipx = thrust * 0.12f;
+  float hipy = -1.07f - bob + thrust * 0.06f, hipx = thrust * 0.12f;
   /* the cloak behind, swaying with the walk */
   float csw = sinf(t * 2.3f + e->x) * 0.06f + (walk ? -0.08f : 0) - thrust * 0.25f + raise * 0.05f;
-  put(&E.cloak, hipx - 0.12f + lean * 0.4f, hipy - 0.72f, csw + 0.05f, 1, 1);
+  put(&E.cloak, hipx - 0.12f + lean * 0.4f, hipy - 0.8f, csw + 0.05f, 1, 1);
   /* legs: the far one darker */
   for (int k = 0; k < 2; k++) { /* (a positive turn swings the leg back: clockwise from hanging down) */
     float s = k ? 1.0f : -1.0f, p2 = ph + (k ? 3.14159f : 0);
@@ -942,7 +946,7 @@ static void draw_knight(const enemy *e, float t, float tk) {
     cw_color c = k ? white(1) : dark(0.6f);
     float hx = hipx + s * 0.07f, hy = hipy + 0.06f;
     putk(&E.kthigh, hx, hy, sw, 1, 1, c);
-    cw_vec2 kp = rot2(0, 0.45f, sw);
+    cw_vec2 kp = rot2(0, 0.5f, sw);
     putk(&E.kshin, hx + kp.x, hy + kp.y, sw + kneeb, 1, 1, c);
   }
   /* the back arm and the spear: raised up and back in the tell, driven out in the thrust */
@@ -952,13 +956,13 @@ static void draw_knight(const enemy *e, float t, float tk) {
   if (act) handy = -1.1f - 0.13f + 0.13f;
   put(&E.pennant, handx + cosf(spear_a) * 1.38f, handy + sinf(spear_a) * 1.38f - 0.02f, spear_a + 3.14159f * 0 + sinf(t * 9 + e->x) * 0.18f - (act ? 0.2f : 0), -1, 1 + 0.15f * sinf(t * 11));
   put(&E.spear, handx, handy, spear_a, 1, 1);
-  putk(&E.karm, hipx + 0.02f + lean * 0.5f, hipy - 0.6f, -0.9f + raise * 1.6f - thrust * 0.9f, 1, 1, dark(0.7f));
+  putk(&E.karm, hipx + 0.02f + lean * 0.5f, hipy - 0.74f, -0.9f + raise * 1.6f - thrust * 0.9f, 1, 1, dark(0.7f));
   (void)sha;
   put(&E.tabard, hipx + lean * 0.1f, hipy - 0.06f, lean * 0.3f + csw * 0.5f, 1, 1);
   put(&E.torso, hipx + lean * 0.2f, hipy + 0.02f, lean, 1, 1);
-  cw_vec2 nk = rot2(0.02f, -0.8f, lean);
+  cw_vec2 nk = rot2(0.02f, -0.86f, lean);
   float hx = hipx + nk.x, hy = hipy + nk.y;
-  put(&E.plume, hx - 0.12f, hy - 0.44f, sinf(t * 3 + e->x) * 0.15f - thrust * 0.3f, 1, 1);
+  put(&E.plume, hx - 0.09f, hy - 0.34f, sinf(t * 3 + e->x) * 0.15f - thrust * 0.3f, 1, 1);
   put(&E.helm, hx, hy, lean * 0.6f, 1, 1);
   put(&E.pauldron, hx - 0.02f, hy + 0.08f, lean, 1, 1);
   /* the shield in front (lowered a little as the spear rises) */
@@ -1228,29 +1232,31 @@ static void paint_wardens(void) {
     rivet.spec = 1, rivet.gloss = 0.9f;
     pstyle verd = sty(0x5aa890, 0x2a5a4a, 0xa0e0d0, 0.2f, TX_STONE, 0.03f, 0.7f);
     verd.alpha = 0.5f, verd.soft = 8;
+    /* the build: a giant of power, broad over the furnace and narrower at its base; legs to 0.45 of its height,
+     * tapered pistons, feet in proportion (tests/lanternfall-builds.mjs) */
     cv(0.8f, 1.15f);
-    cap(0.4f, 0.12f, 0.4f, 0.95f, 0.3f, 0.22f, &brass);
-    cap(0.4f, 0.3f, 0.4f, 0.9f, 0.06f, 0.05f, &iron);
-    for (int i = 0; i < 4; i++) el(0.16f, 0.3f + 0.18f * (float)i, 0.025f, 0.025f, 0, &rivet), el(0.64f, 0.3f + 0.18f * (float)i, 0.025f, 0.025f, 0, &rivet);
-    el(0.42f, 0.7f, 0.15f, 0.2f, 0, &verd);
+    cap(0.4f, 0.12f, 0.4f, 0.95f, 0.25f, 0.18f, &brass);
+    cap(0.4f, 0.3f, 0.4f, 0.9f, 0.055f, 0.045f, &iron);
+    for (int i = 0; i < 4; i++) el(0.2f, 0.3f + 0.18f * (float)i, 0.025f, 0.025f, 0, &rivet), el(0.6f, 0.3f + 0.18f * (float)i, 0.025f, 0.025f, 0, &rivet);
+    el(0.41f, 0.7f, 0.13f, 0.18f, 0, &verd);
     B.bleg1 = done(0.4f, 0.12f, 3);
     cv(1.0f, 1.2f);
-    cap(0.42f, 0.1f, 0.42f, 0.85f, 0.24f, 0.2f, &iron);
-    float ft[10] = { 0.05f, 0.85f, 0.75f, 0.85f, 0.98f, 1.1f, 0.95f, 1.18f, 0.05f, 1.18f };
+    cap(0.42f, 0.1f, 0.42f, 0.85f, 0.21f, 0.16f, &iron);
+    float ft[10] = { 0.12f, 0.85f, 0.7f, 0.85f, 0.86f, 1.1f, 0.84f, 1.18f, 0.12f, 1.18f };
     poly(ft, 5, 0.04f, &brass);
-    for (int i = 0; i < 4; i++) el(0.2f + 0.2f * (float)i, 1.0f, 0.025f, 0.025f, 0, &rivet);
+    for (int i = 0; i < 4; i++) el(0.24f + 0.17f * (float)i, 1.0f, 0.025f, 0.025f, 0, &rivet);
     B.bleg2 = done(0.42f, 0.1f, 3);
     cv(1.8f, 0.7f);
     el(0.9f, 0.35f, 0.8f, 0.3f, 0, &iron);
     for (int i = 0; i < 5; i++) cap(0.35f + 0.27f * (float)i, 0.1f, 0.35f + 0.27f * (float)i, 0.6f, 0.08f, 0.06f, &brass);
     B.bpelvis = done(0.9f, 0.3f, 3);
     cv(2.7f, 2.2f);
-    float bt[16] = { 0.35f, 0.2f, 1.35f, 0.05f, 2.35f, 0.2f, 2.6f, 1.0f, 2.3f, 1.95f, 1.35f, 2.12f, 0.4f, 1.95f, 0.1f, 1.0f };
+    float bt[20] = { 0.35f, 0.33f, 1.35f, 0.19f, 2.35f, 0.33f, 2.62f, 0.88f, 2.4f, 1.54f, 2.1f, 1.95f, 1.35f, 2.11f, 0.6f, 1.95f, 0.25f, 1.54f, 0.08f, 0.88f };
     pstyle chest = brass;
     chest.dome = 1.2f;
-    poly(bt, 8, 0.15f, &chest);
+    poly(bt, 10, 0.15f, &chest);
     for (int r = 0; r < 3; r++) { /* plate seams with rivets */
-      float y = 0.55f + 0.5f * (float)r;
+      float y = 0.62f + 0.46f * (float)r;
       pstyle seam = sty(0x3a200a, 0, 0, -0.1f, TX_NONE, 0, 0);
       seam.alpha = 0.7f, seam.soft = 2;
       float sp[6] = { 0.25f, y, 1.35f, y - 0.08f, 2.45f, y };
@@ -1623,10 +1629,10 @@ static void boss_brass(const boss *b, float t, float tk) {
   float raise = tell && b->move == BM_SWEEP_HIGH ? tk : 0, crouch = tell && b->move == BM_CHARGE ? tk : 0;
   bool charging = act && b->move == BM_CHARGE;
   float ph = charging ? t * 10 : 0, step = charging ? fabsf(sinf(ph)) * 0.08f : 0;
-  float hipy = -1.95f + crouch * 0.3f - step, lean = crouch * 0.18f + (charging ? 0.2f : 0) + sinf(t * 0.8f) * 0.015f;
+  float hipy = -2.1f + crouch * 0.3f - step, lean = crouch * 0.18f + (charging ? 0.2f : 0) + sinf(t * 0.8f) * 0.015f;
   float coreg = tell && (b->move == BM_VOLLEY || b->move == BM_SUMMON) ? 1.5f + 4 * tk : act && b->move == BM_VOLLEY ? 4 : 1.3f + 0.3f * sinf(t * 3);
   /* the stack and the far arm and leg behind */
-  cw_vec2 sp = rot2(-0.95f, -2.6f, lean);
+  cw_vec2 sp = rot2(-0.95f, -2.45f, lean);
   put(&B.bstack, sp.x, hipy + sp.y + 1.2f, lean - 0.2f, 1, 1);
   for (int pass = 0; pass < 2; pass++) {
     cw_color c = pass ? white(1) : dark(0.55f);
@@ -1638,15 +1644,15 @@ static void boss_brass(const boss *b, float t, float tk) {
       cw_vec2 cp = rot2(0, -0.95f, lean);
       putg(&B.bcore, cp.x, hipy + cp.y, 0, 1 + 0.3f * (tell ? tk : 0), 1 + 0.3f * (tell ? tk : 0), coreg, 0.55f + 0.45f * (tell ? tk : 0));
       if (tell && (b->move == BM_VOLLEY || b->move == BM_SUMMON)) halo_at(cp.x, hipy + cp.y, 0.8f + 1.2f * tk, (cw_color){ 1, 0.6f, 0.2f, 0.55f * tk });
-      cw_vec2 hp = rot2(0.25f, -1.85f, lean);
+      cw_vec2 hp = rot2(0.25f, -1.7f, lean);
       put(&B.bhead, hp.x, hipy + hp.y, lean * 0.5f + (charging ? 0.15f : 0), 1, 1);
       if (tell) halo_at(hp.x + 0.16f, hipy + hp.y - 0.26f, 0.35f + 0.5f * tk, (cw_color){ 1, 0.85f, 0.4f, 0.5f * tk });
     }
     putk(&B.bleg1, o * 0.8f, hipy + 0.1f, sw, 1, 1, c);
     cw_vec2 kn = rot2(0, 0.85f, sw);
-    putk(&B.bleg2, o * 0.8f + kn.x, hipy + 0.1f + kn.y, -sw * 0.6f + crouch * 0.1f, 1, (1.95f - crouch * 0.3f + step - 0.95f) / 1.08f, c);
+    putk(&B.bleg2, o * 0.8f + kn.x, hipy + 0.1f + kn.y, -sw * 0.6f + crouch * 0.1f, 1, (2.1f - crouch * 0.3f + step - 0.95f) / 1.08f, c);
     /* arms hang from the gears; raised over the head in the high sweep's tell, swung through in its act */
-    cw_vec2 shd = rot2(o * 2.7f + 0.1f, -1.75f, lean);
+    cw_vec2 shd = rot2(o * 2.7f + 0.1f, -1.6f, lean);
     float swing = act && b->move == BM_SWEEP_HIGH ? fminf(1, (float)b->t / 6) : 0;
     float aa = (pass ? -0.25f : 0.2f) - raise * 2.4f + swing * 1.4f + (charging ? -0.6f : 0) + (tell && b->move == BM_SUMMON ? (pass ? -0.9f : 0.9f) * tk : 0);
     float ax = shd.x, ay = hipy + shd.y;
@@ -1900,69 +1906,74 @@ static void paint_hero(int i) {
   leather.ink = 1.2f, leather.spec = 0.35f, leather.gloss = 0.4f, leather.rim = 0.3f;
   pstyle brass = sty(0xd8a848, 0x5a3a10, 0xfff0b0, 0.7f, TX_METAL, 0.02f, 0.5f);
   brass.spec = 0.9f, brass.gloss = 0.8f, brass.ink = 1;
-  cv(0.3f, 0.5f);
-  cap(0.15f, 0.05f, 0.15f, 0.44f, 0.1f, 0.085f, &under);
+  /* the build: an athletic adult in a long coat, about 5.8 heads to the top of the hood; legs to 0.47 of the height,
+   * tapered limbs, a chest deeper than the belted waist (tests/lanternfall-builds.mjs measures these) */
+  cv(0.3f, 0.56f);
+  cap(0.15f, 0.05f, 0.15f, 0.5f, 0.104f, 0.076f, &under);
   H[i].thigh = done(0.15f, 0.05f, 2.5f);
-  cv(0.4f, 0.52f);
-  cap(0.15f, 0.04f, 0.15f, 0.3f, 0.085f, 0.075f, &under);
-  float bt[12] = { 0.06f, 0.24f, 0.25f, 0.24f, 0.28f, 0.4f, 0.37f, 0.44f, 0.36f, 0.5f, 0.05f, 0.5f };
+  cv(0.4f, 0.6f);
+  cap(0.15f, 0.04f, 0.15f, 0.36f, 0.078f, 0.058f, &under);
+  float bt[12] = { 0.07f, 0.31f, 0.24f, 0.31f, 0.27f, 0.47f, 0.35f, 0.51f, 0.34f, 0.57f, 0.06f, 0.57f };
   poly(bt, 6, 0.02f, &leather);
-  cap(0.06f, 0.27f, 0.25f, 0.27f, 0.02f, 0.02f, &brass);
+  cap(0.07f, 0.34f, 0.24f, 0.34f, 0.018f, 0.018f, &brass);
   H[i].shin = done(0.15f, 0.04f, 2.5f);
-  cv(0.8f, 0.95f);
-  float ct[16] = { 0.24f, 0.06f, 0.56f, 0.06f, 0.62f, 0.4f, 0.66f, 0.88f, 0.48f, 0.82f, 0.38f, 0.9f, 0.2f, 0.85f, 0.16f, 0.4f };
-  poly(ct, 8, 0.04f, &cloth);
+  cv(0.8f, 1.3f);
+  float ct[28] = { 0.27f, 0.06f, 0.52f, 0.06f, 0.58f, 0.24f, 0.57f, 0.42f, 0.54f, 0.58f, 0.6f, 0.86f, 0.66f, 1.22f,
+                   0.5f, 1.16f, 0.38f, 1.26f, 0.2f, 1.2f, 0.2f, 0.86f, 0.29f, 0.58f, 0.27f, 0.4f, 0.25f, 0.24f };
+  poly(ct, 14, 0.04f, &cloth);
   pstyle fold = cloth;
   fold.alpha = 0.5f, fold.dome = -0.2f, fold.ink = 0, fold.shadow = 0, fold.base = pc_hex(CLOAK[i][1]), fold.soft = 4;
-  float f1[6] = { 0.32f, 0.5f, 0.3f, 0.7f, 0.28f, 0.86f };
+  float f1[6] = { 0.32f, 0.7f, 0.3f, 0.95f, 0.28f, 1.18f };
   stk(f1, 3, 0.012f, 0.02f, &fold);
-  float f2[6] = { 0.5f, 0.5f, 0.52f, 0.7f, 0.55f, 0.84f };
+  float f2[6] = { 0.5f, 0.7f, 0.53f, 0.95f, 0.56f, 1.15f };
   stk(f2, 3, 0.012f, 0.02f, &fold);
+  float f3[6] = { 0.29f, 0.12f, 0.3f, 0.3f, 0.33f, 0.5f }; /* (the back's fold over the shoulder blade) */
+  stk(f3, 3, 0.01f, 0.014f, &fold);
   pstyle trim = brass;
   trim.base = pc_hex(0xe8c070), trim.tex = TX_CLOTH;
-  float tr[6] = { 0.48f, 0.08f, 0.5f, 0.45f, 0.52f, 0.85f };
-  stk(tr, 3, 0.018f, 0.018f, &trim);
-  cap(0.18f, 0.52f, 0.62f, 0.5f, 0.04f, 0.04f, &leather); /* the belt */
-  el(0.5f, 0.51f, 0.045f, 0.045f, 0, &brass);
-  float sp[6] = { 0.56f, 0.1f, 0.4f, 0.3f, 0.22f, 0.5f };
-  stk(sp, 3, 0.022f, 0.022f, &leather); /* the satchel's strap */
-  el(0.22f, 0.62f, 0.12f, 0.1f, 0, &leather);
-  H[i].coat = done(0.4f, 0.55f, 2.5f);
+  float tr[6] = { 0.49f, 0.08f, 0.5f, 0.58f, 0.55f, 1.2f };
+  stk(tr, 3, 0.016f, 0.016f, &trim);
+  cap(0.29f, 0.6f, 0.55f, 0.58f, 0.034f, 0.034f, &leather); /* the belt */
+  el(0.52f, 0.585f, 0.038f, 0.038f, 0, &brass);
+  float sp[6] = { 0.5f, 0.1f, 0.38f, 0.48f, 0.23f, 0.84f };
+  stk(sp, 3, 0.019f, 0.019f, &leather); /* the satchel's strap */
+  el(0.22f, 0.9f, 0.1f, 0.085f, 0, &leather);
+  H[i].coat = done(0.4f, 0.8f, 2.5f);
   cv(1.0f, 1.15f);
-  float cp[16] = { 0.62f, 0.04f, 0.86f, 0.06f, 0.8f, 0.5f, 0.66f, 1.1f, 0.44f, 1.02f, 0.26f, 1.1f, 0.1f, 0.98f, 0.4f, 0.4f };
+  float cp[16] = { 0.65f, 0.04f, 0.84f, 0.06f, 0.79f, 0.5f, 0.68f, 1.1f, 0.5f, 1.02f, 0.36f, 1.1f, 0.23f, 0.98f, 0.53f, 0.4f };
   pstyle cape = cloth;
   cape.base = pc_scale(pc_hex(CLOAK[i][0]), 0.8f), cape.tex_dir = 0.3f;
   poly(cp, 8, 0.05f, &cape);
   H[i].cape = done(0.75f, 0.06f, 2);
-  cv(0.75f, 0.72f);
-  float hd[14] = { 0.12f, 0.42f, 0.18f, 0.16f, 0.38f, 0.06f, 0.6f, 0.14f, 0.68f, 0.42f, 0.58f, 0.66f, 0.2f, 0.66f };
+  cv(0.5f, 0.48f);
+  float hd[14] = { 0.079f, 0.275f, 0.118f, 0.105f, 0.249f, 0.039f, 0.393f, 0.092f, 0.445f, 0.275f, 0.38f, 0.432f, 0.131f, 0.432f };
   pstyle hood = cloth;
   hood.dome = 0.9f;
-  poly(hd, 7, 0.06f, &hood);
+  poly(hd, 7, 0.04f, &hood);
   pstyle dark = sty(0x0e0c16, 0x05040a, 0x2a2434, 0.2f, TX_NONE, 0, 0);
   dark.soft = 3;
-  el(0.5f, 0.42f, 0.15f, 0.19f, 0.15f, &dark);
+  el(0.328f, 0.275f, 0.098f, 0.124f, 0.15f, &dark);
   pstyle skin = sty(0xd8a080, 0x6a3a30, 0xffd8b8, 0.6f, TX_SKIN, 0.02f, 0.3f);
   skin.soft = 3, skin.alpha = 0.85f;
   skin.alpha = 0.5f;
-  el(0.63f, 0.45f, 0.02f, 0.03f, 0, &skin); /* the tip of the nose in the lantern's light */
+  el(0.413f, 0.295f, 0.014f, 0.02f, 0, &skin); /* the tip of the nose in the lantern's light */
   pstyle eye = sty(0xfff0b0, 0xffb040, 0xffffff, 0.5f, TX_NONE, 0, 0);
   eye.em = 1;
-  el(0.52f, 0.39f, 0.03f, 0.036f, 0, &eye);
-  el(0.6f, 0.39f, 0.027f, 0.033f, 0, &eye);
+  el(0.341f, 0.256f, 0.023f, 0.027f, 0, &eye);
+  el(0.395f, 0.256f, 0.021f, 0.025f, 0, &eye);
   pstyle rim = trim;
-  float hr[8] = { 0.38f, 0.2f, 0.62f, 0.2f, 0.7f, 0.42f, 0.6f, 0.66f };
-  stk(hr, 4, 0.016f, 0.016f, &rim);
-  H[i].hood = done(0.38f, 0.62f, 2.5f);
-  cv(0.5f, 0.3f);
-  lf(0.45f, 0.2f, 0.05f, 0.1f, 0.08f, -0.04f, &hood);
-  H[i].tip = done(0.45f, 0.2f, 2);
-  cv(0.22f, 0.4f);
-  cap(0.11f, 0.05f, 0.11f, 0.34f, 0.08f, 0.065f, &cloth);
+  float hr[8] = { 0.249f, 0.131f, 0.406f, 0.131f, 0.459f, 0.275f, 0.393f, 0.432f };
+  stk(hr, 4, 0.012f, 0.012f, &rim);
+  H[i].hood = done(0.249f, 0.406f, 2.5f);
+  cv(0.33f, 0.2f);
+  lf(0.295f, 0.131f, 0.033f, 0.066f, 0.052f, -0.026f, &hood);
+  H[i].tip = done(0.295f, 0.131f, 2);
+  cv(0.22f, 0.46f);
+  cap(0.11f, 0.05f, 0.11f, 0.4f, 0.066f, 0.052f, &cloth);
   H[i].arm = done(0.11f, 0.05f, 2.5f);
-  cv(0.22f, 0.38f);
-  cap(0.11f, 0.04f, 0.11f, 0.3f, 0.065f, 0.07f, &cloth);
-  cap(0.11f, 0.26f, 0.11f, 0.3f, 0.075f, 0.075f, &trim);
+  cv(0.22f, 0.4f);
+  cap(0.11f, 0.04f, 0.11f, 0.33f, 0.054f, 0.046f, &cloth);
+  cap(0.11f, 0.29f, 0.11f, 0.33f, 0.058f, 0.058f, &trim);
   H[i].fore = done(0.11f, 0.04f, 2.5f);
   cv(0.16f, 0.16f);
   el(0.08f, 0.08f, 0.06f, 0.055f, 0, &leather);
@@ -2023,14 +2034,14 @@ void creature_hero(const player *p, int i, int region, float t) {
   float bob = p->on_ground ? fabsf(sinf(ph * 3.1416f)) * 0.07f * sp : 0;
   float lean = p->state == PS_DASH ? 0.35f : air ? -p->vy * 0.008f : sp * 0.16f;
   if (p->state == PS_CLING) lean = -0.1f;
-  float hipy = -0.86f - bob;
+  float hipy = -0.98f - bob;
   /* the lantern swings on its hook: a damped pendulum pushed by the body's motion */
   float acc = -p->vx * 0.02f * f + (air ? p->vy * 0.004f : 0);
   hero_swing_v[i] += (-hero_swing[i] * 0.06f - hero_swing_v[i] * 0.08f + acc * 0.02f);
   hero_swing[i] += hero_swing_v[i];
   /* the cape and scarf behind, swept back by speed and lifted by falling */
   float sweep = 0.25f + sp * 0.55f + (p->state == PS_DASH ? 0.6f : 0) + sinf(t * 7 + ph * 2) * 0.06f, lift = air ? -p->vy * 0.012f : 0;
-  cw_vec2 nk = rot2(0.02f, -0.62f, lean);
+  cw_vec2 nk = rot2(0.02f, -0.8f, lean);
   put(&h->cape, nk.x - 0.05f, hipy + nk.y + 0.02f, sweep * 0.9f + lift, 1, 1 - lift * 0.3f);
   putk(&h->scarf, nk.x - 0.02f, hipy + nk.y + 0.05f, sweep * 0.5f - 0.2f + sinf(t * 9 + ph) * 0.12f, 1 + sp * 0.3f, 1, pc_hex(DYE[g_scarf_dye % NDYES]));
   /* legs: the run cycle, tucked in the air, splayed when clinging */
@@ -2046,7 +2057,7 @@ void creature_hero(const player *p, int i, int region, float t) {
     }
     cw_color c = k ? white(1) : dark(0.62f);
     putk(&h->thigh, 0.02f * side, hipy, a1, 1, 1, c);
-    cw_vec2 kn = rot2(0, 0.4f, a1);
+    cw_vec2 kn = rot2(0, 0.45f, a1);
     putk(&h->shin, 0.02f * side + kn.x, hipy + kn.y, a1 + a2, 1, 1, c);
   }
   /* the arm and the pole; a strike sweeps it through an arc */
@@ -2062,17 +2073,17 @@ void creature_hero(const player *p, int i, int region, float t) {
   if (p->mend_t > 0) sa = -1.57f;
   put(&h->coat, 0, hipy + 0.02f, lean, 1, 1);
   float hr = lean * 0.5f + (air ? -p->vy * 0.004f : 0);
-  cw_vec2 hd = rot2(0.06f, -0.68f, lean);
-  put(&h->tip, hd.x - 0.08f, hipy + hd.y - 0.05f, -sweep * 0.5f - lift * 0.5f + sinf(t * 6) * 0.08f, 1, 1);
+  cw_vec2 hd = rot2(0.05f, -0.73f, lean);
+  put(&h->tip, hd.x - 0.052f, hipy + hd.y - 0.033f, -sweep * 0.5f - lift * 0.5f + sinf(t * 6) * 0.08f, 1, 1);
   put(&h->hood, hd.x, hipy + hd.y, hr, 1, 1);
-  cw_vec2 sh = rot2(0.04f, -0.52f, lean);
+  cw_vec2 sh = rot2(0.04f, -0.68f, lean);
   float sx = sh.x, sy = hipy + sh.y;
   /* the arm points between the pole and straight down (0 hangs down, negative swings forward), raised when mending */
-  float ua = p->mend_t > 0 ? -2.6f : 0.45f * sa - 0.707f, fa = ua - 0.35f;
+  float ua = p->mend_t > 0 ? -2.6f : 0.45f * sa - 0.257f, fa = ua - 0.35f; /* (the hand low at the chest: the lantern keeps its sweep clear of the ledges overhead) */
   put(&h->arm, sx, sy, ua, 1, 1);
-  cw_vec2 el = rot2(0, 0.3f, ua);
+  cw_vec2 el = rot2(0, 0.35f, ua);
   put(&h->fore, sx + el.x, sy + el.y, fa, 1, 1);
-  cw_vec2 hn = rot2(0, 0.28f, fa);
+  cw_vec2 hn = rot2(0, 0.29f, fa);
   float hx = sx + el.x + hn.x, hy = sy + el.y + hn.y;
   put(&h->staff, hx, hy, sa, 1, 1);
   cw_vec2 tip = rot2(1.2f, 0, sa);

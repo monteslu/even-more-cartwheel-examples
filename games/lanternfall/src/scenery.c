@@ -271,22 +271,37 @@ static void paint_props(void) {
     joint.alpha = 0.8f;
     float j1[4] = { 0.27f, 3.22f, 1.93f, 3.22f }, j2[4] = { 1.1f, 2.92f, 1.1f, 3.22f }, j3[4] = { 0.7f, 3.22f, 0.7f, 3.56f }, j4[4] = { 1.5f, 3.22f, 1.5f, 3.56f };
     K(j1, 2, 0.012f, 0.012f, &joint), K(j2, 2, 0.012f, 0.012f, &joint), K(j3, 2, 0.012f, 0.012f, &joint), K(j4, 2, 0.012f, 0.012f, &joint);
-    float robe[16] = { 0.5f, 2.92f, 1.7f, 2.92f, 1.5f, 2.0f, 1.42f, 1.1f, 1.25f, 0.62f, 0.95f, 0.62f, 0.78f, 1.1f, 0.68f, 2.0f };
-    P(robe, 8, 0.06f, &stone);
+    /* the figure: the lamplighter as the hero is built (tests/lanternfall-builds.mjs), in a long coat to the knee,
+     * belted, boots below; the hood about a sixth of the height */
+    pstyle boot = stone;
+    boot.ink = 1.6f;
+    float bb[12] = { 0.831f, 2.546f, 1.062f, 2.546f, 1.103f, 2.764f, 1.212f, 2.818f, 1.198f, 2.9f, 0.818f, 2.9f };
+    float bf[12] = { 0.991f, 2.546f, 1.222f, 2.546f, 1.263f, 2.764f, 1.372f, 2.818f, 1.358f, 2.9f, 0.978f, 2.9f };
+    float lb[4] = { 0.98f, 1.9f, 0.95f, 2.6f }, lg[4] = { 1.1f, 1.9f, 1.1f, 2.6f };
+    K(lb, 2, 0.13f, 0.085f, &boot), P(bb, 6, 0.02f, &boot);
+    K(lg, 2, 0.13f, 0.085f, &boot), P(bf, 6, 0.02f, &boot);
+    float robe[28] = { 0.923f, 0.569f, 1.263f, 0.569f, 1.345f, 0.813f, 1.331f, 1.058f, 1.29f, 1.276f, 1.372f, 1.657f, 1.454f, 2.146f,
+                       1.236f, 2.065f, 1.073f, 2.2f, 0.828f, 2.119f, 0.828f, 1.657f, 0.95f, 1.276f, 0.923f, 1.031f, 0.896f, 0.813f };
+    P(robe, 14, 0.05f, &stone);
     pstyle fold = st(0x5a5650, 0, -0.2f, TX_STONE, 0.03f, 0.5f);
     fold.alpha = 0.6f, fold.soft = 3;
-    float f1[6] = { 0.95f, 1.2f, 0.9f, 2.0f, 0.82f, 2.88f }, f2[6] = { 1.25f, 1.2f, 1.3f, 2.0f, 1.38f, 2.88f };
-    K(f1, 3, 0.02f, 0.035f, &fold), K(f2, 3, 0.02f, 0.035f, &fold);
-    float hood[12] = { 0.8f, 0.72f, 0.82f, 0.32f, 1.1f, 0.08f, 1.38f, 0.3f, 1.36f, 0.7f, 1.1f, 0.82f };
-    P(hood, 6, 0.06f, &stone);
+    float f1[6] = { 0.98f, 1.45f, 0.95f, 1.8f, 0.92f, 2.12f }, f2[6] = { 1.25f, 1.45f, 1.3f, 1.8f, 1.36f, 2.08f };
+    K(f1, 3, 0.015f, 0.03f, &fold), K(f2, 3, 0.015f, 0.03f, &fold);
+    pstyle belt = stone;
+    belt.dome = 0.5f;
+    float bl[4] = { 0.95f, 1.29f, 1.3f, 1.275f };
+    K(bl, 2, 0.045f, 0.045f, &belt);
+    float hood[12] = { 0.845f, 0.624f, 0.862f, 0.284f, 1.1f, 0.08f, 1.338f, 0.267f, 1.321f, 0.607f, 1.1f, 0.709f };
+    P(hood, 6, 0.05f, &stone);
     pstyle dark = st(0x24221e, 0, -0.4f, TX_NONE, 0, 0);
     dark.soft = 4;
-    E(1.24f, 0.46f, 0.1f, 0.15f, 0.2f, &dark);
-    float arm[6] = { 1.35f, 1.0f, 1.65f, 1.15f, 1.95f, 1.08f };
-    K(arm, 3, 0.1f, 0.075f, &stone);
+    E(1.219f, 0.403f, 0.085f, 0.128f, 0.2f, &dark);
+    float arm[6] = { 1.15f, 0.7f, 1.5f, 0.9f, 1.88f, 0.98f };
+    K(arm, 3, 0.085f, 0.06f, &stone);
+    E(1.93f, 1.0f, 0.055f, 0.05f, 0, &stone); /* (the hand on the lantern's ring) */
     pstyle moss = st(0x7aa04a, 0x2a4418, 0.4f, TX_MOSS, 0.025f, 1.0f);
     moss.soft = 5, moss.alpha = 0.85f;
-    E(0.6f, 2.88f, 0.25f, 0.07f, 0, &moss), E(1.55f, 2.9f, 0.3f, 0.06f, 0, &moss), E(0.9f, 0.7f, 0.12f, 0.05f, 0.4f, &moss), E(0.75f, 1.9f, 0.06f, 0.14f, 0.1f, &moss);
+    E(0.6f, 2.88f, 0.25f, 0.07f, 0, &moss), E(1.55f, 2.9f, 0.3f, 0.06f, 0, &moss), E(0.92f, 0.68f, 0.1f, 0.045f, 0.4f, &moss), E(0.86f, 1.9f, 0.05f, 0.12f, 0.1f, &moss);
     PP.statue = pfin(1.1f, 3.58f, 2.5f);
     cvs(0.5f, 0.7f);
     pstyle glass = st(0xffe8a0, 0xffa030, 0.3f, TX_NONE, 0, 0);
