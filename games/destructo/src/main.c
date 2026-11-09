@@ -256,12 +256,33 @@ static void init(void *u) {
 
 /* ── input ───────────────────────────────────────────────────────────── */
 
-/* whose buttons play: the seat whose turn it is when it has a pad or keys of its own, else any seat (one pad
- * passed round) */
+/* whose buttons play. Co-op is one team: any seat's buttons aim and fire (a seat that joined and walked away never
+ * holds the launcher up). Versus and party: the seat whose turn it is when it has a pad or keys of its own, else any
+ * seat (one pad passed round); and a seat that has touched nothing for SEAT_AWAY ticks of its own turn is away, and
+ * any seat plays that turn for it (the HUD says so) */
+#define SEAT_AWAY (60 * 8)
+static int seat_idle; /* ticks of this turn the turn's seat has pressed nothing */
+static bool seat_away(void) { return seat_idle >= SEAT_AWAY; }
 static int seat_of_turn(void) {
   int c = G.g.cur;
+  static int control = -1; /* tests/destructo-gates.json's seat gate control (native): the seat rule before the fix */
+  if (control < 0) control = getenv("DESTRUCTO_SEAT_CONTROL") != NULL;
+  if (control) return G.players > 1 && cw_input_player_devices(c) != 0 ? c : -1;
+  if (G.mode == MODE_COOP || seat_away()) return -1;
   if (G.players > 1 && cw_input_player_devices(c) != 0) return c;
   return -1;
+}
+static void seat_watch(void) {
+  static int turn_of = -1, shots = -1;
+  if (G.g.state != GS_AIM || G.g.cur != turn_of || G.g.shots != shots) {
+    if (G.g.state == GS_AIM) turn_of = G.g.cur, shots = G.g.shots;
+    seat_idle = 0;
+    return;
+  }
+  bool any = false;
+  cw_action acts[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.pow_u, G.pow_d, G.fire, G.ammo, G.view };
+  for (size_t k = 0; k < sizeof acts / sizeof acts[0] && !any; k++) any = cw_action_pressed(G.g.cur, acts[k]);
+  seat_idle = any ? 0 : seat_idle + 1;
 }
 static bool held(cw_action a, int seat) {
   if (seat >= 0) return cw_action_pressed(seat, a);
@@ -342,6 +363,7 @@ static void fixed_update(void *u, double dt) {
   }
   case PH_PLAY: {
     input in;
+    seat_watch();
     read_input(&in);
     replay_log(&G.g, &in);
     game_step(&G.g, &in);
@@ -520,7 +542,12 @@ static void hud_play(cw_vec2 cs, float u) {
     cw_r2d_round_rect(cw_rect_make(px, py, pw, 12 * u), 6 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
     cw_r2d_round_rect(cw_rect_make(px, py, pw * g->power, 12 * u), 6 * u, 6, rgba(1, 0.35f + 0.5f * (1 - g->power), 0.15f, 1));
     float sz = 21 * u;
-    int seat = G.players > 1 ? g->cur : -1;
+    int seat = G.players > 1 && G.mode != MODE_COOP && !seat_away() ? g->cur : -1;
+    if (G.players > 1 && G.mode != MODE_COOP && seat_away()) {
+      char aw[64];
+      snprintf(aw, sizeof aw, "Player %d is away: any pad can take this turn", g->cur + 1);
+      text(aw, cs.x * 0.5f, by - 44 * u, 26 * u, SEAT[g->cur], CW_ALIGN_CENTER);
+    }
     cw_prompt_text(font, "{aim_left|aim_right}: turn   {aim_up|aim_down}: raise   {power_down|power_up}: power", seat, cw_v2(cs.x * 0.5f, by + 88 * u), sz, WHITE, CW_ALIGN_CENTER);
     cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 116 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
   } else if (g->state == GS_SETTLE || g->state == GS_FLIGHT) {

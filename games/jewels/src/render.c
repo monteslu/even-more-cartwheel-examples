@@ -30,7 +30,7 @@ static struct {
   uint64_t frame_no;
   bool wg;
   bool tray_dirty;
-  unsigned present, tray, gem[JW_NCUTS], under, spark, ring, mark, glint[5];
+  unsigned present, tray, gem[JW_NCUTS], under, spark, ring, mark, glint[5], light, grab, shock;
   bool built, failed;
   jw_render_stats st;
   unsigned caustic_tex, dummy_tex, studio_tex;
@@ -49,6 +49,8 @@ void jw_world_to_canvas(float x, float y, float z, float *px, float *py) {
   *px = (CAM_X + (x - CAM_X) * k) + 960.0f;
   *py = 540.0f - (CAM_Y + (y - CAM_Y) * k);
 }
+
+static bool fx_off(const char *part);
 
 /* ── quality: how the stones are traced ─────────────────────────────── */
 
@@ -109,25 +111,11 @@ static void common_uniforms(unsigned p, const cw_pass_ctx *ctx) {
   cw_pass_uniform4f(p, "u_view", (float)ctx->width, (float)ctx->height, 1.0f / (float)ctx->width, 1.0f / (float)ctx->height);
   cw_pass_uniform4f(p, "u_cam", CAM_X, CAM_Y, CAM_D, room_drift());
   /* the room warms with a cascade: the key light goes from neutral to amber */
-  float w = R.f.warmth;
-  cw_pass_uniform4f(p, "u_tint", 1.0f + 0.10f * w, 1.0f - 0.04f * w, 1.0f - 0.22f * w, R.f.sweep);
+  float w = R.f.warmth, k = R.f.room > 0 ? R.f.room : 1; /* and it brightens a little with each step */
+  cw_pass_uniform4f(p, "u_tint", (1.0f + 0.10f * w) * k, (1.0f - 0.04f * w) * k, (1.0f - 0.22f * w) * k, R.f.sweep);
 }
 
 /* ── the tray ────────────────────────────────────────────────────────── */
-
-static void flashes_uniforms(unsigned p) {
-  static const char *pos[4] = { "u_fl0", "u_fl1", "u_fl2", "u_fl3" }, *col[4] = { "u_fc0", "u_fc1", "u_fc2", "u_fc3" };
-  for (int i = 0; i < 4; i++) {
-    if (i < R.f.nflashes) {
-      const jw_flash *f = &R.f.flashes[i];
-      cw_pass_uniform4f(p, pos[i], f->x - 960.0f, 540.0f - f->y, f->z, 1);
-      cw_pass_uniform4f(p, col[i], f->r, f->g, f->b, 0);
-    } else {
-      cw_pass_uniform4f(p, pos[i], 0, 0, 100, 0);
-      cw_pass_uniform4f(p, col[i], 0, 0, 0, 0);
-    }
-  }
-}
 
 static bool build(void) {
   if (R.built) return !R.failed;
@@ -166,7 +154,17 @@ static bool build(void) {
     free(vs), vs = NULL;
     free(src);
   }
-  R.failed = !R.present || !R.tray || !R.under || !R.spark || !R.mark || !R.glint[0] || !R.glint[1] || !R.glint[2] || !R.glint[3] || !R.glint[4];
+  vs = NULL;
+  src = jw_shader_light(R.wg, &vs);
+  R.light = R.wg ? cw_pass_program_wgsl("jw_light", src) : cw_pass_program_vs("jw_light", vs, src);
+  free(src), free(vs), vs = NULL;
+  src = jw_shader_grab(R.wg);
+  R.grab = R.wg ? cw_pass_program_wgsl("jw_grab", src) : cw_pass_program("jw_grab", src);
+  free(src);
+  src = jw_shader_shock(R.wg, &vs);
+  R.shock = R.wg ? cw_pass_program_wgsl("jw_shock", src) : cw_pass_program_vs("jw_shock", vs, src);
+  free(src), free(vs), vs = NULL;
+  R.failed = !R.light || !R.grab || !R.shock || !R.present || !R.tray || !R.under || !R.spark || !R.mark || !R.glint[0] || !R.glint[1] || !R.glint[2] || !R.glint[3] || !R.glint[4];
   for (int k = 0; k < JW_NCUTS; k++) R.failed |= !R.gem[k];
   if (R.failed) cw_error("jewels: a shader failed to build (see above)");
   return !R.failed;
@@ -207,13 +205,37 @@ static void tray_exec(cw_pass_ctx *ctx, void *u) {
     R.tray_dirty = false;
     R.st.tray_draws++;
   }
+  /* the lights of the moment, added up at a quarter of the canvas */
+  int lw = ctx->width / 4 > 1 ? ctx->width / 4 : 1, lh = ctx->height / 4 > 1 ? ctx->height / 4 : 1;
+  const cw_rt *lb = cw_pass_rt(ctx, lw, lh, CW_RT_RGBA16F, false);
+  if (!lb) return;
+  cw_pass_bind_target(ctx, lb);
+  cw_pass_clear(0, 0, 0, 0, false);
+  R.st.lights = R.f.nlights;
+  if (R.f.nlights) {
+    cw_pass_set_blend(CW_PASS_BLEND_ADD);
+    cw_pass_use(R.light);
+    cw_pass_uniform4f(R.light, "u_view", (float)lw, (float)lh, 1.0f / (float)lw, 1.0f / (float)lh);
+    cw_pass_uniform4f(R.light, "u_cam", CAM_X, CAM_Y, CAM_D, 0);
+    cw_pass_uniform4f(R.light, "u_tint", 1, 1, 1, 0);
+    for (int i = 0; i < R.f.nlights; i++) {
+      const jw_light *l = &R.f.lights[i];
+      if (l->stones > 1.5f) continue; /* a light for the stones only */
+      cw_pass_uniform4f(R.light, "u_lp", l->x, l->y, l->z, fminf(l->reach * 3.2f, 1400.0f));
+      cw_pass_uniform4f(R.light, "u_lc", l->r, l->g, l->b, l->reach);
+      cw_pass_draw(6);
+    }
+    cw_pass_set_blend(CW_PASS_BLEND_NONE);
+  }
+  cw_pass_bind_target(ctx, ctx->scene);
   cw_pass_use(R.present);
   common_uniforms(R.present, ctx);
-  flashes_uniforms(R.present);
   cw_pass_uniform4f(R.present, "u_misc", (float)R.f.time, R.f.button_glow, R.f.button_press, R.f.reshuffle);
   cw_pass_bind_texture(0, rt->tex);
-  if (!R.wg) cw_pass_uniform1i(R.present, "u_t0", 0);
+  cw_pass_bind_texture(1, lb->tex);
+  if (!R.wg) cw_pass_uniform1i(R.present, "u_t0", 0), cw_pass_uniform1i(R.present, "u_t1", 1);
   cw_pass_fullscreen();
+  cw_pass_rt_release(ctx, lb);
 }
 
 /* ── the stones ──────────────────────────────────────────────────────── */
@@ -267,26 +289,55 @@ static void cauchy(const jw_cut *c, float *A, float *B) {
   *B = b, *A = c->ior - b / (589.3f * 589.3f);
 }
 
-/* the flashes nearest a stone, as directions from it (its own lights) */
-static void gem_flashes(unsigned p, const gem_xf *x) {
-  static const char *dn[2] = { "u_gf0", "u_gf1" }, *cn[2] = { "u_gc0", "u_gc1" };
-  int used = 0;
-  for (int i = 0; i < R.f.nflashes && used < 2; i++) {
-    const jw_flash *f = &R.f.flashes[i];
-    float dx = (f->x - 960.0f) - x->cx, dy = (540.0f - f->y) - x->cy, dz = f->z - x->cz;
-    float d = sqrtf(dx * dx + dy * dy + dz * dz);
-    float k = 1.0f / (1.0f + d * d / (260.0f * 260.0f));
-    if (k < 0.02f) continue;
-    cw_pass_uniform4f(p, dn[used], dx / d, dy / d, dz / d, k);
-    cw_pass_uniform4f(p, cn[used], f->r, f->g, f->b, 0);
-    used++;
+/* the lights of the moment a stone sees: the few that reach it most (`most`, up to four), as directions from it with the angular size
+ * of their hot cores, and the light of them all on its body (in its own colour) */
+static void gem_lights(unsigned p, const gem_xf *x, const float *body, int most) {
+  static const char *ln[4] = { "u_gl0", "u_gl1", "u_gl2", "u_gl3" }, *kn[4] = { "u_gk0", "u_gk1", "u_gk2", "u_gk3" };
+  int pick[4];
+  float score[4], fall[4];
+  int n = 0;
+  float ex = 0, ey = 0, ez = 0;
+  for (int i = 0; i < R.f.nlights; i++) {
+    const jw_light *l = &R.f.lights[i];
+    if (l->stones <= 0 || fx_off("lamps")) continue;
+    float dx = (l->x - 960.0f) - x->cx, dy = (540.0f - l->y) - x->cy, dz = l->z - x->cz;
+    float d2 = dx * dx + dy * dy + dz * dz;
+    float rr = l->reach * 0.9f, k = 1.0f / (1.0f + d2 / (rr * rr)); /* the stones see the light fall off sooner than the velvet: it stays a local event */
+    float s = (l->r + l->g + l->b) * k;
+    if (s < 0.3f) continue; /* far and faint: not worth a lamp in the trace */
+    ex += l->r * k, ey += l->g * k, ez += l->b * k;
+    /* keep the four strongest */
+    if (n == most && (most == 0 || s <= score[most - 1])) continue;
+    int at = n < most ? n++ : most - 1;
+    score[at] = s, pick[at] = i, fall[at] = k;
+    for (int j = at; j > 0 && score[j] > score[j - 1]; j--) {
+      float ts = score[j]; score[j] = score[j - 1], score[j - 1] = ts;
+      int tp = pick[j]; pick[j] = pick[j - 1], pick[j - 1] = tp;
+      float tf = fall[j]; fall[j] = fall[j - 1], fall[j - 1] = tf;
+    }
   }
-  for (; used < 2; used++) {
-    cw_pass_uniform4f(p, dn[used], 0, 0, 1, 0);
-    cw_pass_uniform4f(p, cn[used], 0, 0, 0, 0);
+  for (int j = 0; j < 4; j++) {
+    if (j < n) {
+      const jw_light *l = &R.f.lights[pick[j]];
+      float dx = (l->x - 960.0f) - x->cx, dy = (540.0f - l->y) - x->cy, dz = l->z - x->cz;
+      float d = sqrtf(dx * dx + dy * dy + dz * dz);
+      if (d < 1) d = 1, dz = 1;
+      float core = fminf(fmaxf(l->core / d, 0.035f), 0.10f);
+      cw_pass_uniform4f(p, ln[j], dx / d, dy / d, dz / d, core);
+      cw_pass_uniform4f(p, kn[j], l->r * fall[j], l->g * fall[j], l->b * fall[j], 1);
+    } else {
+      cw_pass_uniform4f(p, ln[j], 0, 0, 1, 0.05f);
+      cw_pass_uniform4f(p, kn[j], 0, 0, 0, 0);
+    }
   }
+  R.st.gem_lights += n;
+  float m = fmaxf(body[0], fmaxf(body[1], body[2]));
+  if (m <= 0) m = 1;
+  const float kb = 0.024f; /* the light the body scatters back */
+  cw_pass_uniform4f(p, "u_gx", ex * kb * (0.3f + 0.7f * body[0] / m), ey * kb * (0.3f + 0.7f * body[1] / m), ez * kb * (0.3f + 0.7f * body[2] / m), 0);
 }
 
+#define EMERALD_SPREAD 0.022f /* how far a small lamp spreads in the emerald cut's broad flat facets, radians (shaders.c) */
 static void draw_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, int cut, gem_q q, float bw[4][3], float body_override) {
   (void)body_override;
   const jw_cut *c = &jw_cuts[cut];
@@ -300,15 +351,15 @@ static void draw_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, int cut, gem_
   cw_pass_uniform4f(p, "u_abs", c->sigma[0], c->sigma[1], c->sigma[2], g->opacity);
   float A, B;
   cauchy(c, &A, &B);
-  cw_pass_uniform4f(p, "u_ior", A, B, g->glow, 0);
+  cw_pass_uniform4f(p, "u_ior", A, B, g->glow, cut == 2 ? EMERALD_SPREAD : 0.0f);
   cw_pass_uniform4f(p, "u_q", (float)q.sub, (float)q.bounces, q.waves > 1 ? 1.0f : 0.0f, getenv("JEWELS_DEBUG_LEAK") ? 1.0f : 0.0f);
   /* a little light scattered in the body of the coloured stones (none in the diamond): every stone reads as its
    * colour at any tilt, even where its facets look out at the dark */
-  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.04f : cut == 3 ? 0.09f : (cut == 0 || cut == 4) ? 0.07f : 0.05f);
+  cw_pass_uniform4f(p, "u_body", c->body[0], c->body[1], c->body[2], cut == 5 ? 0.0f : cut == JW_CUT_SHARD ? 0.04f : cut == 3 ? 0.13f : cut == 4 ? 0.11f : cut == 0 ? 0.10f : 0.05f);
   cw_pass_uniform4f(p, "u_jit", ctx->jitter[0], ctx->jitter[1], 0, 0);
   cw_pass_bind_texture(0, R.studio_tex ? R.studio_tex : R.dummy_tex);
   if (!R.wg) cw_pass_uniform1i(p, "u_t0", 0);
-  gem_flashes(p, &x);
+  gem_lights(p, &x, c->body, cut == JW_CUT_SHARD ? 0 : 2); /* a stone sees the two strongest lights as lamps; a shard (small, fast) takes their light on its body only */
   cw_pass_draw(6);
 }
 
@@ -323,6 +374,68 @@ static void under_gem(const cw_pass_ctx *ctx, const jw_gem_draw *g, bool selecte
   cw_pass_uniform4f(R.under, "u_shape", c->extent_x * c->display * g->scale, c->extent_y * c->display * g->scale, x.cz, c->display * g->scale);
   cw_pass_uniform4f(R.under, "u_body", c->body[0], c->body[1], c->body[2], 0);
   cw_pass_draw(6);
+}
+
+/* the shockwaves: rings of the bigger clears bend the picture as they run out. The part of the scene they cover is
+ * copied, then each ring draws the copy back through its wave (shaders.c jw_shader_shock) */
+#define GLOW_K 0.05f /* how bright the air round a burst light glows, per unit of its strength */
+/* a ring bends the picture while it runs out, for the bigger clears (power 2.8 up); one at a time, the newest */
+#define SHOCKS 1
+static bool shock_on(const jw_ring_draw *r) {
+  if (r->power < 2.8f || r->t >= 0.75f) return false;
+  int stronger = 0; /* the newest rings first: a ring gives way to newer ones of its kind */
+  for (const jw_ring_draw *o = r + 1; o < R.f.rings + R.f.nrings; o++)
+    if (o->power >= 2.8f && o->t < 0.75f) stronger++;
+  return stronger < SHOCKS;
+}
+static float ring_r(float t, float p) { return 30.0f + (260.0f + 120.0f * p) * (1 - expf(-4.0f * t)); }
+/* development (native): JEWELS_FX_OFF="trails,dust,shock,glow,rays,lamps" leaves those parts out (cost experiments) */
+static bool fx_off(const char *part) {
+  static const char *off = (const char *)1;
+  if (off == (const char *)1) off = getenv("JEWELS_FX_OFF");
+  return off && strstr(off, part);
+}
+static void shockwaves(cw_pass_ctx *ctx) {
+  const jw_frame *f = &R.f;
+  if (fx_off("shock")) return;
+  if (!ctx->scene || !ctx->scene->tex) return;
+  float x0 = 1e9f, y0 = 1e9f, x1 = -1e9f, y1 = -1e9f;
+  int n = 0;
+  for (int i = 0; i < f->nrings; i++) {
+    const jw_ring_draw *r = &f->rings[i];
+    if (!shock_on(r)) continue;
+    float e = ring_r(r->t, r->power) + 70.0f;
+    x0 = fminf(x0, r->x - e), y0 = fminf(y0, r->y - e), x1 = fmaxf(x1, r->x + e), y1 = fmaxf(y1, r->y + e);
+    n++;
+  }
+  if (!n) return;
+  x0 = fmaxf(floorf(x0), 0), y0 = fmaxf(floorf(y0), 0), x1 = fminf(ceilf(x1), 1920), y1 = fminf(ceilf(y1), 1080);
+  if (x1 - x0 < 2 || y1 - y0 < 2) return;
+  float sx = (float)ctx->width / 1920.0f, sy = (float)ctx->height / 1080.0f;
+  int gw = (int)((x1 - x0) * sx + 0.5f), gh = (int)((y1 - y0) * sy + 0.5f);
+  const cw_rt *g = cw_pass_rt(ctx, gw > 1 ? gw : 1, gh > 1 ? gh : 1, CW_RT_RGBA16F, false);
+  if (!g) return;
+  cw_pass_set_blend(CW_PASS_BLEND_NONE);
+  cw_pass_bind_target(ctx, g);
+  cw_pass_use(R.grab);
+  cw_pass_bind_texture(0, ctx->scene->tex);
+  if (!R.wg) cw_pass_uniform1i(R.grab, "u_t0", 0);
+  cw_pass_uniform4f(R.grab, "u_px", x0 / 1920.0f, 1.0f - y1 / 1080.0f, (x1 - x0) / 1920.0f, (y1 - y0) / 1080.0f);
+  cw_pass_fullscreen();
+  cw_pass_bind_target(ctx, ctx->scene);
+  cw_pass_use(R.shock);
+  common_uniforms(R.shock, ctx);
+  cw_pass_bind_texture(0, g->tex);
+  if (!R.wg) cw_pass_uniform1i(R.shock, "u_t0", 0);
+  cw_pass_uniform4f(R.shock, "u_grab", x0, y1, x1 - x0, y1 - y0);
+  for (int i = 0; i < f->nrings; i++) {
+    const jw_ring_draw *r = &f->rings[i];
+    if (!shock_on(r)) continue;
+    cw_pass_uniform4f(R.shock, "u_shock", r->x, r->y, r->t, r->power);
+    cw_pass_draw(6);
+    R.st.shocks++;
+  }
+  cw_pass_rt_release(ctx, g);
 }
 
 static void glints(cw_pass_ctx *ctx);
@@ -354,7 +467,7 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
   }
 
   /* the stones */
-  R.st.gems_drawn = 0;
+  R.st.gems_drawn = 0, R.st.gem_lights = 0;
   for (int i = 0; i < f->ngems; i++) {
     const jw_gem_draw *g = &f->gems[i];
     if (g->opacity <= 0.01f || g->scale <= 0.02f) continue;
@@ -362,18 +475,24 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
     R.st.gems_drawn++;
   }
 
-  /* the bursts: shards of the stone (traced like it, through a broken shape), then sparks and rings */
-  R.st.shards_drawn = R.st.sparks_drawn = 0;
+  /* the bursts: shards of the stone (traced like it, through a broken shape, lit by the bursts' own lights), each
+   * with a short trail of light behind it; then a ring that bends the picture as it runs out (a shockwave), then the
+   * added light: sparks, sparkle dust, rings, rays and the cascade's links */
+  R.st.shards_drawn = R.st.sparks_drawn = R.st.shocks = 0;
   gem_q qs = q;
-  qs.bounces = q.bounces > 3 ? 3 : q.bounces, qs.sub = 1;
+  qs.bounces = q.bounces > 2 ? 2 : q.bounces, qs.sub = 1; /* a shard is small and quick: two bounces carry its sparkle */
   /* a budget of shards a frame, shared by the bursts in flight */
   float want = 0;
-  for (int b = 0; b < f->nbursts; b++) want += 4 + 3 * f->bursts[b].power;
+  for (int b = 0; b < f->nbursts; b++)
+    if (f->bursts[b].t < 1.4f) want += 4 + 3 * f->bursts[b].power;
   float share = want > 130 ? 130 / want : 1;
   float bws[4][3];
   band_weights(1, bws);
+  static struct { float x0, y0, x1, y1, w, r, g, b; } trail[160];
+  int ntrail = 0;
   for (int b = 0; b < f->nbursts; b++) {
     const jw_burst_draw *bu = &f->bursts[b];
+    if (bu->t > 1.4f) continue;
     int n = (int)((4 + 3 * bu->power) * share + 0.5f);
     if (n > 18) n = 18;
     for (int i = 0; i < n; i++) {
@@ -392,7 +511,11 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
       s.lift = 40.0f + 120.0f * r2 * (1 - t / life);
       float k = t / life;
       s.scale = (0.16f + 0.14f * r3) * (1 - k * k) * (1 + 0.1f * bu->power);
-      s.opacity = 1;
+      /* the shards stay over the velvet: one that reaches the frame fades out before it crosses it */
+      float edge = fminf(fminf(s.x - JW_BX, JW_BX + 10 * JW_CELL - s.x), fminf(s.y - JW_BY, JW_BY + 8 * JW_CELL - s.y));
+      float inside = fminf(fmaxf((edge - 6.0f) / 34.0f, 0.0f), 1.0f);
+      if (inside <= 0.0f) continue;
+      s.opacity = inside;
       s.glow = 0.5f * (1 - k);
       s.spin = (r1 - 0.5f) * 14.0f * t + r2 * 6.0f;
       s.tilt_x = (r2 - 0.5f) * 10.0f * t + r1 * 3.0f;
@@ -406,27 +529,78 @@ static void gems_exec(cw_pass_ctx *ctx, void *u) {
       memcpy(sh->body, src->body, sizeof sh->body);
       draw_gem(ctx, &s, JW_CUT_SHARD, qs, bws, 0);
       R.st.shards_drawn++;
+      /* its trail: where it was a few hundredths of a second ago, to where it is (fast early, gone as it slows) */
+      if (ntrail < 160 && t > 0.01f) {
+        float tp = fmaxf(t - 0.05f, 0.0f), dp = (1 - expf(-2.6f * tp)) / 2.6f;
+        float px0 = bu->x + cosf(a) * sp * dp, py0 = bu->y + sinf(a) * sp * dp + 260.0f * tp * tp;
+        float z = 40.0f + 120.0f * r2 * (1 - tp / life), z1 = s.lift;
+        float c0x, c0y, c1x, c1y;
+        jw_world_to_canvas(px0 - 960.0f, 540.0f - py0, z, &c0x, &c0y);
+        jw_world_to_canvas(s.x - 960.0f, 540.0f - s.y, z1, &c1x, &c1y);
+        float m = fmaxf(src->body[0], fmaxf(src->body[1], src->body[2]));
+        float e = 0.9f * (1 - k) * (1 - k) * inside;
+        if (m <= 0) m = 1;
+        trail[ntrail++] = (typeof(trail[0])){ c0x, c0y, c1x, c1y, 2.0f + 3.0f * s.scale / src->display * 10.0f * (1 - k),
+                                              e * (0.35f + 0.65f * src->body[0] / m), e * (0.35f + 0.65f * src->body[1] / m), e * (0.35f + 0.65f * src->body[2] / m) };
+      }
     }
   }
+  shockwaves(ctx);
   cw_pass_set_blend(CW_PASS_BLEND_ADD);
   cw_pass_use(R.spark);
   common_uniforms(R.spark, ctx);
-  for (int b = 0; b < f->nbursts; b++) {
+  for (int i = 0; i < ntrail && !fx_off("trails"); i++) {
+    cw_pass_uniform4f(R.spark, "u_burst", trail[i].x0, trail[i].y0, 1, trail[i].w);
+    cw_pass_uniform4f(R.spark, "u_col", trail[i].r, trail[i].g, trail[i].b, 0);
+    cw_pass_uniform4f(R.spark, "u_kind", 5, 1, trail[i].x1, trail[i].y1);
+    cw_pass_draw(6);
+  }
+  int dust_left = 700; /* the motes of dust a frame, the newest bursts' first */
+  for (int b = f->nbursts - 1; b >= 0; b--) {
     const jw_burst_draw *bu = &f->bursts[b];
-    int n = (int)(10 + 8 * bu->power);
-    if (n > 50) n = 50;
     const jw_cut *c = &jw_cuts[bu->kind];
     cw_pass_uniform4f(R.spark, "u_burst", bu->x, bu->y, bu->t, bu->power);
     cw_pass_uniform4f(R.spark, "u_col", c->body[0], c->body[1], c->body[2], (float)(bu->seed & 0xffff));
-    cw_pass_uniform4f(R.spark, "u_kind", 0, (float)n, 0, 0);
-    cw_pass_draw(n * 6);
-    R.st.sparks_drawn += n;
+    if (bu->t < 1.6f) {
+      int n = (int)(10 + 8 * bu->power);
+      if (n > 50) n = 50;
+      cw_pass_uniform4f(R.spark, "u_kind", 0, (float)n, 0, 0);
+      cw_pass_draw(n * 6);
+      R.st.sparks_drawn += n;
+    }
+    /* the dust lingers longer than the sparks */
+    int nd = (int)(12 + 6 * bu->power);
+    if (nd > 40) nd = 40;
+    if (bu->t > 1.5f || dust_left <= 0 || bu->shower || fx_off("dust")) continue;
+    if (nd > dust_left) nd = dust_left;
+    dust_left -= nd;
+    cw_pass_uniform4f(R.spark, "u_kind", 4, (float)nd, 0, 0);
+    cw_pass_draw(nd * 6);
+  }
+  /* the burst lights themselves: the air round each one lit, in its colour (the broad lights, the climax's and the
+   * sweep's, light the room and are not seen as a glow) */
+  for (int i = 0; i < f->nlights; i++) {
+    const jw_light *l = &f->lights[i];
+    if (l->stones <= 0 || l->reach > 400.0f || fx_off("glow")) continue;
+    float px, py;
+    jw_world_to_canvas(l->x - 960.0f, 540.0f - l->y, l->z * 0.5f, &px, &py);
+    cw_pass_uniform4f(R.spark, "u_burst", px, py, 0, 0);
+    cw_pass_uniform4f(R.spark, "u_col", l->r * GLOW_K, l->g * GLOW_K, l->b * GLOW_K, 0);
+    cw_pass_uniform4f(R.spark, "u_kind", 6, 1, 36.0f + 0.2f * l->reach, 0);
+    cw_pass_draw(6);
   }
   for (int i = 0; i < f->nrings; i++) {
     const jw_ring_draw *r = &f->rings[i];
     cw_pass_uniform4f(R.spark, "u_burst", r->x, r->y, r->t, r->power);
     cw_pass_uniform4f(R.spark, "u_col", r->r, r->g, r->b, 0);
     cw_pass_uniform4f(R.spark, "u_kind", 1, 1, 0, 0);
+    cw_pass_draw(6);
+  }
+  for (int i = 0; i < f->nrays && !fx_off("rays"); i++) {
+    const jw_rays *r = &f->rays[i];
+    cw_pass_uniform4f(R.spark, "u_burst", r->x, r->y, r->t, r->power);
+    cw_pass_uniform4f(R.spark, "u_col", r->r, r->g, r->b, (float)(r->seed & 0xffff));
+    cw_pass_uniform4f(R.spark, "u_kind", 3, 1, 150.0f + 55.0f * r->power, 0);
     cw_pass_draw(6);
   }
   for (int i = 0; i < f->ntrails; i++) {

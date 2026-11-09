@@ -32,5 +32,41 @@
         "romdev"
       ]
     }
+  },
+  {
+    "name": "destructo-seat",
+    "app": "destructo",
+    "frames": 800,
+    "input": "destructo-seat.json",
+    "controlEnv": {
+      "DESTRUCTO_SEAT_CONTROL": "1"
+    },
+    "maxGt16": 0.08,
+    "fields": [
+      "game.phase",
+      "game.level",
+      "game.state",
+      "game.shots",
+      "game.cur",
+      "game.targets_left",
+      "game.hash",
+      "aim.yaw",
+      "aim.pitch"
+    ],
+    "expect": {
+      "game.phase": 1,
+      "game.shots": 2
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    },
+    "note": "Two pads join and the second walks away: co-op is one team, so the first pad aims and fires on the second seat's turn too (two shots by the end). Its control is the seat rule before the fix (DESTRUCTO_SEAT_CONTROL, native): the turn waits on the idle pad and only one shot is fired."
   }
 ]

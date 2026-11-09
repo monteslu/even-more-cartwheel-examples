@@ -313,6 +313,12 @@ void fx_events(const game *g, int shooter) {
       else if (e->a > 3000 && budget(4, 2)) cw_particles_burst(e->mat == M_WOOD ? FX.dust_warm : FX.dust_pale, e->p, up), FX.st.dust++;
       if (e->kind == EV_LAND && e->a > 6000 && budget(5, 2)) ground_mark(e->p, 1.4f + fminf(1.5f, e->a / 40000.0f), e->mat);
       break;
+    case EV_STRIKE: /* a ball crushing into the structure: a cloud of its dust, chips of what it broke, a kick in the pad */
+      cw_particles_burst(FX.dust_big, e->p, e->n), FX.st.dust++;
+      if (e->mat < M_COUNT && cw_node_valid(FX.chips[e->mat])) cw_particles_burst(FX.chips[e->mat], e->p, e->n), FX.st.chips++;
+      if (e->mat == M_STEEL) cw_particles_burst(FX.sparks, e->p, e->n), FX.st.sparks++;
+      rumble(shooter, 0.85f, 0.5f, 300);
+      break;
     case EV_BOOM: {
       cw_node b = FX.boom[FX.nboom++ % BOOMS];
       cw_node3d_set_position(b, e->p);
