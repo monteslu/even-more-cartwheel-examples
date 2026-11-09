@@ -492,7 +492,9 @@ void fx_events(sim *s) {
         a[0] = x, a[1] = 0.8f, a[2] = z;
       float w = e->b == 200 ? 1.1f : (1.0f - 0.08f * (float)e->b) * (0.8f + 0.2f * (float)e->a);
       bool storm = e->b == 200 && !FX.old_storm, coil = e->b != 200 && !FX.old_storm;
-      bolt_new(a, b, w, FX.strobe ? 9 : storm ? STORM_BOLT_LIFE : coil ? COIL_BOLT_LIFE : BOLT_LIFE);
+      static int coil_life = -1; /* (TOWERS_COIL_LIFE: development, tuning) */
+      if (coil_life < 0) coil_life = getenv("TOWERS_COIL_LIFE") ? atoi(getenv("TOWERS_COIL_LIFE")) : COIL_BOLT_LIFE;
+      bolt_new(a, b, w, FX.strobe ? 9 : storm ? STORM_BOLT_LIFE : coil ? coil_life : BOLT_LIFE);
       if (storm || coil) FX.bolts[FX.last_bolt].in = storm ? STORM_BOLT_IN : COIL_BOLT_IN;
       if (FX.frame_hits++ < (lvl >= 2 ? 40 : 20)) burst(FX.spark, e->z, 0.8f, e->w, 0, 1, 0);
       break;
