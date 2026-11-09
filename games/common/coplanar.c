@@ -47,6 +47,10 @@ typedef struct ctri {
   bool two;          /* drawn from both sides */
   bool writes;       /* writes depth (two faces that both leave depth alone are ordered by the draw, not the test) */
   float tol;         /* how near another face's plane counts as this one's (tol_at its middle) */
+  const t3_material *mat;
+  float vn[3];       /* its corners' shading normals, summed and normalised (world) */
+  float uv[3][2], col[3][3]; /* its corners' texture coordinates and colours (when it has them) */
+  bool has_uv, has_col;
 } ctri;
 
 typedef struct cmesh {
@@ -77,6 +81,7 @@ static void xf(const t3_mat4 *m, const float *v, float *o) {
   o[1] = e[1] * v[0] + e[5] * v[1] + e[9] * v[2] + e[13];
   o[2] = e[2] * v[0] + e[6] * v[1] + e[10] * v[2] + e[14];
 }
+static float dot3(const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 static void xf_dir(const t3_mat4 *m, const float *v, float *o) {
   const float *e = m->e;
   o[0] = e[0] * v[0] + e[4] * v[1] + e[8] * v[2];
@@ -95,6 +100,7 @@ static bool tri_fill(ctri *q, const float a[3], const float b[3], const float c[
     q->lo[i] = fminf(a[i], fminf(b[i], c[i])), q->hi[i] = fmaxf(a[i], fmaxf(b[i], c[i]));
   }
   q->d = q->n[0] * a[0] + q->n[1] * a[1] + q->n[2] * a[2];
+  memcpy(q->vn, q->n, sizeof q->vn), q->mat = NULL, q->has_uv = q->has_col = false;
   q->area = l * 0.5f;
   return true;
 }
@@ -230,6 +236,25 @@ static void add_mesh(cset *s, t3_mesh *m, const t3_object *root, bool movable) {
         q->mesh = mi, q->t = i / 3, q->inst = k, q->two = mat->side == T3_DOUBLE_SIDE, q->writes = mat->depth_write;
         float mid[3] = { (v[0][0] + v[1][0] + v[2][0]) / 3, (v[0][1] + v[1][1] + v[2][1]) / 3, (v[0][2] + v[1][2] + v[2][2]) / 3 };
         q->tol = tol_at(mid);
+        q->mat = mat, q->vn[0] = q->vn[1] = q->vn[2] = 0;
+        const t3_attribute *na = g->attributes[T3_ATTR_NORMAL];
+        if (na && na->type == T3_FLOAT32 && na->item_size >= 3) {
+          for (int j = 0; j < 3; j++) {
+            uint32_t vi = ix ? idx_at(ix, i + j) : (uint32_t)(i + j);
+            float wn[3];
+            xf_dir(&w, (const float *)na->array + (size_t)vi * (size_t)na->item_size, wn);
+            for (int k2 = 0; k2 < 3; k2++) q->vn[k2] += wn[k2];
+          }
+          float l2 = sqrtf(dot3(q->vn, q->vn));
+          for (int k2 = 0; k2 < 3; k2++) q->vn[k2] = l2 > 1e-9f ? q->vn[k2] / l2 : q->n[k2];
+        } else memcpy(q->vn, q->n, sizeof q->vn);
+        const t3_attribute *ua = g->attributes[T3_ATTR_UV], *ca = g->attributes[T3_ATTR_COLOR];
+        q->has_uv = ua && ua->type == T3_FLOAT32 && ua->item_size >= 2, q->has_col = ca && ca->type == T3_FLOAT32 && ca->item_size >= 3;
+        for (int j = 0; j < 3; j++) {
+          uint32_t vi = ix ? idx_at(ix, i + j) : (uint32_t)(i + j);
+          if (q->has_uv) memcpy(q->uv[j], (const float *)ua->array + (size_t)vi * (size_t)ua->item_size, 8);
+          if (q->has_col) memcpy(q->col[j], (const float *)ca->array + (size_t)vi * (size_t)ca->item_size, 12);
+        }
       }
     skip:;
     }
@@ -250,7 +275,6 @@ static void basis(const float *n, float *u, float *v) {
   for (int i = 0; i < 3; i++) u[i] /= l;
   v[0] = n[1] * u[2] - n[2] * u[1], v[1] = n[2] * u[0] - n[0] * u[2], v[2] = n[0] * u[1] - n[1] * u[0];
 }
-static float dot3(const float *a, const float *b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 
 /* the two faces lie in one plane, face the same way (or one is drawn from both sides) and overlap by more than a
  * sliver: they fight for the depth test */
@@ -430,6 +454,7 @@ static bool env_on(const char *name, bool dflt) {
   return v && v[0] ? strcmp(v, "0") != 0 : dflt;
 }
 
+static int fighting_pairs(const cset *s, cpair **out);
 void cop_scan(t3_object *root, cop_report *out) {
   cset s = { 0 };
   if (root) {
@@ -439,31 +464,142 @@ void cop_scan(t3_object *root, cop_report *out) {
   }
   if (env_on("COPLANAR_CONTROL", false)) add_control(&s);
   cpair *P;
-  int np = find_pairs(&s, &P);
+  int np = fighting_pairs(&s, &P);
   report(&s, P, np, out);
   const char *dump = getenv("COPLANAR_DUMP"); /* development: the first n pairs, face by face, on stderr */
   for (int i = 0, n = dump ? atoi(dump) : 0; i < np && i < n; i++)
     for (int k = 0; k < 2; k++) {
       const ctri *q = &s.t[k ? P[i].b : P[i].a];
-      fprintf(stderr, "coplanar pair %d %c: %s mesh %d inst %d tri %d n (%.3f %.3f %.3f) d %.4f area %.5f two %d writes %d width %.1f mm p0 (%.3f %.3f %.3f)\n", i, k ? 'b' : 'a',
-              s.rname[s.m[q->mesh].region], q->mesh, q->inst, q->t, q->n[0], q->n[1], q->n[2], q->d, q->area, q->two, q->writes, P[i].w * 1000, q->p[0][0], q->p[0][1], q->p[0][2]);
+      fprintf(stderr, "coplanar pair %d %c: %s mesh %d inst %d tri %d n (%.3f %.3f %.3f) d %.4f area %.5f two %d writes %d width %.1f mm p0 (%.3f %.3f %.3f) vn (%.3f %.3f %.3f) mat %p\n", i, k ? 'b' : 'a',
+              s.rname[s.m[q->mesh].region], q->mesh, q->inst, q->t, q->n[0], q->n[1], q->n[2], q->d, q->area, q->two, q->writes, P[i].w * 1000, q->p[0][0], q->p[0][1], q->p[0][2], q->vn[0], q->vn[1], q->vn[2], (const void *)q->mat);
     }
   free(P);
   cset_free(&s);
   cop_pairs_last = out->pairs;
 }
 
+/* ── planar patches ────────────────────────────────────────────────────
+ * The faces of one mesh copy (mesh and instance) that lie in one plane, look alike (one material) and meet at a corner
+ * make one surface: a cap's fan, a deck's two triangles, a wall's top. A patch moves as a whole (moving part of one
+ * would crack it), its size is the patch's area, and two faces of one patch overlapping each other (a concave outline
+ * fanned from its middle) are one surface drawn twice in one look: not two surfaces fighting. */
+typedef struct pkey { int mesh, inst; int64_t x, y, z; int face; } pkey;
+static int pkey_cmp(const void *pa, const void *pb) {
+  const pkey *a = pa, *b = pb;
+  if (a->mesh != b->mesh) return a->mesh < b->mesh ? -1 : 1;
+  if (a->inst != b->inst) return a->inst < b->inst ? -1 : 1;
+  if (a->x != b->x) return a->x < b->x ? -1 : 1;
+  if (a->y != b->y) return a->y < b->y ? -1 : 1;
+  if (a->z != b->z) return a->z < b->z ? -1 : 1;
+  return a->face < b->face ? -1 : a->face > b->face;
+}
+static int uf_find(int *p, int i) {
+  while (p[i] != i) p[i] = p[p[i]], i = p[i];
+  return i;
+}
+static bool same_plane(const ctri *a, const ctri *b) {
+  return a->mat && a->mat == b->mat && dot3(a->n, b->n) > 0.9999f && fabsf(a->d - b->d) < 1e-4f;
+}
+/* patch[i] for every face (0..*count), and each patch's area */
+static int *patches(const cset *s, int *count, float **area) {
+  int n = s->n, ne = 0;
+  int *par = malloc(sizeof(int) * (size_t)(n ? n : 1));
+  pkey *E = malloc(sizeof *E * (size_t)(n ? n * 3 : 1));
+  if (!par || !E) abort();
+  for (int i = 0; i < n; i++) {
+    par[i] = i;
+    for (int j = 0; j < 3; j++)
+      E[ne++] = (pkey){ s->t[i].mesh, s->t[i].inst, llroundf(s->t[i].p[j][0] * 1e5f), llroundf(s->t[i].p[j][1] * 1e5f), llroundf(s->t[i].p[j][2] * 1e5f), i };
+  }
+  qsort(E, (size_t)ne, sizeof *E, pkey_cmp);
+  for (int a = 0; a < ne;) {
+    int b = a + 1;
+    while (b < ne && E[b].mesh == E[a].mesh && E[b].inst == E[a].inst && E[b].x == E[a].x && E[b].y == E[a].y && E[b].z == E[a].z) b++;
+    for (int i = a; i < b; i++)
+      for (int j = i + 1; j < b; j++)
+        if (same_plane(&s->t[E[i].face], &s->t[E[j].face])) {
+          int ri = uf_find(par, E[i].face), rj = uf_find(par, E[j].face);
+          if (ri != rj) par[ri > rj ? ri : rj] = ri < rj ? ri : rj;
+        }
+    a = b;
+  }
+  free(E);
+  int *id = malloc(sizeof(int) * (size_t)(n ? n : 1)), *map = malloc(sizeof(int) * (size_t)(n ? n : 1)), c = 0;
+  if (!id || !map) abort();
+  for (int i = 0; i < n; i++) map[i] = -1;
+  for (int i = 0; i < n; i++) {
+    int r = uf_find(par, i);
+    if (map[r] < 0) map[r] = c++;
+    id[i] = map[r];
+  }
+  float *ar = calloc((size_t)(c ? c : 1), sizeof(float));
+  if (!ar) abort();
+  for (int i = 0; i < n; i++) ar[id[i]] += s->t[i].area;
+  free(par), free(map);
+  *count = c, *area = ar;
+  return id;
+}
+/* b's corner values (n floats each) at the point p of its plane */
+static void at_point(const ctri *b, const float *p, const float *vals, int n, float *out) {
+  float u[3], v[3], P[3][2], q[2];
+  basis(b->n, u, v);
+  for (int j = 0; j < 3; j++) P[j][0] = dot3(b->p[j], u), P[j][1] = dot3(b->p[j], v);
+  q[0] = dot3(p, u), q[1] = dot3(p, v);
+  float d = (P[1][1] - P[2][1]) * (P[0][0] - P[2][0]) + (P[2][0] - P[1][0]) * (P[0][1] - P[2][1]);
+  float w0 = ((P[1][1] - P[2][1]) * (q[0] - P[2][0]) + (P[2][0] - P[1][0]) * (q[1] - P[2][1])) / d;
+  float w1 = ((P[2][1] - P[0][1]) * (q[0] - P[2][0]) + (P[0][0] - P[2][0]) * (q[1] - P[2][1])) / d, w2 = 1 - w0 - w1;
+  for (int k = 0; k < n; k++) out[k] = vals[k] * w0 + vals[n + k] * w1 + vals[2 * n + k] * w2;
+}
+/* two faces look the same where they overlap: one material, one shading normal, and over a and b the same texture
+ * coordinates and colours (a texture laid by world position, a colour by place), and no instance colour of their own */
+static bool same_look(const cset *s, const ctri *a, const ctri *b) {
+  const t3_material *m = a->mat;
+  if (!m || m != b->mat || dot3(a->vn, b->vn) < 0.9999f) return false;
+  const t3_mesh *ma = s->m[a->mesh].m, *mb = s->m[b->mesh].m;
+  if ((a->mesh != b->mesh || a->inst != b->inst) && ((ma->base.type == T3_INSTANCED_MESH && ((const t3_instanced_mesh *)ma)->instance_color) ||
+                                                     (mb->base.type == T3_INSTANCED_MESH && ((const t3_instanced_mesh *)mb)->instance_color)))
+    return false;
+  const bool textured = m->map || m->normal_map || m->ao_map || m->emissive_map || m->roughness_map || m->metalness_map || m->alpha_map;
+  if (textured && !(a->has_uv && b->has_uv)) return false;
+  if (m->vertex_colors && !(a->has_col && b->has_col)) return false;
+  for (int j = 0; j < 3; j++) {
+    float o[3];
+    if (textured) {
+      at_point(b, a->p[j], &b->uv[0][0], 2, o);
+      if (fabsf(o[0] - a->uv[j][0]) > 1e-3f || fabsf(o[1] - a->uv[j][1]) > 1e-3f) return false;
+    }
+    if (m->vertex_colors) {
+      at_point(b, a->p[j], &b->col[0][0], 3, o);
+      if (fabsf(o[0] - a->col[j][0]) > 4e-3f || fabsf(o[1] - a->col[j][1]) > 4e-3f || fabsf(o[2] - a->col[j][2]) > 4e-3f) return false;
+    }
+  }
+  return true;
+}
+
+/* drop the pairs that cannot be seen to fight: two faces of one patch (one surface in one look), and two faces that look
+ * the same where they overlap (whichever the depth test picks, the pixel is the same colour); the pairs left */
+static int drop_patch_pairs(const cset *s, const int *patch, cpair *P, int np) {
+  int k = 0;
+  for (int i = 0; i < np; i++) {
+    const ctri *a = &s->t[P[i].a], *b = &s->t[P[i].b];
+    if (patch[P[i].a] == patch[P[i].b]) continue;
+    if (same_look(s, a, b)) continue;
+    P[k++] = P[i];
+  }
+  return k;
+}
+/* the fighting pairs of s, without those inside one patch */
+static int fighting_pairs(const cset *s, cpair **out) {
+  int np = find_pairs(s, out), npatch;
+  if (!np) return 0;
+  float *area;
+  int *patch = patches(s, &npatch, &area);
+  np = drop_patch_pairs(s, patch, *out, np);
+  free(patch), free(area);
+  return np;
+}
+
 /* ── the separation ────────────────────────────────────────────────── */
-static bool before(const ctri *x, int ix, const ctri *y, int iy) { return x->area > y->area || (x->area == y->area && ix < iy); }
-static const ctri *rank_T;
-static int rank_cmp(const void *pa, const void *pb) {
-  int a = *(const int *)pa, b = *(const int *)pb;
-  return before(&rank_T[a], a, &rank_T[b], b) ? -1 : before(&rank_T[b], b, &rank_T[a], a) ? 1 : 0;
-}
-static int pair_cmp(const void *pa, const void *pb) {
-  const cpair *x = pa, *y = pb;
-  return x->a != y->a ? (x->a < y->a ? -1 : 1) : (x->b < y->b ? -1 : x->b > y->b);
-}
 
 static size_t attr_bytes(const t3_attribute *a) { return (a->type == T3_UINT16 ? 2 : 4) * (size_t)a->item_size; }
 
@@ -509,7 +645,129 @@ static void occ_inverse(const cset *s, const ctri *q, t3_mat4 *inv) {
 
 static bool same3(const float *a, const float *b) { return fabsf(a[0] - b[0]) < 1e-7f && fabsf(a[1] - b[1]) < 1e-7f && fabsf(a[2] - b[2]) < 1e-7f; }
 
-/* one pass: layer the overlapping faces among root's meshes; the vertices moved */
+typedef struct vpos { float p[3]; int v; } vpos;
+static int vpos_cmp(const void *pa, const void *pb) {
+  const vpos *a = pa, *b = pb;
+  for (int k = 0; k < 3; k++)
+    if (a->p[k] != b->p[k]) return a->p[k] < b->p[k] ? -1 : 1;
+  return a->v - b->v;
+}
+
+/* move a geometry's triangles by tdelta (local; tmove[t] set for the moving ones). The corners of one place (one
+ * vertex, or several vertices at one position: a cap's rim and its wall's top edge) move together, the walls that
+ * meet a moving face stretching to it, unless a face in the moving face's plane that stays (or moves another way) is
+ * among them: then the moving face takes a copy of its own. Returns the corners moved. */
+static int move_geometry(t3_geometry *g, const char *tmove, const float (*tdelta)[3]) {
+  t3_attribute *pa = g->attributes[T3_ATTR_POSITION];
+  int nv = pa->count, ps = pa->item_size, nix = g->index ? g->index->count : 0, ntri = (g->index ? nix : nv) / 3, moved = 0;
+  uint32_t *ix = malloc(sizeof *ix * (size_t)(ntri * 3 ? ntri * 3 : 1));
+  if (!ix) abort();
+  for (int i = 0; i < ntri * 3; i++) ix[i] = g->index ? idx_at(g->index, i) : (uint32_t)i;
+  float *Pp = pa->array, *P0 = malloc(sizeof(float) * (size_t)nv * (size_t)ps);
+  if (!P0) abort();
+  memcpy(P0, Pp, sizeof(float) * (size_t)nv * (size_t)ps);
+  /* the places: vertices sorted by position, a place a run of one position */
+  vpos *VP = malloc(sizeof *VP * (size_t)(nv ? nv : 1));
+  int *place = malloc(sizeof(int) * (size_t)(nv ? nv : 1)), *pstart = malloc(sizeof(int) * (size_t)(nv + 1));
+  if (!VP || !place || !pstart) abort();
+  for (int v = 0; v < nv; v++) memcpy(VP[v].p, P0 + (size_t)v * (size_t)ps, 12), VP[v].v = v;
+  qsort(VP, (size_t)nv, sizeof *VP, vpos_cmp);
+  int npl = 0;
+  for (int i = 0; i < nv; i++) {
+    if (!i || vpos_cmp(&(vpos){ { VP[i].p[0], VP[i].p[1], VP[i].p[2] }, 0 }, &(vpos){ { VP[i - 1].p[0], VP[i - 1].p[1], VP[i - 1].p[2] }, 0 })) pstart[npl++] = i;
+    place[VP[i].v] = npl - 1;
+  }
+  pstart[npl] = nv;
+  /* the triangles at each place */
+  int *tcount = calloc((size_t)npl + 1, sizeof(int)), *tlist;
+  if (!tcount) abort();
+  for (int t = 0; t < ntri; t++)
+    for (int j = 0; j < 3; j++) tcount[place[ix[t * 3 + j]] + 1]++;
+  for (int p = 0; p < npl; p++) tcount[p + 1] += tcount[p];
+  tlist = malloc(sizeof(int) * (size_t)(ntri * 3 ? ntri * 3 : 1));
+  int *fill = malloc(sizeof(int) * (size_t)(npl ? npl : 1));
+  if (!tlist || !fill) abort();
+  memcpy(fill, tcount, sizeof(int) * (size_t)npl);
+  for (int t = 0; t < ntri; t++)
+    for (int j = 0; j < 3; j++) tlist[fill[place[ix[t * 3 + j]]]++] = t;
+  float (*tn)[3] = malloc(sizeof *tn * (size_t)(ntri ? ntri : 1)); /* each triangle's normal (own space) */
+  if (!tn) abort();
+  for (int t = 0; t < ntri; t++) {
+    const float *a = P0 + (size_t)ix[t * 3] * (size_t)ps, *b = P0 + (size_t)ix[t * 3 + 1] * (size_t)ps, *c = P0 + (size_t)ix[t * 3 + 2] * (size_t)ps;
+    float e1[3] = { b[0] - a[0], b[1] - a[1], b[2] - a[2] }, e2[3] = { c[0] - a[0], c[1] - a[1], c[2] - a[2] };
+    float x[3] = { e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0] }, l = sqrtf(dot3(x, x));
+    for (int k = 0; k < 3; k++) tn[t][k] = l > 0 ? x[k] / l : 0;
+  }
+  char *st = calloc((size_t)nv, 1); /* 2: moved by dv */
+  float (*dv)[3] = malloc(sizeof *dv * (size_t)(nv ? nv : 1));
+  int *copy = malloc(sizeof(int) * (size_t)(nv ? nv : 1)), *src = NULL, *cnext = NULL, nnew = 0, capn = 0, capd = 0, capx = 0, capp = 0;
+  float (*npos)[3] = NULL, (*cdv)[3] = NULL;
+  if (!st || !dv || !copy) abort();
+  for (int v = 0; v < nv; v++) copy[v] = -1;
+  for (int t = 0; t < ntri; t++) {
+    if (!tmove[t]) continue;
+    const float *ld = tdelta[t];
+    float ln[3] = { ld[0], ld[1], ld[2] }, l = sqrtf(dot3(ln, ln));
+    for (int k = 0; k < 3; k++) ln[k] /= l;
+    for (int j = 0; j < 3; j++) {
+      int slot = t * 3 + j;
+      uint32_t vi = ix[slot];
+      if ((int)vi >= nv) continue; /* (a copy made already) */
+      if (st[vi] == 2 && same3(dv[vi], ld)) continue;
+      /* may the whole place move? not past a face in this plane that stays or moves another way, nor a corner
+       * already moved another way */
+      int pl = place[vi];
+      bool free_place = st[vi] != 2;
+      for (int q = tcount[pl]; q < tcount[pl + 1] && free_place; q++) {
+        int u = tlist[q];
+        if (u == t || (tmove[u] && same3(tdelta[u], ld))) continue;
+        if (fabsf(dot3(tn[u], ln)) > 0.99f) free_place = false;
+      }
+      for (int q = pstart[pl]; q < pstart[pl + 1] && free_place; q++) {
+        int vk = VP[q].v;
+        if (st[vk] == 2 && !same3(dv[vk], ld)) free_place = false;
+      }
+      if (free_place || !g->index) {
+        for (int q = pstart[pl]; q < pstart[pl + 1]; q++) {
+          int vk = VP[q].v;
+          if (!g->index && vk != (int)vi) continue;
+          for (int k = 0; k < 3; k++) Pp[(size_t)vk * (size_t)ps + (size_t)k] = P0[(size_t)vk * (size_t)ps + (size_t)k] + ld[k], dv[vk][k] = ld[k];
+          st[vk] = 2;
+        }
+      } else { /* a copy of its own (one per way) */
+        int c = copy[vi];
+        while (c >= 0 && !same3(cdv[c], ld)) c = cnext[c];
+        if (c < 0) {
+          src = grow(src, &capn, nnew + 1, sizeof *src);
+          npos = grow(npos, &capp, nnew + 1, sizeof *npos);
+          cdv = grow(cdv, &capd, nnew + 1, sizeof *cdv);
+          cnext = grow(cnext, &capx, nnew + 1, sizeof *cnext);
+          src[nnew] = (int)vi;
+          for (int k = 0; k < 3; k++) npos[nnew][k] = P0[(size_t)vi * (size_t)ps + (size_t)k] + ld[k], cdv[nnew][k] = ld[k];
+          cnext[nnew] = copy[vi], copy[vi] = nnew;
+          c = nnew++;
+        }
+        ix[slot] = (uint32_t)(nv + c);
+      }
+      moved++;
+    }
+  }
+  if (nnew) {
+    regrow(g, nv, src, nnew, ix, nix);
+    float *NP = g->attributes[T3_ATTR_POSITION]->array;
+    for (int i = 0; i < nnew; i++)
+      for (int k = 0; k < 3; k++) NP[(size_t)(nv + i) * (size_t)ps + (size_t)k] = npos[i][k];
+  }
+  g->attributes[T3_ATTR_POSITION]->version++;
+  g->version++;
+  t3_geometry_compute_bounding_box(g);
+  t3_geometry_compute_bounding_sphere(g);
+  free(ix), free(P0), free(VP), free(place), free(pstart), free(tcount), free(tlist), free(fill), free(tn), free(st), free(dv), free(copy), free(src), free(npos),
+    free(cdv), free(cnext);
+  return moved;
+}
+
+/* one pass: layer the overlapping patches among root's meshes; the corners moved */
 static bool shared_geo(const cset *s, int mesh) {
   const t3_mesh *m = s->m[mesh].m;
   if (m->base.type == T3_INSTANCED_MESH && ((const t3_instanced_mesh *)m)->count > 1) return true;
@@ -524,18 +782,12 @@ static int separate_pass(t3_object *root, float eps) {
   int np = find_pairs(&s, &P);
   int n = s.n, moved = 0;
   if (np) {
+    int npatch;
+    float *parea;
+    int *patch = patches(&s, &npatch, &parea);
+    np = drop_patch_pairs(&s, patch, P, np);
     struct nudge_s { t3_mesh *m; int inst; } *nudged = NULL;
     int nnudge = 0, capnudge = 0;
-    int *ord = malloc(sizeof(int) * (size_t)n), *rank = malloc(sizeof(int) * (size_t)n), *layer = calloc((size_t)n, sizeof(int));
-    signed char *way = malloc((size_t)n); /* +1 out along its own normal; -1 against it (a face drawn from both sides over
-                                           * one turned the other way moves to that face's side, not behind it) */
-    if (!ord || !rank || !layer || !way) abort();
-    for (int i = 0; i < n; i++) ord[i] = i, way[i] = 1;
-    rank_T = s.t;
-    qsort(ord, (size_t)n, sizeof(int), rank_cmp);
-    for (int i = 0; i < n; i++) rank[ord[i]] = i;
-    /* in each plane, bigger faces first: a face sits one layer past the highest of the bigger faces it overlaps
-     * (pairs taken by the smaller face's rank, so every bigger face's layer is known when the smaller one is reached) */
     /* (two copies of one geometry placed over each other, two instances of a model, move together whatever is done to
      * the geometry: such a pair is left to the instances' placement) */
     int kept = 0;
@@ -566,103 +818,70 @@ static int separate_pass(t3_object *root, float eps) {
         }
         continue;
       }
-      int ra = rank[P[i].a], rb = rank[P[i].b];
-      P[kept++] = ra > rb ? (cpair){ ra, rb, 0 } : (cpair){ rb, ra, 0 };
+      P[kept++] = P[i];
     }
     np = kept;
     free(nudged);
-    qsort(P, (size_t)np, sizeof *P, pair_cmp);
+    /* which of the two patches of a pair comes out in front. Two in one mesh copy: the one drawn later, the one the depth
+     * test mostly let through already (with equal depths the later draw wins), so the picture keeps the look it had
+     * and only the speckle where rounding went the other way goes. Two of different meshes (drawn in an order that
+     * changes with the view): the smaller, the detail on what it is laid on. */
+    int *first = malloc(sizeof(int) * (size_t)(npatch ? npatch : 1)), (*mv)[2] = malloc(sizeof *mv * (size_t)(np ? np : 1)), nmv = 0;
+    float *off = calloc((size_t)(npatch ? npatch : 1), sizeof(float)); /* along its own normal */
+    signed char *kind = calloc((size_t)(npatch ? npatch : 1), 1);        /* 1: it moves */
+    if (!first || !mv || !off || !kind) abort();
+    for (int c = 0; c < npatch; c++) first[c] = -1;
+    for (int i = 0; i < n; i++)
+      if (first[patch[i]] < 0) first[patch[i]] = i;
     for (int i = 0; i < np; i++) {
-      int sm = ord[P[i].a], bg = ord[P[i].b];
-      if (layer[bg] + 1 > layer[sm]) layer[sm] = layer[bg] + 1, way[sm] = (signed char)(dot3(s.t[sm].n, s.t[bg].n) < 0 ? -way[bg] : way[bg]);
+      const ctri *a = &s.t[P[i].a], *b = &s.t[P[i].b];
+      int pa = patch[P[i].a], pb = patch[P[i].b], m;
+      if (a->mesh == b->mesh && a->inst == b->inst) m = a->t > b->t ? 0 : 1;
+      else m = parea[pa] < parea[pb] || (parea[pa] == parea[pb] && pa > pb) ? 0 : 1;
+      mv[nmv][0] = m ? pb : pa, mv[nmv][1] = m ? pa : pb, nmv++;
     }
-    /* each geometry once (instances and meshes that share it move together): a triangle takes the highest layer any
-     * of its copies has, and moves out along that copy's normal; a vertex it shares with a triangle that moves
-     * another way (or stays) is copied first */
+    /* each mover out in front of its base, a step past where the base is (relaxed until it holds) */
+    for (int it = 0, changed = 1; it < 16 && changed; it++) {
+      changed = 0;
+      for (int i = 0; i < nmv; i++) {
+        int cs = mv[i][0], cb = mv[i][1];
+        const ctri *ts = &s.t[first[cs]], *tb = &s.t[first[cb]];
+        float step = fmaxf(eps, 2.0f * fmaxf(ts->tol, tb->tol)), ob = off[cb] * dot3(tb->n, ts->n);
+        const float front = dot3(tb->n, ts->n) > 0 ? 1.0f : -1.0f; /* (the base's side, along the mover's normal) */
+        float want = ob + front * step;
+        if (fabsf(want) > 6.0f * step) continue; /* (two patches each in front of the other somewhere: no endless climb) */
+        if (!kind[cs] || (front > 0 ? want > off[cs] + 1e-7f : want < off[cs] - 1e-7f)) off[cs] = want, kind[cs] = 1, changed = 1;
+      }
+    }
+    free(mv);
+    /* each geometry once (instances and meshes that share it move together): a triangle takes the biggest move any of
+     * its copies has */
     for (int mi = 0; mi < s.nm; mi++) {
       t3_geometry *g = s.m[mi].m->geometry;
       bool seen = false;
       for (int mj = 0; mj < mi && !seen; mj++) seen = s.m[mj].m->geometry == g;
       if (seen) continue;
-      t3_attribute *pa = g->attributes[T3_ATTR_POSITION];
-      int nv = pa->count, ps = pa->item_size, nix = g->index ? g->index->count : 0, ntri = (g->index ? nix : nv) / 3;
-      int *glayer = calloc((size_t)(ntri ? ntri : 1), sizeof(int)), *gocc = malloc(sizeof(int) * (size_t)(ntri ? ntri : 1));
-      if (!glayer || !gocc) abort();
+      int ntri = (g->index ? g->index->count : g->attributes[T3_ATTR_POSITION]->count) / 3;
+      char *tmove = calloc((size_t)(ntri ? ntri : 1), 1);
+      float (*tdelta)[3] = calloc((size_t)(ntri ? ntri : 1), sizeof *tdelta), *tmag = calloc((size_t)(ntri ? ntri : 1), sizeof(float));
+      if (!tmove || !tdelta || !tmag) abort();
       bool any = false;
       for (int i = 0; i < n; i++) {
         const ctri *q = &s.t[i];
-        if (s.m[q->mesh].m->geometry != g || q->t >= ntri || layer[i] <= glayer[q->t]) continue;
-        glayer[q->t] = layer[i], gocc[q->t] = i, any = true;
-      }
-      if (!any) { free(glayer), free(gocc); continue; }
-      uint32_t *ix = NULL;
-      if (g->index) {
-        ix = malloc(sizeof *ix * (size_t)nix);
-        if (!ix) abort();
-        for (int i = 0; i < nix; i++) ix[i] = idx_at(g->index, i);
-      }
-      float *Pp = pa->array, *P0 = malloc(sizeof(float) * (size_t)nv * (size_t)ps), (*dv)[3] = malloc(sizeof *dv * (size_t)nv);
-      char *st = calloc((size_t)nv, 1); /* 0 untouched, 1 kept where it is, 2 moved by dv */
-      int *copy = malloc(sizeof(int) * (size_t)nv); /* a vertex's first copy (-1 none) */
-      if (!P0 || !dv || !st || !copy) abort();
-      memcpy(P0, Pp, sizeof(float) * (size_t)nv * (size_t)ps);
-      for (int v = 0; v < nv; v++) copy[v] = -1;
-      int *src = NULL, *cnext = NULL, nnew = 0, capn = 0, capp = 0, capd = 0, capx = 0;
-      float (*npos)[3] = NULL, (*cdv)[3] = NULL;
-      for (int t = 0; t < ntri; t++)
-        if (!glayer[t])
-          for (int j = 0; j < 3; j++) {
-            uint32_t vi = ix ? ix[t * 3 + j] : (uint32_t)(t * 3 + j);
-            if ((int)vi < nv) st[vi] = 1;
-          }
-      for (int t = 0; t < ntri; t++) {
-        if (!glayer[t]) continue;
-        const ctri *q = &s.t[gocc[t]];
+        float o = off[patch[i]];
+        if (s.m[q->mesh].m->geometry != g || q->t >= ntri || !kind[patch[i]] || fabsf(o) <= tmag[q->t]) continue;
         t3_mat4 inv;
         occ_inverse(&s, q, &inv);
-        float push = (float)glayer[t] * fmaxf(eps, 2.0f * q->tol) * (float)way[gocc[t]], wd[3] = { q->n[0] * push, q->n[1] * push, q->n[2] * push }, ld[3];
-        xf_dir(&inv, wd, ld);
-        for (int j = 0; j < 3; j++) {
-          int slot = t * 3 + j;
-          uint32_t vi = ix ? ix[slot] : (uint32_t)slot;
-          if ((int)vi >= nv) continue;
-          if (st[vi] == 2 && same3(dv[vi], ld)) continue;
-          if (st[vi] && ix) { /* shared with a face kept or moved another way: a copy of its own (one per way) */
-            int c = copy[vi];
-            while (c >= 0 && !same3(cdv[c], ld)) c = cnext[c];
-            if (c < 0) {
-              src = grow(src, &capn, nnew + 1, sizeof *src);
-              npos = grow(npos, &capp, nnew + 1, sizeof *npos);
-              cdv = grow(cdv, &capd, nnew + 1, sizeof *cdv);
-              cnext = grow(cnext, &capx, nnew + 1, sizeof *cnext);
-              src[nnew] = (int)vi;
-              for (int k = 0; k < 3; k++) npos[nnew][k] = P0[(size_t)vi * (size_t)ps + (size_t)k] + ld[k], cdv[nnew][k] = ld[k];
-              cnext[nnew] = copy[vi], copy[vi] = nnew;
-              c = nnew++;
-            }
-            ix[slot] = (uint32_t)(nv + c);
-          } else {
-            for (int k = 0; k < 3; k++) Pp[(size_t)vi * (size_t)ps + (size_t)k] = P0[(size_t)vi * (size_t)ps + (size_t)k] + ld[k], dv[vi][k] = ld[k];
-            st[vi] = 2;
-          }
-          moved++;
-        }
+        float wd[3] = { q->n[0] * o, q->n[1] * o, q->n[2] * o };
+        xf_dir(&inv, wd, tdelta[q->t]);
+        tmag[q->t] = fabsf(o), tmove[q->t] = 1, any = true;
       }
-      if (nnew) {
-        regrow(g, nv, src, nnew, ix, nix);
-        float *NP = g->attributes[T3_ATTR_POSITION]->array;
-        for (int i = 0; i < nnew; i++)
-          for (int k = 0; k < 3; k++) NP[(size_t)(nv + i) * (size_t)ps + (size_t)k] = npos[i][k];
-      }
-      g->attributes[T3_ATTR_POSITION]->version++;
-      g->version++;
-      t3_geometry_compute_bounding_box(g);
-      t3_geometry_compute_bounding_sphere(g);
-      free(ix), free(P0), free(dv), free(st), free(copy), free(src), free(npos), free(cdv), free(cnext), free(glayer), free(gocc);
+      if (any) moved += move_geometry(g, tmove, (const float (*)[3])tdelta);
+      free(tmove), free(tdelta), free(tmag);
     }
-    free(ord), free(rank), free(layer), free(way);
+    free(first), free(off), free(kind), free(patch), free(parea);
   }
-  if (getenv("COPLANAR_DEBUG")) fprintf(stderr, "coplanar pass: %d faces, %d pairs, %d vertices moved\n", n, np, moved); /* (development) */
+  if (getenv("COPLANAR_DEBUG")) fprintf(stderr, "coplanar pass: %d faces, %d pairs, %d corners moved\n", n, np, moved); /* (development) */
   free(P);
   cset_free(&s);
   return moved;
@@ -691,8 +910,8 @@ int cop_separate(t3_object *root, float eps, int *left) {
       t3_mesh *me = t3_mesh_new_multi(src->geometry, src->materials, src->material_count);
       t3_object_add(grp, me);
       t3_object_update_matrix_world(grp, true);
-      for (int pass = 0; pass < 4; pass++) {
-        int m = separate_pass(grp, eps);
+      for (int pass = 0; pass < 8; pass++) {
+        int m = separate_pass(grp, eps * (float)(pass + 1)); /* (a longer step each pass: a face that landed on another plane leaves it rather than going back) */
         moved += m;
         if (!m) break;
       }
@@ -700,8 +919,8 @@ int cop_separate(t3_object *root, float eps, int *left) {
     }
     cset_free(&s);
   }
-  for (int pass = 0; pass < 4; pass++) {
-    int m = separate_pass(root, eps);
+  for (int pass = 0; pass < 8; pass++) {
+    int m = separate_pass(root, eps * (float)(pass + 1));
     moved += m;
     if (!m) break;
   }
@@ -711,7 +930,7 @@ int cop_separate(t3_object *root, float eps, int *left) {
     cset s = { 0 };
     walk(&s, root, root, true);
     cpair *P;
-    *left = find_pairs(&s, &P);
+    *left = fighting_pairs(&s, &P);
     free(P);
     cset_free(&s);
   }

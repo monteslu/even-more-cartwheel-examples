@@ -3,15 +3,20 @@
  * Two faces lying in one plane, facing the same way (or either way, when one is drawn from both sides) and
  * overlapping, one of them writing depth (a trim laid flush on a wall, a deck on a platform top, two boxes sharing a
  * face) have no depth order: the depth test picks one or the other pixel by pixel, a little differently every frame
- * the camera moves, so patches of the picture swap between the two surfaces' look.
+ * the camera moves, so patches of the picture swap between the two surfaces' look. Two that look the same where they
+ * overlap (one material, one shading normal, the same texture coordinates and colours there) do not count: whichever
+ * wins, the pixel is the same.
  *
  *   cop_scan            counts those pairs among the meshes drawn in a 3D scene (world space, every visible
  *                       depth-tested mesh and instance; skinned meshes, lines, points and sprites are left out), by
  *                       region (the scene nodes they hang under)
- *   cop_separate        layers them apart where a game builds its still world: in each plane the bigger face stays and
- *                       a face over it sits eps out along its normal (a trim on a deck on a floor is two layers); a
- *                       geometry drawn more than once is layered in its own space first; an instance lying on another
- *                       instance of its mesh in an upright plane steps aside
+ *   cop_separate        layers them apart where a game builds its still world. Faces move as whole patches (the faces
+ *                       of one mesh copy in one plane and one material that meet), and the walls meeting a moved patch
+ *                       stretch to it, so nothing cracks. Of two patches in one mesh copy the one drawn later comes
+ *                       out in front (it is what the depth test mostly showed already); of two in different meshes,
+ *                       the smaller (the detail on what it is laid on). A geometry drawn more than once is layered in
+ *                       its own space first; an instance lying on another instance of its mesh in an upright plane
+ *                       steps aside.
  *   cop_separate_model  the same for a model's parts in its own space, before it is placed
  *   cop_init            registers the debug command `coplanar` (the scan of the app's 3D scene, as JSON) and the debug
  *                       fields level.coplanar_pairs / level.coplanar_moved; `coplanar selftest` checks the detector on

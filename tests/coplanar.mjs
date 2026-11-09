@@ -23,10 +23,15 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-if (!process.env.CW_GPU_SUITE_INNER) {
-  const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), 'coplanar', 'node', fileURLToPath(import.meta.url), ...process.argv.slice(2)],
-    { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
-  process.exit(r.status ?? 1);
+if (!process.env.CW_GPU_SUITE_INNER) { /* one hold of the lock a game (a hold is cut off after 15 minutes) */
+  const argv = process.argv.slice(2), games = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--jobs'), flags = argv.filter((x) => !games.includes(x));
+  let status = 0;
+  for (const g of games.length ? games : ['towers', 'destructo', 'emberthrone', 'skate', 'pinball']) {
+    const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), `coplanar-${g}`, 'node', fileURLToPath(import.meta.url), g, ...flags],
+      { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
+    if (r.status !== 0) status = r.status ?? 1;
+  }
+  process.exit(status);
 }
 const args = process.argv.slice(2);
 const UNFIXED = args.includes('--unfixed');
