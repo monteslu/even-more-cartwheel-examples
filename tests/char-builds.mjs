@@ -1,5 +1,5 @@
-// Character builds: every human and humanoid figure the 3D games ship reads as a fit, athletic person; a heavy role
-// reads as muscle, not fat. Each figure is measured in its rest pose from its front and side silhouettes (its
+// Character builds: every human and humanoid figure the 3D games ship has athletic proportions; a big role (a brute)
+// is broad and muscular. Each figure is measured in its rest pose from its front and side silhouettes (its
 // triangles drawn flat, clothes included, as the camera sees them):
 //
 //   H                  stature: the soles to the crown of the head (hair, hats and helmets left out)
@@ -12,10 +12,10 @@
 //   hand / H           wrist to fingertip
 //
 // The limits, from an athletic adult (front breadths, clothed): shoulder over waist at least 1.4; the waist at most
-// 0.19 H (0.205 H for a heavy role); the upper arm at most 0.42 of its length thick (0.5 heavy), the thigh at most
-// 0.5 (0.58 heavy); the foot at most 0.17 H shod, the hand at most 0.12 H; 6.8 to 8.2 heads.
-// A heavy role (a brute) is built big on purpose and keeps a waist and tapered limbs all the same.
-// Creatures bloated by design (towers' bloater) are not humanoid and are not listed.
+// 0.19 H (0.205 H for a big role); the upper arm at most 0.42 of its length thick (0.5 big), the thigh at most
+// 0.5 (0.58 big); the foot at most 0.17 H shod, the hand at most 0.12 H; 6.8 to 8.2 heads.
+// A big role is built broad on purpose and keeps a waist and tapered limbs all the same.
+// Creatures that are not humanoid (towers' bloater) are not listed.
 //
 // CONTROL: --control <rev> reads the figures from that commit (the figures as they shipped before the build pass,
 // 1751b7a); every one of them must fail. --sil <dir> writes each figure's front and side silhouettes with the measured lines on them.
@@ -31,11 +31,11 @@ export const CAST = {
   skate: { dir: 'games/skate/assets/models', figures: { kai: {}, nova: { woman: true }, dex: {}, marlo: { woman: true } } },
   emberthrone: { dir: 'games/emberthrone/assets/models', figures: {
     wayfarer: { woman: true }, warden: {}, raider: {}, lancer: {}, tidecaller: { woman: true },
-    brute: { heavy: true }, thornwarden: { heavy: true }, emberking: { heavy: true } } },
+    brute: { big: true }, thornwarden: { big: true }, emberking: { big: true } } },
 };
 export const LIMITS = {
-  shoulderWaist: { min: 1.4 }, waistH: { max: 0.19, heavy: 0.205 }, upperArm: { max: 0.42, heavy: 0.5 },
-  thigh: { max: 0.5, heavy: 0.58 }, footH: { max: 0.17 }, handH: { max: 0.12 }, heads: { min: 6.8, max: 8.2 },
+  shoulderWaist: { min: 1.4 }, waistH: { max: 0.19, big: 0.205 }, upperArm: { max: 0.42, big: 0.5 },
+  thigh: { max: 0.5, big: 0.58 }, footH: { max: 0.17 }, handH: { max: 0.12 }, heads: { min: 6.8, max: 8.2 },
 };
 
 /** a glb from disk, or from git (`<rev>:<path>`, the figures as they were at a commit) */
@@ -170,16 +170,16 @@ export function measure(file) {
 }
 
 export function judge(m, role = {}) {
-  const heavy = !!role.heavy, r = {
+  const big = !!role.big, r = {
     heads: m.heads, shoulderWaist: m.shoulders / m.waist, waistH: m.waist / m.H, waistDepthH: m.waistD / m.H, hipH: m.hips / m.H, shoulderH: m.shoulders / m.H,
     upperArm: Math.max(m.ua.front, m.ua.side) / m.ua.len, thigh: Math.max(m.th.front, m.th.side) / m.th.len,
     forearmH: Math.max(m.fa.front, m.fa.side) / m.H, calfH: Math.max(m.ca.front, m.ca.side) / m.H, footH: m.foot / m.H, handH: m.hand / m.H,
   };
   const fails = [];
   if (r.shoulderWaist < LIMITS.shoulderWaist.min) fails.push('shoulder/waist');
-  if (r.waistH > (heavy ? LIMITS.waistH.heavy : LIMITS.waistH.max)) fails.push('waist');
-  if (r.upperArm > (heavy ? LIMITS.upperArm.heavy : LIMITS.upperArm.max)) fails.push('upper arm');
-  if (r.thigh > (heavy ? LIMITS.thigh.heavy : LIMITS.thigh.max)) fails.push('thigh');
+  if (r.waistH > (big ? LIMITS.waistH.big : LIMITS.waistH.max)) fails.push('waist');
+  if (r.upperArm > (big ? LIMITS.upperArm.big : LIMITS.upperArm.max)) fails.push('upper arm');
+  if (r.thigh > (big ? LIMITS.thigh.big : LIMITS.thigh.max)) fails.push('thigh');
   if (r.footH > LIMITS.footH.max) fails.push('foot');
   if (r.handH > LIMITS.handH.max) fails.push('hand');
   if (r.heads < LIMITS.heads.min || r.heads > LIMITS.heads.max) fails.push('heads');
@@ -221,7 +221,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
       if (!controlDir && !existsSync(file)) { console.error(`missing ${file}`); process.exitCode = 1; continue; }
       const m = measure(file), { r, fails } = judge(m, role);
       if (silDir) { mkdirSync(silDir, { recursive: true }); m.allTris = loadFigure(file).tris; silhouette(m, join(silDir, `${game}-${name}.png`)); }
-      rowsOut.push({ game, name, role: role.heavy ? 'heavy' : role.woman ? 'woman' : 'man', H: m.H, ...r, fails });
+      rowsOut.push({ game, name, role: role.big ? 'big' : role.woman ? 'woman' : 'man', H: m.H, ...r, fails });
     }
   }
   const f = (x, d = 2) => x.toFixed(d);
