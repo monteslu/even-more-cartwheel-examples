@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.11.0
+
+- **towers**: the difficulty is tuned for a first-time player. A boss is a lesson on the first maps and grows to its
+  full strength by map 18; a wave's creeps are shared over the gates by the length of each road, so a gate beside the
+  core no longer sends half the wave; the next-wave line names a kind the map has not sent before, with what it does
+  and the tower that answers it. Maps 1 to 7 are held by a newcomer alone or in two, the later maps still challenge,
+  and maps 11 to 30 are retuned so that skilled players lose some of the core again. A newcomer check plays the maps
+  the way a first-time player does, from what the screen shows and at a person's pace.
+- **towers**: a late crowd reads as figures, not a carpet: each creep has its own size and shade and is drawn a little
+  apart from those it overlaps, and ogres and bloaters carry a rim of their own colour inside their outline, at no GPU
+  cost. The crowd check judges the volcano's ogre wave.
+- **towers**: lightning swells in and fades instead of cracking: the coils' strikes and the storm's, with their light,
+  so the volcano stays at two flashes a second at most in any part of the screen (WCAG allows three). A strike is never
+  cut off for a new one.
+- **skate**: riders can ride goofy (right foot forward): a STANCE row on the setup for the first player, up or down on
+  the stick for the others, saved with the skater. Every trick has its goofy twin. The bots ride both stances.
+- **skate**: a landing missed by a little at a pace that can be run off is a run-out: the rider steps off, runs after the
+  rolling board and steps back on, instead of falling. A run-out check holds it.
+- **pinball**: the mirror ball reflects as sharply as in 0.10.0 on the new engine.
+- Engine v0.39.0 (through v0.38.9): no screen shake anywhere (none of these games used it: hits are felt in the pads).
+  The pinball and Ember Throne perf gates bound each window's mean frame time.
+
 ## 0.10.0
 
 - **Ember Throne**, the combat round: a blow that lands holds both fighters still for a few ticks, knocks the foe back
