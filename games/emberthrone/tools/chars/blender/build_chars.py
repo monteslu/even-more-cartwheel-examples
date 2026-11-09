@@ -167,17 +167,42 @@ def deform(o, J, sp):
     P *= k
     for j in Jn:
         Jn[j] *= k
-    # 2. thickness: each bone's flesh pushed out from its segment
+    # 1b. the upper arm lengthened (arm_len, a share of the height): the source rig's elbows sit high and its arms hang
+    # short; the elbow, the forearm and the hand move down the upper arm's own line, the upper arm stretching to meet
+    # them (each vertex by its arm weight and how far down the upper arm it lies)
+    al = sp.get('arm_len', 0) * top
+    if al:
+        for S in 'LR':
+            A, B = Jn['UpperArm' + S].copy(), Jn['LowerArm' + S].copy()
+            ax = (B - A) / np.linalg.norm(B - A)
+            below = sum(W[:, col[c]] for c in ('LowerArm' + S, 'Hand' + S, 'Fing' + S + '1', 'Fing' + S + '2', 'Thumb' + S))
+            t = np.clip(((P - A) @ ax) / np.linalg.norm(B - A), 0, 1)
+            s = below + W[:, col['UpperArm' + S]] * t
+            P += s[:, None] * ax[None, :] * al
+            for c in ('LowerArm' + S, 'Hand' + S, 'Fing' + S + '1', 'Fing' + S + '2', 'Thumb' + S):
+                Jn[c] = Jn[c] + ax * al
+    # 2. thickness: each bone's flesh pushed out from its segment. A number pushes it out evenly; a dict sets the
+    # breadth (x, side to side) and the depth (y, front to back) apart, so a big frame widens across the chest and the
+    # shoulders with a flat front below the chest, and 'end' tapers the push along the bone (a limb thick at the
+    # shoulder or the hip and lean at the elbow or the knee)
     thick = sp.get('thick', {})
     if thick:
         D = np.zeros_like(P)
         for b, f in thick.items():
             bones = [b] if b in col else [x for x in GAME_BONES if x.startswith(b)]
+            fx, fy = (f.get('x', 1), f.get('y', f.get('x', 1))) if isinstance(f, dict) else (f, f)
+            end = f.get('end') if isinstance(f, dict) else None
             for bb in bones:
-                if bb not in CHILD or f == 1:
+                if bb not in CHILD or (fx == 1 and fy == 1 and end is None):
                     continue
-                c = seg_closest(P, Jn[bb], Jn[CHILD[bb]])
-                D += W[:, col[bb]][:, None] * (P - c) * (f - 1)
+                a, bj = Jn[bb], Jn[CHILD[bb]]
+                ab = bj - a
+                t = np.clip(((P - a) @ ab) / max(1e-9, ab @ ab), 0, 1)
+                c = a + t[:, None] * ab
+                k = np.stack([np.full(len(P), fx - 1), np.full(len(P), fy - 1), np.full(len(P), (fx + fy) / 2 - 1)], 1)
+                if end is not None:
+                    k = k + t[:, None] * ((end - 1) - k)
+                D += W[:, col[bb]][:, None] * (P - c) * k
         P += D
     # 3. shoulders: each arm chain moved out
     sh = sp.get('shoulder', 0)
@@ -204,6 +229,15 @@ def deform(o, J, sp):
             P = J0 + (P - J0) * (1 + (hd - 1) * w)[:, None]
             for c in ('Fing' + S + '1', 'Fing' + S + '2', 'Thumb' + S):
                 Jn[c] = J0 + (Jn[c] - J0) * hd
+    # 5. the feet (foot_scale): heel to toe and side to side about the ankle, the sole left where it stands (no float)
+    fs = sp.get('foot_scale', 1.0)
+    if fs != 1:
+        for S in 'LR':
+            A = Jn['Foot' + S]
+            w = W[:, col['Foot' + S]] * np.clip((A[2] + 0.03 - P[:, 2]) / 0.04, 0, 1)
+            k = 1 + (fs - 1) * w
+            P[:, 0] = A[0] + (P[:, 0] - A[0]) * k
+            P[:, 1] = A[1] + (P[:, 1] - A[1]) * k
     me.vertices.foreach_set('co', P.astype(np.float32).ravel())
     me.update()
     return {j: Vector(v) for j, v in Jn.items()}

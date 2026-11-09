@@ -17,7 +17,7 @@ const HEAD_GROUPS = ['face', 'lash'];
 const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
 
 const CARD_INWARD = process.env.BRAWLER_CARD_WINDING === 'inward';
-const BRAWLER_PROP = process.env.BRAWLER_PROP; // the controls tests/brawler-heads.mjs must see fail: longneck (a tiny head on a long neck), balloon (an ellipsoid head a sixth of the body), stuckcoat (the creep's fronts stay on the body when his arms spread), stiffskirt (the fronts of his skirt do not go with his thighs), sack (the gut as a lump at the front), tanktop (the men in women's tank tops)
+const BRAWLER_PROP = process.env.BRAWLER_PROP; // the controls tests/brawler-heads.mjs must see fail: longneck (a tiny head on a long neck), balloon (an ellipsoid head a sixth of the body), stuckcoat (the creep's fronts stay on the body when his arms spread), stiffskirt (the fronts of his skirt do not go with his thighs), tanktop (the men in women's tank tops)
 const OUT = process.env.ADV_MODELS_OUT || join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets', 'models');
 mkdirSync(OUT, { recursive: true });
 
@@ -757,32 +757,18 @@ function build(sp) {
   const { world } = skeleton(sp);
   const B = (n) => world[n];
   const X = [1, 0, 0], Y = [0, 1, 0], Z = [0, 0, 1];
-  const W = sp.width ?? 1, AR = (sp.arm ?? 1) * 0.86, LG = (sp.leg ?? 1) * 0.88, HS = headScale(sp), HL = HS / 0.84, HN = (sp.hand ?? 1.35) * 0.8, belly = sp.belly ?? 0, chest = sp.chest ?? 1;
+  const W = sp.width ?? 1, AR = (sp.arm ?? 1) * 0.86, LG = (sp.leg ?? 1) * 0.88, HS = headScale(sp), HL = HS / 0.84, HN = (sp.hand ?? 1.35) * 0.8, chest = sp.chest ?? 1;
   const sw = shoulder(sp), hw = sp.hw ?? 0.1;
   const yH = B('Hips')[1], yS = B('Spine')[1], yC = B('Chest')[1], yN = B('Neck')[1], yHd = B('Head')[1];
   const ySh = B('UpperArmL')[1], yEl = B('LowerArmL')[1], yWr = B('HandL')[1];
   const yHip = B('UpperLegL')[1], yKn = B('LowerLegL')[1], yAn = B('FootL')[1];
 
-  // ── the gut: a real belly, not a lump on the front: it starts under the ribs, runs full and round to a crease over the belt with its weight
-  // low, sagging just above the belt and turning back under to the waistband; it is as wide as it is deep (the flanks and love handles grow
-  // with it) and the lower back sways forward to carry it. The rings themselves grow, so every garment and the skin follow it.
-  const SACK = BRAWLER_PROP === 'sack'; // the control tests/brawler-heads.mjs must see fail: the belly as a narrow sack at the very front
-  const gutFold = yH + 0.078, gutTop = yC + 0.04, gutPeak = gutFold + 0.4 * (gutTop - gutFold), flankPeak = gutFold + 0.34 * (gutTop - gutFold);
-  const gutAt = (y, peak) => { // 0..1 up the front: a full round under the peak (it meets the crease square on), a long easy slope above it
-    if (y <= gutFold || y >= gutTop) return 0;
-    if (y < peak) return Math.sqrt(1 - Math.pow((peak - y) / (peak - gutFold), 2));
-    const u = (y - peak) / (gutTop - peak); return Math.pow(1 - u * u, 1.5);
-  };
-  const gutD = SACK ? 0 : belly * 0.038, gutW = gutD * 0.36, swayD = Math.min(0.02, gutD * 0.2);
-  const softChest = sp.softChest ?? 0;
   // ── skin weights by position ──
   const torsoW = (P, a) => {
     const y = P[1], ax = Math.abs(P[0]), sd = P[0] >= 0 ? 'L' : 'R';
     let w = [];
     const tHS = ss(yH + 0.02, yS + 0.04, y), tSC = ss(yS + 0.04, yC + 0.02, y), tCN = ss(yN - 0.03, yN + 0.04, y);
     w.push([BI.Hips, 1 - tHS], [BI.Spine, tHS * (1 - tSC)], [BI.Chest, tSC * (1 - tCN)], [BI.Neck, tCN]);
-    // the belly moves with its spring bone
-    if (belly > 0) { const kb = SACK ? 0.85 * gauss(y - (yS - 0.02), 0.12) * Math.pow(Math.max(0, Math.sin(a)), 2) : Math.min(0.9, 0.85 * ss(gutFold - 0.03, gutFold + 0.07, y) * ss(gutTop + 0.01, gutPeak + 0.02, y) + 0.14 * softChest / 0.16 * gauss(y - (yC + 0.035), 0.05)) * ss(-0.35, 0.75, Math.sin(a)); w = w.map(([b, x]) => [b, x * (1 - kb)]); w.push([BI.Belly, kb]); }
     // shoulders follow the arm a little; the seat follows the thighs a little
     const ka = 0.55 * ss(sw - 0.08, sw + 0.02, ax) * ss(ySh - 0.12, ySh - 0.02, y) * (1 - ss(ySh + 0.05, ySh + 0.1, y) * 0.5);
     if (ka > 0) { w = w.map(([b, x]) => [b, x * (1 - ka)]); w.push([BI['UpperArm' + sd], ka]); }
@@ -815,7 +801,7 @@ function build(sp) {
     const line = k * (1 - hang), w = [[BI['CoatUpper' + sd], line * (1 - low)], [BI['CoatWaist' + sd], line * low * (1 - skirt)], [BI['CoatSkirt' + sd], line * low * skirt], [BI['CoatGrip' + sd], k * hang * (1 - hem)], [BI['CoatHem' + sd], k * hang * hem]];
     return [...base.map(([b, x]) => [b, x * (1 - k)]), ...w];
   };
-  // ── the torso: rings from the crotch to the neck; pecs, glutes, belly, shoulder mass by angle ──
+  // ── the torso: rings from the crotch to the neck; pecs, seat, lats, shoulder mass by angle ──
   const bw = 0.78 + 0.22 * W, bd = 0.85 + 0.15 * W, sws = sw / 0.2;
   const hN = headOf(sp, world).H, NECKR = hN.R * (0.74 + 0.25 * ((sp.neck ?? 1) - 1) + 0.04 * (W - 1)), wkTop = sws * (0.92 + 0.08 * chest);
   // [y, half width, half depth, z offset, superellipse]
@@ -834,10 +820,6 @@ function build(sp) {
     const front = Math.max(0, s), back = Math.max(0, -s);
     k += (0.07 * chest + 0.2 * FIG.bust) * gauss(y - (yC + 0.06 - 0.02 * FIG.bust), 0.06) * (gauss(wrapA(a - (FRONT - 0.5)), 0.42) + gauss(wrapA(a - (FRONT + 0.5)), 0.42)); // pecs, a bust
     k += 0.08 * gauss(y - (yHip + 0.03), 0.06) * (gauss(wrapA(a - (BACK - 0.5)), 0.5) + gauss(wrapA(a - (BACK + 0.5)), 0.5)); // seat
-    if (SACK) k += belly * 0.3 * gauss(y - (yS - 0.01), 0.1) * Math.pow(front, 2.5);
-    k += 0.07 * gutAt(y, gutPeak) * (gutD / 0.13) * Math.pow(front, 2); // the gut's front is rounder than its flanks
-    // a soft chest on an out of shape man: fat that hangs a little, a short round underside and a long slope above, flowing into the gut (not a bust)
-    if (softChest) k += softChest * gauss(y - (yC + 0.035), y < yC + 0.035 ? 0.04 : 0.09) * (gauss(wrapA(a - (FRONT - 0.62)), 0.5) + gauss(wrapA(a - (FRONT + 0.62)), 0.5));
     k += 0.05 * gauss(y - (yC + 0.03), 0.07) * Math.pow(Math.abs(c), 3); // lats
     k -= 0.025 * gauss(y - yC, 0.15) * gauss(wrapA(a - BACK), 0.18); // the spine groove
     if (foldList) k += folds(y, a, foldList);
@@ -847,49 +829,34 @@ function build(sp) {
   const FIG = { waist: 0.94, hip: 1, bust: 0, ...sp.fig };
   const figW = (y) => 1 - (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1) + (FIG.hip - 1) * gauss(y - (yHip + 0.04), 0.09);
   const figD = (y) => 1 - 0.55 * (1 - FIG.waist) * gauss(y - (yS + 0.06), 0.1);
-  const ringAt = (y, k = 1, kz = 1, add = 0, mod = null) => { const p = prof(y); const u = ss(yS + 0.05, yC + 0.06, y); const wk = lerp(bw, sws * (0.92 + 0.08 * chest), u); const g = gutAt(y, gutPeak) * gutD, sway = swayD * gauss(y - (yS + 0.01), 0.08); return { c: [0, y, p[3] + (g + sway) / 2], U: X, V: Z, ru: p[1] * wk * k * figW(y) + add + gutW * gutAt(y, flankPeak), rv: p[2] * bd * (1 + (chest - 1) * 0.6 * u) * kz * figD(y) + add + (g - sway) / 2, e: lerp(p[4], 2.08, Math.min(1, g / 0.05)), mod }; };
+  const ringAt = (y, k = 1, kz = 1, add = 0, mod = null) => { const p = prof(y); const u = ss(yS + 0.05, yC + 0.06, y); const wk = lerp(bw, sws * (0.92 + 0.08 * chest), u); return { c: [0, y, p[3]], U: X, V: Z, ru: p[1] * wk * k * figW(y) + add, rv: p[2] * bd * (1 + (chest - 1) * 0.6 * u) * kz * figD(y) + add, e: p[4], mod }; };
   // bare skin over the chest: collarbones running out from the notch at the throat, the notch itself
   const clavicle = (y, a) => { const da = Math.abs(wrapA(a - FRONT)), yc = yN - 0.035 + 0.022 * da; return 0.035 * gauss(y - yc, 0.011) * ss(0.12, 0.3, da) * ss(1.5, 1.05, da) - 0.05 * gauss(da, 0.2) * gauss(y - (yN - 0.012), 0.016); };
   const skinUpper = (y0) => { const l0 = m.lod; m.lod = 1; m.loft('skin', ys(y0, yN + 0.035, 0.013).map((y) => ringAt(y, 1, 1, 0, (a) => torsoMod(y)(a) + clavicle(y, a))), { n: 30, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); m.lod = l0; };
   const ys = (y0, y1, step = 0.025) => { const n = Math.max(1, Math.round((y1 - y0) / step)), r = []; for (let i = 0; i <= n; i++) r.push(y0 + ((y1 - y0) * i) / n); return r; };
 
   const top = BRAWLER_PROP === 'tanktop' && sp.top === 'cutoff' ? 'tank' : sp.top ?? 'tee', bottom = sp.bottom ?? 'jeans';
-  const cutoff = top === 'cutoff', gutHem = gutD > 0.08; // a gut big enough to carry the shirt up: the hem rides over it (the jeans stay under the overhang)
+  const cutoff = top === 'cutoff';
   const waist = yH + 0.06; // where trousers end and the top begins
   const shirtMat = sp.shirtMat ?? 'shirt', shirtTile = sp.shirtTile ?? 0.5; // a 1 m tile: a print or stains laid out once round the torso
   const tuck = sp.tuck ?? false;
   // trousers over the pelvis
   const pantsFolds = [[waist - 0.03, 0.02, 0.012, FRONT, 1.0], [yHip - 0.02, 0.025, 0.015, FRONT, 0.6]];
-  const briefs = bottom === 'briefs', bandTop = yHip + 0.085, sagBand = (a) => -0.012 * (0.5 + 0.5 * Math.sin(a)) - 0.006 * Math.cos(a * 2); // the waistband has given up
-  if (briefs) { // bare legs and old white briefs: a band that sags under the belly, a slip of pale gut between it and the tucked shirt
+  const briefs = bottom === 'briefs', bandTop = yHip + 0.085, sagBand = (a) => -0.012 * (0.5 + 0.5 * Math.sin(a)) - 0.006 * Math.cos(a * 2); // the waistband dips at the front
+  if (briefs) { // bare legs and white briefs: a band low on the hips, a slip of skin between it and the tucked shirt
     m.loft('pants', [...ys(PROF[0][0], bandTop - 0.026).map((y) => ({ ...ringAt(y, 1.03, 1.04, 0.004), dy: y > yHip ? sagBand : undefined })),
       ...[[-0.022, 1.045, 0.008], [-0.019, 1.055, 0.011], [-0.002, 1.055, 0.011], [0, 1.03, 0.005]].map(([d, k, ad]) => ({ ...ringAt(bandTop + d, k, k, ad), dy: sagBand }))], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
     m.loft('skin', [...ys(bandTop - 0.03, waist + 0.02, 0.016).map((y) => ringAt(y, 1, 1, 0, torsoMod(y)))], { n: 24, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
   } else
-  m.loft(bottom === 'none' ? 'skin' : 'pants', [...ys(PROF[0][0], waist).map((y) => ringAt(y, 1.04, 1.05, 0.006, torsoMod(y, 0, pantsFolds))), ...(gutHem ? [{ ...ringAt(gutFold, 1.0, 1.0, 0), c: [0, gutFold + 0.03, prof(gutFold)[3]] }] : [])], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
+  m.loft(bottom === 'none' ? 'skin' : 'pants', [...ys(PROF[0][0], waist).map((y) => ringAt(y, 1.04, 1.05, 0.006, torsoMod(y, 0, pantsFolds)))], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 });
   // the upper body: a shirt from the waist up (bare skin for none), with a hem that flares and waist folds
   const shirtTop = top === 'tank' ? ySh - 0.02 : yN + 0.0;
-  const crew = cutoff || gutHem, dip = (y) => (a) => -0.02 * ss(yN - 0.05, yN, y) * gauss(wrapA(a - FRONT), 0.85); // a crew neck: it dips at the front of the throat
+  const crew = cutoff, dip = (y) => (a) => -0.02 * ss(yN - 0.05, yN, y) * gauss(wrapA(a - FRONT), 0.85); // a crew neck: it dips at the front of the throat
   const hemY = tuck ? waist : waist - 0.06;
   const shirtFolds = [[hemY + 0.06, 0.018, 0.012, FRONT, 1.2], [hemY + 0.12, 0.014, 0.012, FRONT + 0.6, 0.6], [hemY + 0.1, 0.012, 0.012, FRONT - 0.7, 0.6], [yC - 0.02, 0.01, 0.015, null]];
   if (top === 'none') { m.loft('skin', ys(waist - 0.01, ySh - 0.03).map((y) => ringAt(y, 1, 1, 0, torsoMod(y))), { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.5 }); skinUpper(ySh - 0.03); }
   else {
-    if (gutHem) {
-      // the tee over a big gut: it drapes from the chest, is pulled up in front (the hem climbs the flanks to the crease and turns under the overhang) and
-      // hangs over the belt at the back. Texture: once round whatever the girth, and up the cloth's own length, so stains stay whole and lie on the belly
-      const hemBack = waist - 0.055, hemQ = (a) => lerp(0.08, 1, ss(1, -0.6, Math.sin(a)));
-      const gf = [[gutFold + 0.03, 0.012, 0.012, FRONT - 1.05, 0.45], [gutFold + 0.05, 0.012, 0.014, FRONT + 1.1, 0.45], [gutPeak + 0.09, 0.008, 0.016, FRONT - 1.0, 0.5], [gutPeak + 0.07, 0.008, 0.016, FRONT + 0.95, 0.5], [yC - 0.02, 0.008, 0.015, null]];
-      const hang = (y) => lerp(1, 0, ss(gutFold, gutFold + 0.1, y));
-      const smile = (y) => (a) => { const sn = Math.sin(a); return 0.028 * (1 - Math.pow((Math.min(y, gutPeak) - gutFold) / (gutPeak - gutFold), 1.5)) * ss(1, 0.5, sn) * ss(-0.3, 0.4, sn); }; // the crease climbs each side of the belly, so it hangs lowest in the middle
-      const ringS = (y) => { const h = hang(y), sm = smile(y), dp = dip(y); return { ...ringAt(y, lerp(1.05, 1.07, h), lerp(1.06, 1.08, h), lerp(0.01, 0.014, h), torsoMod(y, 0, gf)), dy: (a) => sm(a) + dp(a) }; };
-      const below = (y) => ({ ...ringS(y), dy: (a) => (gutFold - y) * (1 - hemQ(a)) + smile(gutFold)(a) });
-      const rings = [{ ...below(hemBack), ru: ringAt(hemBack, 1.03, 1.03, 0).ru, rv: ringAt(hemBack, 1.03, 1.03, 0).rv }, below(hemBack - 0.003), below(hemBack + 0.03), below(gutFold - 0.002),
-        ...[0.012, 0.05, 0.13, 0.25, 0.42, 0.62, 0.82].map((t) => ringS(gutFold + t * (gutPeak - gutFold))), ...ys(gutPeak, shirtTop, 0.028).map(ringS)];
-      const along = (sn) => { const o = [0]; let d = 0; const pt = (r) => [r.c[1], r.c[2] + sn * r.rv * (r.mod ? r.mod(sn > 0 ? FRONT : BACK) : 1)]; for (let i = 1; i < rings.length; i++) { const A = pt(rings[i - 1]), Bq = pt(rings[i]); d += Math.hypot(Bq[0] - A[0], Bq[1] - A[1]); o.push(d); } return o; };
-      const vF = along(1), vB = along(-1), l0 = m.lod; m.lod = 1;
-      m.loft(shirtMat, rings, { n: 32, weights: (k, P, a) => torsoW(P, a), uvFn: (p, k, j, n, a) => [j / n, lerp(vB[k], vF[k], ss(-0.5, 0.9, Math.sin(a))) / shirtTile] });
-      m.lod = l0;
-    } else {
+    {
     // a sleeveless man's top is a T-shirt with the sleeves cut off: it hangs loose from the chest, over the belt, to the hip
     const loose = (y) => (cutoff ? ss(yC + 0.03, yS - 0.02, y) : 0);
     const rings = ys(hemY, shirtTop).map((y) => ({ ...ringAt(y, 1.05 + 0.09 * loose(y), 1.06 + 0.07 * loose(y), 0.01 + 0.017 * loose(y), torsoMod(y, 0, shirtFolds)), e: cutoff ? lerp(prof(y)[4], 2.1, loose(y)) : prof(y)[4], dy: cutoff ? dip(y) : undefined }));
@@ -920,7 +887,7 @@ function build(sp) {
     m.ellipsoid('pants', add(E(PI / 2), [0, -0.005, 0.016]), 0.036, 0.03, 0.028, { weights: () => onW, steps: 6, n: 12 });
   }
   if (sp.belt) {
-    const bk = gutHem ? 0.035 : 0, ba = gutHem ? 0.007 : 0; // under a tee that hangs over it, the belt lies flatter
+    const bk = 0, ba = 0;
     m.loft('belt', [ringAt(waist - 0.035, 1.07 - bk, 1.08 - bk, 0.016 - ba), ringAt(waist - 0.03, 1.09 - bk, 1.1 - bk, 0.02 - ba), ringAt(waist + 0.005, 1.09 - bk, 1.1 - bk, 0.02 - ba), ringAt(waist + 0.01, 1.07 - bk, 1.08 - bk, 0.016 - ba)], { n: 32, weights: (k, P, a) => torsoW(P, a), tile: 0.3 });
     const p = prof(waist - 0.012);
     m.ellipsoid('buckle', [0, waist - 0.012, p[2] * bd * 1.1 + 0.022 + p[3]], 0.032, 0.024, 0.008, { bone: BI.Hips, steps: 4, n: 10, e: 3 });
@@ -1649,7 +1616,7 @@ function emit(sp) {
   console.log(sp.name, 'tris', tris);
 }
 
-// a big gut pushes the arms out: they hang clear of it in every clip (the rest of the rig stays the same)
+// armOut: the arms held a little further from the body in every clip, clear of wide plate and a broad chest (the rest of the rig stays the same)
 function armsOut(sp, pose) {
   if (!sp.armOut) return pose;
   const o = { ...pose };
@@ -1681,7 +1648,7 @@ export const SPECS = [
     colors: { skin: 0x9a7a6a, shirt: 0x5a7a2a, pants: 0x4a3420, shoes: 0x1a1410, hair: 0x1a1a1a, accent: 0xff9a20, glove: 0x2a2018, belt: 0x1a1008, mask: 0xd06a20 }, eyes: 0xffa020 },
   // stone brutes: big, a dented bronze helmet, plates, slow and heavy, a maul
   { name: 'brute', cc0: true, fig: { waist: 0.98 }, shoulders: 2.6, heads: 7.25, skull: { w: 1.02, h: 0.97, slope: 0.9, chin: 1.15 }, face: { brow: 1.7, browThick: 0.075, socket: 1.35, noseW: 1.4, jawAng: 1.6, chin: 1.4 }, paint: { scalp: 1, age: 0.45 }, glowEyes: true,
-    frown: true, scale: 1.3, width: 1.55, chest: 1.15, belly: 0.4, sw: 0.26, hw: 0.115, arm: 1.45, leg: 1.15, head: 1.0, hand: 1.45, jaw: 1.4, neck: 1.4, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
+    frown: true, scale: 1.3, width: 1.55, chest: 1.15, sw: 0.26, hw: 0.115, arm: 1.45, leg: 1.15, head: 1.0, hand: 1.45, jaw: 1.4, neck: 1.4, hair: 'helmet', pads: true, padMat: 'metal', armor: true, bracers: true, gloves: true, boots: true, belt: true,
     top: 'longsleeve', shirtFab: 'leather', bottom: 'cargo', pantsFab: 'leather',
     colors: { skin: 0x7a8a8a, shirt: 0x6a2a7a, pants: 0x3a3040, shoes: 0x1a1612, hair: 0x2a2a2a, accent: 0xff4040, metal: 0xb07838, helmet: 0x9a6830, glove: 0x3a2418, belt: 0x2a1c14, pad: 0xb07838 }, eyes: 0xff3020 },
   // lancers: a long teal coat, a pale mane, a spear that reaches far

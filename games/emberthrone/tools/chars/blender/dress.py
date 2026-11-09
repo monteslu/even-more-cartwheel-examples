@@ -435,7 +435,16 @@ def skirt(o, J, w, pieces, kind):
         tl = max(0.0, min(1.0, (zh - z) / max(0.01, zh - z_bot)))  # down the legs, 0 above the hips
         if kind == 'cape':
             rx0, rf0, rb0 = torso_profile(o, min(z_top, J['Chest'].z + 0.05))
-            rx = rx0 + 0.03 + 0.1 * t * w.get('flare', 1)
+            # 'waist' draws the cape in against the small of the back (the figure's own breadth there), so from the
+            # front the trunk narrows to its waist before the cape flares out below the hips
+            pull = 0.0
+            if w.get('waist') and z < J['Chest'].z + 0.05:
+                rxw = torso_profile(o, max(z, zh + 0.04))[0] - 0.025
+                pull = w['waist'] * sstep(J['Chest'].z + 0.05, J['Spine'].z, z) * (1 - sstep(zh, zh - 0.35, z))
+                rx0 = rx0 + (min(rx0, rxw) - rx0) * pull
+            # drawn in, it flares only from the hips down
+            fl_t = t if not w.get('waist') else tl
+            rx = rx0 + 0.03 + 0.1 * fl_t * w.get('flare', 1)
             rb = rb0 + 0.04 + 0.12 * t
             rf = rb
         else:

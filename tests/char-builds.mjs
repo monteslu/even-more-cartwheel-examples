@@ -7,7 +7,9 @@
 //   shoulder / waist   the breadth over the deltoids over the narrowest breadth of the trunk between the hips and ribs
 //   waist / H          that breadth over the stature
 //   upper arm, thigh   the limb's greatest thickness (front or side) across the middle half of its length, over that
-//                      length; armour plates and bracers left out, sleeves and trouser legs kept
+//                      length; armour plates and bracers left out, sleeves and trouser legs kept, robes, coats and
+//                      capes left out of the legs (they hang free of them); both sides measured, the leaner kept
+//                      (gear worn on one side, a single pauldron or a holster, is not the limb)
 //   foot / H           the foot's length heel to toe, shoe and all
 //   hand / H           wrist to fingertip
 //
@@ -66,6 +68,7 @@ function jointPos(m) {
 
 const HAIRY = /hair|hat|helmet|band|hood|lash|fur|crown|plume/i; // never part of the body's outline
 const PLATE = /plate|metal|armou?r|bracer|pad/i;                 // armour: kept for the outline, left out of a limb's own thickness
+const DRAPE = /robe|cape|coat|skirt/i;                           // cloth hanging free of the legs (robes, coats, capes): the outline, not a limb
 const SKIN = /skin|face|eye/i;
 const sideOf = (b) => (/^Fing([LR])\d$/.exec(b) || /([LR])$/.exec(b))[1];
 const chainOf = (b) => /^(UpperArm|LowerArm|Hand|Fing|Thumb)/.test(b) ? 'arm' + sideOf(b)
@@ -157,10 +160,17 @@ export function measure(file) {
   const hipsR = rows(body.filter((t) => t.chain === 'trunk' || t.chain.startsWith('leg')), X, Y);
   let hips = 0; for (let y = J.Hips[1] - 0.08 * H; y <= J.Hips[1]; y += RES) hips = Math.max(hips, width(hipsR, y));
   const out = { H, heads: H / (crown - chin), crown, chin, shY, shoulders, waist, waistY, waistD, hips };
-  const sd = 'L';
-  const arm = body.filter((t) => t.chain === 'arm' + sd && !PLATE.test(t.mat)), leg = body.filter((t) => t.chain === 'leg' + sd && !PLATE.test(t.mat));
-  out.ua = limb(arm, J['UpperArm' + sd], J['LowerArm' + sd]); out.fa = limb(arm, J['LowerArm' + sd], J['Hand' + sd]);
-  out.th = limb(leg, J['UpperLeg' + sd], J['LowerLeg' + sd]); out.ca = limb(leg, J['LowerLeg' + sd], J['Foot' + sd]);
+  // each limb on both sides, the leaner side kept: a piece worn on one side only (a single pauldron, a holster) is
+  // gear, not the limb; the left side is kept for the foot and the hand
+  const lean = (a, b) => (Math.max(a.front, a.side) <= Math.max(b.front, b.side) ? a : b);
+  const limbs = (sd) => {
+    const arm = body.filter((t) => t.chain === 'arm' + sd && !PLATE.test(t.mat)), leg = body.filter((t) => t.chain === 'leg' + sd && !PLATE.test(t.mat) && !DRAPE.test(t.mat));
+    return { ua: limb(arm, J['UpperArm' + sd], J['LowerArm' + sd]), fa: limb(arm, J['LowerArm' + sd], J['Hand' + sd]),
+      th: limb(leg, J['UpperLeg' + sd], J['LowerLeg' + sd]), ca: limb(leg, J['LowerLeg' + sd], J['Foot' + sd]), leg };
+  };
+  const Ls = limbs('L'), Rs = limbs('R');
+  for (const k of ['ua', 'fa', 'th', 'ca']) out[k] = lean(Ls[k], Rs[k]);
+  const sd = 'L', leg = Ls.leg;
   const fp = leg.filter((t) => t.bones.some((b) => b === 'Foot' + sd)).flatMap((t) => t.v).filter((p) => p[1] < J['Foot' + sd][1] + 0.03);
   out.foot = Math.max(...fp.map((p) => p[2])) - Math.min(...fp.map((p) => p[2]));
   const hj = J['Hand' + sd], hv = body.filter((t) => t.chain === 'arm' + sd && t.bones.some((b) => /^(Hand|Fing|Thumb)/.test(b))).flatMap((t) => t.v);
