@@ -31,6 +31,7 @@
  *
  * The rider's model space: x along the board's nose (the left foot leads: regular stance), y up from the deck's top,
  * z toward the toe edge, where the rider faces. Presentation only: nothing here feeds the simulation. */
+#include <stdlib.h>
 #include <string.h>
 
 #include "view.h"
@@ -56,11 +57,29 @@ static float sstep(float a, float b, float x) {
 }
 static float ease(float cur, float want, float rate, float dt) { return cur + (want - cur) * (1 - cw_exp(-rate * dt)); }
 
-/* the deck's top over the trucks' plane at x along it (the kicktails rise over the last 13 cm; view.c's board) */
-float deck_top(float x) {
-  float u = clampf((fabsf(x) - 0.27f) / 0.13f, 0, 1);
-  return DECK_Y + 0.06f * cw_pow(u, 1.6f);
+/* the kicktails (view.c's board): the deck bends up over its last 15 cm, from flat to 19 degrees over the first 7 cm
+   of that (a smoothstep in the slope), then straight to the end: the tail's tip 4 cm over the flat between the trucks.
+   (SKATE_BOARD_CONTROL=1, the measure's control in tests/skate-board.mjs: the earlier board's tails, 6 cm over 13.) */
+#define KICK_X0 0.255f
+#define KICK_LEN 0.15f
+#define KICK_TAN 0.3443f /* tan 19 degrees */
+float deck_rise(float x, float *slope) {
+  float ax = fabsf(x), sg = x < 0 ? -1.0f : 1.0f;
+  static int control = -1;
+  if (control < 0) control = getenv("SKATE_BOARD_CONTROL") != NULL;
+  if (control) {
+    float u = clampf((ax - 0.27f) / 0.13f, 0, 1);
+    if (slope) *slope = u > 0 && u < 1 ? sg * 0.06f * 1.6f * cw_pow(u, 0.6f) / 0.13f : 0;
+    return 0.06f * cw_pow(u, 1.6f);
+  }
+  float u = clampf((ax - KICK_X0) / KICK_LEN, 0, 1), b = 0.45f, s = u < b ? u / b : 1;
+  if (slope) *slope = ax >= KICK_X0 + KICK_LEN ? sg * KICK_TAN : sg * KICK_TAN * s * s * (3 - 2 * s);
+  /* the slope's integral: over the bend b * (s^3 - s^4 / 2), then straight */
+  float r = u < b ? b * (s * s * s - 0.5f * s * s * s * s) : b * 0.5f + (u - b);
+  return KICK_LEN * KICK_TAN * r;
 }
+/* the deck's top over the trucks' plane at x along it */
+float deck_top(float x) { return DECK_Y + deck_rise(x, NULL); }
 
 #define FOOT_C 0.05f /* the sole's middle ahead of the ankle */
 
@@ -165,7 +184,7 @@ static void board_frame(rig *r, const skater *k, t3_quat *q_base, v3 *p_base, t3
   } else {
     /* the ollie's pitch: nose up about the back wheels (the tail snapped to the ground), levelled by the front foot */
     if (fabsf(s->board_pitch) > 1e-4f) {
-      v3 c = V(-0.21f, 0.028f, 0);
+      v3 c = V(-BOARD_AXLE_X, BOARD_WHEEL_R, 0);
       q = qax(V(0, 0, 1), s->board_pitch);
       p = vsub(c, qv(q, c));
     }

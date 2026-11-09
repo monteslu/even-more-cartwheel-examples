@@ -119,6 +119,8 @@ void rig_pose(rig *r, const skater *k, float dt, float t);
 /* how far a foot's sole is outside where a skater's foot goes on the deck (metres, 0 inside); *which 1 front, 2 back */
 float rig_foot_place(const rig *r, int *which);
 float deck_top(float x); /* the deck's top over the trucks' plane at x along it */
+/* the deck's kicktails: how far its middle line rises at x along it (metres; 0 between the trucks), and the slope there */
+float deck_rise(float x, float *slope);
 
 /* ── rag.c: wipeouts as ragdolls (presentation only) ───────────────────── */
 void rag_park(const park *k);   /* the ragdoll world: the park's triangles as one static mesh */
@@ -130,8 +132,11 @@ bool rag_active(int i);
 bool rag_hips(int i, v3 *out);
 int rag_live(void);
 
-/* the deck's top over the ground (the rider stands on it) */
+/* the deck's top over the ground (the rider stands on it), and the board's measures (view.c builds it, pose.c stands
+   on it): a street deck 81 cm long and 20.3 cm wide, the axles 42 cm apart, wheels 53 mm across */
 #define DECK_Y 0.105f
+#define BOARD_AXLE_X 0.21f
+#define BOARD_WHEEL_R 0.0265f
 void rag_step(void); /* one step of the ragdolls' world (a tick) */
 
 /* ── hud.c ─────────────────────────────────────────────────────────────── */

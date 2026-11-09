@@ -112,6 +112,22 @@ static void bx(mesh_build *b, v3 c, v3 h, const float col[3]) {
     mb_quad(b, v[0], v[1], v[2], v[3]);
   }
 }
+/* a box along z with no ends (an axle: an end cap would lie a few millimetres inside the wheel's face, the two in
+   one plane at a distance) */
+static void rod_z(mesh_build *b, v3 c, v3 h, const float col[3]) {
+  mesh_build t = { 0 };
+  bx(&t, c, h, col);
+  for (int f = 0; f < 4; f++) { /* +x -x +y -y: the first four faces bx writes */
+    int v[4];
+    for (int k = 0; k < 4; k++) {
+      int i = f * 4 + k;
+      v[k] = mb_vert(b, V(t.pos[i * 3], t.pos[i * 3 + 1], t.pos[i * 3 + 2]), V(t.nor[i * 3], t.nor[i * 3 + 1], t.nor[i * 3 + 2]), t.uv[i * 2], t.uv[i * 2 + 1]);
+      mb_color(b, v[k], t.col[i * 3], t.col[i * 3 + 1], t.col[i * 3 + 2]);
+    }
+    mb_quad(b, v[0], v[1], v[2], v[3]);
+  }
+  mb_free(&t);
+}
 /* a wheel: a short cylinder across z at c */
 static void wheel(mesh_build *b, v3 c, float r, float w, const float col[3]) {
   const int S = 12;
@@ -137,9 +153,27 @@ static void wheel(mesh_build *b, v3 c, float r, float w, const float col[3]) {
     }
   }
 }
-/* the deck: a curved plank (kicktails at both ends), nose along +x, its top at y = DECK_Y */
+/* development (tests/skate-board.mjs, the board's shape as the camera sees it): SKATE_BOARD_IDS=1 draws the deck red, its grip
+   magenta, the trucks blue and the wheels green, flat and unlit, and hides the rider, so a frame's pixels say which part each
+   is. The board's meshes are its children in order: deck, grip, trucks, then the four wheels. */
+static void board_ids(t3_object *g) {
+  if (!getenv("SKATE_BOARD_IDS")) return;
+  static const uint32_t ID[4] = { 0xff0000, 0xff00ff, 0x0000ff, 0x00ff00 };
+  for (int i = 0; i < g->child_count; i++) {
+    t3_object *o = g->children[i];
+    if (o->type != T3_MESH) continue;
+    t3_mesh *m = (t3_mesh *)o;
+    t3_material *b = t3_mesh_basic_material_new(ID[i < 3 ? i : 3]);
+    b->tone_mapped = false, b->fog = false;
+    for (int k = 0; k < m->material_count; k++) t3_release(m->materials[k]), m->materials[k] = b, t3_retain(b);
+    t3_release(b);
+    o->cast_shadow = false;
+  }
+}
 
-static t3_object *board_model(const float col[3], t3_object *wheels[4]) {
+/* the earlier board (SKATE_BOARD_CONTROL=1: tests/skate-board.mjs's control, which must fail its measures): a
+   12 mm plank with tall kicktails, light steel trucks of boxes, wide cream wheels */
+static t3_object *board_model_control(const float col[3], t3_object *wheels[4]) {
   mesh_build deck = { 0 }, grip = { 0 }, hw = { 0 }, wb = { 0 };
   const int NS = 16;
   const float L = 0.40f, W = 0.105f, T = 0.012f;
@@ -207,11 +241,202 @@ static t3_object *board_model(const float col[3], t3_object *wheels[4]) {
   }
   t3_release(wg);
   t3_release(md), t3_release(mg), t3_release(mh);
+  board_ids(g);
+  return g;
+}
+
+/* a prism into a builder: a convex outline in the (z, y) plane (counterclockwise seen from +x), from x0 to x1 */
+static void prism(mesh_build *b, const float (*o)[2], int n, float x0, float x1, const float col[3]) {
+  t3_color l = lin(col[0], col[1], col[2]);
+  for (int sd = 0; sd < 2; sd++) { /* the two ends, fanned */
+    float x = sd ? x1 : x0, nx = sd ? 1.0f : -1.0f;
+    int v0 = -1, vp = -1;
+    for (int i = 0; i < n; i++) {
+      int k = sd ? n - 1 - i : i;
+      int v = mb_vert(b, V(x, o[k][1], o[k][0]), V(nx, 0, 0), o[k][0], o[k][1]);
+      mb_color(b, v, l.r, l.g, l.b);
+      if (v0 < 0) v0 = v;
+      else if (vp >= 0 && vp != v0) mb_tri(b, v0, vp, v);
+      vp = v;
+    }
+  }
+  for (int i = 0; i < n; i++) { /* the sides */
+    const float *p = o[i], *q = o[(i + 1) % n];
+    v3 nn = vnorm(V(0, -(q[0] - p[0]), q[1] - p[1])); /* outward: the edge turned clockwise */
+    int a = mb_vert(b, V(x0, p[1], p[0]), nn, 0, 0), c = mb_vert(b, V(x1, p[1], p[0]), nn, 1, 0), d = mb_vert(b, V(x1, q[1], q[0]), nn, 1, 1), e = mb_vert(b, V(x0, q[1], q[0]), nn, 0, 1);
+    mb_color(b, a, l.r, l.g, l.b), mb_color(b, c, l.r, l.g, l.b), mb_color(b, d, l.r, l.g, l.b), mb_color(b, e, l.r, l.g, l.b);
+    mb_quad(b, a, c, d, e);
+  }
+}
+
+/* a skateboard wheel about z at the origin: a rounded tread (the urethane rolls over at its lips), flat faces with the
+   bearing's dark shield in the middle; a printed band on two of the segments shows the spin */
+static void wheel_round(mesh_build *b, float r, float w, const float col[3]) {
+  const int S = 16;
+  t3_color l = lin(col[0], col[1], col[2]);
+  /* the tread's profile across it: (z, radius, the normal's lean out the side) */
+  static const float PR[4][3] = { { -1.0f, 0.82f, -0.75f }, { -0.62f, 1.0f, -0.2f }, { 0.62f, 1.0f, 0.2f }, { 1.0f, 0.82f, 0.75f } };
+  for (int i = 0; i < S; i++) {
+    float a0 = 2 * PI_F * (float)i / S, a1 = 2 * PI_F * (float)(i + 1) / S, s0, c0, s1, c1;
+    cw_sincos(a0, &s0, &c0), cw_sincos(a1, &s1, &c1);
+    float kk = (i % 8 == 0) ? 0.55f : 1.0f;
+    for (int j = 0; j < 3; j++) {
+      int v[4];
+      for (int k = 0; k < 4; k++) {
+        const float *pr = PR[j + (k == 1 || k == 2)];
+        float cc = (k < 2) ? c0 : c1, ss = (k < 2) ? s0 : s1;
+        v[k] = mb_vert(b, V(cc * r * pr[1], ss * r * pr[1], w * pr[0]), vnorm(V(cc, ss, pr[2])), 0, 0);
+        mb_color(b, v[k], l.r * kk, l.g * kk, l.b * kk);
+      }
+      /* v0 (a0, ring j), v1 (a0, ring j+1), v2 (a1, ring j+1), v3 (a1, ring j) */
+      mb_quad(b, v[0], v[1], v[2], v[3]);
+    }
+    for (int sd = -1; sd <= 1; sd += 2) {
+      float z = w * (float)sd, rr = r * 0.82f, rc = r * 0.42f;
+      v3 n = V(0, 0, (float)sd);
+      /* the urethane's face out to the lip, the bearing's shield inside */
+      int p0 = mb_vert(b, V(c0 * rc, s0 * rc, z), n, 0, 0), p1 = mb_vert(b, V(c1 * rc, s1 * rc, z), n, 0, 0), q0 = mb_vert(b, V(c0 * rr, s0 * rr, z), n, 0, 0), q1 = mb_vert(b, V(c1 * rr, s1 * rr, z), n, 0, 0);
+      mb_color(b, p0, l.r * 0.8f, l.g * 0.8f, l.b * 0.8f), mb_color(b, p1, l.r * 0.8f, l.g * 0.8f, l.b * 0.8f), mb_color(b, q0, l.r, l.g, l.b), mb_color(b, q1, l.r, l.g, l.b);
+      if (sd > 0) mb_quad(b, p0, q0, q1, p1);
+      else mb_quad(b, p0, p1, q1, q0);
+      t3_color sh = lin(0.16f, 0.16f, 0.17f);
+      int m = mb_vert(b, V(0, 0, z), n, 0, 0), e0 = mb_vert(b, V(c0 * rc, s0 * rc, z), n, 0, 0), e1 = mb_vert(b, V(c1 * rc, s1 * rc, z), n, 0, 0);
+      mb_color(b, m, sh.r * 0.6f, sh.g * 0.6f, sh.b * 0.6f), mb_color(b, e0, sh.r, sh.g, sh.b), mb_color(b, e1, sh.r, sh.g, sh.b);
+      if (sd > 0) mb_tri(b, m, e0, e1);
+      else mb_tri(b, m, e1, e0);
+    }
+  }
+}
+
+/* the deck's half width at x along it: popsicle ends, each a half circle as wide as the deck */
+static float deck_half_w(float x, float L, float W) {
+  float e = fabsf(x) - (L - W);
+  return e <= 0 ? W : W * sqrtf(fmaxf(0, 1 - (e / W) * (e / W)));
+}
+
+/* the rail's outward normal at x on side sd (+1 the toe edge, -1 the heel): square to the outline, round the ends */
+static v3 rail_normal(float x, float L, float W, float sd) {
+  const float e = 0.002f;
+  float dw = (deck_half_w(x + e, L, W) - deck_half_w(x - e, L, W)) / (2 * e);
+  if (fabsf(x) > L - e) dw = x > 0 ? -40.0f : 40.0f; /* the tip: straight out along the board */
+  return vnorm(V(-clampf(dw, -40, 40), 0, sd));
+}
+
+/* the board: a street deck, nose along +x, its top at y = DECK_Y between the trucks (view.h's measures). The deck is
+   81 cm by 20.3 cm and 11 mm thick: concave across its width (the rails 4 mm over the middle), kicked up 19 degrees
+   at both ends (pose.c's deck_rise), with dark grip on top, the seat's colour underneath and the maple's thin edge
+   between. The trucks sit low and narrow under it, dark: a small baseplate, the kingpin's housing and a bushing, and
+   a triangular hanger tapering out to the axle, so the gap under the deck stays open between the wheels. The wheels
+   are 53 mm across and 31 mm wide, rounded at the lips. */
+static t3_object *board_model(const float col[3], t3_object *wheels[4]) {
+  if (getenv("SKATE_BOARD_CONTROL")) return board_model_control(col, wheels);
+  mesh_build deck = { 0 }, grip = { 0 }, hw = { 0 }, wb = { 0 };
+  const int NX = 48, NZ = 8;
+  const float L = 0.405f, W = 0.1015f, T = 0.011f, CONC = 0.004f;
+  /* the top's height at (x, z) and its normal */
+#define DECK_H(x, z, w) (DECK_Y + deck_rise((x), NULL) + CONC * ((z) / W) * ((z) / W))
+  t3_color gc = lin(col[0], col[1], col[2]), wc = lin(0.95f, 0.93f, 0.88f), ec = lin(0.86f, 0.74f, 0.56f), ec2 = lin(0.62f, 0.5f, 0.36f);
+  for (int i = 0; i < NX; i++) {
+    float x0 = -L + 2 * L * (float)i / NX, x1 = -L + 2 * L * (float)(i + 1) / NX;
+    float w0 = deck_half_w(x0, L, W), w1 = deck_half_w(x1, L, W), sl0, sl1;
+    deck_rise(x0, &sl0), deck_rise(x1, &sl1);
+    /* the graphic: the seat's colour with a pale band toward each end */
+    float xm = 0.5f * (x0 + x1);
+    bool band = fabsf(xm) > 0.115f && fabsf(xm) < 0.15f;
+    t3_color bc = band ? wc : gc;
+    for (int j = 0; j < NZ; j++) {
+      float t0 = -1 + 2 * (float)j / NZ, t1 = -1 + 2 * (float)(j + 1) / NZ;
+      float X[4] = { x0, x1, x1, x0 }, Z[4] = { t0 * w0, t1 * w1, t1 * w1, t0 * w0 }, SL[4] = { sl0, sl1, sl1, sl0 };
+      Z[1] = t0 * w1, Z[2] = t1 * w1, Z[3] = t1 * w0;
+      int a[4], c[4];
+      for (int k = 0; k < 4; k++) {
+        float y = DECK_H(X[k], Z[k], W);
+        v3 n = vnorm(V(-SL[k], 1, -2 * CONC * Z[k] / (W * W)));
+        a[k] = mb_vert(&grip, V(X[k], y, Z[k]), n, X[k], Z[k]);
+        c[k] = mb_vert(&deck, V(X[k], y - T, Z[k]), vmul(n, -1), X[k], Z[k]);
+        mb_color(&deck, c[k], bc.r, bc.g, bc.b);
+      }
+      /* (x0,t0) (x1,t0) (x1,t1) (x0,t1): the top faces up, the bottom down */
+      mb_quad(&grip, a[0], a[3], a[2], a[1]);
+      mb_quad(&deck, c[0], c[1], c[2], c[3]);
+    }
+    /* the rails: the maple's edge, 11 mm, a darker ply line along its middle */
+    for (int sd = -1; sd <= 1; sd += 2) {
+      float z0 = w0 * (float)sd, z1 = w1 * (float)sd, ya = DECK_H(x0, z0, W), yb = DECK_H(x1, z1, W);
+      v3 n0 = rail_normal(x0, L, W, (float)sd), n1 = rail_normal(x1, L, W, (float)sd);
+      for (int ly = 0; ly < 3; ly++) {
+        float f0 = (float)ly / 3, f1 = (float)(ly + 1) / 3;
+        t3_color cc = ly == 1 ? ec2 : ec;
+        int p = mb_vert(&deck, V(x0, ya - T + T * f0, z0), n0, 0, 0), q = mb_vert(&deck, V(x1, yb - T + T * f0, z1), n1, 1, 0), r = mb_vert(&deck, V(x1, yb - T + T * f1, z1), n1, 1, 1), s = mb_vert(&deck, V(x0, ya - T + T * f1, z0), n0, 0, 1);
+        mb_color(&deck, p, cc.r, cc.g, cc.b), mb_color(&deck, q, cc.r, cc.g, cc.b), mb_color(&deck, r, cc.r, cc.g, cc.b), mb_color(&deck, s, cc.r, cc.g, cc.b);
+        if (sd > 0) mb_quad(&deck, p, q, r, s);
+        else mb_quad(&deck, p, s, r, q);
+      }
+    }
+  }
+#undef DECK_H
+  /* the trucks: dark cast metal, the axle bright steel, the bushings a muted version of the seat's colour */
+  static const float cast[3] = { 0.30f, 0.31f, 0.33f }, plate[3] = { 0.24f, 0.25f, 0.27f }, steel[3] = { 0.62f, 0.63f, 0.66f };
+  const float bush[3] = { 0.35f + 0.4f * col[0], 0.35f + 0.4f * col[1], 0.35f + 0.4f * col[2] };
+  const float R = BOARD_WHEEL_R, AX = BOARD_AXLE_X, under = DECK_Y - T; /* the deck's underside between the trucks */
+  /* (the parts stack without overlapping: each one's top is the face under it, so no two faces lie in one plane inside
+     another part, where the depth test would pick between them at a distance) */
+  const float hang_top = R + 0.0262f, plate_lo = under - 0.009f, house_lo = 0.0645f;
+  for (int t = -1; t <= 1; t += 2) {
+    float x = AX * (float)t, in = -(float)t; /* in: toward the deck's middle, where the kingpin leans */
+    bx(&hw, V(x, under - 0.0045f, 0), V(0.0315f, 0.0045f, 0.0295f), plate);                      /* the baseplate */
+    bx(&hw, V(x + in * 0.007f, 0.5f * (plate_lo + house_lo), 0), V(0.0165f, 0.5f * (plate_lo - house_lo), 0.0135f), plate); /* the kingpin's housing */
+    bx(&hw, V(x + in * 0.012f, 0.5f * (house_lo + hang_top), 0), V(0.0072f, 0.5f * (house_lo - hang_top), 0.0098f), bush); /* the bushing */
+    /* the hanger, seen from behind a flat triangle: deep at the pivot, tapering out to the axle */
+    static const float HG[6][2] = { { -0.066f, -0.0078f }, { 0.066f, -0.0078f }, { 0.066f, 0.0074f }, { 0.019f, 0.0262f }, { -0.019f, 0.0262f }, { -0.066f, 0.0074f } };
+    float hg[6][2];
+    for (int k = 0; k < 6; k++) hg[k][0] = HG[k][0], hg[k][1] = HG[k][1] + R;
+    prism(&hw, (const float (*)[2])hg, 6, x - 0.0093f, x + 0.0093f, cast);
+    /* the axle, out of the hanger into the wheel's hub (no nut: its face would lie a few millimetres over the wheel's) */
+    for (int sd = -1; sd <= 1; sd += 2) rod_z(&hw, V(x, R, 0.0842f * (float)sd), V(0.0031f, 0.0031f, 0.0182f), steel);
+  }
+  static const float urethane[3] = { 0.93f, 0.89f, 0.78f };
+  wheel_round(&wb, R, 0.0155f, urethane); /* one wheel, four times: each turns on its axle */
+  t3_object *g = t3_group_new();
+  t3_material *md = t3_mesh_standard_material_new(0xffffff);
+  md->vertex_colors = true, md->roughness = 0.5f;
+  t3_material *mg = t3_mesh_standard_material_new(0x222326);
+  mg->roughness = 0.95f;
+  tex_apply(mg, MAT_ASPHALT, 1.2f, 0.6f);
+  mg->color = lin(0.11f, 0.11f, 0.12f);
+  t3_material *mh = t3_mesh_standard_material_new(0xffffff);
+  mh->vertex_colors = true, mh->roughness = 0.45f, mh->metalness = 0.55f;
+  t3_material *mw = t3_mesh_standard_material_new(0xffffff);
+  mw->vertex_colors = true, mw->roughness = 0.6f, mw->metalness = 0;
+  t3_mesh *m1 = t3_mesh_new(mb_finish(&deck), md), *m2 = t3_mesh_new(mb_finish(&grip), mg), *m3 = t3_mesh_new(mb_finish(&hw), mh);
+  t3_mesh *ms[3] = { m1, m2, m3 };
+  for (int i = 0; i < 3; i++) {
+    ms[i]->base.cast_shadow = true, ms[i]->base.receive_shadow = true;
+    t3_release(ms[i]->geometry);
+    t3_object_add(g, ms[i]);
+    t3_release(ms[i]);
+  }
+  t3_geometry *wg = mb_finish(&wb);
+  for (int t = 0; t < 4; t++) {
+    t3_mesh *w = t3_mesh_new(wg, mw);
+    w->base.cast_shadow = true, w->base.receive_shadow = true;
+    w->base.position = V(AX * ((t & 1) ? 1.0f : -1.0f), R, 0.0875f * ((t & 2) ? 1.0f : -1.0f));
+    t3_object_add(g, w);
+    wheels[t] = &w->base;
+    t3_release(w);
+  }
+  t3_release(wg);
+  t3_release(md), t3_release(mg), t3_release(mh), t3_release(mw);
+  board_ids(g);
   return g;
 }
 
 /* ── init ─────────────────────────────────────────────────────────────── */
 
+static void hide_all(t3_object *o) {
+  o->visible = false;
+  for (int i = 0; i < o->child_count; i++) hide_all(o->children[i]);
+}
 static void set_shadows(t3_object *o) {
   if (o->type == T3_SKINNED_MESH || o->type == T3_MESH) o->cast_shadow = !(o->name && !strncmp(o->name, "Hair", 4)), o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) set_shadows(o->children[i]);
@@ -768,6 +993,7 @@ void view_rigs(const int skin[MAXP], int players) {
       set_shadows(inst);
       cw_node3d_set_object(s->rider, inst);
       s->model = inst;
+      if (getenv("SKATE_BOARD_IDS")) hide_all(inst); /* (the board alone: board_ids) */
       t3_release(inst);
       rig_bind(&s->rig, cw_node3d_object(s->rider));
     }
@@ -936,10 +1162,10 @@ static void camera(int i, const skater *k, v3 p, float dt) {
   s->look_k += ((s->blocked ? 1.0f : 0.0f) - s->look_k) * (1 - cw_exp(-dt * 4.0f));
   v3 look = vlerp(vadd(vadd(s->cam_at, vmul(s->cam_h, 4.0f)), V(0, 0.25f, 0)), vadd(s->cam_at, vmul(s->cam_h, 1.0f)), s->look_k);
   cw_node3d_look_at(VW.cam[i], look, V(0, 1, 0));
-  if (getenv("SKATE_VIEWCAM")) { /* development: the rider seen from a set angle (az degrees from behind the run, 90 its right; el; dist; fov) */
-    float az = 90, el = 8, dist = 3.2f, fov = 40;
-    sscanf(getenv("SKATE_VIEWCAM"), "%f,%f,%f,%f", &az, &el, &dist, &fov);
-    v3 c = vadd(p, V(0, 0.85f, 0)), back = vmul(s->cam_h, -1), right = vcross(s->cam_h, V(0, 1, 0));
+  if (getenv("SKATE_VIEWCAM")) { /* development: the rider seen from a set angle (az degrees from behind the run, 90 its right; el; dist; fov; the height it looks at) */
+    float az = 90, el = 8, dist = 3.2f, fov = 40, aim = 0.85f;
+    sscanf(getenv("SKATE_VIEWCAM"), "%f,%f,%f,%f,%f", &az, &el, &dist, &fov, &aim);
+    v3 c = vadd(p, V(0, aim, 0)), back = vmul(s->cam_h, -1), right = vcross(s->cam_h, V(0, 1, 0));
     float sa, ca, se, ce;
     cw_sincos(az * 0.0174533f, &sa, &ca), cw_sincos(el * 0.0174533f, &se, &ce);
     v3 dir = vadd(vadd(vmul(back, ca * ce), vmul(right, sa * ce)), V(0, se, 0));
@@ -1024,8 +1250,8 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     if (s->rig.bound) rig_pose(&s->rig, k, dt, t); /* the body, and the board's own placement under it */
     if (k->st == SK_BAIL) place_board(s, k, bp, bf, bu, t);
     else place_board(s, k, p, f, u, t);
-    /* the wheels turn with the speed (8 cm across); a landing kicks up a puff of dust */
-    if (k->st != SK_BAIL || k->runout) VW.wheel_a[i] += vlen(k->v) * dt / 0.028f;
+    /* the wheels turn with the speed (53 mm across); a landing kicks up a puff of dust */
+    if (k->st != SK_BAIL || k->runout) VW.wheel_a[i] += vlen(k->v) * dt / BOARD_WHEEL_R;
     VW.wheel_a[i] = fmodf(VW.wheel_a[i], 2 * PI_F);
     for (int w = 0; w < 4; w++)
       if (s->wheel[w]) s->wheel[w]->quaternion = qaxis(V(0, 0, 1), -VW.wheel_a[i]), s->wheel[w]->matrix_world_needs_update = true;
