@@ -8,8 +8,11 @@ Where each asset comes from
 - assets/models/tower_*, pad, core, portal, shell, lamp, decor_*: modelled by tools/blender/towerkit.py (with
   crawler_lib.py and cwchar_lib.py from crawler), run headless in Blender (Blender is used as a tool; its output is
   ours). towers.json (the muzzle points) is written by the same script.
-- assets/models/skitter, ghoul, hound, imp, sporeling, bloater, shade, ogre: crawler's creatures (more-cartwheel-examples,
-  games/crawler), as they are.
+- assets/models/skitter, hound, sporeling, bloater: crawler's creatures (more-cartwheel-examples, games/crawler), as they
+  are.
+- assets/models/ghoul, imp, shade, ogre: tools/blender/creeps.py (towers' copy of crawler's levelchars.py and
+  hordechars.py from more-cartwheel-examples, games/crawler/tools/blender, rebuilt with athletic proportions), run
+  headless in Blender.
 - assets/maps/*.cwtd: tools/gen-maps.mjs. assets/lightmaps/*.cwlm and *.hash: baked by towers_mapview (tools/mapview).
 - assets/textures/*.png: tools/gen-textures.mjs. assets/grade/*.cube: tools/gen-luts.mjs.
 - assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png, haze.png: crawler's copies (scorch.png lightened
