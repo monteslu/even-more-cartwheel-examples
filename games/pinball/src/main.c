@@ -827,21 +827,25 @@ static void render(void *u, double alpha) {
   cw_quality_auto_measure(cw_shell_screen_now() == CW_SHELL_PLAY);
   if (getenv("PINBALL_BENCH_PRINT") && cw_shell_screen_now() == CW_SHELL_PLAY) { /* the perf gate reads these */
     static int n;
-    static double t_last, t_sum;
+    static double t_last, t_sum, g_sum, g_max; /* g_: each frame's GPU total over the window (a frame that captures the mirror
+                                                * ball's probe costs more than the two after it: one frame alone is not the window) */
     double now = cw_time();
     if (t_last > 0) t_sum += (now - t_last) * 1000;
     t_last = now;
+    float gpu = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
+    g_sum += gpu;
+    if (gpu > g_max) g_max = gpu;
     if (++n % 120 == 0) {
       cw_render3d_stats rs;
       cw_render3d_get_stats(cw_scene_app_tree(), &rs);
       fprintf(stderr, "bench frame_ms=%.2f balls=%d lights=%d lamps=%d draws=%d tris=%d\n", t_sum / 120, G.g.balls_in_play, G.lights, G.lamps, rs.draw_calls, rs.triangles);
       const cw_pass_stat *pst;
       int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
-      fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
+      fprintf(stderr, "bench_passes gpu_total=%.2f gpu_mean=%.2f gpu_max=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())), g_sum / 120, g_max);
       for (int k = 0; k < np; k++)
         if (pst[k].ran && (pst[k].gpu_ms_avg > 0.02f || pst[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
       fprintf(stderr, "\n");
-      t_sum = 0;
+      t_sum = g_sum = g_max = 0;
     }
   }
   cw_shell_draw();
