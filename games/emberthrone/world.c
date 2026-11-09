@@ -25,6 +25,7 @@
 #include "cartwheel/resource.h"
 #include "cartwheel/terrain.h"
 #include "cartwheel/vfs.h"
+#include "../common/coplanar.h"
 #include "game.h"
 
 const char *const REGION_NAME[RG_COUNT] = { "THE GREEN HOLLOW", "THE AMBER CANYON", "THE TIDEMARSH", "THE EMBER KEEP", "THE FROSTSPINE HEIGHTS", "THE UNDERWAY", "THE WINDWARD SPIRE", "THE GLOWCAP WOOD" };
@@ -1191,6 +1192,19 @@ void world_build(cw_tree *tree) {
       memset(b, 0, sizeof *b);
     }
   for (int i = 0; i < g_nobj; i++) world_obj_state(i, false);
+  /* faces laid flush on others (a trim on a wall, a step on a floor, a chest's lid on its body, the props' own parts)
+   * layered 1 cm apart, past what the depth buffer tells apart from across a region: no surface fights another for the
+   * depth test (games/common/coplanar.h) */
+  {
+    int moved = 0, left = 0;
+    double ms = 0;
+    for (int r = 0; r < RG_COUNT; r++) {
+      int l = 0;
+      moved += cop_separate(cw_node3d_object(W_region_node[r]), 0.01f, &l);
+      left += l, ms += cop_last_ms;
+    }
+    cw_info("emberthrone: %d vertices moved off shared planes in %.0f ms, %d pairs left", moved, ms, left);
+  }
   g_world_paged = (1 << RG_COUNT) - 1;
   /* perf probes (development, native): what each part of the picture costs */
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));

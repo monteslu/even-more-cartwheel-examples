@@ -35,6 +35,7 @@
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
 #include "game.h"
+#include "../common/coplanar.h"
 
 void view_fixed(void);
 
@@ -211,6 +212,7 @@ static void init(void *u) {
   if (getenv("ADV_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("ADV_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
   snd_move = tone(0.05f, 660, 660, 0.25f, 2), snd_select = tone(0.12f, 520, 1040, 0.3f, 3), snd_back = tone(0.12f, 520, 260, 0.3f, 3);
   snd_music = make_music();
+  cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.tick", &G.tick);
   cw_debug_i32("game.region", &G.region);

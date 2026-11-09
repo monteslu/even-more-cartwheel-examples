@@ -27,6 +27,7 @@
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
 #include "view.h"
+#include "../../common/coplanar.h"
 
 #ifdef SKATE_AUTOPILOT
 #define AUTO 1
@@ -210,6 +211,7 @@ static void init(void *u) {
   audio_init();
   cw_quality_full_resolution(true); /* no preset draws below the output size */
   if (getenv("SKATE_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("SKATE_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
+  cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cw_debug_i32("game.phase", &G.d_phase);
   cw_debug_i32("game.park", &G.d_park);
   cw_debug_i32("game.mode", &G.d_mode);

@@ -21,6 +21,7 @@
 #include "cartwheel/resource.h"
 #include "cartwheel/scene_file.h"
 #include "cartwheel/shell.h"
+#include "../../common/coplanar.h"
 #include "view.h"
 
 const char *const SKIN_NAMES[NSKINS] = { "Kai", "Nova", "Dex", "Marlo" };
@@ -621,6 +622,17 @@ void view_park(const park *k) {
     VW.lm = cw_vfs_exists(path) ? cw_lightmap_load(path) : NULL;
     if (VW.lm) cw_lightmap_apply_shaded(cw_scene_app_tree(), VW.baked, VW.lm, md->lm_gain * (getenv("SKATE_LMK") ? (float)atof(getenv("SKATE_LMK")) : 1), CW_LIGHTMAP_LIT);
     else cw_error("skate: park %d has no bake (%s): it draws unbaked", k->theme, path);
+  }
+  /* faces laid flush on others (a sign on a facade, a sidewalk on the street, the town's boxes sharing faces) layered
+   * apart: no surface fights another for the depth test (games/common/coplanar.h). The camera stays in the park and sees
+   * the town out to the horizon through a near plane 10 cm out, so what counts as one plane grows with the distance from
+   * the park (1 mm in it, 2.4 cm a hundred metres out, what the depth buffer cannot tell apart there), and the layers are
+   * 5 mm apart in the park and twice that tolerance further out. After the bake is applied: it is of the park as built,
+   * and the few millimetres change nothing it holds. */
+  {
+    cop_set_view(0.1f, (t3_vec3){ (k->lo.x + k->hi.x) * 0.5f, 0, (k->lo.z + k->hi.z) * 0.5f }, 0);
+    int left = 0, moved = cop_separate(cw_node3d_object(VW.park), 0.005f, &left);
+    cw_info("skate: park %d: %d vertices moved off shared planes in %.0f ms, %d pairs left", k->theme, moved, cop_last_ms, left);
   }
   /* the tokens */
   t3_material *tm = t3_mesh_standard_material_new(0xffc020);

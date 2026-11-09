@@ -22,6 +22,7 @@
 #include "cartwheel/resource.h"
 #include "cartwheel/rim_light.h"
 #include "cartwheel/scene_file.h"
+#include "../common/coplanar.h"
 #include "game.h"
 
 bool g_hide_hud;
@@ -233,6 +234,7 @@ static void rig_make(int i, int kind) {
     cw_node_add_child(r->root, r->shield);
     cw_mesh3d_set_procedural(r->shield, SHIELD_MESH);
   }
+  cop_separate(inst, 0.002f, NULL); /* the model's rigid parts laid flush on each other 2 mm apart (games/common/coplanar.h) */
   t3_release(inst);
   r->made = true, r->shadow = -1;
 }

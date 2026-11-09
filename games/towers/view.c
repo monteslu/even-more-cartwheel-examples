@@ -19,6 +19,7 @@
 #include "cartwheel/rim_light.h"
 #include "cartwheel/splats.h"
 #include "cartwheel/vfs.h"
+#include "../common/coplanar.h"
 #include "game.h"
 #include "mapbuild.h"
 
@@ -189,6 +190,11 @@ static int model_parts(const char *file, const char *name, t3_instanced_mesh **s
   int n = 0;
   if (cw_vfs_exists(file) && mb_chr_load(&c, file)) {
     n = CW_MIN(c.total, maxf);
+    for (int f = 0; f < n; f++) { /* the model's own faces laid flush on each other (a trim on its body) 5 mm proud */
+      t3_geometry *parts[MB_MAXG];
+      for (int g = 0; g < MB_MAXG; g++) parts[g] = g < c.ngroup ? c.geo[g][f] : NULL;
+      cop_separate_model(parts, MB_MAXG, 0.005f);
+    }
     for (int f = 0; f < n; f++) {
       surf[f] = c.geo[0][f] ? imesh(name, t3_retain(c.geo[0][f]), mat_std(rough, 0.15f), cap) : NULL;
       if (glow) glow[f] = c.ngroup > 1 && c.geo[1][f] ? imesh(name, t3_retain(c.geo[1][f]), mat_glow(), cap) : NULL;
@@ -520,7 +526,13 @@ void view_map(const sim *s) {
 bool view_lightmap(cw_tree *t, const char *bake_out) {
   if (!V.have_map || V.lit) return V.lit;
   V.lit = true;
-  return mapbuild_lightmap(t, &V.b, bake_out, V.text);
+  bool ok = mapbuild_lightmap(t, &V.b, bake_out, V.text);
+  /* faces the map lays flush on others (a prop's foot on the ground, the rock's own folds) 5 mm proud: no surface fights
+   * another for the depth test (games/common/coplanar.h). After the bake is applied: the bake is of the map as built,
+   * and 5 mm changes nothing it holds. */
+  int left = 0, moved = cop_separate(cw_node3d_object(V.b.node), 0.005f, &left);
+  cw_info("towers: map %d: %d vertices moved off shared planes in %.0f ms, %d pairs left", V.m.num, moved, cop_last_ms, left);
+  return ok;
 }
 t3_color view_light_at(float x, float z) {
   t3_color c = V.have_map ? mapbuild_light_at(&V.b, x, z) : (t3_color){ 1, 1, 1 };

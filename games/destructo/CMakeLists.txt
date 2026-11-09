@@ -8,7 +8,7 @@
 #   destructo_humancheck  a human-like player (src/human.c) must clear every level with the ammunition it gives (native only)
 #   destructo_soak        level after level with the bot, no window and no GPU (native only)
 set(DM_SIM src/sim.c src/levels.c src/bot.c src/replay.c)
-set(DM_SRC src/main.c src/view.c src/trees.c src/fx.c src/sound.c ${DM_SIM})
+set(DM_SRC src/main.c src/view.c src/trees.c src/fx.c src/sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${DM_SIM})
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/destructo.txt)
 cw_add_app(destructo SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(destructo_auto SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

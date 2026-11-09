@@ -5,7 +5,7 @@
 #   skate_check   the simulation's checks with no window and no GPU (native only): ramp physics, the parks (nothing
 #                 floats, every line skateable) and the soak
 set(SIM src/park.c src/parks.c src/skater.c src/sim.c src/bot.c src/nav.c)
-set(SRC src/main.c src/view.c src/scenery.c src/pose.c src/rag.c src/hud.c src/gfx.c src/audio.c ${SIM})
+set(SRC src/main.c src/view.c src/scenery.c src/pose.c src/rag.c src/hud.c src/gfx.c src/audio.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${SIM})
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/src/main.c)
   set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/skate.txt)
   cw_add_app(skate SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

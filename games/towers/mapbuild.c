@@ -11,6 +11,7 @@
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene_file.h"
 #include "cartwheel/vfs.h"
+#include "../common/coplanar.h"
 
 t3_color mb_lin(float r, float g, float b) {
   float c[3] = { r, g, b };
@@ -606,6 +607,11 @@ static void build_props(mb_built *b, const tdmap *m) {
     mb_chr c;
     if (!mb_chr_load(&c, path)) continue;
     int frames = kind ? 1 : CW_MIN(c.total, 8);
+    for (int f = 0; f < frames; f++) { /* each prop's own faces laid flush on each other 5 mm proud (in its own space) */
+      t3_geometry *parts[MB_MAXG];
+      for (int g = 0; g < MB_MAXG; g++) parts[g] = g < c.ngroup ? c.geo[g][f] : NULL;
+      cop_separate_model(parts, MB_MAXG, 0.005f);
+    }
     for (int f = 0; f < frames; f++) {
       int nf = 0;
       for (int i = 0; i < m->nprop; i++) nf += m->prop[i].kind == kind && (kind || m->prop[i].frame % frames == f);

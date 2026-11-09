@@ -33,6 +33,7 @@
 #include "game.h"
 #include "sound.h"
 #include "view.h"
+#include "../../common/coplanar.h"
 
 #ifndef PINBALL_BENCH
 #define PINBALL_BENCH 0
@@ -176,6 +177,9 @@ static void init(void *u) {
   G.sel_players = 1;
   G.dmd_px = calloc(DMD_W * DMD_S * DMD_H * DMD_S, 4);
   G.dmd_tex = cw_texture_from_pixels(DMD_W * DMD_S, DMD_H * DMD_S, G.dmd_px, NULL);
+  cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
+  cop_set_plane_tol(0.0002f); /* (the table is a metre from the eye: its depth tells faces apart a few microns apart, and the
+                               * lamp inserts sit 0.6 mm over the playfield on purpose) */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.tick", &G.tick);

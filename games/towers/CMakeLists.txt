@@ -6,7 +6,7 @@
 #   towers_soak    the rules and the bots with no window and no GPU (native only): the long soak and the map check's
 #                  clear run
 #   towers_mapview builds a map as the game does: review in romdev, and the native bakes (tools/mapview)
-set(SRC main.c sim.c bot.c view.c fx.c map.c mapbuild.c)
+set(SRC main.c sim.c bot.c view.c fx.c map.c mapbuild.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c)
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/towers.txt)
 cw_add_app(towers SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(towers_auto SOURCES ${SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

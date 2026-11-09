@@ -19,6 +19,7 @@
 #include "cartwheel/core.h"
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
+#include "../../common/coplanar.h"
 #include "trees.h"
 #include "view.h"
 
@@ -44,6 +45,10 @@ static struct {
   float orbit;
   float rp_orbit;    /* the replay camera's turn round the impact */
   int built_level;
+  uint8_t lay[MAXBLK][3]; /* each block's drawn layers along its own axes (block_layers) */
+  int lay_born[MAXBLK]; /* the block (its born tick + 1) the layer was given to: 0 none */
+  int lay_settled;      /* the tick the level's blocks are coloured again, settled (0: done) */
+
   float pal[M_COUNT][3];
   view_stats st;
 } V;
@@ -715,14 +720,109 @@ void view_level(const game *g) {
     }
     trees_build(V.field, spots, n);
   }
+  { /* the field's faces laid flush on others (tufts of grass whose blades share a plane) apart: no surface fights another
+     * for the depth test (games/common/coplanar.h); the blocks are drawn apart by layer (block_layers) */
+    int left = 0, moved = cop_separate(cw_node3d_object(V.field), 0.005f, &left);
+    cw_info("destructo: level %d: %d vertices moved off shared planes in the field in %.0f ms, %d pairs left", g->level, moved, cop_last_ms, left);
+  }
   build_launcher(g);
+  memset(V.lay_born, 0, sizeof V.lay_born);
   V.built_level = g->level;
   V.cam_init = false;
 }
 
 /* ── every frame ───────────────────────────────────────────────────── */
 
+/* Blocks laid side by side in a course, or stacked flush, have faces in one plane, and once the structure settles they
+ * press a few millimetres into each other: those strips of two faces have no depth order, and the depth test would
+ * pick between the two blocks' faces pixel by pixel, differently as the camera moves. Each block is drawn a little
+ * proud along each of its axes by that axis's layer (LAY_STEP a layer, both ends): along each world axis the blocks
+ * are coloured so that two whose faces across it lie within LAY_NEAR of one plane, and that touch, are drawn at least
+ * LAY_CLEAR apart there (a settled block sits a few millimetres off its neighbour and leans a few milliradians: the
+ * layers must clear what settling left, not only differ). An axis is coloured on its own, so a wall's face takes its
+ * layers in its depth alone and the joints keep their lines. The level's blocks are coloured when they appear and
+ * again once settled (LAY_SETTLE); a fragment takes layers from its slot. Drawing only: the bodies are as they were. */
+#define LAY_STEP 0.002f
+#define LAY_N 8
+#define LAY_NEAR 0.02f
+#define LAY_TOUCH 0.03f /* (the level lays its blocks 8 mm apart, and they settle) */
+#define LAY_CLEAR 0.0018f
+#define LAY_SETTLE 120 /* ticks: a level's blocks have settled onto each other */
+static bool getenv_layers_off(void) { /* COPLANAR_SEPARATE=0: the blocks drawn at their bodies' size, the sweep's control */
+  static int off = -1;
+  if (off < 0) off = getenv("COPLANAR_SEPARATE") && !strcmp(getenv("COPLANAR_SEPARATE"), "0");
+  return off;
+}
+/* a block's world box and, for each world axis, the block's own axis that lies along it */
+static void block_box(const block *k, float lo[3], float hi[3], uint8_t own[3]) {
+  cw_xform3 x = cw_body3d_transform(k->body);
+  t3_mat4 r;
+  t3_mat4_compose(&r, (t3_vec3){ 0, 0, 0 }, x.q, (t3_vec3){ 1, 1, 1 });
+  const float h[3] = { k->half.x, k->half.y, k->half.z }, c[3] = { x.p.x, x.p.y, x.p.z };
+  for (int a = 0; a < 3; a++) {
+    float e = fabsf(r.e[a]) * h[0] + fabsf(r.e[4 + a]) * h[1] + fabsf(r.e[8 + a]) * h[2];
+    lo[a] = c[a] - e, hi[a] = c[a] + e;
+    int best = 0;
+    for (int j = 1; j < 3; j++)
+      if (fabsf(r.e[j * 4 + a]) > fabsf(r.e[best * 4 + a])) best = j;
+    own[a] = (uint8_t)best;
+  }
+}
+static void color_blocks(const game *g) {
+  static float lo[MAXBLK][3], hi[MAXBLK][3];
+  static uint8_t own[MAXBLK][3];
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive && !g->b[i].gen) block_box(&g->b[i], lo[i], hi[i], own[i]);
+  for (int a = 0; a < 3; a++) /* each world axis on its own */
+    for (int i = 0; i < g->nb; i++) {
+      const block *k = &g->b[i];
+      if (!k->alive || k->gen) continue;
+      int c = 0;
+      for (; c < LAY_N - 1; c++) { /* the lowest layer that clears every earlier neighbour across this axis */
+        bool clear = true;
+        for (int j = 0; j < i && clear; j++) {
+          if (!g->b[j].alive || g->b[j].gen) continue;
+          float dh = hi[i][a] - hi[j][a], dl = lo[i][a] - lo[j][a];
+          if (fabsf(dh) >= LAY_NEAR && fabsf(dl) >= LAY_NEAR) continue;
+          bool touch = true;
+          for (int b = 0; b < 3 && touch; b++)
+            if (b != a) touch = lo[i][b] <= hi[j][b] + LAY_TOUCH && lo[j][b] <= hi[i][b] + LAY_TOUCH;
+          if (!touch) continue;
+          float e = LAY_STEP * (float)(c - V.lay[j][own[j][a]]);
+          if (fabsf(dh) < LAY_NEAR && fabsf(dh + e) < LAY_CLEAR) clear = false;
+          if (fabsf(dl) < LAY_NEAR && fabsf(dl - e) < LAY_CLEAR) clear = false;
+        }
+        if (clear) break;
+      }
+      V.lay[i][own[i][a]] = (uint8_t)c;
+    }
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive && !g->b[i].gen) V.lay_born[i] = g->b[i].born + 1;
+  if (getenv("DESTRUCTO_LAYER_LOG")) {
+    int hist[LAY_N] = { 0 };
+    for (int i = 0; i < g->nb; i++)
+      if (g->b[i].alive && !g->b[i].gen)
+        for (int a = 0; a < 3; a++) hist[V.lay[i][a]]++;
+    fprintf(stderr, "destructo layers (tick %d):", g->tick);
+    for (int c = 0; c < LAY_N; c++) fprintf(stderr, " %d", hist[c]);
+    fprintf(stderr, "\n");
+  }
+}
+static void block_layers(const game *g) {
+  bool fresh = false;
+  for (int i = 0; i < g->nb && !fresh; i++) fresh = g->b[i].alive && !g->b[i].gen && V.lay_born[i] != g->b[i].born + 1;
+  if (fresh) color_blocks(g), V.lay_settled = g->tick + LAY_SETTLE;
+  else if (V.lay_settled && g->tick >= V.lay_settled) color_blocks(g), V.lay_settled = 0; /* again once the structure has settled */
+  for (int i = 0; i < g->nb; i++) /* a fragment: layers from its slot and birth */
+    if (g->b[i].alive && g->b[i].gen && V.lay_born[i] != g->b[i].born + 1) {
+      uint32_t h = (uint32_t)i * 2654435761u + (uint32_t)g->b[i].born * 40503u;
+      for (int a = 0; a < 3; a++) V.lay[i][a] = (uint8_t)((h >> (8 * a)) & 3);
+      V.lay_born[i] = g->b[i].born + 1;
+    }
+}
+
 void view_sync(const game *g, float alpha) {
+  block_layers(g);
   int cnt[M_COUNT] = { 0 }, nroof = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
@@ -734,7 +834,8 @@ void view_sync(const game *g, float alpha) {
     int s = roofing ? nroof++ : cnt[m]++;
     cw_xform3 x = cw_body3d_interpolated(k->body, alpha);
     t3_mat4 mx;
-    t3_vec3 sc = m == M_TARGET ? (t3_vec3){ k->half.x * 2, k->half.y * 2, k->half.z * 2 } : (t3_vec3){ k->half.x * 2, k->half.y * 2, k->half.z * 2 };
+    const float proud = m == M_TARGET || getenv_layers_off() ? 0 : 2.0f * LAY_STEP; /* a layer (both ends) */
+    t3_vec3 sc = { k->half.x * 2 + proud * V.lay[i][0], k->half.y * 2 + proud * V.lay[i][1], k->half.z * 2 + proud * V.lay[i][2] };
     t3_mat4_compose(&mx, x.p, x.q, sc);
     t3_instanced_mesh_set_matrix_at(im, s, &mx);
     float v = 0.74f + 0.48f * (float)k->tint / 255.0f, hue = ((k->tint * 37) & 255) / 255.0f - 0.5f; /* each block its own shade, a little warmer or cooler */

@@ -6,7 +6,7 @@
 #   pinball_soak       the rules and the bot with no window and no GPU (native only)
 #   pinball_tablemap   a top-down picture of a table's physics and the bot's ball (native only, for laying out tables)
 set(PB_SIM src/phys.c src/tables.c src/rules.c src/bot.c src/lights.c)
-set(PB_SRC src/main.c src/view.c src/backbox.c src/geo.c src/art.c src/dmd.c src/sound.c ${PB_SIM})
+set(PB_SRC src/main.c src/view.c src/backbox.c src/geo.c src/art.c src/dmd.c src/sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${PB_SIM})
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/pinball.txt)
 cw_add_app(pinball SOURCES ${PB_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(pinball_auto SOURCES ${PB_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

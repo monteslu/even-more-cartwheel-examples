@@ -18,6 +18,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/scene.h"
+#include "../../common/coplanar.h"
 #include "backbox.h"
 #include "geo.h"
 #include "lights.h"
@@ -771,12 +772,20 @@ void view_build(const game *g) {
     cw_node dn = piece(V.table, "CanopyBoard", gb_geometry(&d), dm, false);
     cw_node_set(dn, "layers", cw_val_int(4));
   }
-  /* the balls */
+  /* faces laid flush on others (the inserts in the playfield, the ramps' feet on it, the walls' shared faces, the
+   * cabinet's boxes) layered half a millimetre apart, a hundred times what the depth buffer resolves a metre from the
+   * eye: no surface fights another for the depth test (games/common/coplanar.h) */
+  {
+    int left = 0, moved = cop_separate(cw_node3d_object(V.table), 0.0005f, &left);
+    cw_info("pinball: %d vertices moved off shared planes in %.0f ms, %d pairs left", moved, cop_last_ms, left);
+  }
+  /* the balls (a ball out of play is hidden, not parked: the spares would share every face) */
   for (int i = 0; i < PB_MAXB; i++) {
     t3_material *m = std_mat(0.97f, 0.97f, 0.98f, 0.04f, 1);
     V.ball[i] = piece(V.table, "Ball", t3_sphere_geometry_new(PB_R, 32, 24), m, true);
     cw_node_set(V.ball[i], "layers", cw_val_int(2)); /* not in the probe's capture: the ball never mirrors itself */
     cw_node3d_set_position(V.ball[i], tw(0, -5, 0));
+    cw_node_set(V.ball[i], "visible", cw_val_bool(false));
   }
   V.built = g->table_id;
 }
@@ -793,6 +802,7 @@ void view_sync(const game *g, float alpha, float dt) {
   /* balls */
   for (int i = 0; i < PB_MAXB; i++) {
     const pb_ball *b = &g->W.b[i];
+    cw_node_set(V.ball[i], "visible", cw_val_bool(b->state != BS_OFF));
     if (b->state == BS_OFF) { cw_node3d_set_position(V.ball[i], tw(0, -5, 0)); continue; }
     float x = b->pwx + (b->wx - b->pwx) * alpha, y = b->pwy + (b->wy - b->pwy) * alpha, z = b->pwz + (b->wz - b->pwz) * alpha;
     if (b->state == BS_HELD && b->held_tag == T->toy_el && T->toy == TOY_MAGNET) z = 0.006f + 0.002f * sinf(V.t * 3); /* in the magnet's grip */

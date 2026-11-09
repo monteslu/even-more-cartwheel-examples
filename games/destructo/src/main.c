@@ -36,6 +36,7 @@
 #include "replay.h"
 #include "sound.h"
 #include "view.h"
+#include "../../common/coplanar.h"
 
 #ifndef DESTRUCTO_BENCH
 #define DESTRUCTO_BENCH 0
@@ -214,6 +215,7 @@ static void init(void *u) {
   if (getenv("DESTRUCTO_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("DESTRUCTO_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
   sound_init();
   G.players = 1;
+  cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
   cw_debug_i32("game.state", &G.state);

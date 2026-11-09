@@ -33,6 +33,7 @@
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
 #include "game.h"
+#include "../common/coplanar.h"
 
 static double wall(void) {
   struct timespec ts;
@@ -269,6 +270,9 @@ static void init(void *u) {
   snd_music = synth(2.0f, 65, 65, 0.05f, 0.25f, 0.2f);
   G.best_map = ((save_data *)cw_shell_game_save())->best_map;
   G.maps_won = ((save_data *)cw_shell_game_save())->maps_won;
+  cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
+  cop_set_plane_tol(0.0005f); /* (the camera's depth range is the map's own few metres: it tells faces apart microns apart, and
+                               * the models lay their glows a millimetre over their bodies on purpose) */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.map", &G.map);
