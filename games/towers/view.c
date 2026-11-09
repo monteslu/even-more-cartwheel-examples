@@ -70,6 +70,7 @@ static struct {
   cw_node core_light, portal_light[MP_MAXSPAWN], beam_light[8];
   float hit[MAXE];             /* each creep's hit glow, eased (render only) */
   float off[MAXE][2];          /* each creep drawn a little apart from those it presses on (eased, render only) */
+  float shade_k;               /* the crowd's shade on this map's road (view_map) */
   bool old_crowd;              /* TOWERS_OLD_CROWD (native tests): the crowd as it was, the crowd check's control */
   float gate_k[MP_MAXSPAWN];   /* each gate's glow, eased toward live or quiet */
   float core_hurt, core_ph;    /* the core's health as shown (eased) and its throb's phase */
@@ -246,6 +247,31 @@ static t3_geometry *hull(t3_geometry *g, float d) {
   free(q);
   return h;
 }
+/* the crowd's rim, baked into the bodies' colours: the camera looks down on the map from a fixed height, and a creep only
+ * turns about the vertical, so how near a point of a body is to its silhouette from up there is how near its surface
+ * normal is to horizontal, whichever way it faces. Those points take a pale tint of the kind's own hue (the instance
+ * colour, the kind's tint and the light, multiplies it), so each body is outlined by a rim of light inside its ink edge
+ * and reads against the one it presses on, with no lighting model of its own (a rim light shader on the late waves'
+ * creeps cost 0.4 to 0.6 ms of GPU) */
+static void bake_rim(t3_geometry *g, int k) {
+  t3_attribute *ca = g->attributes[T3_ATTR_COLOR], *na = g->attributes[T3_ATTR_NORMAL];
+  if (!ca || !na || ca->type != T3_FLOAT32 || na->count != ca->count) return;
+  static const t3_attribute *done_[256]; /* (frames may share a colour buffer: each one tinted once) */
+  static int ndone;
+  for (int i = 0; i < ndone; i++) if (done_[i] == ca) return;
+  if (ndone < 256) done_[ndone++] = ca;
+  float strength = 0.5f, lo = 0.35f, hi = 0.9f;
+  if (getenv("TOWERS_RIM")) sscanf(getenv("TOWERS_RIM"), "%f,%f,%f", &strength, &lo, &hi); /* (development: tuning the rim) */
+  const float *n = t3_attribute_f32(na);
+  float *c = t3_attribute_f32(ca);
+  int cs = ca->item_size;
+  float rim[3] = { 0.55f + 0.45f * KIND_RIM[k][0], 0.55f + 0.45f * KIND_RIM[k][1], 0.55f + 0.45f * KIND_RIM[k][2] };
+  for (int i = 0; i < ca->count; i++) {
+    float w = cw_smoothstep(lo, hi, 1.0f - fabsf(n[i * 3 + 1])) * strength;
+    for (int j = 0; j < 3; j++) c[i * cs + j] += (rim[j] - c[i * cs + j]) * w;
+  }
+  ca->version++;
+}
 static void kind_load(int k) {
   kindv *kv = &V.k[k];
   if (!mb_chr_load(&kv->c, MON_FILE[k])) return;
@@ -253,18 +279,13 @@ static void kind_load(int k) {
   kv->nwalk = kv->c.nf[0];
   kv->natk = 0;
   kv->r = kv->c.rad;
-  /* the body: a matte standard surface with a rim of the kind's hue lifted toward white along its silhouette, so each body
-   * stands off the one beside it and the ground in a packed crowd (the old crowd: lambert, no rim) */
-  t3_material *m;
-  if (V.old_crowd) m = t3_mesh_lambert_material_new(0xffffff), m->vertex_colors = true;
-  else {
-    m = mat_std(0.8f, 0.0f);
-    cw_rim_light_desc rd = cw_rim_light_default();
-    t3_color kr = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
-    rd.color = (t3_color){ 0.45f * kr.r + 0.55f, 0.45f * kr.g + 0.55f, 0.45f * kr.b + 0.55f };
-    rd.strength = 0.9f, rd.power = 2.2f, rd.near = 0, rd.far = 1, rd.close = 1;
-    cw_rim_light_apply(m, &rd);
-  }
+  t3_material *m = t3_mesh_lambert_material_new(0xffffff);
+  m->vertex_colors = true;
+  /* (on the big bodies, the ogres and the bloaters: they are what packs into a carpet, an ogre wave being a column of them
+   * shoulder to shoulder; the smaller kinds part by their spacing, size and shade, and stay as dark against the road as
+   * the crowd check asks) */
+  if (!V.old_crowd && (k == CK_OGRE || k == CK_BLOATER))
+    for (int f = 0; f < kv->nwalk && f < MB_MAXF; f++) if (kv->c.geo[0][f]) bake_rim(kv->c.geo[0][f], k);
   t3_material *em = t3_mesh_basic_material_new(0xffffff);
   em->side = T3_BACK_SIDE;
   t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
@@ -475,6 +496,10 @@ void view_map(const sim *s) {
   for (int i = 0; i < 8; i++) V.beam_light_slot[i] = -1;
   memset(V.hit, 0, sizeof V.hit);
   memset(V.off, 0, sizeof V.off);
+  /* (on the middling roads, autumn leaf litter and desert sand, a spaced crowd shows more body and less of the ink where
+   * bodies overlap: its bodies are shaded down a little to stay as far below the road as the packed crowd was) */
+  V.shade_k = V.theme == MP_THEME_AUTUMN || V.theme == MP_THEME_DESERT ? 0.86f : 1.0f;
+  if (getenv("TOWERS_SHADE_K")) V.shade_k = (float)atof(getenv("TOWERS_SHADE_K")); /* (development: tuning) */
   memset(V.lvl_seen, 0, sizeof V.lvl_seen);
   for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
   { /* the crowd's edge in the value opposite the path it walks: dark ink on the pale and middling paths, a pale rim of
@@ -636,7 +661,7 @@ static void sync_creeps(const sim *s, float time) {
     if (!im || cnt[e->kind][fr] >= im->instance_matrix->count) continue;
     int n = cnt[e->kind][fr]++;
     /* each body its own: a size and a shade of its kind's colour of its own (a crowd of one kind is a crowd of figures) */
-    float vary = V.old_crowd ? 1.0f : 0.93f + 0.14f * h01((uint32_t)i, 11), shade = V.old_crowd ? 1.0f : 0.78f + 0.44f * h01((uint32_t)i, 12);
+    float vary = V.old_crowd ? 1.0f : 0.93f + 0.14f * h01((uint32_t)i, 11), shade = V.old_crowd ? 1.0f : (0.78f + 0.44f * h01((uint32_t)i, 12)) * V.shade_k;
     float sc = SIZE[e->kind] * vary * (e->boss ? 2.2f : 1.0f) * (e->flash > 0 ? 1.08f : 1.0f);
     float yaw = -e->face + 1.5708f;
     float y = e->kind == CK_SHADE ? 0.12f + 0.08f * cw_sin(time * 2.2f + (float)i) : 0;

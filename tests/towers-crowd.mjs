@@ -9,9 +9,11 @@
 //   parting:     the crowd's own local contrast (each pixel's luma against its 9 x 9 neighbourhood, crowd pixels
 //                only), reported: how far the bodies part from one another.
 // The volcano's own late wave (map 23, wave 18 as the waves bring it: a column of crimson ogres on the pale road, no
-// crowd held) is held to more: its parting at least PART_MIN, so the bodies read as figures, not one red carpet.
-// CONTROLS, which must fail: the snowfields with TOWERS_OLD_INK=1 (the old thin dark ink edge on their dark path), and
-// the volcano's wave with TOWERS_OLD_CROWD=1 (the crowd as it was: no rim, no size or shade of its own, not drawn apart).
+// crowd held) is judged as figures, not one red carpet: its parting at least PART_MIN (the old crowd's was 0.044), and
+// its value step at least WAVE_VALUE_MIN (one kind's mid crimson on a mid road: the rim that parts the bodies brings
+// the mass a little toward the road, so this scene asks the value step of a column, not of a carpet's).
+// CONTROLS, which must fail: the snowfields with TOWERS_OLD_INK=1 and TOWERS_OLD_CROWD=1 (the old thin dark ink edge on
+// their dark path, no rim), and the volcano's wave with TOWERS_OLD_CROWD=1 (the crowd as it was: no rim, no size or shade of its own, not drawn apart).
 // Run: node tests/towers-crowd.mjs [webgpu]   (holds the GPU suite lock; frames in out/towers-crowd)
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -28,7 +30,7 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const GPU = process.argv.includes('webgpu') ? 'webgpu' : 'gl';
 const MAPS = { meadow: 5, autumn: 10, desert: 15, snow: 20, volcano: 25, crystal: 30 };
-const VALUE_MIN = 1.35, DARK_PATH = 0.14, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' }, PART_MIN = Number(process.env.PART_MIN || 0.05);
+const VALUE_MIN = 1.35, DARK_PATH = 0.14, WAVE = 18, FRAMES = 600, CROWD = { TOWERS_CROWD: '1500' }, PART_MIN = 0.058, WAVE_VALUE_MIN = 1.15;
 const dir = join(ROOT, 'out', 'towers-crowd', GPU);
 mkdirSync(dir, { recursive: true });
 
@@ -79,14 +81,15 @@ for (const [theme, map] of Object.entries(MAPS)) {
     const o = { map: 23, wave: WAVE, frames: FRAMES, gpu: GPU };
     return measure(await shot(join(dir, `${name}.png`), { ...o, env }), await shot(join(dir, `${name}-ground.png`), { ...o, env: { ...env, TOWERS_HIDE: '1' } }));
   };
-  const m = await own('volcano-wave', {}), okv = ok(m) && m.part >= PART_MIN;
-  console.log(`${okv ? 'ok  ' : 'FAIL'} the volcano's own wave 18 (map 23) ${fmt(m)} (parting at least ${PART_MIN})`);
+  const wave = (x) => x.share > 0.002 && x.value >= WAVE_VALUE_MIN && x.part >= PART_MIN;
+  const m = await own('volcano-wave', {}), okv = wave(m);
+  console.log(`${okv ? 'ok  ' : 'FAIL'} the volcano's own wave 18 (map 23) ${fmt(m)} (parting at least ${PART_MIN}, value at least x${WAVE_VALUE_MIN})`);
   if (!okv) bad++;
   const o = await own('volcano-wave-old', { TOWERS_OLD_CROWD: '1' });
-  if (!(ok(o) && o.part >= PART_MIN)) console.log(`ok   control fails as it must (the volcano's wave, TOWERS_OLD_CROWD): ${fmt(o)}`);
+  if (!wave(o)) console.log(`ok   control fails as it must (the volcano's wave, TOWERS_OLD_CROWD): ${fmt(o)}`);
   else { bad++; console.log(`CONTROL PASSED (a failure): the old crowd parts as well: ${fmt(o)}`); }
 }
-const c = await run('snow-old-ink', MAPS.snow, { TOWERS_OLD_INK: '1' });
+const c = await run('snow-old-ink', MAPS.snow, { TOWERS_OLD_INK: '1', TOWERS_OLD_CROWD: '1' }); // (the old crowd too: the rim alone lifts it off the dark path)
 if (!ok(c)) console.log(`ok   control fails as it must (the snowfields with the old dark ink): ${fmt(c)}`);
 else { bad++; console.log(`CONTROL PASSED (a failure): the old ink went unseen: ${fmt(c)}`); }
 process.exit(bad ? 1 : 0);

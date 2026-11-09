@@ -146,9 +146,12 @@ The effects (fx.c, view.c):
 - The crowd's edge takes the value opposite the path it walks (dark ink on the pale and middling paths, a pale rim of
   the kind's hue on the snowfields' dark frozen earth); a boss stands in a red ring;
   tests/towers-crowd.mjs holds the crowd off its ground on every theme.
-- A packed crowd reads as figures, not a carpet: each body has a rim of its kind's hue lifted toward white along its
-  silhouette (a matte standard surface), a size and a shade of its own, and is drawn a little apart from the bodies it
-  overlaps (at most 0.45 m from where the rules have it, eased; render only).
+- A packed crowd reads as figures, not a carpet: each body has a size and a shade of its own and is drawn a little apart
+  from the bodies it overlaps (at most 0.45 m from where the rules have it, eased; render only), and the big bodies
+  (ogres, bloaters: an ogre wave is a column of them shoulder to shoulder) carry a rim of their kind's hue inside the ink
+  edge, baked into their colours by how near each point is to the silhouette seen from above (no lighting model of its
+  own: a rim shader on the late waves cost 0.4 to 0.6 ms of GPU). On the middling roads (autumn, desert) the bodies are
+  shaded down a little so the spaced crowd stays as far below the road as the packed one was.
 - Frost: a ring of cold racing out over the ground, ice motes thrown up in a ring, a cold flash; a freeze shatters
   ice shards off each creep it catches; the tower's reach glows faintly on the ground.
 - Beam: a white-hot core and a magenta glow from the emitter to the creep, swelling in on a new creep and fading out
