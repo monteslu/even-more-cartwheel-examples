@@ -1,7 +1,10 @@
 // pinball perf gate: pinball_bench (the bot with three balls on the table all the time: the flashers, the pops, the
 // inserts and their lights, the mirror ball's probe) at 1920x1080, High, natively on the test GPU (the 890M), GL and
-// WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (the median of the bench's five
-// 120-frame windows: one window the shared machine stalls does not decide it) at 4.1 ms on every table (crawler's bound). Every run must draw everything (no "not in any program table" line)
+// WebGPU, with the pipeline's GPU pass timers. Bounds the frame's GPU time (each 120-frame window's mean of its
+// frames' GPU totals; the median of the bench's five windows, so one window the shared machine stalls does not decide
+// it) at 4.1 ms on every table (crawler's bound). A window's mean, not one frame of it: the mirror ball's probe
+// captures every third frame, and one frame read at the same point of every window landed on a capture on one table
+// and between captures on the others. The window's worst frame is printed beside it. Every run must draw everything (no "not in any program table" line)
 // and keep its three balls. Controls, which must fail: GL at 3840x2160 (four times the pixels) against the same
 // bound, and WebGPU against an impossible 0.5 ms.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs) for one table at a time.
@@ -41,9 +44,11 @@ function run(gpu, extra = {}) {
   if (pin) pin.check('native', (/WebGPU adapter: (.*)/.exec(err) || [])[1]);
   else if (gl) gl.check('native', err);
   const lines = err.split('\n');
-  const win = lines.filter((l) => l.startsWith('bench_passes')).slice(-5).map((l) => +(/gpu_total=([\d.]+)/.exec(l) || [])[1]).sort((a, b) => a - b);
+  const pl = lines.filter((l) => l.startsWith('bench_passes')).slice(-5);
+  const win = pl.map((l) => +(/gpu_mean=([\d.]+)/.exec(l) || [])[1]).sort((a, b) => a - b);
+  const peak = Math.max(...pl.map((l) => +(/gpu_max=([\d.]+)/.exec(l) || [])[1]));
   const last = lines.filter((l) => l.startsWith('bench ')).slice(-1)[0] || '';
-  return { status: r.status, gpu: win.length ? win[win.length >> 1] : NaN, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
+  return { status: r.status, gpu: win.length ? win[win.length >> 1] : NaN, peak, balls: +((/balls=(\d+)/.exec(last) || [])[1]),
     lights: +((/lights=(\d+)/.exec(last) || [])[1]), skipped: /in none of the app's program tables|not in any program table/.test(err),
     passes: lines.filter((l) => l.startsWith('bench_passes')).slice(-1)[0] || '' };
 }
@@ -51,7 +56,7 @@ function run(gpu, extra = {}) {
 let bad = 0;
 const check = (name, r, bound, mustFail = false) => {
   const within = r.status === 0 && !r.skipped && r.balls >= 2 && r.gpu > 0 && r.gpu <= bound;
-  const line = `table ${table} ${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}), ${r.balls} balls, ${r.lights} lights, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
+  const line = `table ${table} ${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}; worst frame ${r.peak.toFixed(2)}), ${r.balls} balls, ${r.lights} lights, status ${r.status}${r.skipped ? ', SKIPPED DRAWS' : ''}`;
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}\n     ${r.passes}`); bad++; } else console.log(`ok   ${line}\n     ${r.passes}`);
