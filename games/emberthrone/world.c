@@ -1263,7 +1263,7 @@ static const look LOOK[RG_COUNT] = {
   /* the heights: cold bright air, blue shadows on the snow */
   { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.22f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.5f, { 1, 0.96f, 0.9f }, 3.2f, 0.74f },
   /* the underway: lantern light under the roof */
-  { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 1.88f },
+  { { 0.42f, 0.34f, 0.26f }, 0.006f, { 1, 0.8f, 0.6f }, 1.3f, { 0.75f, 0.65f, 0.55f }, { 0.4f, 0.28f, 0.16f }, 1.6f, { 1, 0.9f, 0.75f }, 3.4f, 1.78f },
   /* the spire's downs: wind, a high clear sky */
   { { 0.48f, 0.64f, 0.9f }, 0.0018f, { 1, 0.95f, 0.88f }, 0.35f, { 0.55f, 0.72f, 1 }, { 0.4f, 0.4f, 0.25f }, 0.75f, { 1, 0.92f, 0.8f }, 3.5f, 1.47f },
   /* the glowcap wood: deep green under the canopy, teal glow */
