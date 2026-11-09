@@ -44,15 +44,18 @@ for (const sc of STORM_ONLY ? [] : SCENES) {
 { /* the storm, with margin */
   const STORM = { name: 'storm', app: 'towers_auto', from: 600, env: { TOWERS_MAP: '23', TOWERS_WAVE: '18', TOWERS_PLAYERS: '4', TOWERS_STORMS: '640,655,700,715' } };
   const MARGIN = { maxFlashes: 2 };
-  const margin = (label, run) => {
+  // (the fine grid for the effects alone, as above: creeps walking through a region a 24th of the screen change it as a
+  // flash would)
+  const margin = (label, run, fine = true) => {
     const m = analyseFrames(run.w, run.h, run.frames, MARGIN), why = judgeFlash(m).filter((p) => !/proves nothing/.test(p));
+    if (!fine) return { why, line: describeFlash(m) };
     const f = analyseFrames(run.w, run.h, run.frames, { ...MARGIN, grid: FINE.fine }), wf = judgeFlash(f).filter((p) => !/proves nothing/.test(p));
     return { why: [...why, ...wf.map((p) => `(${FINE.fine} x ${FINE.fine} grid) ${p}`)], line: `${describeFlash(m)}; on the fine grid ${describeFlash(f)}` };
   };
   const s = await capture(STORM, 'real'), e = await capture(STORM, 'effects', HIDE), v = await capture(SCENES[1], 'effects', HIDE);
   bad += gate(`storm ${GPU} with the crowd, ${COUNT} frames`, s) ? 0 : 1;
   for (const [label, run] of [['storms called, with the crowd', s], ['storms called, effects alone', e], ['as the bots play, effects alone', v]]) {
-    const r = margin(label, run);
+    const r = margin(label, run, !/with the crowd/.test(label));
     if (r.why.length) bad++, console.log(`FAIL volcano ${GPU} ${label}, at most 2 flashes a second: ${r.why.join('; ')}\n     ${r.line}`);
     else console.log(`ok   volcano ${GPU} ${label}, at most 2 flashes a second: ${r.line}`);
   }
