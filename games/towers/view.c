@@ -502,15 +502,16 @@ void view_map(const sim *s) {
   for (int i = 0; i < 8; i++) V.beam_light_slot[i] = -1;
   memset(V.hit, 0, sizeof V.hit);
   memset(V.off, 0, sizeof V.off);
-  /* (on the middling roads, autumn leaf litter and desert sand, a spaced crowd shows more body and less of the ink where
-   * bodies overlap: its bodies are shaded down a little to stay as far below the road as the packed crowd was) */
-  V.shade_k = V.theme == MP_THEME_AUTUMN || V.theme == MP_THEME_DESERT ? 0.86f : 1.0f;
+  /* (on the autumn road's leaf litter a spaced crowd shows more body and less of the ink where bodies overlap: its bodies
+   * are shaded down a little to stay as far below the road as the packed crowd was) */
+  V.shade_k = V.theme == MP_THEME_AUTUMN ? 0.86f : 1.0f;
   if (getenv("TOWERS_SHADE_K")) V.shade_k = (float)atof(getenv("TOWERS_SHADE_K")); /* (development: tuning) */
   memset(V.lvl_seen, 0, sizeof V.lvl_seen);
   for (int k = 0; k < MAXT; k++) V.up_t[k] = 30;
   { /* the crowd's edge in the value opposite the path it walks: dark ink on the pale and middling paths, a pale rim of
-     * the kind's hue on the snowfields' dark frozen earth, so a late crowd parts into bodies on every theme */
-    bool dark = V.theme == MP_THEME_SNOW && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
+     * the kind's hue on the dark ones (the snowfields' frozen earth, the desert's red-brown flags), so a late crowd parts
+     * into bodies on every theme */
+    bool dark = (V.theme == MP_THEME_SNOW || V.theme == MP_THEME_DESERT) && !getenv("TOWERS_OLD_INK"); /* (TOWERS_OLD_INK: the crowd check's control) */
     for (int k = 0; k < CK_KINDS; k++) {
       if (!V.k[k].edge_mat) continue;
       t3_color kc = lin(KIND_RIM[k][0], KIND_RIM[k][1], KIND_RIM[k][2]);
