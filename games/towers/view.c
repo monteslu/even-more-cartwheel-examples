@@ -379,8 +379,8 @@ bool view_init_step(cw_node root, int *done_, int *total) {
       t3_geometry *g = t3_box_geometry_new(1, 1, 1, 1, 1, 1);
       t3_geometry_apply_matrix4(g, &(t3_mat4){ { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0.5f, 1 } });
       geo_colored(g, 1, 1, 1);
-      V.bolt_core = imesh("BoltCore", t3_retain(g), mat_add(), 1600);
-      V.bolt_glow = imesh("BoltGlow", g, mat_add(), 1600);
+      V.bolt_core = imesh("BoltCore", t3_retain(g), mat_add(), 2240); /* (every segment of every bolt fx.c keeps: 160 x 14) */
+      V.bolt_glow = imesh("BoltGlow", g, mat_add(), 2240);
       V.bolt_core->mesh.base.render_order = 7, V.bolt_glow->mesh.base.render_order = 7;
     }
     { /* columns of light: the gates, the core, the cursors */

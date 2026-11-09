@@ -47,6 +47,13 @@ typedef struct bolt { float p[BOLT_SEGS + 1][3], j[2][BOLT_SEGS + 1][2]; int n, 
 #define STORM_BOLT_IN 14
 #define STORM_LIGHT_IN 16
 #define STORM_LIGHT_LEN 80
+/* the coils' lightning (a bolt tower's shots, the STORM branch's eight leaps most of all) swells too: a coil fires one to
+   two times a second, so each strike and its light rise over a tenth of a second and fade over half of one, and the
+   strikes of one coil run into each other as a glow that breathes rather than a light that blinks */
+#define COIL_BOLT_LIFE 28
+#define COIL_BOLT_IN 6
+#define COIL_LIGHT_IN 9
+#define COIL_LIGHT_LEN 38
 
 static struct {
   bool ready;
@@ -63,6 +70,7 @@ static struct {
   bool strobe; /* TOWERS_STROBE_CONTROL: the old flicker, for the flash check's control */
   bool old_storm; /* TOWERS_OLD_STORM: the storm's old quick strikes and light (at the three-a-second bound), the storm check's control */
   bolt bolts[MAXBOLT];
+  int last_bolt; /* the one bolt_new took */
   int nbolt_next;
   float seg[MAXBOLT * BOLT_SEGS * 7];
   corpse dead[MAXCORPSE];
@@ -431,7 +439,14 @@ static void bolt_jag(bolt *bl, int s) {
   }
 }
 static void bolt_new(const float a[3], const float b[3], float w, int life) {
-  bolt *bl = &FX.bolts[FX.nbolt_next++ % MAXBOLT];
+  /* a free bolt, else the one nearest its end (never one still bright: a bolt cut off mid strike is a step) */
+  int pick = FX.nbolt_next++ % MAXBOLT;
+  for (int k = 0, least = 1 << 30; k < MAXBOLT; k++) {
+    if (FX.bolts[k].life <= 0) { pick = k; break; }
+    if (FX.bolts[k].life < least) least = FX.bolts[k].life, pick = k;
+  }
+  FX.last_bolt = pick;
+  bolt *bl = &FX.bolts[pick];
   memcpy(bl->a, a, sizeof bl->a), memcpy(bl->b, b, sizeof bl->b);
   float dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2];
   bl->w = w, bl->life = bl->life0 = life, bl->in = 2;
@@ -468,16 +483,17 @@ void fx_events(sim *s) {
         int slot = s->slot_at[CW_CLAMP(mp_ty(&s->m, z), 0, MP_MAX_H - 1)][CW_CLAMP(mp_tx(&s->m, x), 0, MP_MAX_W - 1)] - 1;
         t3_vec3 m = slot >= 0 && s->tw[slot].alive ? view_muzzle(s, slot) : (t3_vec3){ x, MP_GROUND_H + TOP[CW_CLAMP(e->a, 1, 3) - 1] + 0.8f, z };
         a[0] = m.x, a[1] = m.y, a[2] = m.z;
-        flash(m.x, m.y, m.z, 30 + 10 * (float)e->a, 0.55f, 0.75f, 1.0f);
+        if (FX.old_storm) flash(m.x, m.y, m.z, 30 + 10 * (float)e->a, 0.55f, 0.75f, 1.0f);
+        else flash_in(m.x, m.y, m.z, 30 + 10 * (float)e->a, 0.55f, 0.75f, 1.0f, COIL_LIGHT_LEN, COIL_LIGHT_IN);
         burst(FX.flashp, m.x, m.y, m.z, 0, 0, 0);
       } else if (e->b == 200) /* the storm: down from the sky */
         a[0] = e->z + (frand() - 0.5f) * 3, a[1] = 13, a[2] = e->w - 2 + (frand() - 0.5f) * 3;
       else
         a[0] = x, a[1] = 0.8f, a[2] = z;
       float w = e->b == 200 ? 1.1f : (1.0f - 0.08f * (float)e->b) * (0.8f + 0.2f * (float)e->a);
-      bool storm = e->b == 200 && !FX.old_storm;
-      bolt_new(a, b, w, FX.strobe ? 9 : storm ? STORM_BOLT_LIFE : BOLT_LIFE);
-      if (storm) FX.bolts[(FX.nbolt_next - 1) % MAXBOLT].in = STORM_BOLT_IN;
+      bool storm = e->b == 200 && !FX.old_storm, coil = e->b != 200 && !FX.old_storm;
+      bolt_new(a, b, w, FX.strobe ? 9 : storm ? STORM_BOLT_LIFE : coil ? COIL_BOLT_LIFE : BOLT_LIFE);
+      if (storm || coil) FX.bolts[FX.last_bolt].in = storm ? STORM_BOLT_IN : COIL_BOLT_IN;
       if (FX.frame_hits++ < (lvl >= 2 ? 40 : 20)) burst(FX.spark, e->z, 0.8f, e->w, 0, 1, 0);
       break;
     }
