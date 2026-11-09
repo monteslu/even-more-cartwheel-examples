@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.10.0
+
+- **Ember Throne**, the combat round: a blow that lands holds both fighters still for a few ticks, knocks the foe back
+  by its weight, and turns toward a foe locked on or just in front. Shields block blows from the front, and a heavy
+  blow knocks them aside. Foes have poise that breaks into a stagger, open for a critical; after a big blow they are
+  spent for a moment. Foes circle to the player's flank instead of lining up, bosses chain blows in their later phases,
+  and lurkers wait half risen in the marsh pools until the player comes near. A flask refills after a fight is won.
+  The pad rumbles on landed blows, hurts and kills; no screen shake.
+- **Ember Throne**: the camera no longer stops inside pine and fir needles. The canyon, keep, heights, marsh and
+  meadow are relit (exposure, sky fill, mist, a blue morning haze over the meadow's far hills). The shield bearer's
+  shield is a plank that falls with its bearer.
+- **Ember Throne**: the look check judges each region on five frames across the journey instead of one.
+- CI: the carts job may run for 90 minutes.
+
 ## 0.9.0
 
 - **Lanternfall**, the combat round: a blow that lands holds the world still for a few ticks (longer for a kill or a
