@@ -95,7 +95,9 @@ whole map on one screen, a fixed camera per map.
   then it charges for 30 seconds (a bar under the player's panel, "storm" with its button when ready). Its kills are
   the player's. The bots use it on fifteen creeps or a boss. Its strikes and its light swell in over a quarter of a
   second and die away over more than a second: a slow surge of light, never a crack, so four storms called at once stay
-  at two flashes a second at most in any part of the screen (tests/towers-flash.mjs, the storm scene).
+  at two flashes a second at most in any part of the screen (tests/towers-flash.mjs, the storm scene). The coils'
+  lightning swells the same way, quicker (in over a tenth of a second, out over half of one), so a coil firing twice a
+  second breathes rather than blinks; the volcano as the bots play it stays at two a second too.
 - Players join at any time with the join button on a free pad (the engine's shell).
 
 ## Towers

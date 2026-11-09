@@ -68,7 +68,7 @@ static struct {
   int light_age[LIGHTS], light_len[LIGHTS], light_in[LIGHTS]; /* frames since it began; frames it lasts; frames it swells */
   int nl;
   bool strobe; /* TOWERS_STROBE_CONTROL: the old flicker, for the flash check's control */
-  bool old_storm; /* TOWERS_OLD_STORM: the storm's old quick strikes and light (at the three-a-second bound), the storm check's control */
+  bool old_storm; /* TOWERS_OLD_STORM: the old quick strikes and lights of the storm and the coils, the lightning margin check's control */
   bolt bolts[MAXBOLT];
   int last_bolt; /* the one bolt_new took */
   int nbolt_next;

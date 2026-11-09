@@ -11,14 +11,15 @@
 // walking through a region that small change it as a flash would.)
 // Scenes: towers_bench (map 26: level-3 towers on every pad, 2400 creeps, the busiest the game gets), and the volcano
 // (map 23, wave 18, towers on every pad, four bots: red ground under lava, mortar blasts and a crowd).
-// The storm (a player's power, lightning down on everything round the cursor): four storms called within 1.3 seconds
-// on the volcano (TOWERS_STORMS: one a seat, at set ticks), judged on its own past WCAG with margin: at most 2 flashes in
-// a second in any region (WCAG allows 3), its strikes and light swelling in slowly; its control, TOWERS_OLD_STORM=1 (the
-// old quick strikes and light, which sat at the 3 a second bound), must fail that margin.
+// The volcano's lightning with margin: the coils' (level-3 STORM branches on its pads, firing one to two times a second)
+// and the storm's (a player's power: four called within 1.3 seconds, TOWERS_STORMS, one a seat at set ticks), each
+// judged effects alone on the fine grid past WCAG: at most 2 flashes in a second in any region (WCAG allows 3), the
+// strikes and their light swelling in and fading slowly. Its control, TOWERS_OLD_STORM=1 (the old quick strikes and
+// lights, which reached 4 a second on the fine grid), must fail that margin.
 // CONTROLS, which must fail: every capture under the engine's 8 Hz full-screen strobe, and the bench with
 // TOWERS_STROBE_CONTROL=1 (the old effects: lightning re-jagged every other frame, step-on flash lights, a beam
 // flickering at 7 Hz, hit creeps popping white).
-// Run: node tests/towers-flash.mjs [webgpu] [--storm]   (holds the GPU suite lock; --storm: the storm scene alone)
+// Run: node tests/towers-flash.mjs [webgpu] [--storm]   (holds the GPU suite lock; --storm: the volcano's lightning alone)
 import { fileURLToPath } from 'node:url';
 import { inSuiteLock, captureRun, gate, mustFail, analyseFrames, judgeFlash, describeFlash } from './lib/flash-run.mjs';
 
@@ -48,14 +49,14 @@ for (const sc of STORM_ONLY ? [] : SCENES) {
     const f = analyseFrames(run.w, run.h, run.frames, { ...MARGIN, grid: FINE.fine }), wf = judgeFlash(f).filter((p) => !/proves nothing/.test(p));
     return { why: [...why, ...wf.map((p) => `(${FINE.fine} x ${FINE.fine} grid) ${p}`)], line: `${describeFlash(m)}; on the fine grid ${describeFlash(f)}` };
   };
-  const s = await capture(STORM, 'real'), e = await capture(STORM, 'effects', HIDE);
+  const s = await capture(STORM, 'real'), e = await capture(STORM, 'effects', HIDE), v = await capture(SCENES[1], 'effects', HIDE);
   bad += gate(`storm ${GPU} with the crowd, ${COUNT} frames`, s) ? 0 : 1;
-  for (const [label, run] of [['with the crowd', s], ['effects alone', e]]) {
+  for (const [label, run] of [['storms called, with the crowd', s], ['storms called, effects alone', e], ['as the bots play, effects alone', v]]) {
     const r = margin(label, run);
-    if (r.why.length) bad++, console.log(`FAIL storm ${GPU} ${label}, at most 2 flashes a second: ${r.why.join('; ')}\n     ${r.line}`);
-    else console.log(`ok   storm ${GPU} ${label}, at most 2 flashes a second: ${r.line}`);
+    if (r.why.length) bad++, console.log(`FAIL volcano ${GPU} ${label}, at most 2 flashes a second: ${r.why.join('; ')}\n     ${r.line}`);
+    else console.log(`ok   volcano ${GPU} ${label}, at most 2 flashes a second: ${r.line}`);
   }
-  const old = margin('old', await capture(STORM, 'old-storm', { ...HIDE, TOWERS_OLD_STORM: '1' }));
+  const old = margin('old', await capture(SCENES[1], 'old-storm', { ...HIDE, TOWERS_OLD_STORM: '1' }));
   if (old.why.length) console.log(`ok   control fails as it must (TOWERS_OLD_STORM, the old quick storm): ${old.why[0]}\n     ${old.line}`);
   else bad++, console.log(`CONTROL PASSED (a failure): the old storm keeps the margin: ${old.line}`);
 }
