@@ -30,11 +30,6 @@
   generated plate, helmets, crowns, horns, robes, coats, capes and masks, larger heads and hands, and baked skin.
   Every figure has a rim light, foes' outfits are tinted by region, each figure picks its level of detail from its
   size on screen, and feet are planted at each kind's ankle height.
-- **Ember Throne**, combat: a blow that lands holds the moment briefly, knocks the foe back by its weight and can land
-  a critical; cuts draw toward a nearby foe, the blade leaves a ribbon, impacts light the scene and the pad rumbles.
-  New foes: shield bearers, slingers and marsh lurkers that wait in the water, with groups that flank. Bosses chain
-  their attacks and leave openings, and beating a group refills a sip of the flask. The meadow's haze deepens over
-  the far hills, the regions' light is retuned, and the camera no longer sits inside the conifers at the heights.
 - **Destructo**: a level is judged once its world has gone still, never while the structure is still falling. Stars:
   one for every crystal down, two within par, three within par with the structure brought down to its mark, and the
   HUD shows the share down live. The last shot can be watched again as an instant replay that follows the shot and
