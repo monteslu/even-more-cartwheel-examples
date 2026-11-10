@@ -1,6 +1,7 @@
 ; jewels' release builds: node <host sdk>/tools/cwexport.mjs --project games/jewels --preset <preset>
 name = "Jewels"
 app = "jewels"
+title = "Jewels"
 app_id = "org.cartwheel.jewels"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

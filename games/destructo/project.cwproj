@@ -1,6 +1,7 @@
 ; destructo's release builds: node <host sdk>/tools/cwexport.mjs --project games/destructo --preset <preset>
 name = "Destructo"
 app = "destructo"
+title = "Destructo"
 app_id = "org.cartwheel.destructo"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

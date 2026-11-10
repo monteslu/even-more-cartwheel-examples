@@ -1,6 +1,7 @@
 ; lanternfall's release builds: node <host sdk>/tools/cwexport.mjs --project games/lanternfall --preset <preset>
 name = "Lanternfall"
 app = "lanternfall"
+title = "Lanternfall"
 app_id = "org.cartwheel.lanternfall"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"

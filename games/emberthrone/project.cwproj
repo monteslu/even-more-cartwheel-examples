@@ -1,6 +1,7 @@
 ; emberthrone's release builds: node <host sdk>/tools/cwexport.mjs --project games/emberthrone --preset <preset>
 name = "Ember Throne"
 app = "emberthrone"
+title = "Ember Throne"
 app_id = "org.cartwheel.emberthrone"
 export.linux-x64.platform = "linux-x64"
 export.linux-arm64.platform = "linux-arm64"
