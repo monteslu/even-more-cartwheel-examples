@@ -337,14 +337,22 @@ static int find_pairs(const cset *s, cpair **out) {
   qsort(sz, (size_t)s->n, sizeof(float), flt_cmp);
   float cell = fmaxf(sz[s->n / 2] * 2.0f, 0.01f);
   free(sz);
-  for (;;) { /* a coarser grid when the faces would fill too many cells */
+  /* a coarser grid when the faces would fill too many cells: the grid only picks the candidate pairs (every pair that
+   * shares a cell is tested), so a coarser one finds the same pairs through more tests. The entries are bounded by
+   * memory, not time: a model whose typical face is tiny beside its largest (a snow kit: needles and drifts) would
+   * put each large face in millions of 1 cm cells, 16 bytes each, and a cart has one gigabyte in all (such a kit
+   * trapped the cart in realloc, the native build having the memory). COPLANAR_CELL_CAP (development) sets the cap:
+   * the map check's control runs a snow map with the old 6e7 and must trap. */
+  double limit = 1e6;
+  if (getenv("COPLANAR_CELL_CAP") && atof(getenv("COPLANAR_CELL_CAP")) > 0) limit = atof(getenv("COPLANAR_CELL_CAP"));
+  for (;;) {
     double cells = 0;
-    for (int i = 0; i < s->n && cells < 6e7; i++) {
+    for (int i = 0; i < s->n && cells < limit; i++) {
       double c = 1;
       for (int k = 0; k < 3; k++) c *= floor((s->t[i].hi[k] + s->t[i].tol - lo[k]) / cell) - floor((s->t[i].lo[k] - s->t[i].tol - lo[k]) / cell) + 1;
       cells += c;
     }
-    if (cells < 6e7) break;
+    if (cells < limit) break;
     cell *= 2;
   }
   int ne = 0, cap = 0;

@@ -271,7 +271,6 @@ static const char *const S_SMOKE[] = { "amount", "4", "lifetime", "1.4", "explos
 
 static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node e = cw_node_new("Explosion3D", name);
-  cw_node_add_child(FX.root, e);
   cw_node_set(e, "autostart", cw_val_bool(false));
   cw_node_set(e, "duration", cw_val_float(big ? 3.0f : 2.0f));
   cw_node_set(e, "flash_energy", cw_val_float(FX.strobe ? (big ? 140.0f : 55.0f) : 0)); /* (blast() swells a pooled light instead) */
@@ -284,6 +283,7 @@ static cw_node boom_node(const char *name, bool big, int seed) {
   cw_node_set(e, "scorch_glow", cw_val_float(big ? 3.0f : 2.0f));
   cw_node_set(e, "shake_amount", cw_val_float(0)); /* never: the pads rumble instead */
   cw_node3d_set_position(e, (t3_vec3){ 0, -60, 0 });
+  cw_node_add_child(FX.root, e); /* (into the tree with its scorch sheet set: the engine loads a decal's image as its node enters the tree) */
   if (big) {
     pnode(e, "Fire", K_FIRE, seed), pnode(e, "Smoke", K_SMOKE, seed + 2);
     pnode(e, "Sparks", K_SPARKS, seed + 3), pnode(e, "SparkSmoke", K_SPARKSMOKE, seed + 4);

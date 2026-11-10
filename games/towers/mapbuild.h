@@ -61,7 +61,7 @@ void mapbuild_free(mb_built *b);
 /* The bake's fingerprint: map_bake_hash of the map's text folded with the bytes of the theme's decor kit and the
  * lamp (a changed kit makes every bake of its theme stale), then with MB_TERRAIN (a change to how the terrain is built
  * makes every bake stale: change the string with it). tools/check-maps.mjs computes the same. */
-#define MB_TERRAIN "terrain 2: faceted outcrops, pools with shorelines"
+#define MB_TERRAIN "terrain 3: faceted outcrops, pools with shorelines, the shoreline angle deterministic (cw_atan2)"
 uint64_t mapbuild_bake_hash(const char *text, int theme);
 void mapbuild_kit(int theme, char *out, int len); /* the theme's decor kit file */
 
