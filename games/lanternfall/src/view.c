@@ -106,6 +106,13 @@ cw_vec2 view_world_to_screen(cw_vec2 w) {
   return (cw_vec2){ (w.x - g_cam.position.x) * zoom + cs.x * 0.5f, (w.y - g_cam.position.y) * zoom + cs.y * 0.5f };
 }
 
+/* the camera's room (view_camera), when it took it, the room the player has moved to and for how long, and the
+ * backdrop's reference line (the top of the camera's room, eased with the view) */
+enum { CAM_ROOM_SETTLE = 6, CAM_ROOM_HOLD = 20 };
+#define CAM_GLIDE_S 0.6f
+static int cam_room = -1, cam_room_t = CAM_ROOM_HOLD, cam_pend = -1, cam_pend_t = 0;
+static float cam_par_y = 0;
+
 void view_camera(const sim *s, float dt, bool snap) {
   cw_vec2 cs = view_canvas();
   if (cs.y < 1) return;
@@ -129,18 +136,43 @@ void view_camera(const sim *s, float dt, bool snap) {
   if (n) tx /= (float)n, ty /= (float)n;
   ty -= up;
   tx += s->p[0].vx * 0.18f;
-  if (s->room >= 0 && !showcase_mode()) { /* the room's walls bound the view */
-    const room *r = &s->w->rooms[s->room];
+  /* The camera's room: the walls that bound the view. Rooms stand side by side and one above another, so a change of
+   * room moves the view by up to a whole screen; the walls of the room the camera holds are the bound, not the room
+   * the player is in this tick. The camera takes the player's new room once the player has been there CAM_ROOM_SETTLE
+   * ticks, and never within CAM_ROOM_HOLD frames of its last change: a hop in and out of a doorway (up a chain through
+   * the floor of the room above and dropping back, several times in a second) no longer whips the view back and
+   * forth (the flash check caught it at five flashes a second where a bright room above showed and hid). The view then
+   * glides to the new room at most a screen in CAM_GLIDE_S seconds (a swell of thirty frames or more for a whole
+   * room; the ease inside a room is as before, faster than the hero falls).
+   * LANTERNFALL_OLD_CAMERA=1 (the flash sweep's control): the room taken at once and the old quick glide, which must
+   * fail the check. */
+  bool old = cw_test_env("LANTERNFALL_OLD_CAMERA") != NULL;
+  if (snap || g_cam.zoom == 0) cam_room = s->room, cam_room_t = CAM_ROOM_HOLD, cam_pend = -1;
+  if (old) cam_room = s->room;
+  else if (s->room != cam_room) {
+    if (s->room != cam_pend) cam_pend = s->room, cam_pend_t = 0;
+    else cam_pend_t++;
+    if (cam_pend_t >= CAM_ROOM_SETTLE && cam_room_t >= CAM_ROOM_HOLD) cam_room = s->room, cam_room_t = 0, cam_pend = -1;
+  } else cam_pend = -1;
+  if (cam_room_t < CAM_ROOM_HOLD) cam_room_t++;
+  if (cam_room >= 0 && !showcase_mode()) { /* the room's walls bound the view */
+    const room *r = &s->w->rooms[cam_room];
     float x0 = (float)(r->x * CELL_W) + vw * 0.5f, x1 = (float)((r->x + r->w) * CELL_W) - vw * 0.5f;
     float y0 = (float)(r->y * CELL_H) + vh * 0.5f, y1 = (float)((r->y + r->h) * CELL_H) - vh * 0.5f;
     tx = x1 < x0 ? (x0 + x1) * 0.5f : tx < x0 ? x0 : tx > x1 ? x1 : tx;
     ty = y1 < y0 ? (y0 + y1) * 0.5f : ty < y0 ? y0 : ty > y1 ? y1 : ty;
   }
-  if (snap || g_cam.zoom == 0) g_cam.position = (cw_vec2){ tx, ty };
+  float par_target = (float)(cam_room >= 0 ? s->w->rooms[cam_room].y * CELL_H : 0);
+  if (snap || g_cam.zoom == 0) g_cam.position = (cw_vec2){ tx, ty }, cam_par_y = par_target;
   else {
-    float k = 1 - expf(-dt * 9);
-    g_cam.position.x += (tx - g_cam.position.x) * k;
-    g_cam.position.y += (ty - g_cam.position.y) * k;
+    float k = 1 - expf(-dt * 9), cap = old ? 1e9f : vh * dt / CAM_GLIDE_S;
+    float dx = (tx - g_cam.position.x) * k, dy = (ty - g_cam.position.y) * k, l = sqrtf(dx * dx + dy * dy);
+    if (l > cap) dx *= cap / l, dy *= cap / l;
+    g_cam.position.x += dx;
+    g_cam.position.y += dy;
+    float dp = (par_target - cam_par_y) * k; /* (the backdrop's reference line glides the same way: no jump in the far layers) */
+    if (fabsf(dp) > cap) dp = dp > 0 ? cap : -cap;
+    cam_par_y += dp;
   }
   g_cam.zoom = zoom;
 }
@@ -242,7 +274,7 @@ static void draw_sky(const sim *s, float t, int region) {
     int tex = SET[region][k];
     float w = cs.y * (1.7f + 0.35f * (float)((region * 3 + k) % 4)) * (k == 2 && SET[region][1] == SET[region][2] ? 1.45f : 1), h = cs.y * (0.85f - 0.06f * (float)k);
     float u0 = g_cam.position.x * zoom * PAR[k] / w + (float)region * 0.37f + (float)k * 0.21f;
-    float yoff = -(g_cam.position.y - (float)(s->room >= 0 ? s->w->rooms[s->room].y * CELL_H : 0)) * zoom * PAR[k] * 0.35f;
+    float yoff = -(g_cam.position.y - cam_par_y) * zoom * PAR[k] * 0.35f;
     float y0 = cs.y - h + yoff + cs.y * 0.1f * (float)(2 - k);
     if (tex == PAR_HANG) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
     cw_vec2 pos[4] = { { 0, y0 }, { cs.x, y0 }, { cs.x, y0 + h }, { 0, y0 + h } };

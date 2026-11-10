@@ -1,0 +1,12 @@
+[
+  {"name": "destructo-play", "gate": "destructo-play", "frames": 600, "note": "a player's first shots: hits, breaks, the pieces flying"},
+  {"name": "emberthrone-journey", "gate": "emberthrone-journey", "frames": 1800, "note": "the bot's journey: fights, the hall's lights, transitions"},
+  {"name": "jewels-play", "gate": "jewels-play", "frames": 1500, "note": "the bot's matches: gems bursting, cascades", "minMotion": 0.002},
+  {"name": "jewels-pad", "gate": "jewels-pad", "frames": 1006, "note": "a pad player's matches: the cursor, swaps, bursts (a board game: the cursor, the swaps and the bursts are all that moves, so its floor is 0.001)", "minMotion": 0.001},
+  {"name": "skate-auto", "gate": "skate-auto", "frames": 1500, "note": "the bot's run through a park: grinds, tricks, the sun"},
+  {"name": "lanternfall-auto", "gate": "lanternfall-auto", "frames": 2400, "note": "the bot's route from the start: the spark's shrine, the Lantern Gate's first rooms, enemies cleared, the region banner, room changes"},
+  {"name": "lanternfall-auto-control", "gate": "lanternfall-auto", "frames": 2400, "env": {"LANTERNFALL_OLD_CAMERA": "1"}, "mustFail": "the old camera (LANTERNFALL_OLD_CAMERA: the view takes the player's room at once and crosses to it in a few frames), which whipped a bright room above in and out of view five times a second as the bot hopped through a doorway"},
+  {"name": "pinball-storm", "app": "pinball_bench", "frames": 779, "from": 300, "env": {"PINBALL_FLASH_STORM": "1"}, "note": "three balls on the table, the wizard mode's every shot pulsing, the big events fired every four frames and the pops every three: the brightest the table gets. The table is the middle third of the frame between still side panels and the HUD, so the whole-frame motion of the storm is about 0.001 and its floor 0.0008 (a pad player's single ball is a pixel at the check's scale, about 0.0003: still, proving nothing, so the storm is the table's check)", "minMotion": 0.0008},
+  {"name": "towers-bench", "app": "towers_bench", "frames": 900, "from": 300, "note": "map 26 with towers on every pad and 2400 creeps on its paths: every tower firing"},
+  {"name": "towers-boss", "app": "towers_auto", "frames": 1800, "from": 300, "startCmds": ["map 26"], "env": {"TOWERS_WAVE": "23", "TOWERS_PLAYERS": "4"}, "note": "map 26's last waves with towers on every pad and four bots: the crowd, every tower firing, the last wave's boss"}
+]

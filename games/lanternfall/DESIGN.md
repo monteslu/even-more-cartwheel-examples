@@ -261,6 +261,14 @@ creature closer: two seconds of every enemy and every warden struck every ten ti
 running, and both heroes hurt, striking and mending, held to the same bounds again on regions a 24th of the screen; the
 same scenes drawn with full white hit flashes and the old blink must fail.
 
+The camera is part of this. A room's walls bound the view, so a change of room moves it by up to a whole screen, and
+a hero hopping in and out of a doorway (up a chain through the floor of a bright room, dropping back) could whip
+that room in and out of view several times a second. The camera therefore takes the hero's new room only once the
+hero has been in it six ticks and never within twenty frames of its last change, and glides to it at most a screen in
+0.6 s (thirty frames or more for a whole room; inside a room it follows as before, faster than a fall). The
+repository's flash sweep (`tests/flash-sweep.mjs`, the bot's whole route) holds this, with the old camera
+(`LANTERNFALL_OLD_CAMERA=1`: the room taken at once, crossed in a few frames) as the control that must fail.
+
 ## The bot
 
 `src/bot.c` plays through the input struct the pad fills: it stands on each route step's tile and plays its move tick

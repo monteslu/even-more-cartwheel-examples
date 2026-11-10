@@ -130,7 +130,12 @@ scripts/fetch-deps.sh     # the pinned engine SDKs (scripts/deps.lock)
 scripts/build.sh          # build/native and build/cart-wgpu (the carts)
 ```
 
-`AGENTS.md` has the test commands and the rules for showing controls.
+`AGENTS.md` has the test commands and the rules for showing controls. Some
+gates run only locally, on a machine with a GPU and a romdev server: the
+flash sweep (`node tests/flash-sweep.mjs`: a busy stretch of every game on GL
+and WebGPU, held to the photosensitive flash rules with a strobe control that
+must fail and a motion floor) and each game's flash and perf checks. CI runs
+the cart smoke, version, map and prompt checks.
 
 Every cart's manifest says which version it is, and the build works it out
 from the checkout (the engine's `cw_add_app`): a build of a `v*` tag is that

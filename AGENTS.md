@@ -14,6 +14,7 @@ pinned in `scripts/deps.lock` and ship as dual GL + WebGPU carts (`.wasc`).
 | `node tests/cart-smoke.mjs <game>` | a short headless run of each game's cart (what CI runs) |
 | `node tests/cart-version.mjs [game ...]` | every cart's manifest carries this build's version (below), with a control that must fail |
 | `node deps/cartwheel-engine/tools/check-prompts.mjs games/<game>` | the prompt check below (CI runs it for every game listed in `PROMPT_GAMES`) |
+| `node tests/flash-sweep.mjs [name ...] [--gpu gl\|webgpu\|both]` | the flash sweep (local only, CI has no romdev): every entry of `tests/flash-sweep.json`, a busy stretch of each game, run on romdev on GL and WebGPU and held to the photosensitive flash rules (WCAG 2.3.1, the Harding thresholds), each run with an 8 Hz strobe control that must fail, each game's own old-effect control that must fail, and a motion floor: a stretch that hardly moves proves nothing and fails |
 
 Gates and screenshots that use the GPU go through the engine's GPU lock:
 `node deps/cartwheel-engine/tools/with-gpu-suite.mjs <name> <command>`.
