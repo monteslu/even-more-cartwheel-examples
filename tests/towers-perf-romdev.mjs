@@ -4,8 +4,8 @@
 //
 // towers_bench (map 26, towers at their third level on every slot, 2400 creeps kept on its paths, four bots) at
 // 1920x1080, High, HUD off (the debug channel's env request: TOWERS_NO_HUD). 240 frames of warmup, then three
-// 120-frame windows; the bound is the mean of the three windows' GPU time at 4.3 ms on GL and 4.5 on WebGPU, as
-// natively. romdev's GPU time is the host's around the whole frame (WebGPU: the union of every pass's timestamps; GL: a
+// 120-frame windows; the bound is the mean of the three windows' GPU time at 6.0 ms on GL and 5.6 on WebGPU, set
+// about 10% over three clean romdev runs on v0.45.0 (GL 5.30 to 5.53, WebGPU 4.46 to 4.98). romdev's GPU time is the host's around the whole frame (WebGPU: the union of every pass's timestamps; GL: a
 // GL_TIME_ELAPSED query around the frame), so it includes the frame's UI and final copy, which the native gate's pass
 // sums leave out. Every window must keep at least 2000 creeps alive and drawn (game.enemies, view.drawn), skip no draw
 // (render.skipped) and miss no program (cw.three.missing). A run romdev reports as noisy (another process on the GPU,
@@ -30,7 +30,7 @@ const opt = (k, d) => (argv.includes('--' + k) ? argv[argv.indexOf('--' + k) + 1
 const CART = resolve(opt('cart', join(ROOT, 'build/cart-wgpu/carts/towers_bench.wasc')));
 if (!existsSync(CART)) { console.error(`no cart ${CART} (build the cart tree)`); process.exit(2); }
 const quick = argv.includes('--quick');
-const BOUND = 4.3, BOUND_WGPU = 4.5, CROWD = 2000;
+const BOUND = 6.0, BOUND_WGPU = 5.6, CROWD = 2000;
 const FIELDS = ['game.enemies', 'view.drawn', 'render.skipped', 'cw.three.missing', 'game.map'];
 
 async function run(gpu, { map, size } = {}) {
