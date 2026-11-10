@@ -35,11 +35,20 @@
 
 static game G;
 
-/* a block welded (through any chain of welds still whole) to a supported block is supported too: a welded member stands
- * on what it is welded to. sup[i] in and out. */
-static void through_welds(game *g, bool *sup) {
+/* support runs up from the ground: a block is supported when it stands on the ground, or on a supported block, or
+ * hangs on a whole weld from a supported block (a welded member stands on what it is welded to). under[i][...] are
+ * the blocks under i (UNDER_MAX of them), on_ground[i] whether the ground is; sup[] out. */
+#define UNDER_MAX 8
+static int under[MAXBLK][UNDER_MAX], nunder[MAXBLK];
+static bool on_ground[MAXBLK];
+static void propagate(game *g, bool *sup) {
+  for (int i = 0; i < g->nb; i++) sup[i] = g->b[i].alive && on_ground[i];
   for (bool grew = true; grew;) {
     grew = false;
+    for (int i = 0; i < g->nb; i++) {
+      if (sup[i] || !g->b[i].alive) continue;
+      for (int u = 0; u < nunder[i] && !sup[i]; u++) if (sup[under[i][u]]) sup[i] = true, grew = true;
+    }
     for (int w = 0; w < g->nweld; w++) {
       int a = g->weld[w].a, b = g->weld[w].b;
       if (sup[a] == sup[b] || !g->b[a].alive || !g->b[b].alive || !cw_joint3d_valid(g->weld[w].j)) continue;
@@ -47,22 +56,33 @@ static void through_welds(game *g, bool *sup) {
     }
   }
 }
-static bool bottom_on_something(game *g, int i) {
-  block *k = &g->b[i];
-  cw_xform3 x = cw_body3d_transform(k->body);
-  /* the block's bottom face (blocks are placed upright: only turned about y) */
-  t3_vec3 c = { x.p.x, x.p.y - k->half.y - 0.007f, x.p.z };
-  cw_qshape3d q = cw_qshape3d_box(c, (t3_vec3){ fmaxf(0.01f, k->half.x - 0.02f), 0.008f, fmaxf(0.01f, k->half.z - 0.02f) }, x.q);
-  cw_phys_filter f = cw_phys_filter_all();
-  f.ignore_body = k->body.id;
-  cw_shape3d hit[4];
-  return cw_world3d_overlap(g->w, &q, &f, hit, 4) > 0;
+static int block_of(game *g, cw_body3d body) { intptr_t u = (intptr_t)cw_body3d_user(body); return u > 0 && u <= g->nb ? (int)u - 1 : -1; }
+/* as built: what the block's bottom face touches (blocks are placed upright: only turned about y) */
+static void under_as_built(game *g) {
+  for (int i = 0; i < g->nb; i++) {
+    block *k = &g->b[i];
+    nunder[i] = 0, on_ground[i] = false;
+    if (!k->alive) continue;
+    cw_xform3 x = cw_body3d_transform(k->body);
+    t3_vec3 c = { x.p.x, x.p.y - k->half.y - 0.007f, x.p.z };
+    cw_qshape3d q = cw_qshape3d_box(c, (t3_vec3){ fmaxf(0.01f, k->half.x - 0.02f), 0.008f, fmaxf(0.01f, k->half.z - 0.02f) }, x.q);
+    cw_phys_filter f = cw_phys_filter_all();
+    f.ignore_body = k->body.id;
+    cw_shape3d hit[32];
+    int n = cw_world3d_overlap(g->w, &q, &f, hit, 32);
+    for (int h = 0; h < n; h++) {
+      cw_body3d ob = cw_shape3d_body(hit[h]);
+      if (ob.id == g->ground.id) { on_ground[i] = true; continue; }
+      int j = block_of(g, ob);
+      if (j >= 0 && j != i && nunder[i] < UNDER_MAX) under[i][nunder[i]++] = j;
+    }
+  }
 }
-/* blocks that stand on nothing: the bottom face on no block and not the ground, and no chain of welds to one that does */
+/* blocks that stand on nothing: no chain of blocks under or welds to the ground */
 static int floating(game *g, int *first) {
   static bool sup[MAXBLK];
-  for (int i = 0; i < g->nb; i++) sup[i] = g->b[i].alive && bottom_on_something(g, i);
-  through_welds(g, sup);
+  under_as_built(g);
+  propagate(g, sup);
   int n = 0;
   *first = -1;
   for (int i = 0; i < g->nb; i++) {
@@ -231,22 +251,28 @@ static void check(int level, const char *control) {
 }
 
 /* a block resting on something: a contact under it (the normal from it to the other pointing down) */
-static bool rests(game *g, int i) {
-  cw_contact3d c[16];
-  int n = cw_body3d_contacts(g->b[i].body, c, 16);
-  for (int k = 0; k < n; k++) if (c[k].normal.y < -0.5f) return true;
-  return false;
-}
-/* after the settle: a contact under it, or a chain of whole welds to a block with one */
+/* after the settle: what the block has a contact under it with (the ground, or blocks), then support run up the same way */
 static void resting(game *g, bool *sup) {
-  for (int i = 0; i < g->nb; i++) sup[i] = g->b[i].alive && rests(g, i);
-  through_welds(g, sup);
+  for (int i = 0; i < g->nb; i++) {
+    nunder[i] = 0, on_ground[i] = false;
+    if (!g->b[i].alive) continue;
+    cw_contact3d c[16];
+    int n = cw_body3d_contacts(g->b[i].body, c, 16);
+    for (int k = 0; k < n; k++) {
+      if (c[k].normal.y >= -0.5f) continue;
+      if (c[k].other.id == g->ground.id) { on_ground[i] = true; continue; }
+      int j = block_of(g, c[k].other);
+      if (j >= 0 && j != i && nunder[i] < UNDER_MAX) under[i][nunder[i]++] = j;
+    }
+  }
+  propagate(g, sup);
 }
 
 /* --landmarks: every landmark level, as the game starts it: as built every block stands on something (its bottom face
  * on a block or the ground) and none is placed inside another; after the level's settle every block lies on something
  * (a contact under it) and nothing moved more than 0.6 m settling; and the bot clears it within par.
- * A welded member counts as standing on what it is welded to (a chain of whole welds to a block that stands or rests).
+ * Support runs up from the ground: a block stands when it is on the ground, on a block that stands, or welded (a whole
+ * weld) to one; a welded member stands on what it is welded to.
  * Controls: float (a block put 1 m over the first landmark's highest block once it has settled, unstepped: nothing
  * under it; and one put in the air as built), island (two blocks welded to each other and to nothing, put there the
  * same way: welds alone hold nothing up), solve (the bot aiming 150 milliradians off) */

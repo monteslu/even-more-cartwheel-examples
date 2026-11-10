@@ -352,7 +352,8 @@ static void build_stonehenge(game *g, const level_def *L) {
     float a = i * step;
     uint32_t hsh = hash32((uint32_t)i * 977u + 13u);
     float wob = 0.9f + 0.2f * hashf(hsh);
-    if (stands[i]) sarsen(g, a, SH_R, H * (0.97f + 0.06f * hashf(hsh >> 3)), 0.86f * wob, 0.5f, P_SARSEN);
+    bool capped = lintel[i] || lintel[(i + 29) % 30]; /* an upright under a lintel is dressed to the ring's height (a lintel on two uprights of different heights tips off) */
+    if (stands[i]) sarsen(g, a, SH_R, capped ? H : H * (0.97f + 0.06f * hashf(hsh >> 3)), 0.86f * wob, 0.5f, P_SARSEN);
     else if ((hsh & 3) == 0) { /* fallen: lying in the grass beside its socket */
       float x = cw_sin(a) * (SH_R + 0.9f), z = cw_cos(a) * (SH_R + 0.9f);
       blk_yaw(g, M_STONE, P_SARSEN, x, 0, z, 0.42f, 0.24f, 0.78f, a + 0.3f);
@@ -481,7 +482,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_BURJ_KHALIFA: { static const float s[][2] = { { -0.95f, 0.9f }, { 0, -1.2f } }; build_model(g, L, &LMV_burj_khalifa, s, 2); break; }
   case LM_STONEHENGE: build_stonehenge(g, L); break;
   case LM_PETRONAS: { static const float s[][2] = { { 0, 0.75f }, { 0, -0.75f } }; build_vox(g, &LMV_pt_bridge, 0, 0, 0); build_model(g, L, &LMV_petronas, s, 2); break; }
-  case LM_CN_TOWER: { static const float s[][2] = { { 0, 0.9f } }; build_model(g, L, &LMV_cn_tower, s, 1); break; }
+  case LM_CN_TOWER: { static const float s[][2] = { { 0, 2.4f } }; /* clear of the base (a crystal at the shaft's foot lay into it) */ build_model(g, L, &LMV_cn_tower, s, 1); break; }
   case LM_ANGKOR_WAT: { static const float s[][2] = { { 5.2f, 0 }, { -5.2f, 0 }, { 0, 4.4f } }; build_model(g, L, &LMV_angkor_wat, s, 3); break; }
   case LM_ST_BASILS: { static const float s[][2] = { { 0, 5.4f }, { 5.4f, 0 }, { -5.4f, 0 } }; build_vox(g, &LMV_sb_base, 0, 0, 0); build_model(g, L, &LMV_st_basils, s, 3); break; }
   case LM_TOWER_BRIDGE: { static const float s[][2] = { { -4.0f, 0 }, { 4.0f, 0 } }; build_vox(g, &LMV_tb_steel, 0, 0, 0); build_model(g, L, &LMV_tower_bridge, s, 2); break; }
@@ -492,7 +493,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_PISA: { static const float s[][2] = { { -2.8f, 0 } }; build_model(g, L, &LMV_pisa, s, 1); break; }
   case LM_PARTHENON: { static const float s[][2] = { { -3.5f, 0 }, { 3.5f, 0 } }; build_vox(g, &LMV_pa_base, 0, 0, 0); build_model(g, L, &LMV_parthenon, s, 2); break; }
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
-  case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0, 0 }, { 0, 0 } }; build_model(g, L, &LMV_chichen_itza, s, 2); break; }
+  case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0.9f, 0.9f }, { -0.9f, -0.9f } }; /* two spots, not one twice (two crystals in one place lay into each other) */ build_model(g, L, &LMV_chichen_itza, s, 2); break; }
   case LM_LIBERTY: build_liberty(g, L); break;
   default: break;
   }
