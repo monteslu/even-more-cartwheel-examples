@@ -45,7 +45,6 @@ extern const lm_vox LMV_angkor_wat;
 extern const lm_vox LMV_willis;
 extern const lm_vox LMV_empire;
 extern const lm_vox LMV_giza;
-extern const lm_vox LMV_sphinx_head;
 extern const lm_vox LMV_col_cavea;
 extern const lm_vox LMV_pa_base;
 #endif

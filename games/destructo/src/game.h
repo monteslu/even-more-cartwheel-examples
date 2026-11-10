@@ -69,7 +69,7 @@ typedef struct target_state {
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
        P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG,
        P_MARBLE, P_LIMESTONE, P_BRONZE, P_DARK_GLASS, P_TILE_WHITE, P_RED_BRICK, P_WHITE_PAINT, P_BLUE_GLASS, P_ROCK, P_SILVER,
-       P_SARSEN, P_VERDIGRIS, P_CONCRETE, P_COUNT };
+       P_SARSEN, P_VERDIGRIS, P_CONCRETE, P_SHELL_WHITE, P_PODIUM, P_IRON, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
 #define MAXBANNER 24
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
@@ -111,6 +111,7 @@ typedef struct level_def {
   const char *place; /* K_LANDMARK: where it stands (shown under its name) */
   int setting;       /* the setting (ST_*) + 1; 0: the kit's own */
   float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
+  float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
 #define NLEVELS 55
 int level_find(const char *name); /* a level's index by its name, -1 none */
@@ -231,6 +232,7 @@ float game_front(const game *g);
 /* a world yaw as the launcher's own turn from where it stands (wrapped to -pi..pi) */
 float game_yaw_from_world(const game *g, float world_yaw);
 float game_speed(const game *g);
+void game_set_orbit(game *g, float orbit); /* put the launcher at this place on its circle (the level's opening view, the debug command) */
 t3_vec3 game_block_pos(const game *g, int i);
 bool game_over(const game *g);
 uint32_t game_state_hash(const game *g); /* the blocks' poses and the counters, apart from the world they live in (replays) */

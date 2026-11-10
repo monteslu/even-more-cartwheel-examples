@@ -305,7 +305,7 @@ void game_new(game *g, int level, int players, int mode) {
   level_build(g, g->L);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
-  g->ring = g->L->range, g->orbit = 0;
+  g->ring = g->L->range, g->orbit = g->L->orbit0;
   place_launcher(g);
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
   g->ammo_sel = A_SHOT;
@@ -372,6 +372,12 @@ t3_vec3 game_aim_dir(const game *g) {
   cw_sincos(game_world_yaw(g), &sy, &cy);
   cw_sincos(g->pitch, &sp, &cp);
   return v3(-sy * cp, sp, -cy * cp);
+}
+void game_set_orbit(game *g, float orbit) {
+  g->orbit = orbit;
+  while (g->orbit > 3.14159265f) g->orbit -= 6.2831853f;
+  while (g->orbit < -3.14159265f) g->orbit += 6.2831853f;
+  place_launcher(g);
 }
 float game_speed(const game *g) {
   const ammo_info *a = &AMMO[g->ammo_sel];

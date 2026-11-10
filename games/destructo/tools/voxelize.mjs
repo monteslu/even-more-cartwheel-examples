@@ -61,7 +61,7 @@ const PAINTS = {
   DARK_STONE: [0.2, 0.2, 0.23], SAND_STONE: [0.68, 0.5, 0.3], ROSE_STONE: [0.62, 0.38, 0.32], WHITE_STONE: [0.66, 0.63, 0.56],
   MARBLE: [0.8, 0.78, 0.74], LIMESTONE: [0.6, 0.55, 0.45], BRONZE: [0.13, 0.095, 0.07], DARK_GLASS: [0.05, 0.055, 0.065],
   TILE_WHITE: [0.84, 0.82, 0.77], RED_BRICK: [0.5, 0.21, 0.12], WHITE_PAINT: [0.76, 0.76, 0.74], BLUE_GLASS: [0.16, 0.26, 0.36],
-  ROCK: [0.27, 0.25, 0.23], SILVER: [0.5, 0.53, 0.57], SARSEN: [0.46, 0.47, 0.42], VERDIGRIS: [0.36, 0.58, 0.5], CONCRETE: [0.58, 0.57, 0.54],
+  ROCK: [0.27, 0.25, 0.23], SILVER: [0.5, 0.53, 0.57], SARSEN: [0.46, 0.47, 0.42], VERDIGRIS: [0.36, 0.58, 0.5], CONCRETE: [0.58, 0.57, 0.54], SHELL_WHITE: [0.95, 0.94, 0.9], PODIUM: [0.4, 0.28, 0.2], IRON: [0.3, 0.19, 0.12],
 };
 const MATS = { wood: 'M_WOOD', stone: 'M_STONE', glass: 'M_GLASS', steel: 'M_STEEL' };
 
@@ -280,7 +280,23 @@ function voxelize(name, C) {
   }
   let nshell = 0;
   for (let c = 0; c < N; c++) nshell += cells[c] > 0 && cells[c] < 254;
-  console.error(`${name}: ${nx} x ${ny} x ${nz} cells of ${cell} x ${course} m, ${ext.map((e) => e.toFixed(1)).join(' x ')} m; ${nshell} shell cells (about ${Math.round(nshell / 2.4)} bricks), ${ncore} core blocks; ${tris.length} triangles; ${runs.length / 2} runs; materials: ${names.join(', ')}`);
+  /* welded: the members the game will merge the cells into (src/landmarks.c build_vox: the longest box of one paint up the
+   * column, then as wide as that holds, up to 12 courses by 6 by 6 cells), so the body count is known here */
+  let members = 0;
+  if (C.weld) {
+    const used = new Uint8Array(N), MH = 12, MW = 6;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
+      const c0 = cells[at(i, j, k)];
+      if (!c0 || c0 >= 254 || used[at(i, j, k)]) continue;
+      let h = 1, w = 1, d = 1;
+      while (j + h < ny && h < MH && cells[at(i, j + h, k)] === c0 && !used[at(i, j + h, k)]) h++;
+      for (let grow = true; grow && i + w < nx && w < MW;) { for (let t = 0; t < h && grow; t++) grow = cells[at(i + w, j + t, k)] === c0 && !used[at(i + w, j + t, k)]; if (grow) w++; }
+      for (let grow = true; grow && k + d < nz && d < MW;) { for (let t = 0; t < h && grow; t++) for (let s2 = 0; s2 < w && grow; s2++) grow = cells[at(i + s2, j + t, k + d)] === c0 && !used[at(i + s2, j + t, k + d)]; if (grow) d++; }
+      for (let t = 0; t < h; t++) for (let s2 = 0; s2 < w; s2++) for (let u = 0; u < d; u++) used[at(i + s2, j + t, k + u)] = 1;
+      members++;
+    }
+  }
+  console.error(`${name}: ${nx} x ${ny} x ${nz} cells of ${cell} x ${course} m, ${ext.map((e) => e.toFixed(1)).join(' x ')} m; ${nshell} shell cells (${C.weld ? members + ' welded members' : 'about ' + Math.round(nshell / 2.4) + ' bricks'}), ${ncore} core blocks; ${tris.length} triangles; ${runs.length / 2} runs; materials: ${names.join(', ')}`);
   return { name, nx, ny, nz, cell, course, x0, z0, K: C.core || 0, weld: C.weld ? 1 : 0, pal, runs };
 }
 

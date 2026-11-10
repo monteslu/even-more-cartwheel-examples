@@ -242,6 +242,12 @@ static bool warmup(void *u) {
   return true;
 }
 
+/* the debug channel: the launcher moved round the structure (looking at a landmark from a chosen side) */
+static void cmd_orbit(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1 && G.have_game) game_set_orbit(&G.g, (float)atof(argv[1]));
+  cw_reply_printf(r, "{\"orbit\":%.4f}", G.have_game ? G.g.orbit : 0.0f);
+}
+
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
@@ -260,6 +266,7 @@ static void init(void *u) {
   opt_init(restart, option_changed);
   cop_set_options(opt_get); /* its switches (COPLANAR_CONTROL, COPLANAR_SEPARATE) are run options too: dm set ... */
   cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
+  cw_debug_command("orbit", "orbit <radians>: put the launcher (and the camera) at this place on its circle round the structure", cmd_orbit);
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
   cw_debug_i32("game.state", &G.state);

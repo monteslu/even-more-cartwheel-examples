@@ -6,60 +6,106 @@
 const sq = (x) => x * x;
 const clamp01 = (x) => Math.max(0, Math.min(1, x));
 
-/* ── the Great Sphinx of Giza (73 m long, 20 m high): the lion lying with its forepaws stretched out in front, the
- * rump rounded, the flanks weathered into steps of softer and harder rock, the head in its striped headdress (the
- * nemes) with its lappets, the flat planes of the face; the rock of its enclosure behind it. Facing +x ── */
-const SPH_S = 0.24;              /* game metres a metre */
-const SPH_X0 = -38, SPH_X1 = 38; /* the box, real metres */
-const SPH_Z = 8;
+/* ── the Great Sphinx of Giza (73 m long, 20 m high): a lion lying on the rock, its back dipping behind the raised
+ * shoulders and rising again to the haunches, the forelegs stretched out in front ending in paws, the tall head in
+ * its striped headdress (the nemes) wider than the neck, the face with brow, nose and mouth in relief. Carved from
+ * one rock: welded (a hollow skin of bricks). Facing +x; real metres ── */
+const SPH_S = 0.24;
+const SPH_X0 = -37, SPH_X1 = 38, SPH_Z = 9.5;
 function sphinx(x, y, z) {
-  const X = x / SPH_S + (SPH_X0 + SPH_X1) / 2, Y = y / SPH_S, Z = z / SPH_S, aZ = Math.abs(Z);
-  const band = Math.floor(Y / 2.1); /* the strata: soft and hard beds of the limestone, the soft ones worn back */
-  const stone = band & 1 ? 'stone:TRIM_CREAM' : 'stone:SAND_STONE';
-  /* the forepaws: two, side by side, the forelegs lying flat, their ends rounded */
-  if (X > 12 && X < 35.5 && aZ > 1.0 && aZ < 5.4) {
-    let h = 3.4 * Math.sqrt(clamp01(1 - sq((aZ - 3.2) / 2.4)) * 0.45 + 0.55);
-    if (X > 31.5) h *= Math.sqrt(clamp01(1 - sq((X - 31.5) / 4)));
-    if (Y < h) return Y < 1.4 ? 'stone:LIMESTONE' : 'stone:SAND_STONE';
+  const X = x / SPH_S, Y = y / SPH_S, Z = z / SPH_S, aZ = Math.abs(Z);
+  /* the forelegs and paws: two, stretched out from the chest, a hollow between them */
+  if (X > 9 && X < 38 && aZ > 1.4 && aZ < 7.2) {
+    let h = X < 28 ? 4.2 : 4.2 * Math.sqrt(clamp01(1 - sq((X - 28) / 10)));
+    if (aZ > 6.4) h *= 0.75;
+    if (Y < h) return 'stone:SAND_STONE';
   }
-  /* the body: the rump rounded at the back, the long back rising a little to the shoulders, the chest square under
-   * the head */
+  if (X > 9 && X < 12 && aZ <= 1.4 && Y < 3.2) return 'stone:SAND_STONE'; /* between the legs at the chest */
+  /* the body: the back dips behind the shoulders and rises to the haunches, rounded at the rump */
   let top = 0;
-  if (X > -36.5 && X <= -28) top = 12.0 * Math.pow(clamp01(1 - sq((X + 28) / 8.5)), 0.45);
-  else if (X > -28 && X <= 8) top = 12.0 + 0.8 * (X + 28) / 36;
-  else if (X > 8 && X < 17.2) top = 12.8 + Math.min(1, (X - 8) / 2) * 0; /* the shoulders and chest */
-  if (Y < top) {
-    /* wide at the foot, the flanks drawn in toward the back, each soft bed worn back between the hard ones */
-    /* the beds step in going up, never out: each soft bed slopes back over its height, the hard bed on it as wide as
-     * the soft one's top (a ledge, then a worn slope) */
-    const k = Math.floor(Y / 2.1), f = Y / 2.1 - k;
-    let hw = 6.9 - 0.32 * k - (k & 1 ? 0.32 * f : 0) - 0.9 * Math.pow(clamp01((Y - 6) / 8), 1.5);
-    if (Y > top - 2.2) hw -= (Y - (top - 2.2)) * 1.4;       /* the back rounded across */
-    if (X > 8) hw = Math.max(Math.min(hw + 0.6, 6.4), 4.6); /* the chest, square under the head */
-    if (X < -28) hw *= 0.8 + 0.2 * clamp01((X + 36.5) / 8.5); /* the haunch rounds in */
-    if (aZ < hw) return stone;
+  if (X > -36 && X <= -22) top = 13.0 * Math.pow(clamp01(1 - sq((X + 22) / 14)), 0.35);
+  else if (X > -22 && X <= 9) { const t = (X + 22) / 31; top = 13.0 - 2.6 * Math.sin(Math.PI * t) + 1.0 * t; }
+  if (X > -36 && X < 12 && Y < top) {
+    let hw = 7.5;
+    if (X < -22) hw = 7.5 + 1.0 * clamp01((X + 36) / 10) * Math.sqrt(clamp01(1 - sq((X + 30) / 7)));  /* the haunches bulge */
+    if (X > -22 && X <= 9) hw = 7.5 - 1.0 * Math.sin(Math.PI * (X + 22) / 31);                           /* the waist draws in */
+    hw *= Math.sqrt(clamp01(1 - sq(Math.max(0, Y - top + 4) / 4.6)));                                    /* the back rounded across */
+    if (aZ < hw) return Y < 5 ? 'stone:LIMESTONE' : 'stone:SAND_STONE';
   }
-  /* the neck under the head, and under the chin */
-  if (Y >= 12.8 && Y < 14.6 && ((X > 9.5 && X < 15.2 && aZ < 3.4) || (X >= 15.2 && X < 17.2 && aZ < 1.5))) return 'stone:SAND_STONE';
-  /* the headdress (nemes): its lappets falling broad to the shoulders behind the face, the hood rounded over the head
-   * and front to back, striped; its back hangs straight */
-  const crown = Y > 19.2 ? 3.6 * Math.sqrt(clamp01(1 - sq((Y - 19.2) / 2.3))) : 9;
-  const flap = 9.4 - Math.max(0, 17.2 - Y) * 0.85; /* the back of the headdress spreads down over the shoulders */
-  if (Y >= 12.8 && Y < 21.5 && X > flap && X < 15.6 && (Math.abs(X - 12.3) < crown || X < 9) && (Y >= 14.6 || X < 11.4)) {
-    let hw = Y < 18 ? 4.6 - 0.15 * (Y - 13.4) : 3.9 * Math.sqrt(clamp01(1 - sq((Y - 18) / 3.6)));
-    if (aZ < hw) return Math.floor(Y / 0.8) & 1 ? 'stone:SAND_STONE' : 'stone:TRIM_CREAM';
+  /* the chest: square under the head, the shoulders up to the neck */
+  if (X >= 9 && X < 14.5 && Y < 14.0 && aZ < 6.2 - 1.6 * clamp01((Y - 8) / 6)) return 'stone:SAND_STONE';
+  /* the neck, narrower than the headdress above it */
+  if (X > 8 && X < 15.5 && Y >= 14.0 && Y < 15.5 && aZ < 3.2) return 'stone:SAND_STONE';
+  /* the headdress (nemes): broad lappets down to the shoulders, the hood over the head, rounded at the crown and
+   * at the back, striped */
+  const stripe = Math.floor((Y - 13) / 1.6) & 1 ? 'stone:SAND_STONE' : 'stone:TRIM_CREAM';
+  if (Y >= 13.0 && Y < 21.2 && X > 6.0 && X < 16.0) {
+    let hw = Y < 17.5 ? 5.4 - 0.5 * clamp01((Y - 13) / 4.5) : 4.9 * Math.sqrt(clamp01(1 - sq((Y - 17.5) / 3.9)));
+    const back = 6.0 + 2.6 * clamp01((Y - 16) / 5.2); /* the back of the hood curves forward at the crown */
+    if (X > back && aZ < hw && (Y >= 14.0 || aZ > 3.2)) return stripe;
   }
-  /* the face: flat cheeks and brow, the eyes set in, the worn nose, the mouth, the chin */
-  if (X >= 15.6 && X < 17.8 && Y >= 14.6 && Y < 20.2) {
-    const hw = Y < 15.6 ? 1.8 : 2.4;
-    if (aZ < hw) {
-      if (X > 17.0 && Y > 18.1 && Y < 19.1 && aZ > 0.6 && aZ < 1.8) return null;
-      if (X > 17.3 && aZ > 1.1) return null;
-      return 'stone:SAND_STONE';
+  /* the face: a flat plane with the brow standing out, the eyes set in, the nose, the lips and the chin */
+  if (X >= 16.0 && X < 17.6 && Y >= 13.6 && Y < 20.0 && aZ < 2.9 * Math.sqrt(clamp01(1 - sq((Y - 16.8) / 3.6)))) {
+    if (X > 16.8 && Y > 17.3 && Y < 18.3 && aZ > 0.8 && aZ < 2.2) return null;           /* the eyes */
+    return 'stone:SAND_STONE';
+  }
+  if (X >= 17.6 && X < 18.2 && Y >= 18.3 && Y < 19.0 && aZ < 2.4) return 'stone:SAND_STONE'; /* the brow */
+  if (X >= 17.6 && X < 18.8 && Y >= 15.6 && Y < 17.6 && aZ < 0.8) return 'stone:SAND_STONE';  /* the nose */
+  if (X >= 17.6 && X < 18.1 && Y >= 14.6 && Y < 15.1 && aZ < 1.4) return 'stone:SAND_STONE';  /* the lips */
+  if (X >= 17.6 && X < 18.0 && Y >= 13.6 && Y < 14.2 && aZ < 1.2) return 'stone:SAND_STONE';  /* the chin */
+  return null;
+}
+
+/* ── the Eiffel Tower (324 m): four lattice legs leaning in under the arches to the first platform, the second
+ * platform where they meet, the single lattice shaft up to the top platform, the spire. Open ironwork: corner posts,
+ * horizontal bars every bay and a diagonal in each bay, every member one brick thick and the bays open. Welded; real
+ * metres, cells of 3 m ── */
+const EI_S = 0.05, EI_C = 3; /* game metres a metre; a cell in real metres */
+const eiW = (Y) => Math.max(62 * Math.exp(-Y / 95), 6);          /* the outer half-width at height Y */
+const eiIn = (Y) => Y < 105 ? 37 * Math.pow(1 - Y / 105, 0.8) : 0; /* a leg's inner edge */
+function eiffel(x, y, z) {
+  const X = x / EI_S, Y = y / EI_S, Z = z / EI_S, aX = Math.abs(X), aZ = Math.abs(Z);
+  const w = eiW(Y), inn = eiIn(Y), c = EI_C;
+  const row = Math.floor(Y / c), bay = 4, inBay = row % bay, bar = inBay === 0;
+  const IRON = 'steel:IRON';
+  /* the platforms: a slab a course thick, out past the ironwork */
+  if (Y >= 57 && Y < 57 + c && aX < eiW(57) + 4 && aZ < eiW(57) + 4) return IRON;
+  if (Y >= 115 && Y < 115 + c && aX < eiW(115) + 3 && aZ < eiW(115) + 3) return IRON;
+  /* the top: the cabin and the spire */
+  if (Y >= 276 && Y < 290) return aX < 7 && aZ < 7 && (aX > 7 - c || aZ > 7 - c || Y < 276 + c || Y >= 290 - c) ? IRON : null;
+  if (Y >= 290 && Y < 324) return Math.hypot(X, Z) < (Y < 300 ? 2.2 : 1.6) ? IRON : null;
+  if (Y >= 276) return null;
+  if (aX > w || aZ > w) return null;
+  if (Y < 110) {
+    /* four legs: each a square tube from inn to w on both axes */
+    if (aX < inn || aZ < inn) {
+      /* the arches between the legs under the first platform, on the outer faces */
+      const onFace = (aX > w - c && aZ < inn) || (aZ > w - c && aX < inn);
+      const u = aX > w - c ? aZ : aX;
+      const r = Math.hypot(u, Y - 18);
+      if (onFace && Y > 18 && Y < 56 && Math.abs(r - 37) < c * 0.7) return IRON;
+      return null;
     }
+    const xEdge = aX > w - c || aX < inn + c, zEdge = aZ > w - c || aZ < inn + c;
+    if (xEdge && zEdge) return IRON;                       /* the corner posts */
+    if (xEdge || zEdge) {
+      if (bar) return IRON;                                /* a horizontal bar each bay */
+      /* one diagonal across the bay, its direction alternating bay to bay */
+      const along = xEdge ? aZ : aX, span = w - inn - 2 * c, t = (along - inn - c) / span;
+      const dir = (Math.floor(row / bay) & 1) ? 1 - t : t;
+      if (span > 0 && Math.abs(dir * bay - inBay - 0.5) < 0.5) return IRON;
+    }
+    return null;
   }
-  if (X >= 17.8 && X < 18.6 && Y >= 16.6 && Y < 18.1 && aZ < 0.6) return 'stone:SAND_STONE';
-  if (X >= 17.8 && X < 18.1 && Y >= 15.6 && Y < 16.1 && aZ < 1.0) return 'stone:SAND_STONE';
+  /* the shaft above the second platform: one lattice tower */
+  const xEdge = aX > w - c, zEdge = aZ > w - c;
+  if (xEdge && zEdge) return IRON;
+  if (xEdge || zEdge) {
+    if (bar) return IRON;
+    const along = xEdge ? Z : X, t = (along + w) / (2 * w);
+    const dir = (Math.floor(row / bay) & 1) ? 1 - t : t;
+    if (Math.abs(dir * bay - inBay - 0.5) < 0.5) return IRON;
+  }
   return null;
 }
 
@@ -182,25 +228,25 @@ function neuschwanstein(x, y, z) {
 const OP_S = 0.1, OP_POD = 12;
 /* [tip x, tip height over the podium, back foot x, half width at the foot, z of the row] */
 const OP_SHELLS = [
-  [-58, 55, 2, 21, 20], [-38, 47, 16, 19, 20], [-18, 37, 28, 16, 20], [36, 26, 4, 15, 20],
-  [-52, 45, 2, 17, -24], [-34, 39, 14, 16, -24], [-16, 30, 24, 14, -24], [30, 22, 2, 13, -24],
-  [44, 20, 64, 11, -2], [70, 16, 52, 10, -2],
+  [-56, 60, -22, 20, 20], [-32, 50, -2, 18, 20], [-10, 40, 16, 15, 20], [36, 28, 12, 14, 20],
+  [-50, 50, -20, 16, -24], [-28, 42, 0, 15, -24], [-8, 33, 18, 13, -24], [30, 24, 8, 12, -24],
+  [46, 20, 60, 10, -2], [68, 17, 54, 9, -2],
 ];
 function operaShell(X, Y, Z, s) {
   const [xt, ht, xb, w, zr] = s, dir = Math.sign(xb - xt); /* the tip toward -dir */
-  const len = Math.abs(xb - xt), FR = 0.36; /* the front edge comes down FR len ahead of the tip */
+  const len = Math.abs(xb - xt), FR = 0.9; /* the front edge sweeps down to the podium FR len ahead of the tip */
   const u = (X - xt) * dir;                                   /* behind the tip: 0..len; ahead: -FR len..0 */
   if (u < -FR * len || u > len) return null;
-  const yr = u >= 0 ? ht * (1 - Math.pow(u / len, 1.15)) : ht * (1 - Math.pow(-u / (FR * len), 1.3)); /* the ridge bulges up behind the tip, the front edge sweeps down ahead of it */
+  const yr = u >= 0 ? ht * Math.pow(1 - u / len, 0.45) : ht * Math.sqrt(clamp01(1 - sq(u / (FR * len)))); /* a fin: the ridge drops steeply behind the pointed tip, the front edge sweeps down to the podium ahead of it */
   if (Y > yr || Y < 0) return null;
-  const wb = w * (0.3 + 0.7 * Math.sqrt(Math.min(1, Math.max(0, u + FR * len) / ((1 + FR) * len) * 1.4))), dz = Math.abs(Z - zr); /* narrow at the tip, wide at the foot */
-  const hw = wb * Math.sqrt(Math.max(0, 1 - Math.pow(Y / yr, 1.8)));
+  const wb = 0.62 * w * (0.3 + 0.7 * Math.sqrt(Math.min(1, Math.max(0, u + FR * len) / ((1 + FR) * len) * 1.4))), dz = Math.abs(Z - zr); /* narrow at the tip, wider at the foot; thin vaults */
+  const hw = wb * Math.sqrt(Math.max(0, 1 - Math.pow(Y / yr, 3))); /* the vault's sides near vertical, curving in only at the ridge */
   if (dz > hw + 0.1) return null;
   const skin = dz > hw - 2.0 || Y > yr - 2.2;
   /* the vault's foot: the shell springs from piers, the walls under it glazed and set back (a dark band along the
    * podium that parts each shell from the next) */
   if (Y < 5 && skin) return dz < hw - 1.2 ? 'glass:DARK_GLASS' : null;
-  if (skin) return Math.floor((Y + u * 0.6) / 9) & 1 ? 'stone:TILE_WHITE' : 'stone:MARBLE'; /* the vault, its tiles in broad chevrons (a welded member cannot run across two paints) */
+  if (skin) return 'stone:SHELL_WHITE'; /* the vault, white tiles */
   if (u < 2.5) return 'glass:DARK_GLASS'; /* the glazed mouth under the tip */
   return null;
 }
@@ -209,8 +255,8 @@ function opera(x, y, z, part) {
   if (Y < OP_POD) { /* the podium, rounded at the harbour end, the broad steps up from the city at the back */
     if (Math.abs(Z) > 48) return null;
     if (X < -70 && sq((X + 70) / 22) + sq(Z / 48) > 1) return null;
-    if (X > 66) return Y < OP_POD * (1 - (X - 66) / 16) ? 'stone:ROSE_STONE' : null;
-    return 'stone:ROSE_STONE';
+    if (X > 66) return Y < OP_POD * (1 - (X - 66) / 16) ? 'stone:PODIUM' : null;
+    return 'stone:PODIUM';
   }
   for (const s of OP_SHELLS) { const c = operaShell(X, Y - OP_POD, Z, s); if (c) return c; }
   return null;
@@ -568,5 +614,6 @@ export default {
   opera: { ext: [184 * OP_S, 70 * OP_S, 100 * OP_S], cell: opera },
   neuschwanstein: { ext: [19.2, 12.2, 7.2], cell: neuschwanstein },
   needle: { ext: [44 * SN_S, 184 * SN_S, 44 * SN_S], cell: needle },
-  sphinx: { ext: [(SPH_X1 - SPH_X0) * SPH_S, 21.2 * SPH_S, 2 * SPH_Z * SPH_S], cell: sphinx },
+  sphinx: { ext: [(SPH_X1 - SPH_X0) * SPH_S, 21.4 * SPH_S, 2 * SPH_Z * SPH_S], cell: sphinx },
+  eiffel: { ext: [126 * EI_S, 324 * EI_S, 126 * EI_S], cell: eiffel },
 };
