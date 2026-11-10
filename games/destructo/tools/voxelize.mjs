@@ -36,6 +36,9 @@
  *              "default" for the rest
  *   bands      [{ "y0", "y1" (game metres), "mat", "paint" }]: cells in a height band take this instead
  *   ymin, ymax only the cells between these heights (game metres): a model made in two parts
+ *   clear      [names]: the other parts of this landmark laid before it (their configs here): a cell is left out where
+ *              it falls inside one of their cells, so the two parts never overlap at their seam (a part sampled on a
+ *              coarser grid reaches past where the shape says it ends; two bodies laid into each other burst apart)
  *   carve      [{ "box": [x0, y0, z0, x1, y1, z1] (game metres), "mat"?, "paint"? }]: cells in the box take this, or
  *              are emptied when neither is given (doors, a sunken court); "disc": [c, cy, r, "z"|"x"] keeps only the
  *              cells within r of (x = c, y = cy) (or z = c: a round face on a wall, a clock dial); with "top": [c, ax, az, wobble] only the
@@ -105,8 +108,25 @@ function nearestPaint(c, allowed) {
   return best;
 }
 
+/* a hand shape's grid as voxelize lays it: whether the part has a cell at a point (for `clear`) */
+function procGrid(C) {
+  const P = PROCS[C.proc];
+  const a = ((C.yaw || 0) * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
+  const ex = Math.abs(P.ext[0] * ca) + Math.abs(P.ext[2] * sa), ez = Math.abs(P.ext[0] * sa) + Math.abs(P.ext[2] * ca);
+  const s = C.size ? C.size.len / (C.size.axis === 'x' ? ex : C.size.axis === 'z' ? ez : P.ext[1]) : 1;
+  const cell = C.cell, course = C.course, K = Math.max(1, C.core || 0), roundK = (n) => Math.ceil(n / K) * K;
+  const nx = roundK(Math.ceil(ex * s / cell) + 2), nz = roundK(Math.ceil(ez * s / cell) + 2);
+  const x0 = -Math.floor(nx / 2) * cell, z0 = -Math.floor(nz / 2) * cell;
+  const keep = (m) => m && !(C.only && !new RegExp(':(' + C.only + ')$').test(m)) && !(C.except && new RegExp(':(' + C.except + ')$').test(m));
+  return { has(x, y, z) {
+    const cx = x0 + (Math.floor((x - x0) / cell) + 0.5) * cell, cy = (Math.floor(y / course) + 0.5) * course, cz = z0 + (Math.floor((z - z0) / cell) + 0.5) * cell;
+    return keep(P.cell(cx * ca - cz * sa, cy, cx * sa + cz * ca));
+  } };
+}
+
 function voxelize(name, C) {
   const P = C.proc ? PROCS[C.proc] : null; /* a landmark shaped by hand (tools/landmark-procs.mjs): no model */
+  const clears = (C.clear || []).map((n) => { if (!CONF[n]) throw new Error(`${name}: clear names no config ${n}`); return procGrid(CONF[n]); });
   if (C.proc && !P) throw new Error(`${name}: no proc ${C.proc}`);
   const { V, tris, mtlColour } = P ? { V: [0, 1, 2, 3].map((q) => [(q & 1 ? 1 : -1) * P.ext[0] / 2, q & 2 ? P.ext[1] : 0, (q & 2 ? 1 : -1) * P.ext[2] / 2]).concat([[P.ext[0] / 2, 0, -P.ext[2] / 2], [-P.ext[0] / 2, 0, P.ext[2] / 2]]), tris: [], mtlColour: {} } : loadObj(join(MODELS, C.obj));
   /* yaw, then scale to size, base on the ground, centred */
@@ -151,6 +171,7 @@ function voxelize(name, C) {
       const gx = x0 + (i + 0.5) * cell, gz = z0 + (k + 0.5) * cell; /* the shape turned by yaw: its own coordinates are the grid's turned back */
       const m = P.cell(gx * ca - gz * sa, (j + 0.5) * course, gx * sa + gz * ca);
       if (!m || (C.only && !new RegExp(':(' + C.only + ')$').test(m)) || (C.except && new RegExp(':(' + C.except + ')$').test(m))) continue; /* one part of a hand shape (a crag in big blocks, the building on it in small) */
+      if (clears.some((g) => g.has(gx, (j + 0.5) * course, gz))) continue; /* inside a cell of a part laid before: no seam overlap */
       if (!mi.has(m)) mi.set(m, names.length), names.push(m);
       surf[at(i, j, k)] = mi.get(m);
     }

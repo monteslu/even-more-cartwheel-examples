@@ -142,6 +142,8 @@ typedef struct game {
   const level_def *L;
   int level;
   block b[MAXBLK];
+  struct weld_pair { uint16_t a, b; cw_joint3d j; } *weld; /* every weld laid between two placed blocks (landmarks.c), for the level checks: a welded member stands on what it is welded to */
+  int nweld, weld_cap;
   int nb, nalive, free_head;
   int free_list[MAXBLK];
   int nfree;
@@ -232,7 +234,9 @@ float game_front(const game *g);
 /* a world yaw as the launcher's own turn from where it stands (wrapped to -pi..pi) */
 float game_yaw_from_world(const game *g, float world_yaw);
 float game_speed(const game *g);
-void game_set_orbit(game *g, float orbit); /* put the launcher at this place on its circle (the level's opening view, the debug command) */
+void game_set_orbit(game *g, float orbit);
+/* a weld between two placed blocks (a landmark's members; the checks' welded island), recorded in game.weld */
+void game_weld(game *g, int i, int j); /* put the launcher at this place on its circle (the level's opening view, the debug command) */
 t3_vec3 game_block_pos(const game *g, int i);
 bool game_over(const game *g);
 uint32_t game_state_hash(const game *g); /* the blocks' poses and the counters, apart from the world they live in (replays) */

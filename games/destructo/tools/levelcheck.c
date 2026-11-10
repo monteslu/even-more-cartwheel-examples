@@ -35,23 +35,40 @@
 
 static game G;
 
+/* a block welded (through any chain of welds still whole) to a supported block is supported too: a welded member stands
+ * on what it is welded to. sup[i] in and out. */
+static void through_welds(game *g, bool *sup) {
+  for (bool grew = true; grew;) {
+    grew = false;
+    for (int w = 0; w < g->nweld; w++) {
+      int a = g->weld[w].a, b = g->weld[w].b;
+      if (sup[a] == sup[b] || !g->b[a].alive || !g->b[b].alive || !cw_joint3d_valid(g->weld[w].j)) continue;
+      sup[a] = sup[b] = true, grew = true;
+    }
+  }
+}
+static bool bottom_on_something(game *g, int i) {
+  block *k = &g->b[i];
+  cw_xform3 x = cw_body3d_transform(k->body);
+  /* the block's bottom face (blocks are placed upright: only turned about y) */
+  t3_vec3 c = { x.p.x, x.p.y - k->half.y - 0.007f, x.p.z };
+  cw_qshape3d q = cw_qshape3d_box(c, (t3_vec3){ fmaxf(0.01f, k->half.x - 0.02f), 0.008f, fmaxf(0.01f, k->half.z - 0.02f) }, x.q);
+  cw_phys_filter f = cw_phys_filter_all();
+  f.ignore_body = k->body.id;
+  cw_shape3d hit[4];
+  return cw_world3d_overlap(g->w, &q, &f, hit, 4) > 0;
+}
+/* blocks that stand on nothing: the bottom face on no block and not the ground, and no chain of welds to one that does */
 static int floating(game *g, int *first) {
+  static bool sup[MAXBLK];
+  for (int i = 0; i < g->nb; i++) sup[i] = g->b[i].alive && bottom_on_something(g, i);
+  through_welds(g, sup);
   int n = 0;
   *first = -1;
   for (int i = 0; i < g->nb; i++) {
-    block *k = &g->b[i];
-    if (!k->alive) continue;
-    cw_xform3 x = cw_body3d_transform(k->body);
-    /* the block's bottom face (blocks are placed upright: only turned about y) */
-    t3_vec3 c = { x.p.x, x.p.y - k->half.y - 0.007f, x.p.z };
-    cw_qshape3d q = cw_qshape3d_box(c, (t3_vec3){ fmaxf(0.01f, k->half.x - 0.02f), 0.008f, fmaxf(0.01f, k->half.z - 0.02f) }, x.q);
-    cw_phys_filter f = cw_phys_filter_all();
-    f.ignore_body = k->body.id;
-    cw_shape3d hit[4];
-    if (cw_world3d_overlap(g->w, &q, &f, hit, 4) == 0) {
-      if (*first < 0) *first = i;
-      n++;
-    }
+    if (!g->b[i].alive || sup[i]) continue;
+    if (*first < 0) *first = i;
+    n++;
   }
   return n;
 }
@@ -220,33 +237,54 @@ static bool rests(game *g, int i) {
   for (int k = 0; k < n; k++) if (c[k].normal.y < -0.5f) return true;
   return false;
 }
+/* after the settle: a contact under it, or a chain of whole welds to a block with one */
+static void resting(game *g, bool *sup) {
+  for (int i = 0; i < g->nb; i++) sup[i] = g->b[i].alive && rests(g, i);
+  through_welds(g, sup);
+}
 
 /* --landmarks: every landmark level, as the game starts it: as built every block stands on something (its bottom face
  * on a block or the ground) and none is placed inside another; after the level's settle every block lies on something
  * (a contact under it) and nothing moved more than 0.6 m settling; and the bot clears it within par.
+ * A welded member counts as standing on what it is welded to (a chain of whole welds to a block that stands or rests).
  * Controls: float (a block put 1 m over the first landmark's highest block once it has settled, unstepped: nothing
- * under it; and one put in the air as built), solve (the bot aiming 150 milliradians off) */
+ * under it; and one put in the air as built), island (two blocks welded to each other and to nothing, put there the
+ * same way: welds alone hold nothing up), solve (the bot aiming 150 milliradians off) */
 static void landmark_check(int level, const char *control) {
-  bool c_float = control && !strcmp(control, "float"), c_solve = control && !strcmp(control, "solve");
+  bool c_float = control && !strcmp(control, "float"), c_solve = control && !strcmp(control, "solve"), c_island = control && !strcmp(control, "island");
   game_new(&G, level, 1, MODE_COOP);
   if (c_float) game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, G.top + 2.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+  if (c_island) { /* two blocks welded to each other and to nothing else, in the air: welds alone hold nothing up */
+    int a = game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, G.top + 2.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+    int b = game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, G.top + 2.3f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+    game_weld(&G, a, b);
+  }
   int first = -1, nfloat = floating(&G, &first), first_over = -1, nover = overlapping(&G, &first_over);
+  t3_vec3 over_at = first_over >= 0 ? cw_body3d_transform(G.b[first_over].body).p : (t3_vec3){ 0, 0, 0 };
   static t3_vec3 p0[MAXBLK];
   for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 };
   game_settle(&G, level_settle_ticks(G.L));
-  if (c_float) { /* the block now hangs over the structure, where nothing holds it */
+  if (c_float || c_island) { /* the block (the welded pair) now hangs over the structure, where nothing holds it */
     float top = 0;
     for (int i = 0; i < G.nb; i++) if (G.b[i].alive) top = fmaxf(top, cw_body3d_transform(G.b[i].body).p.y);
-    game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, top + 1.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+    int a = game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, top + 1.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+    if (c_island) game_weld(&G, a, game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, top + 1.3f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0));
   }
-  int unrested = 0, first_un = -1;
+  static bool sup[MAXBLK];
+  resting(&G, sup);
+  int unrested = 0, first_un = -1, moved_i = -1;
   float moved = 0;
   for (int i = 0; i < G.nb; i++) {
     if (!G.b[i].alive) continue;
-    if (!rests(&G, i)) { unrested++; if (first_un < 0) first_un = i; }
+    if (!sup[i]) { unrested++; if (first_un < 0) first_un = i; }
     t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
-    if (i < MAXBLK && (p0[i].x != 0 || p0[i].y != 0 || p0[i].z != 0)) moved = fmaxf(moved, sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)));
+    if (i < MAXBLK && (p0[i].x != 0 || p0[i].y != 0 || p0[i].z != 0)) {
+      float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z));
+      if (d > moved) moved = d, moved_i = i;
+    }
   }
+  t3_vec3 moved_from = moved_i >= 0 ? p0[moved_i] : (t3_vec3){ 0, 0, 0 }, moved_half = moved_i >= 0 ? G.b[moved_i].half : (t3_vec3){ 0, 0, 0 };
+  int moved_mat = moved_i >= 0 ? G.b[moved_i].mat : -1;
   int blocks = G.nalive;
   /* the bot from the start */
   game_new(&G, level, 1, MODE_COOP);
@@ -262,8 +300,8 @@ static void landmark_check(int level, const char *control) {
     game_step(&G, &in);
     ticks++;
   }
-  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
-         level, G.L->name, control ? control : "", blocks, nfloat, first, nover, unrested, first_un, moved * 1000, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
+  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
+         level, G.L->name, control ? control : "", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
   fflush(stdout);
 }
 

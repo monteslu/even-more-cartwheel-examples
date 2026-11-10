@@ -218,14 +218,24 @@ static void weld_blocks(game *g, int from, int to) {
       intptr_t u = (intptr_t)cw_body3d_user(bb);
       int j = (int)u - 1;
       if (j <= i || j >= to || !g->b[j].alive) continue;
-      cw_xform3 xb = cw_body3d_transform(bb);
-      cw_joint3d_def d = cw_joint3d_default_def(CW_JOINT_WELD);
-      d.a = a->body, d.b = bb;
-      d.break_force = WELD_FORCE, d.break_torque = WELD_TORQUE;
-      cw_joint3d_def_anchor(&d, v3((xa.p.x + xb.p.x) * 0.5f, (xa.p.y + xb.p.y) * 0.5f, (xa.p.z + xb.p.z) * 0.5f), v3(0, 0, 1));
-      cw_joint3d_create(g->w, &d);
+      game_weld(g, i, j);
     }
   }
+}
+
+void game_weld(game *g, int i, int j) {
+  const block *a = &g->b[i], *b = &g->b[j];
+  cw_xform3 xa = cw_body3d_transform(a->body), xb = cw_body3d_transform(b->body);
+  cw_joint3d_def d = cw_joint3d_default_def(CW_JOINT_WELD);
+  d.a = a->body, d.b = b->body;
+  d.break_force = WELD_FORCE, d.break_torque = WELD_TORQUE;
+  cw_joint3d_def_anchor(&d, v3((xa.p.x + xb.p.x) * 0.5f, (xa.p.y + xb.p.y) * 0.5f, (xa.p.z + xb.p.z) * 0.5f), v3(0, 0, 1));
+  cw_joint3d jt = cw_joint3d_create(g->w, &d);
+  if (g->nweld == g->weld_cap) {
+    g->weld_cap = g->weld_cap ? g->weld_cap * 2 : 4096;
+    g->weld = realloc(g->weld, (size_t)g->weld_cap * sizeof *g->weld);
+  }
+  g->weld[g->nweld++] = (struct weld_pair){ (uint16_t)i, (uint16_t)j, jt };
 }
 /* the blocks laid since `from` turned yaw about the vertical through (cx, cz): a landmark set on the field at the
  * angle its default view wants (the grid stays square to the model, so its walls are clean and its members long) */

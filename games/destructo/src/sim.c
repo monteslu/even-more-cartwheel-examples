@@ -270,6 +270,7 @@ static void break_queued(game *g) {
 void game_free(game *g) {
   if (cw_world3d_valid(g->w)) cw_world3d_destroy(g->w);
   g->w = (cw_world3d){ 0 };
+  free(g->weld), g->weld = NULL, g->nweld = g->weld_cap = 0;
 }
 
 void game_new(game *g, int level, int players, int mode) {
