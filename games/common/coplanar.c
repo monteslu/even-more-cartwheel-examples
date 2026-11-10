@@ -323,6 +323,12 @@ static int flt_cmp(const void *pa, const void *pb) { float a = *(const float *)p
 typedef struct cpair { int a, b; float w; } cpair;
 
 /* every fighting pair of s's faces, through a grid over the world (cells about twice the typical face) */
+/* the switches (COPLANAR_CONTROL, COPLANAR_SEPARATE, ...): the environment natively, or what the game reads its run
+ * options from (cop_set_options: a cart reads no environment) */
+static const char *env_get(const char *name) { return getenv(name); }
+static const char *(*opt_source)(const char *) = env_get;
+void cop_set_options(const char *(*get)(const char *)) { opt_source = get ? get : env_get; }
+
 static int find_pairs(const cset *s, cpair **out) {
   *out = NULL;
   if (s->n < 2) return 0;
@@ -457,11 +463,6 @@ static void add_control(cset *s) {
   s->nm++;
 }
 
-/* the switches (COPLANAR_CONTROL, COPLANAR_SEPARATE, ...): the environment natively, or what the game reads its run
- * options from (cop_set_options: a cart reads no environment) */
-static const char *env_get(const char *name) { return getenv(name); }
-static const char *(*opt_source)(const char *) = env_get;
-void cop_set_options(const char *(*get)(const char *)) { opt_source = get ? get : env_get; }
 static bool env_on(const char *name, bool dflt) {
   const char *v = opt_source(name);
   return v && v[0] ? strcmp(v, "0") != 0 : dflt;
