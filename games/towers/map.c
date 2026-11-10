@@ -378,7 +378,7 @@ static float pool_bowl(const mp_feat *f, float x, float y) {
   if (dx * dx + dy * dy >= f->r * f->r) return 0;
   float a = feat_n(f, 0) * 3.14159265f, ca = cw_cos(a), sa = cw_sin(a);
   float u = dx * ca + dy * sa, v = (dy * ca - dx * sa) * (1.0f + 0.45f * feat_n(f, 1));
-  float th = atan2f(v, u);
+  float th = cw_atan2(v, u);
   float g = cw_sin(2 * th + 6.2831853f * feat_n(f, 2)) + 0.7f * cw_sin(3 * th + 6.2831853f * feat_n(f, 3)) + 0.45f * cw_sin(5 * th + 6.2831853f * feat_n(f, 4));
   float t = sqrtf(u * u + v * v) / f->r * (1 + 0.42f * (0.5f + 0.5f * g / 2.15f) + 0.14f * vnoise2(x * 1.3f, y * 1.3f, 77));
   return bump(t * t);
