@@ -13,7 +13,8 @@
  *              paint) keep one part of it (a crag in big blocks, the building on it in small)
  *   stripe     { "every": n, "mat", "paint" }: every n-th course takes this (a tower's floors); coreMat: the core's
  *              material when it is not the first one the model names
- *   yaw        degrees about y applied first (the game's camera looks from +z toward -z)
+ *   yaw        degrees about y applied first (the game's camera looks from +z toward -z); a hand shape too (the view
+ *              that names a landmark is often a three-quarter one, so the shape is turned on the field)
  *   shear      x moved by this times the height (a lean the camera sees)
  *   yscale     the height stretched by this after `size` (a model flatter than the landmark)
  *   member     [courses, cells]: a welded member at most this tall and this wide (default [12, 6]; a slender tower
@@ -22,6 +23,7 @@
  *              support below; only cells joined to the ground stay ("connect": false keeps parts that rest on
  *              another part of the landmark, a walkway between two towers)
  *   size       { "axis": "x"|"y"|"z", "len": metres in the game }: the model's extent along that axis after yaw
+ *              (left out for a hand shape: it is drawn in game metres already)
  *   cell       the brick's width across (x and z), metres; course: its height
  *   fill       "flood": inside is whatever the outside cannot reach (closed models); "columns": each column filled
  *              from the ground up to its highest surface cell (statues, scans open underneath); "surface": the
@@ -35,7 +37,8 @@
  *   bands      [{ "y0", "y1" (game metres), "mat", "paint" }]: cells in a height band take this instead
  *   ymin, ymax only the cells between these heights (game metres): a model made in two parts
  *   carve      [{ "box": [x0, y0, z0, x1, y1, z1] (game metres), "mat"?, "paint"? }]: cells in the box take this, or
- *              are emptied when neither is given (doors, a sunken court); with "top": [c, ax, az, wobble] only the
+ *              are emptied when neither is given (doors, a sunken court); "disc": [c, cy, r, "z"|"x"] keeps only the
+ *              cells within r of (x = c, y = cy) (or z = c: a round face on a wall, a clock dial); with "top": [c, ax, az, wobble] only the
  *              cells above the plane y = c + ax x + az z (+ wobble sin(...)) in the box (a ruin's broken edge)
  *
  * Output: src/lm_data.c, one lm_vox per landmark: the grid's size and placement, a palette of (material, paint) and
@@ -105,14 +108,14 @@ function nearestPaint(c, allowed) {
 function voxelize(name, C) {
   const P = C.proc ? PROCS[C.proc] : null; /* a landmark shaped by hand (tools/landmark-procs.mjs): no model */
   if (C.proc && !P) throw new Error(`${name}: no proc ${C.proc}`);
-  const { V, tris, mtlColour } = P ? { V: [[-P.ext[0] / 2, 0, -P.ext[2] / 2], [P.ext[0] / 2, P.ext[1], P.ext[2] / 2]], tris: [], mtlColour: {} } : loadObj(join(MODELS, C.obj));
+  const { V, tris, mtlColour } = P ? { V: [0, 1, 2, 3].map((q) => [(q & 1 ? 1 : -1) * P.ext[0] / 2, q & 2 ? P.ext[1] : 0, (q & 2 ? 1 : -1) * P.ext[2] / 2]).concat([[P.ext[0] / 2, 0, -P.ext[2] / 2], [-P.ext[0] / 2, 0, P.ext[2] / 2]]), tris: [], mtlColour: {} } : loadObj(join(MODELS, C.obj));
   /* yaw, then scale to size, base on the ground, centred */
   const a = ((C.yaw || 0) * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a);
   for (const v of V) { const x = v[0] * ca + v[2] * sa, z = -v[0] * sa + v[2] * ca; v[0] = x, v[2] = z; }
   const lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
   for (const v of V) for (let k = 0; k < 3; k++) lo[k] = Math.min(lo[k], v[k]), hi[k] = Math.max(hi[k], v[k]);
-  const ax = { x: 0, y: 1, z: 2 }[C.size.axis];
-  const s = C.size.len / (hi[ax] - lo[ax]);
+  const ax = C.size ? { x: 0, y: 1, z: 2 }[C.size.axis] : 0;
+  const s = C.size ? C.size.len / (hi[ax] - lo[ax]) : 1; /* no size: a hand shape at its own metres */
   const ys = s * (C.yscale || 1); /* a model flatter or taller than the landmark: its height stretched */
   const cx = (lo[0] + hi[0]) / 2, cz = (lo[2] + hi[2]) / 2;
   for (const v of V) v[0] = (v[0] - cx) * s, v[1] = (v[1] - lo[1]) * ys, v[2] = (v[2] - cz) * s;
@@ -145,7 +148,8 @@ function voxelize(name, C) {
   }
   if (P) { /* the hand shape: every cell its own material, solid as it says */
     for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
-      const m = P.cell(x0 + (i + 0.5) * cell, (j + 0.5) * course, z0 + (k + 0.5) * cell);
+      const gx = x0 + (i + 0.5) * cell, gz = z0 + (k + 0.5) * cell; /* the shape turned by yaw: its own coordinates are the grid's turned back */
+      const m = P.cell(gx * ca - gz * sa, (j + 0.5) * course, gx * sa + gz * ca);
       if (!m || (C.only && !new RegExp(':(' + C.only + ')$').test(m)) || (C.except && new RegExp(':(' + C.except + ')$').test(m))) continue; /* one part of a hand shape (a crag in big blocks, the building on it in small) */
       if (!mi.has(m)) mi.set(m, names.length), names.push(m);
       surf[at(i, j, k)] = mi.get(m);
@@ -227,7 +231,8 @@ function voxelize(name, C) {
       const [ax0, ay0, az0, ax1, ay1, az1] = b.box;
       const above = b.top ? y > b.top[0] + b.top[1] * x + b.top[2] * z + (b.top[3] || 0) * Math.sin(x * 2.7 + z * 1.9) : true; /* a ruin's broken top */
       const inEll = b.ellipse ? sq((x - b.ellipse[0]) / b.ellipse[2]) + sq((z - b.ellipse[1]) / b.ellipse[3]) < 1 : true; /* an oval court */
-      if (x >= ax0 && x < ax1 && y >= ay0 && y < ay1 && z >= az0 && z < az1 && above && inEll) {
+      const inDisc = b.disc ? sq((b.disc[3] === 'x' ? z : x) - b.disc[0]) + sq(y - b.disc[1]) < sq(b.disc[2]) : true; /* a round face on a wall (a clock dial) */
+      if (x >= ax0 && x < ax1 && y >= ay0 && y < ay1 && z >= az0 && z < az1 && above && inEll && inDisc) {
         if (!b.mat && !b.paint) carved = true; else v = code(b.mat || pal[v - 1][0], b.paint || pal[v - 1][1]);
       }
     }

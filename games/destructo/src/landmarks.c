@@ -419,7 +419,7 @@ void landmark_build(game *g, const level_def *L) {
     for (int t = 0; t < L->targets && t < 2; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
     break;
   }
-  case LM_OPERA_HOUSE: { static const float s[][2] = { { 7.6f, 0 }, { -7.4f, 2.6f } }; build_vox(g, &LMV_opera_podium, 0, 0, 0); build_model(g, L, &LMV_opera_shells, s, 2); break; }
+  case LM_OPERA_HOUSE: { static const float s[][2] = { { 5.8f, -4.9f }, { -4.0f, 6.75f } }; /* the podium is turned 40 degrees on the field (the view from the quay) */ build_vox(g, &LMV_opera_podium, 0, 0, 0); build_model(g, L, &LMV_opera_shells, s, 2); break; }
   case LM_TAJ_MAHAL: { static const float s[][2] = { { 0, 2.6f }, { 2.6f, 0 }, { -4.2f, 4.2f } }; build_model(g, L, &LMV_taj_mahal, s, 3); break; }
   case LM_WILLIS: {
     build_vox(g, &LMV_willis, 0, 0, 0);
@@ -428,7 +428,7 @@ void landmark_build(game *g, const level_def *L) {
     for (int t = 0; t < L->targets && t < 2; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
     break;
   }
-  case LM_NEUSCHWANSTEIN: { static const float s[][2] = { { 7.3f, 0 }, { -3.0f, 0.6f }, { 2.8f, 0 } }; build_vox(g, &LMV_ns_rock, 0, 0, 0); build_model(g, L, &LMV_neuschwanstein, s, 3); break; }
+  case LM_NEUSCHWANSTEIN: { static const float s[][2] = { { 6.6f, 3.1f }, { -3.0f, -0.7f }, { 2.55f, 1.2f } }; /* the crag is turned 25 degrees on the field */ build_vox(g, &LMV_ns_rock, 0, 0, 0); build_model(g, L, &LMV_neuschwanstein, s, 3); break; }
   case LM_BURJ_KHALIFA: { static const float s[][2] = { { -0.95f, 0.9f }, { 0, -1.2f } }; build_model(g, L, &LMV_burj_khalifa, s, 2); break; }
   case LM_STONEHENGE: build_stonehenge(g, L); break;
   case LM_PETRONAS: { static const float s[][2] = { { 0, 0.75f }, { 0, -0.75f } }; build_vox(g, &LMV_pt_bridge, 0, 0, 0); build_model(g, L, &LMV_petronas, s, 2); break; }

@@ -31,7 +31,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Harbour Sails", LM_OPERA_HOUSE, 2, 2, 5, 1, 1, 27, "Sydney, Australia", ST_HARBOUR, 0.2f, -0.15f),
   LANDMARK("Pyramids of Giza", LM_GIZA, 3, 3, 6, 2, 1, 38, "Giza, Egypt", ST_DESERT, 0.12f, 0.3f) /* the core of each pyramid is not counted (only its skin of bricks): an eighth of the skin */,
   LANDMARK("Taj Mahal", LM_TAJ_MAHAL, 3, 3, 5, 2, 1, 34, "Agra, India", ST_MEADOW, 0.2f, 0.0f),
-  LANDMARK("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.3f),
+  LANDMARK("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f),
   LANDMARK("The Spire", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.35f, 0.3f),
   LANDMARK("Colosseum", LM_COLOSSEUM, 2, 3, 6, 2, 1, 34, "Rome, Italy", ST_CITY, 0.3f, 0.4f),
   LANDMARK("The Great Clock", LM_BIG_BEN, 2, 2, 5, 1, 1, 30, "London, United Kingdom", ST_HARBOUR, 0.35f, 0.4f),
