@@ -26,11 +26,17 @@
 // flickered (at the capture's size), and two frames a step apart, fixed and as built, cropped at the native size round
 // the worst cluster.
 //
+// Destructo runs as a cart on romdev (no native game runs for it): its switches are run options set over the debug
+// channel (dm set LEVEL_NAME, NO_HUD, COPLANAR_SEPARATE, COPLANAR_CONTROL; dm restart; then dm set COPLANAR_SWEEP, whose
+// frames count from that command), and each sweep is one recordSession span (tests/lib/flash-run.mjs captureRomdev).
+// CW_SWEEP_KEEP's native crops are not made for it.
+//
 // Run: node tests/coplanar-sweep.mjs [game ...] [webgpu]   (holds the GPU suite lock)
 import { mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { inSuiteLock, captureRun, ENGINE } from './lib/flash-run.mjs';
+import { inSuiteLock, captureRun as captureRunNative, captureRomdev, ENGINE } from './lib/flash-run.mjs';
+import { openCart } from './lib/romdev.mjs';
 
 inSuiteLock('coplanar-sweep', fileURLToPath(import.meta.url));
 const { writePng } = await import(join(ENGINE, 'tools/lib/png.mjs'));
@@ -41,7 +47,7 @@ const SWEEP = 120, STEP = 10, TURNS = 6, LIMIT = 40, SCALE = 2, STILL_TURNS = 2,
 
 // from: the frame the level is loaded and still by; cam: from (x, y, z) at (tx, ty, tz), gliding (dx, dy, dz) m/s
 const SCENES = {
-  destructo: [{ name: 'level 29 (the last fort\'s settled stone courses)', app: 'destructo_auto', from: 190, env: { DESTRUCTO_LEVEL_NAME: 'The Last Fort', DESTRUCTO_NO_HUD: '1' },
+  destructo: [{ name: 'The Last Fort (its settled stone courses)', app: 'destructo_auto', from: 190, romdev: true, env: { LEVEL_NAME: 'The Last Fort', NO_HUD: '1' },
     cam: [-3, 3, -16, -3, 2.5, 0, 0.05, 0, 0] }],
   emberthrone: [{ name: 'the meadow\'s buildings', app: 'emberthrone_auto', from: 150, env: { ADV_NO_HUD: '1' },
     cam: [176, 20, 262, 180, 16, 271, 0.05, 0, 0] }],
@@ -50,6 +56,19 @@ const SCENES = {
   pinball: [{ name: 'table 0 (walls, ramps and the playfield)', app: 'pinball_auto', from: 120, env: { PINBALL_TABLE: '0', PINBALL_NO_HUD: '1' },
     cam: [-0.1, 0.35, 0.45, -0.18, 0.0, 0.1, 0.002, 0, 0] }],
 };
+
+/* a romdev scene's capture: its options (env's names without COPLANAR_SWEEP) set over the debug channel, the level started
+ * again, then the sweep armed; frames from..to count from the arming, as natively from the start */
+async function captureCart(sc, { from, frames, scale, name, env }) {
+  const h = await openCart(sc.app, { gpu: GPU, tag: name });
+  try {
+    for (const [k, v] of Object.entries(env)) if (k !== 'COPLANAR_SWEEP' && k !== 'CW_WGPU_VALIDATION') await h.command(`dm set ${k} "${v}"`);
+    await h.command('dm restart');
+    await h.command(`dm set COPLANAR_SWEEP ${env.COPLANAR_SWEEP}`);
+    const at = h.frame - 1; /* the arming ran in that command's frame */
+    return await captureRomdev(h, { from: at + from, frames: at + frames, scale, name });
+  } finally { await h.close(); }
+}
 
 /** luma of each pixel of each frame (0..255) */
 function lumas(run) {
@@ -136,6 +155,7 @@ if (KEEP) mkdirSync(KEEP, { recursive: true });
 for (const game of only.length ? only : Object.keys(SCENES)) {
   for (const sc of SCENES[game] || []) {
     const env = { ...sc.env, CW_WGPU_VALIDATION: '0', COPLANAR_SWEEP: [sc.from, ...sc.cam].join(',') };
+    const captureRun = sc.romdev ? (o) => captureCart(sc, o) : captureRunNative;
     const cap = (extra, label) => captureRun({ app: sc.app, from: sc.from + 2, frames: sc.from + 1 + SWEEP, gpu: GPU, scale: SCALE, name: `coplanar-${game}-${label}`, env: { ...env, ...extra } });
     const held = await captureRun({ app: sc.app, from: sc.from + 2, frames: sc.from + 1 + SWEEP, gpu: GPU, scale: SCALE, name: `coplanar-${game}-held`,
       env: { ...env, COPLANAR_SWEEP: [sc.from, ...sc.cam.slice(0, 6), 0, 0, 0].join(',') } });
@@ -157,7 +177,7 @@ for (const game of only.length ? only : Object.keys(SCENES)) {
     console.log(controlOk ? `ok   controls fail as they must (${game}): as built ${c.perM.toFixed(0)} per million (worst at capture pixels ${c.box.x},${c.box.y}), a doubled face in view ${ctl.perM.toFixed(0)}`
       : `CONTROLS PASSED (a failure): ${game} as built shows ${c.perM.toFixed(0)} per million and with a doubled face in view ${ctl.perM.toFixed(0)}, both within ${LIMIT}`);
     bad += (ok ? 0 : 1) + (controlOk ? 0 : 1);
-    if (KEEP) {
+    if (KEEP && !sc.romdev) {
       const box = c.box.n >= f.box.n ? c.box : f.box, cx = (box.x + box.w / 2) * SCALE, cy = (box.y + box.h / 2) * SCALE;
       keep(KEEP, `${game}-${GPU}-fixed`, fixed, f);
       keep(KEEP, `${game}-${GPU}-built`, built, c);

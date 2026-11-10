@@ -344,7 +344,7 @@ static int find_pairs(const cset *s, cpair **out) {
    * trapped the cart in realloc, the native build having the memory). COPLANAR_CELL_CAP (development) sets the cap:
    * the map check's control runs a snow map with the old 6e7 and must trap. */
   double limit = 1e6;
-  if (getenv("COPLANAR_CELL_CAP") && atof(getenv("COPLANAR_CELL_CAP")) > 0) limit = atof(getenv("COPLANAR_CELL_CAP"));
+  if (opt_source("COPLANAR_CELL_CAP") && atof(opt_source("COPLANAR_CELL_CAP")) > 0) limit = atof(opt_source("COPLANAR_CELL_CAP")); /* a cart reads its run options, not the environment (cop_set_options) */
   for (;;) {
     double cells = 0;
     for (int i = 0; i < s->n && cells < limit; i++) {
@@ -457,8 +457,13 @@ static void add_control(cset *s) {
   s->nm++;
 }
 
+/* the switches (COPLANAR_CONTROL, COPLANAR_SEPARATE, ...): the environment natively, or what the game reads its run
+ * options from (cop_set_options: a cart reads no environment) */
+static const char *env_get(const char *name) { return getenv(name); }
+static const char *(*opt_source)(const char *) = env_get;
+void cop_set_options(const char *(*get)(const char *)) { opt_source = get ? get : env_get; }
 static bool env_on(const char *name, bool dflt) {
-  const char *v = getenv(name);
+  const char *v = opt_source(name);
   return v && v[0] ? strcmp(v, "0") != 0 : dflt;
 }
 
@@ -474,7 +479,7 @@ void cop_scan(t3_object *root, cop_report *out) {
   cpair *P;
   int np = fighting_pairs(&s, &P);
   report(&s, P, np, out);
-  const char *dump = getenv("COPLANAR_DUMP"); /* development: the first n pairs, face by face, on stderr */
+  const char *dump = opt_source("COPLANAR_DUMP"); /* development: the first n pairs, face by face, on stderr */
   for (int i = 0, n = dump ? atoi(dump) : 0; i < np && i < n; i++)
     for (int k = 0; k < 2; k++) {
       const ctri *q = &s.t[k ? P[i].b : P[i].a];
@@ -889,7 +894,7 @@ static int separate_pass(t3_object *root, float eps) {
     }
     free(first), free(off), free(kind), free(patch), free(parea);
   }
-  if (getenv("COPLANAR_DEBUG")) fprintf(stderr, "coplanar pass: %d faces, %d pairs, %d corners moved\n", n, np, moved); /* (development) */
+  if (opt_source("COPLANAR_DEBUG")) fprintf(stderr, "coplanar pass: %d faces, %d pairs, %d corners moved\n", n, np, moved); /* (development) */
   free(P);
   cset_free(&s);
   return moved;
@@ -1138,10 +1143,15 @@ void cop_init(void) {
   cw_debug_command("coplanar", "coplanar [selftest]: faces in one plane that fight for the depth test, by region", cmd_coplanar);
   cw_debug_i32("level.coplanar_pairs", &cop_pairs_last);
   cw_debug_i32("level.coplanar_moved", &cop_moved_total);
-  const char *sw = getenv("COPLANAR_SWEEP");
+  cop_sweep_arm();
+}
+
+void cop_sweep_arm(void) {
+  const char *sw = opt_source("COPLANAR_SWEEP");
   cw_tree *t = cw_scene_app_tree();
   if (sw && t && sscanf(sw, "%d,%f,%f,%f,%f,%f,%f,%f,%f,%f", &SW.from, &SW.p[0], &SW.p[1], &SW.p[2], &SW.t[0], &SW.t[1], &SW.t[2], &SW.d[0], &SW.d[1], &SW.d[2]) == 10) {
+    SW.frame = 0; /* (frames count from here) */
+    if (!SW.on) cw_tree_add_hook(t, 2, 1 << 20, sweep_hook, NULL); /* (pre_render, after every node and the game's own camera) */
     SW.on = true;
-    cw_tree_add_hook(t, 2, 1 << 20, sweep_hook, NULL); /* (pre_render, after every node and the game's own camera) */
   }
 }

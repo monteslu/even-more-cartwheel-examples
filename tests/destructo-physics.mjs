@@ -1,29 +1,30 @@
-// destructo physics gate: what the engine's 3D physics (Box3D) does for stacked blocks and heavy shot, measured by
-// build/native/games/destructo/destructo_physcheck (games/destructo/tools/physcheck.c). Each measurement has a
-// control that must fail.
+// destructo physics gate: what the engine's 3D physics (Box3D) does for stacked blocks and heavy shot, measured in the
+// cart as the game ships it: the check cart (destructo_check, games/destructo/tools/checkcart.c) runs
+// games/destructo/tools/physcheck.c on romdev (check run phys). Each measurement has a control that must fail.
 //   rest     the game's four kinds of stack (brick tower, a 30-block column, a 385-block pyramid, a plank scaffold)
 //            left alone 60 s at the game's settings: no block moves more than 1 mm after the first 3 s, all asleep
 //            within 5 s and still asleep at the end. Reported too: the same stacks with sleeping off (the solver's
 //            own creep). control: the tower on a 4 degree slope with ice for friction must creep.
-//   budget   all-awake colliding blocks on the job pool (best of three runs: the machine is shared): 2000 bodies (a big
-//            collapse's awake count; the game caps bodies at 3000) must step within 4 ms mean.
-//            control: 6000 bodies on one thread must not.
+//   budget   all-awake colliding blocks on the cart's job pool (best of three runs: the machine is shared): 2000 bodies
+//            (a big collapse's awake count; the game caps bodies at 3000) must step within 4 ms mean. The pool must
+//            beat one thread at 2000 bodies and more (the solver runs on the workers in the cart).
+//            control: 6000 bodies on one thread must not step within 4 ms.
 //   determ   one collapse stepped with 1, 2, 4 and every worker: one hash. control: a block 1 micrometre off must
 //            hash differently.
 //   tunnel   a 0.18 m shot at 30 to 200 m/s into a 2 cm glass pane, a 6 cm plank (both dynamic) and a 6 cm wall:
 //            with the game's settings (bullet, 4 sub-steps) never through. Reported: bullet off (through the thin
 //            dynamic targets) and 8 sub-steps (no help). control: continuous collision off must go through the wall.
-// Run: node tests/destructo-physics.mjs
-import { spawnSync } from 'node:child_process';
+// The physics does not draw: one run, on a GL host (--gpu webgpu runs it on a WebGPU host instead).
+// Run: node tests/destructo-physics.mjs [--gpu gl|webgpu]
 import os from 'node:os';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { runCheck } from './lib/romdev.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exe = join(ROOT, 'build/native/games/destructo/destructo_physcheck');
-const r = spawnSync(exe, [], { encoding: 'utf8', timeout: 600000 });
-if (r.status !== 0) { console.log(`FAIL ${exe} exited ${r.status}\n${r.stderr}`); process.exit(1); }
-const rows = r.stdout.trim().split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l));
+const gi = process.argv.indexOf('--gpu');
+const gpu = gi > 0 ? process.argv[gi + 1] : 'gl';
+const r = await runCheck('phys', [], { gpu });
+if (r.status !== 0) { console.log(`FAIL check run phys exited ${r.status}\n${r.text.slice(-2000)}`); process.exit(1); }
+const rows = r.rows;
+console.log(`info the check cart on romdev (${gpu}): ${r.threads} job threads, ${(r.ms / 1000).toFixed(0)} s`);
 let bad = 0;
 const ok = (line) => console.log(`ok   ${line}`);
 const fail = (line) => { bad++; console.log(`FAIL ${line}`); };
@@ -36,13 +37,20 @@ for (const s of rows.filter((x) => x.m === 'rest')) {
   else if (s.tag === 'control') control(!good, line);
   else console.log(`info ${line}`);
 }
-const bud = rows.filter((x) => x.m === 'budget');
+const bud = rows.filter((x) => x.m === 'budget' && (x.workers <= 1));
+const scaling = rows.filter((x) => x.m === 'budget' && x.workers > 1);
 for (const b of bud) console.log(`info budget ${b.bodies} awake bodies on ${b.threads} thread(s): ${b.mean_ms.toFixed(2)} ms mean, ${b.worst_ms.toFixed(2)} worst, ${b.contacts_max} contacts`);
+if (scaling.length) console.log(`info scaling: 6000 awake bodies on ${scaling.map((b) => `${b.threads} threads ${b.mean_ms.toFixed(2)} ms`).join(', ')}`);
 const cap = bud.find((b) => b.bodies === 2000 && b.workers === 0);
 const load = os.loadavg()[0], cpus = os.cpus().length;
 if (!cap) fail('budget: no 2000-body run');
 else if (load > cpus * 0.6 && cap.mean_ms > 4) console.log(`NOT JUDGED budget: 2000 bodies on the pool ${cap.mean_ms.toFixed(2)} ms mean, but the machine's load is ${load.toFixed(1)} on ${cpus} threads (other work holds the pool's threads): run it again when the machine is quieter`);
 else (cap.mean_ms <= 4 ? ok : fail)(`budget: 2000 bodies on the pool ${cap.mean_ms.toFixed(2)} ms mean (bound 4; load ${load.toFixed(1)})`);
+for (const n of [2000, 4000, 6000]) { /* the solver on the workers: the pool beats one thread on a big collapse */
+  const p = bud.find((b) => b.bodies === n && b.workers === 0), one = bud.find((b) => b.bodies === n && b.workers === 1);
+  if (!p || !one) { fail(`threads: no ${n}-body runs`); continue; }
+  (p.mean_ms < one.mean_ms ? ok : fail)(`threads: ${n} bodies ${p.mean_ms.toFixed(2)} ms on the pool (${p.threads} threads) against ${one.mean_ms.toFixed(2)} ms on one (x${(one.mean_ms / p.mean_ms).toFixed(2)})`);
+}
 const big = bud.find((b) => b.bodies === 6000 && b.workers === 1);
 if (!big) fail('budget: no control run'); else control(big.mean_ms > 4, `6000 bodies on one thread ${big.mean_ms.toFixed(2)} ms mean against 4`);
 const d = rows.find((x) => x.m === 'determ');
@@ -58,5 +66,5 @@ for (const t of rows.filter((x) => x.m === 'tunnel')) {
   else if (t.tag === 'control') { if (t.target === 'wall6cm') control(t.through > 0, line); else console.log(`info ${line}`); }
   else console.log(`info ${line}`);
 }
-for (const w of rows.filter((x) => x.m === 'worlds')) console.log(`info worlds: 60 worlds made, stepped and destroyed: resident ${w.rss10_kb} kB after the 10th, ${w.rss60_kb} kB after the 60th (glibc's per-thread arenas; with MALLOC_ARENA_MAX=1 it stays flat)`);
+for (const w of rows.filter((x) => x.m === 'worlds')) console.log(`info worlds: 60 worlds made, stepped and destroyed: the cart's memory ${w.rss10_kb} kB after the 10th, ${w.rss60_kb} kB after the 60th`);
 process.exit(bad ? 1 : 0);

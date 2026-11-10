@@ -10,6 +10,7 @@
 
 #include "cartwheel/math.h"
 #include "game.h"
+#include "opts.h"
 
 void bot_reset(bot_state *b) {
   int jc = b->yaw_jitter_control;
@@ -214,7 +215,7 @@ static void resolve(game *g, bot_state *b) {
   b->want_yaw = cw_clampf(game_yaw_from_world(g, yaw) + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
   b->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
   b->solved = true;
-  if (getenv("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
+  if (opt_get("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
 }
 
 /* hold toward a value: held while far, tapped (a press every other tick) when close */

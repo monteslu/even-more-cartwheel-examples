@@ -317,6 +317,9 @@ static void tunnel(bool bullet, int substeps, bool continuous, const char *tag) 
 /* ── worlds: does making and destroying a world give its memory back? ── */
 
 static long rss_kb(void) {
+#ifdef __wasm__ /* a cart (destructo_check): its linear memory, which grows as the heap's high water does and never shrinks */
+  return (long)__builtin_wasm_memory_size(0) * 64;
+#endif
   FILE *f = fopen("/proc/self/status", "r");
   if (!f) return 0;
   char line[256];
@@ -374,6 +377,10 @@ int main(int argc, char **argv) {
       static const int ns[] = { 250, 500, 1000, 1500, 2000, 3000, 4000, 6000 };
       for (int i = 0; i < 8; i++) budget(ns[i], 0);
       for (int i = 0; i < 8; i++) budget(ns[i], 1);
+    }
+    if (every || !strcmp(what, "scaling")) { /* how the step scales with the workers (reported): a big collapse on 2 to 16 */
+      static const int ws[] = { 2, 4, 8, 12, 16 };
+      for (int i = 0; i < 5; i++) budget(6000, ws[i]);
     }
     if (every || !strcmp(what, "determ")) {
       uint32_t h[5];

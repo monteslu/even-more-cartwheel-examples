@@ -1,5 +1,6 @@
-// destructo levels gate: every level, checked by build/native/games/destructo/destructo_levelcheck
-// (games/destructo/tools/levelcheck.c):
+// destructo levels gate: every level, checked by games/destructo/tools/levelcheck.c in the check cart
+// (destructo_check, games/destructo/tools/checkcart.c) on romdev: check run levels [...]. The levels run on two hosts
+// at once, half each; the controls and the kegs after them.
 //   floats    every block as placed stands on another block or the ground, and none is placed inside another
 //   rest      the level settles 3 s, a landmark 5.5 s (as the game does before play; nothing may move more than 0.6 m doing it: the
 //             tallest towers squeeze down about 0.4 m), then 60 s alone: no block moves more than 5 mm, nothing
@@ -21,18 +22,21 @@
 // stars by shots alone) on Stone Giant (judged while 1600 bodies still fall) and Garden Wall (three stars with the
 // wall standing); a replay whose last shot is fired 3 milliradians off (level 1) must end elsewhere; a floating block and two blocks placed in one another (level 1), a plank on a post
 // 3 m up in level 1's yard with its middle 1.8 m out over nothing (it tips while settling), the bot aiming 150 milliradians off (8.6 degrees) (level 2).
-// Run: node tests/destructo-levels.mjs
-import { spawnSync } from 'node:child_process';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// The physics does not draw: one run, on a GL host (--gpu webgpu: on a WebGPU host).
+// Run: node tests/destructo-levels.mjs [--gpu gl|webgpu]
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { runCheck, inPairs, ROOT } from './lib/romdev.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exe = join(ROOT, 'build/native/games/destructo/destructo_levelcheck');
-const run = (args) => {
-  const r = spawnSync(exe, args, { encoding: 'utf8', timeout: 1800000 });
-  if (r.status !== 0) { console.log(`FAIL ${exe} ${args.join(' ')} exited ${r.status}`); process.exit(1); }
-  return r.stdout.trim().split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l));
+const gi = process.argv.indexOf('--gpu');
+const gpu = gi > 0 ? process.argv[gi + 1] : 'gl';
+const run = async (args) => {
+  const r = await runCheck('levels', args, { gpu });
+  if (r.status !== 0) { console.log(`FAIL check run levels ${args.join(' ')} exited ${r.status}\n${r.text.slice(-1500)}`); process.exit(1); }
+  return r.rows;
 };
+const NLEVELS = +/#define NLEVELS (\d+)/.exec(readFileSync(join(ROOT, 'games/destructo/src/game.h'), 'utf8'))[1];
+const every = (k) => Array.from({ length: NLEVELS }, (_, i) => i).filter((i) => i % 2 === k).map(String); /* alternate levels: the landmarks split between the hosts */
 const checks = (r) => ({
   floats: r.floating === 0 && r.overlapping === 0,
   rest: r.settle_move_mm <= 600 && r.drift_mm <= 5 && r.broken_settle === 0 && r.targets_moved === 0 && r.awake_end === 0,
@@ -42,7 +46,8 @@ const checks = (r) => ({
 });
 const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.kegs} kegs, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
 let bad = 0;
-const all = run([]);
+const all = (await inPairs([() => run(every(0)), () => run(every(1))])).flat().sort((a, b) => a.level - b.level);
+if (all.length !== NLEVELS) { console.log(`FAIL ${all.length} levels checked, not ${NLEVELS}`); process.exit(1); }
 const kits = {};
 for (const r of all) {
   const c = checks(r), why = Object.entries(c).filter(([, v]) => !v).map(([k]) => k);
@@ -65,13 +70,15 @@ for (const [kind, k] of Object.entries(kits)) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} marks: ${KITS[kind]} (${k.names.length} levels): mark ${(k.mark * 100).toFixed(0)}%, the bot's best within par ${(k.best * 100).toFixed(0)}%, three stars on ${k.three}`);
 }
 console.log(`     three stars on ${all.filter((r) => r.stars === 3).length} of ${all.length} levels; shots against par: ${all.map((r) => `${r.shots}/${r.par}`).join(' ')}`);
-for (const [ctl, check] of [['float', 'floats'], ['rest', 'rest'], ['solve', 'solve'], ['early', 'result'], ['stars', 'result'], ['replay', 'replay']]) {
-  const r = run(['--control', ctl])[0];
+const CONTROLS = [['float', 'floats'], ['rest', 'rest'], ['solve', 'solve'], ['early', 'result'], ['stars', 'result'], ['replay', 'replay']];
+const ctlRows = await inPairs(CONTROLS.map(([ctl]) => async () => (await run(['--control', ctl]))[0]));
+for (const [k, [ctl, check]] of CONTROLS.entries()) {
+  const r = ctlRows[k];
   if (!checks(r)[check]) console.log(`ok   control (${ctl}) fails its ${check} check as it must: ${describe(r)}`);
   else { bad++; console.log(`CONTROL PASSED (a failure): ${ctl}: ${describe(r)}`); }
 }
 {
-  const [chain, apart] = run(['--kegs']);
+  const [chain, apart] = await run(['--kegs']);
   const ok = chain.booms >= 2 && chain.kegs_left === 0, cok = apart.booms === 1 && apart.kegs_left === 1;
   if (!ok) bad++;
   if (!cok) bad++;

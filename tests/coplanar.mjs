@@ -3,7 +3,8 @@
 // or the other pixel by pixel, differently as the camera moves, and patches of the picture swap between the two
 // surfaces' look frame to frame. The games build their worlds in code, so every level is checked as it is built.
 //
-// Each scene (every map, level, park and table of the 3D games) runs natively for a few frames and answers the debug
+// Destructo's levels run as carts on romdev instead: tests/destructo-coplanar.mjs (no native game runs for it).
+// Each scene (every map, level, park and table of the other 3D games) runs natively for a few frames and answers the debug
 // command `coplanar` (games/common/coplanar.c): the overlapping same-plane pairs among every drawn depth-tested mesh
 // and instance in world space, by the region (scene node) they hang under. Every scene must have none.
 // The command reads geometry only, so the runs draw with Mesa's software GL (off the shared GPU), under the GPU suite
@@ -26,7 +27,7 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 if (!process.env.CW_GPU_SUITE_INNER) { /* one hold of the lock a game (a hold is cut off after 15 minutes) */
   const argv = process.argv.slice(2), games = argv.filter((x, i) => !x.startsWith('--') && argv[i - 1] !== '--jobs'), flags = argv.filter((x) => !games.includes(x));
   let status = 0;
-  for (const g of games.length ? games : ['towers', 'destructo', 'emberthrone', 'skate', 'pinball']) {
+  for (const g of games.length ? games : ['towers', 'emberthrone', 'skate', 'pinball']) {
     const r = spawnSync('node', [join(ROOT, 'deps/cartwheel-engine/tools/with-gpu-suite.mjs'), `coplanar-${g}`, 'node', fileURLToPath(import.meta.url), g, ...flags],
       { stdio: 'inherit', env: { ...process.env, CW_GPU_SUITE_INNER: '1' } });
     if (r.status !== 0) status = r.status ?? 1;
@@ -42,21 +43,12 @@ const range = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const towerMaps = Number(readFileSync(join(ROOT, 'games/towers/assets/maps/count.txt'), 'utf8').trim());
 const GAMES = {
   towers: range(towerMaps, (i) => ({ name: `map ${i + 1}`, app: 'towers_auto', frames: 90, env: { TOWERS_MAP: String(i + 1) }, field: 'game.map' })),
-  destructo: range(40, (i) => ({ name: `level ${i}`, app: 'destructo_auto', frames: 360, env: { DESTRUCTO_LEVEL: String(i) }, field: 'game.level' })),
   emberthrone: [{ name: 'the world', app: 'emberthrone_auto', frames: 120, env: {}, field: 'game.region' }],
   skate: range(5, (i) => ({ name: `park ${i}`, app: 'skate_auto', frames: 150, env: { SKATE_PARK: String(i) }, field: 'game.park' })),
   pinball: range(3, (i) => ({ name: `table ${i}`, app: 'pinball_auto', frames: 90, env: { PINBALL_TABLE: String(i) }, field: 'game.table' })),
 };
 
-// Destructo's blocks are physics bodies. The level lays them 8 mm apart and they settle onto each other in the first
-// seconds; settled, a block leans a few milliradians and sits a few millimetres off its neighbours, and two faces that
-// lean against each other cross somewhere whatever layers they are drawn on. The game draws each block proud by a
-// layer per axis that clears its settled neighbours (games/destructo/src/view.c, block_layers): that takes the settled
-// structures from 81,015 pairs over the 30 levels to 2,009, where a leaning face crosses its neighbour's.
-// They are held to these counts (a quarter over, and ten), so a change that brings the flush faces back fails.
-const SETTLED = { /* by level: measured 18 30 34 20 0 1 0 44 39 42 0 0 166 6 65 70 2 27 272 2 0 155 0 87 411 152 0 17 0 349 */
-  destructo: [32, 47, 52, 35, 0, 11, 0, 65, 58, 62, 0, 0, 217, 17, 91, 97, 12, 43, 350, 12, 0, 203, 0, 118, 523, 200, 0, 31, 0, 446],
-};
+const SETTLED = {}; /* destructo's settled-block allowances moved with its leg to tests/destructo-coplanar.mjs */
 
 function binary(app) {
   const f = join(ROOT, 'build/native/apps', `${app}.json`);

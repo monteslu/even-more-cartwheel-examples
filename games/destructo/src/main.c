@@ -11,8 +11,9 @@
  *             motion on the impact; any button skips it), then the next level or another try
  *   destructo_auto plays itself (the bot, through the same controls); destructo_bench is the perf gate's scene
  *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse;
- *   destructo_bench_landmark the same on Neuschwanstein Castle, the landmark of the most blocks a collapse wakes). Environment (development, native):
- *   DESTRUCTO_LEVEL=n, DESTRUCTO_PLAYERS=n, DESTRUCTO_QUALITY=0..4, DESTRUCTO_NO_HUD=1. */
+ *   destructo_bench_landmark the same on Neuschwanstein Castle, the landmark of the most blocks a collapse wakes). Run options (the gates and
+ *   development, over the debug channel: src/opts.h): dm set LEVEL n | LEVEL_NAME name | PLAYERS n | QUALITY 0..4 |
+ *   NO_HUD 1 ..., then dm restart. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -34,6 +35,7 @@
 #include "cartwheel/ui.h"
 #include "fx.h"
 #include "game.h"
+#include "opts.h"
 #include "replay.h"
 #include "sound.h"
 #include "view.h"
@@ -96,8 +98,8 @@ static void perf_tick(void) {
   if (!P.opened && G.g.booms > 0) P.opened = true, P.window = 180;
   if (P.window > 0 && G.g.tick_ms > P.tick_max) P.tick_max = G.g.tick_ms;
 }
-static void perf_frame_end(void) {
-  double now = perf_now();
+static double perf_frame_end(void) { /* returns the CPU this frame took (its ticks and its render), ms */
+  double now = perf_now(), work = P.in_frame ? now - P.frame_start : 0;
   if (P.window > 0) {
     P.window--;
     if (P.last_end > 0 && now - P.last_end > P.frame_max) P.frame_max = (float)(now - P.last_end);
@@ -105,7 +107,20 @@ static void perf_frame_end(void) {
   }
   P.last_end = now;
   P.in_frame = false;
+  return work;
 }
+
+/* the render's counters (the flash check's blast frame, the perf gate's windows); dm restart clears them with P */
+#define PERF_WINDOWS 24
+static struct {
+  uint32_t frame, boom_frame;
+  double win_last, win_wall, win_work;
+  float win_phys;
+  int win_n;
+  int32_t win_broken, win_awake, nwin;
+  float win_frame_ms[PERF_WINDOWS], win_work_ms[PERF_WINDOWS], win_phys_ms[PERF_WINDOWS], win_gpu_ms[PERF_WINDOWS];
+  int32_t win_draws[PERF_WINDOWS], win_tris[PERF_WINDOWS];
+} R;
 static uint32_t ticks_run;
 
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
@@ -136,11 +151,11 @@ static void load_level_as(int level, bool settle) {
   G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
 #endif
 #ifdef DESTRUCTO_AUTOPILOT
-  if (getenv("DESTRUCTO_FREEZE")) settle = false;
+  if (opt_get("FREEZE")) settle = false;
 #endif
   if (settle) game_settle(&G.g, level_settle_ticks(G.g.L));
 #ifdef DESTRUCTO_AUTOPILOT
-  if (getenv("DESTRUCTO_ORBIT")) G.g.orbit = (float)atof(getenv("DESTRUCTO_ORBIT")), G.g.ring = G.g.L->range, G.g.muzzle = (t3_vec3){ G.g.ring * sinf(G.g.orbit), 1.7f, G.g.ring * cosf(G.g.orbit) }; /* development: looking from round the circle */
+  if (opt_get("ORBIT")) G.g.orbit = (float)atof(opt_get("ORBIT")), G.g.ring = G.g.L->range, G.g.muzzle = (t3_vec3){ G.g.ring * sinf(G.g.orbit), 1.7f, G.g.ring * cosf(G.g.orbit) }; /* development: looking from round the circle */
 #endif /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
@@ -164,8 +179,8 @@ static void begin_level(int level) {
 #ifdef DESTRUCTO_AUTOPILOT
   /* tests/destructo-result.mjs's controls (native: carts read no environment): the result rules before the fix, and
    * a replay whose last shot is nudged */
-  if (getenv("DESTRUCTO_OLD_RULES")) G.g.old_rules = true;
-  if (getenv("DESTRUCTO_REPLAY_PERTURB")) g_replay_perturb = true;
+  if (opt_get("OLD_RULES")) G.g.old_rules = true;
+  if (opt_get("REPLAY_PERTURB")) g_replay_perturb = true;
 #endif
   G.phase = PH_PLAY, G.phase_t = 0;
   if (!G.free_fire) save()->last_level = level, save()->last_mode = G.mode;
@@ -173,8 +188,8 @@ static void begin_level(int level) {
 
 static int start_level(void) {
   int lv = DESTRUCTO_BENCH ? CW_MAX(0, level_find(DESTRUCTO_BENCH_NAME)) : 0;
-  if (getenv("DESTRUCTO_LEVEL")) lv = CW_CLAMP(atoi(getenv("DESTRUCTO_LEVEL")), 0, NLEVELS - 1);
-  if (getenv("DESTRUCTO_LEVEL_NAME") && level_find(getenv("DESTRUCTO_LEVEL_NAME")) >= 0) lv = level_find(getenv("DESTRUCTO_LEVEL_NAME")); /* tests: a level by its name */
+  if (opt_get("LEVEL")) lv = CW_CLAMP(atoi(opt_get("LEVEL")), 0, NLEVELS - 1);
+  if (opt_get("LEVEL_NAME") && level_find(opt_get("LEVEL_NAME")) >= 0) lv = level_find(opt_get("LEVEL_NAME")); /* tests: a level by its name */
   return lv;
 }
 
@@ -183,7 +198,7 @@ static void start(int players, void *u) {
   G.in_match = true;
   G.players = CW_CLAMP(players, 1, MAXP);
 #ifdef DESTRUCTO_AUTOPILOT
-  if (getenv("DESTRUCTO_PLAYERS")) G.players = CW_CLAMP(atoi(getenv("DESTRUCTO_PLAYERS")), 1, MAXP);
+  if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
   G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
   begin_level(start_level());
 #else
@@ -193,6 +208,23 @@ static void start(int players, void *u) {
   G.sel = last >= 0 && last < NLEVELS ? last : 0;
   preview_level(G.sel); /* the level behind the choice */
 #endif
+}
+
+/* dm restart (opts.h): the level the options name, from its start, every counter and timing window cleared */
+static void restart(void) {
+  uint32_t frame = R.frame;
+  memset(&P, 0, sizeof P), memset(&R, 0, sizeof R);
+  R.frame = frame;
+  G.results = 0, G.last_result = 0, G.last_awake = 0, G.replay_match_dbg = -1, G.replay_ticks = 0;
+  G.step_max = 0, G.busy_sum = 0, G.busy_n = 0, G.step_busy = 0;
+  if (!G.in_match) return;
+  if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
+  G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
+  begin_level(start_level());
+}
+static void option_changed(const char *name) {
+  if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
+  if (!strcmp(name, "QUALITY") && opt_get("QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(opt_get("QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
 }
 
 static bool warmup(void *u) {
@@ -221,9 +253,11 @@ static void init(void *u) {
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
-  if (getenv("DESTRUCTO_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("DESTRUCTO_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
+  if (opt_get("QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(opt_get("QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
   sound_init();
   G.players = 1;
+  opt_init(restart, option_changed);
+  cop_set_options(opt_get); /* its switches (COPLANAR_CONTROL, COPLANAR_SEPARATE) are run options too: dm set ... */
   cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
@@ -261,6 +295,18 @@ static void init(void *u) {
   cw_debug_f32("perf.blast_frame_max", &P.frame_max); /* the slowest frame (render end to render end) in the 3 s from the first charge */
   cw_debug_f32("perf.blast_work_max", &P.work_max);   /* the most CPU a frame took there (its ticks and its render) */
   cw_debug_f32("perf.blast_tick_max", &P.tick_max);   /* the slowest game tick there */
+  cw_debug_u32("fx.boom_frame", &R.boom_frame);       /* the render frame (counted from the first) the first charge went off in; 0 before */
+  cw_debug_u32("fx.frame", &R.frame);
+  /* the perf gate: 120-frame windows while playing, from the first with a hundred blocks broken (the real clock) */
+  cw_debug_i32("perf.nwin", &R.nwin);
+  cw_debug_field("perf.win_frame_ms", R.win_frame_ms, CW_DBG_F32, PERF_WINDOWS); /* render end to render end */
+  cw_debug_field("perf.win_work_ms", R.win_work_ms, CW_DBG_F32, PERF_WINDOWS);   /* the CPU a frame took (ticks and render) */
+  cw_debug_field("perf.win_phys_ms", R.win_phys_ms, CW_DBG_F32, PERF_WINDOWS);   /* a physics step */
+  cw_debug_field("perf.win_gpu_ms", R.win_gpu_ms, CW_DBG_F32, PERF_WINDOWS);     /* the pipeline's GPU time (-1: no timers, as in every cart) */
+  cw_debug_field("perf.win_draws", R.win_draws, CW_DBG_I32, PERF_WINDOWS);
+  cw_debug_field("perf.win_tris", R.win_tris, CW_DBG_I32, PERF_WINDOWS);
+  cw_debug_i32("perf.broken_max", &R.win_broken);
+  cw_debug_i32("perf.awake_max", &R.win_awake);
 #ifdef DESTRUCTO_AUTOPILOT
   cw_shell_start(1);
 #endif
@@ -277,9 +323,8 @@ static int seat_idle; /* ticks of this turn the turn's seat has pressed nothing 
 static bool seat_away(void) { return seat_idle >= SEAT_AWAY; }
 static int seat_of_turn(void) {
   int c = G.g.cur;
-  static int control = -1; /* tests/destructo-gates.json's seat gate control (native): the seat rule before the fix */
-  if (control < 0) control = getenv("DESTRUCTO_SEAT_CONTROL") != NULL;
-  if (control) return G.players > 1 && cw_input_player_devices(c) != 0 ? c : -1;
+  /* tests/destructo-gates.json's seat gate control (dm set SEAT_CONTROL 1): the seat rule before the fix */
+  if (opt_on("SEAT_CONTROL")) return G.players > 1 && cw_input_player_devices(c) != 0 ? c : -1;
   if (G.mode == MODE_COOP || seat_away()) return -1;
   if (G.players > 1 && cw_input_player_devices(c) != 0) return c;
   return -1;
@@ -317,7 +362,7 @@ static void read_input(input *in) {
   memset(in, 0, sizeof *in);
 #ifdef DESTRUCTO_AUTOPILOT
   bot_input(&G.g, &G.bot, in);
-  G.overview = getenv("DESTRUCTO_OVERVIEW") != NULL; /* development: the wide view */
+  G.overview = opt_get("OVERVIEW") != NULL; /* development: the wide view */
 #else
   int s = seat_of_turn();
   /* the move button held: the turn's left and right roll the launcher round the structure instead (a pad with no right
@@ -381,7 +426,7 @@ static void fixed_update(void *u, double dt) {
   }
   case PH_PLAY: {
 #ifdef DESTRUCTO_AUTOPILOT
-    if (getenv("DESTRUCTO_FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
+    if (opt_get("FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
 #endif
     input in;
     seat_watch();
@@ -430,7 +475,7 @@ static void fixed_update(void *u, double dt) {
     if (watch && G.phase_t > 60) watch = false, G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
     if (G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
       int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
-      if (DESTRUCTO_BENCH || getenv("DESTRUCTO_LEVEL") || getenv("DESTRUCTO_LEVEL_NAME")) next = G.g.level;
+      if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = G.g.level;
       begin_level(next);
     }
 #else
@@ -717,17 +762,16 @@ static void render(void *u, double alpha) {
     fx_update(dt);
     G.instances = view_get_stats().instances;
   }
-  bool show_hud = !getenv("DESTRUCTO_NO_HUD");
+  bool show_hud = !opt_get("NO_HUD");
   if (show_hud && G.in_match && playing) hud();
-  { /* the flash check (tests/destructo-flash.mjs) finds the blast by this line; its control (DESTRUCTO_STROBE_CONTROL,
-     * native only) lays a white wash over the screen at 10 Hz for 1.5 s from the blast: a strobe the check must catch */
-    static uint32_t frame, boom_frame;
-    frame++;
-    if (!boom_frame && G.g.booms > 0) {
-      boom_frame = frame;
-      if (getenv("DESTRUCTO_FX_LOG")) fprintf(stderr, "destructo boom frame=%u\n", frame);
+  { /* the flash check (tests/destructo-flash.mjs) finds the blast by fx.boom_frame; its control (dm set STROBE_CONTROL 1)
+     * lays a white wash over the screen at 10 Hz for 1.5 s from the blast: a strobe the check must catch */
+    R.frame++;
+    if (!R.boom_frame && G.g.booms > 0) {
+      R.boom_frame = R.frame;
+      if (opt_on("FX_LOG")) cw_info("destructo boom frame=%u", R.frame);
     }
-    if (boom_frame && getenv("DESTRUCTO_STROBE_CONTROL") && frame - boom_frame < 90 && ((frame - boom_frame) / 3) & 1) {
+    if (R.boom_frame && opt_on("STROBE_CONTROL") && R.frame - R.boom_frame < 90 && ((R.frame - R.boom_frame) / 3) & 1) {
       cw_vec2 cs = cw_r2d_canvas_size();
       cw_r2d_begin(NULL);
       cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(1, 1, 1, 0.6f));
@@ -735,30 +779,27 @@ static void render(void *u, double alpha) {
     }
   }
   cw_quality_auto_measure(playing);
-  if (getenv("DESTRUCTO_BENCH_PRINT") && playing) { /* the perf gate reads these */
-    static int n;
-    static double t_last, t_sum;
-    static float phys_sum;
-    double now = cw_time();
-    if (t_last > 0) t_sum += (now - t_last) * 1000;
-    t_last = now;
-    phys_sum += G.g.step_ms;
-    if (++n % 120 == 0) {
-      cw_render3d_stats rs;
-      cw_render3d_get_stats(cw_scene_app_tree(), &rs);
-      fprintf(stderr, "bench frame_ms=%.2f phys_ms=%.2f blocks=%d awake=%d broken=%d instances=%d draws=%d tris=%d\n", t_sum / 120, phys_sum / 120,
-              G.g.nalive, game_awake(&G.g), G.g.broken, G.instances, rs.draw_calls, rs.triangles);
-      const cw_pass_stat *pst;
-      int np = cw_pipeline_pass_stats(cw_pipeline_of(cw_scene_app_tree()), &pst);
-      fprintf(stderr, "bench_passes gpu_total=%.2f", cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree())));
-      for (int k = 0; k < np; k++)
-        if (pst[k].ran && (pst[k].gpu_ms_avg > 0.02f || pst[k].cpu_ms_avg > 0.3f)) fprintf(stderr, " %s=%.2f/%.2f", pst[k].name, pst[k].gpu_ms_avg, pst[k].cpu_ms_avg);
-      fprintf(stderr, "\n");
-      t_sum = 0, phys_sum = 0;
+  if (playing) { /* the perf gate reads these: 120-frame windows from the first with a hundred blocks broken (perf.win_*) */
+    double now = perf_now();
+    if (R.win_last > 0) R.win_wall += now - R.win_last;
+    R.win_last = now;
+    R.win_phys += G.g.step_ms;
+    if (G.g.broken > R.win_broken) R.win_broken = G.g.broken;
+    if (game_awake(&G.g) > R.win_awake) R.win_awake = game_awake(&G.g);
+    if (++R.win_n == 120) {
+      if (G.g.broken >= 100 && R.nwin < PERF_WINDOWS) {
+        cw_render3d_stats rs;
+        cw_render3d_get_stats(cw_scene_app_tree(), &rs);
+        int k = R.nwin++;
+        R.win_frame_ms[k] = (float)(R.win_wall / 120), R.win_work_ms[k] = (float)(R.win_work / 120), R.win_phys_ms[k] = R.win_phys / 120;
+        R.win_gpu_ms[k] = cw_pipeline_gpu_ms(cw_pipeline_of(cw_scene_app_tree()));
+        R.win_draws[k] = rs.draw_calls, R.win_tris[k] = rs.triangles;
+      }
+      R.win_n = 0, R.win_wall = 0, R.win_work = 0, R.win_phys = 0;
     }
   }
   cw_shell_draw();
-  perf_frame_end();
+  R.win_work += perf_frame_end();
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

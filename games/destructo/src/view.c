@@ -20,6 +20,7 @@
 #include "cartwheel/math.h"
 #include "cartwheel/render3d.h"
 #include "../../common/coplanar.h"
+#include "opts.h"
 #include "trees.h"
 #include "view.h"
 
@@ -532,7 +533,7 @@ static t3_texture *windows_texture(void) {
 /* the city's skyline: towers in a ring far out, each its own height and stone, steel or glass, lighter at the top in
  * the haze; a few tall ones stand out */
 static t3_geometry *city_geo(const setting *S, uint32_t seed, int part, int parts) {
-  enum { NB = 30 }; /* towers a part, six parts (520 towers in all trapped the cart on GL, 180 do not) */
+  enum { NB = 87 }; /* towers a part, six parts: 522 (games/common/coplanar.c bounds its grid; at the old bound this skyline trapped the cart) */
   float *pos = malloc(sizeof(float) * 3 * 20 * NB), *nrm = malloc(sizeof(float) * 3 * 20 * NB), *col = malloc(sizeof(float) * 3 * 20 * NB), *uv = malloc(sizeof(float) * 2 * 20 * NB);
   unsigned *idx = malloc(sizeof(unsigned) * 30 * NB);
   int nv = 0, ni = 0;
@@ -688,27 +689,27 @@ void view_level(const game *g) {
   /* the light: a strong low sun behind the launcher, a cooler sky */
   if (cw_node_valid(V.sky)) {
     float t = S->tod, n = S->north;
-    if (getenv("DESTRUCTO_TOD")) t = (float)atof(getenv("DESTRUCTO_TOD")); /* development: trying the light */
-    if (getenv("DESTRUCTO_NORTH")) n = (float)atof(getenv("DESTRUCTO_NORTH"));
+    if (opt_get("TOD")) t = (float)atof(opt_get("TOD")); /* development: trying the light */
+    if (opt_get("NORTH")) n = (float)atof(opt_get("NORTH"));
     cw_node_set(V.sky, "time_of_day", cw_val_float(t));
     cw_node_set(V.sky, "north", cw_val_float(n));
-    if (getenv("DESTRUCTO_MIE")) cw_node_set(V.sky, "mie", cw_val_float((float)atof(getenv("DESTRUCTO_MIE"))));
-    if (getenv("DESTRUCTO_RAYLEIGH")) cw_node_set(V.sky, "rayleigh", cw_val_float((float)atof(getenv("DESTRUCTO_RAYLEIGH"))));
-    cw_node_set(V.sky, "sun_energy", cw_val_float(getenv("DESTRUCTO_SUN") ? (float)atof(getenv("DESTRUCTO_SUN")) : S->sun_energy));
-    cw_node_set(V.sky, "sky_energy", cw_val_float(getenv("DESTRUCTO_SKY") ? (float)atof(getenv("DESTRUCTO_SKY")) : S->sky_energy));
+    if (opt_get("MIE")) cw_node_set(V.sky, "mie", cw_val_float((float)atof(opt_get("MIE"))));
+    if (opt_get("RAYLEIGH")) cw_node_set(V.sky, "rayleigh", cw_val_float((float)atof(opt_get("RAYLEIGH"))));
+    cw_node_set(V.sky, "sun_energy", cw_val_float(opt_get("SUN") ? (float)atof(opt_get("SUN")) : S->sun_energy));
+    cw_node_set(V.sky, "sky_energy", cw_val_float(opt_get("SKY") ? (float)atof(opt_get("SKY")) : S->sky_energy));
   }
   if (cw_node_valid(V.post)) {
-    float e = getenv("DESTRUCTO_EXPOSURE") ? (float)atof(getenv("DESTRUCTO_EXPOSURE")) : S->exposure;
-    if (getenv("DESTRUCTO_LOOK_CONTROL")) e *= 3.0f; /* the look gate's control: a washed-out picture */
+    float e = opt_get("EXPOSURE") ? (float)atof(opt_get("EXPOSURE")) : S->exposure;
+    if (opt_get("LOOK_CONTROL")) e *= 3.0f; /* the look gate's control: a washed-out picture */
     cw_node_set(V.post, "exposure", cw_val_float(e));
-    cw_node_set(V.post, "grade_intensity", cw_val_float(getenv("DESTRUCTO_GRADE") ? (float)atof(getenv("DESTRUCTO_GRADE")) : GRADE[SET - SETTINGS]));
-    if (getenv("DESTRUCTO_TONEMAP")) cw_node_set(V.post, "tonemap", cw_val_enum(getenv("DESTRUCTO_TONEMAP")));
+    cw_node_set(V.post, "grade_intensity", cw_val_float(opt_get("GRADE") ? (float)atof(opt_get("GRADE")) : GRADE[SET - SETTINGS]));
+    if (opt_get("TONEMAP")) cw_node_set(V.post, "tonemap", cw_val_enum(opt_get("TONEMAP")));
   }
   /* distance: height fog the colour of the setting's air (the structure stays clear: it starts 45 m out) */
   {
     cw_node f = cw_node_new("HeightFog", "Haze");
     cw_node_add_child(V.field, f);
-    cw_node_set(f, "density", cw_val_float(getenv("DESTRUCTO_NOFOG") ? 0.0f : S->fog_density));
+    cw_node_set(f, "density", cw_val_float(opt_get("NOFOG") ? 0.0f : S->fog_density));
     cw_node_set(f, "height_falloff", cw_val_float(0.035f));
     cw_node_set(f, "use_sky_color", cw_val_bool(false));
     cw_node_set(f, "color", cw_val_color(S->fog[0], S->fog[1], S->fog[2], 1));
@@ -802,7 +803,7 @@ void view_level(const game *g) {
   }
   /* grass on green ground: tufts in the field round the yard, thick near it and thinning out to 45 m, off the yard,
    * the track and the river; the setting's green, lighter and drier in patches */
-  if (S->ground[1] > S->ground[0] * 1.25f && S->ground[1] > S->ground[2] * 2 && !getenv("DESTRUCTO_NO_GRASS")) {
+  if (S->ground[1] > S->ground[0] * 1.25f && S->ground[1] > S->ground[2] * 2 && !opt_get("NO_GRASS")) {
     enum { NG = 9000 };
     static grass_tuft tufts[NG];
     int n = 0;
@@ -828,7 +829,7 @@ void view_level(const game *g) {
     grass_build(V.field, tufts, n);
   }
   /* trees: the setting's two species, in groves, outside the field of fire */
-  if (S->ntrees > 0 && !getenv("DESTRUCTO_NO_TREES")) {
+  if (S->ntrees > 0 && !opt_get("NO_TREES")) {
     static tree_spot spots[TREES_MAX];
     int n = 0;
     bool autumn = level_setting(g->L) == ST_MEADOW, groves = S->sp[0] == SP_PALM;
@@ -887,9 +888,7 @@ void view_level(const game *g) {
 #define LAY_CLEAR 0.0018f
 #define LAY_SETTLE 120 /* ticks: a level's blocks have settled onto each other */
 static bool getenv_layers_off(void) { /* COPLANAR_SEPARATE=0: the blocks drawn at their bodies' size, the sweep's control */
-  static int off = -1;
-  if (off < 0) off = getenv("COPLANAR_SEPARATE") && !strcmp(getenv("COPLANAR_SEPARATE"), "0");
-  return off;
+  return opt_get("COPLANAR_SEPARATE") && !strcmp(opt_get("COPLANAR_SEPARATE"), "0");
 }
 /* a block's world box and, for each world axis, the block's own axis that lies along it */
 static void block_box(const block *k, float lo[3], float hi[3], uint8_t own[3]) {
@@ -936,7 +935,7 @@ static void color_blocks(const game *g) {
     }
   for (int i = 0; i < g->nb; i++)
     if (g->b[i].alive && !g->b[i].gen) V.lay_born[i] = g->b[i].born + 1;
-  if (getenv("DESTRUCTO_LAYER_LOG")) {
+  if (opt_get("LAYER_LOG")) {
     int hist[LAY_N] = { 0 };
     for (int i = 0; i < g->nb; i++)
       if (g->b[i].alive && !g->b[i].gen)

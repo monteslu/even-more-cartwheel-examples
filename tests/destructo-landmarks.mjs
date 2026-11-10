@@ -1,5 +1,5 @@
 // destructo landmarks gate: every landmark level (games/destructo/src/landmarks.c), checked by
-// build/native/games/destructo/destructo_levelcheck --landmarks:
+// games/destructo/tools/levelcheck.c --landmarks in the check cart (destructo_check) on romdev:
 //   built    as built, every block stands on something (its bottom face on a block or the ground) and none is placed
 //            inside another
 //   rests    once the level has settled as the game settles it before play, every block lies on something (a contact
@@ -7,17 +7,16 @@
 //   beaten   the bot, through the controls, brings every crystal down within the level's par
 // Controls, each must fail its check: a block put in the air over the first landmark (as built, and again once it has
 // settled, unstepped: nothing under either), and the bot aiming 150 milliradians off.
-// Run: node tests/destructo-landmarks.mjs
-import { spawnSync } from 'node:child_process';
-import { join, resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+// The physics does not draw: one run, on a GL host (--gpu webgpu: on a WebGPU host). The controls run two at a time.
+// Run: node tests/destructo-landmarks.mjs [--gpu gl|webgpu]
+import { runCheck, inPairs } from './lib/romdev.mjs';
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const exe = join(ROOT, 'build/native/games/destructo/destructo_levelcheck');
-const run = (args) => {
-  const r = spawnSync(exe, ['--landmarks', ...args], { encoding: 'utf8', timeout: 1800000 });
-  if (r.status !== 0) { console.log(`FAIL ${exe} --landmarks ${args.join(' ')} exited ${r.status}`); process.exit(1); }
-  return r.stdout.trim().split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l));
+const gi = process.argv.indexOf('--gpu');
+const gpu = gi > 0 ? process.argv[gi + 1] : 'gl';
+const run = async (args) => {
+  const r = await runCheck('levels', ['--landmarks', ...args], { gpu });
+  if (r.status !== 0) { console.log(`FAIL check run levels --landmarks ${args.join(' ')} exited ${r.status}\n${r.text.slice(-1500)}`); process.exit(1); }
+  return r.rows;
 };
 const checks = (r) => ({
   built: r.floating === 0 && r.overlapping === 0,
@@ -26,14 +25,16 @@ const checks = (r) => ({
 });
 const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks): floating ${r.floating}, inside another ${r.overlapping}, lying on nothing after the settle ${r.unrested}, settled ${r.settle_move_mm.toFixed(0)} mm; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par})`;
 let bad = 0;
-const all = run([]);
+const all = await run([]);
 if (all.length === 0) { console.log('FAIL no landmark levels'); process.exit(1); }
 for (const r of all) {
   const why = Object.entries(checks(r)).filter(([, v]) => !v).map(([k]) => k);
   if (why.length) { bad++; console.log(`FAIL ${describe(r)}\n     fails: ${why.join(', ')}`); } else console.log(`ok   ${describe(r)}`);
 }
-for (const [ctl, keys] of [['float', ['built', 'rests']], ['solve', ['beaten']]]) {
-  const r = run(['--control', ctl])[0];
+const CONTROLS = [['float', ['built', 'rests']], ['solve', ['beaten']]];
+const ctlRows = await inPairs(CONTROLS.map(([ctl]) => async () => (await run(['--control', ctl]))[0]));
+for (const [i, [ctl, keys]] of CONTROLS.entries()) {
+  const r = ctlRows[i];
   const c = checks(r);
   for (const k of keys) {
     if (!c[k]) console.log(`ok   control (${ctl}) fails its ${k} check as it must: ${describe(r)}`);

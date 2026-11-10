@@ -6,8 +6,9 @@
  * sleep: a level whose bodies are still awake 30 s after the last shot has something jittering (printed). Prints
  * each level's last shot is replayed the way the game replays it (src/replay.c: the level made again in a second
  * world and stepped with the logged inputs) and must end on the live state (a replay that ends elsewhere fails). Prints
- * each level's numbers and the totals; "soak ok" when nothing failed. DESTRUCTO_SOAK_INJECT=1 puts a NaN into a
- * block after a minute (the control: the checks must catch it). */
+ * each level's numbers and the totals; "soak ok" when nothing failed. A sixth argument "inject" puts a NaN into a
+ * block after a minute (the control: the checks must catch it). The gate runs it in the check cart (destructo_check:
+ * check run soak <minutes> <players> <level> <mode> [inject]), where rss is the cart's linear memory. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,6 +20,9 @@
 #include "replay.h"
 
 static long rss_kb(void) {
+#ifdef __wasm__ /* a cart (destructo_check): its linear memory, which grows as the heap's high water does and never shrinks */
+  return (long)__builtin_wasm_memory_size(0) * 64;
+#endif
   FILE *f = fopen("/proc/self/status", "r");
   if (!f) return 0;
   char line[256];
@@ -49,7 +53,8 @@ int main(int argc, char **argv) {
   else if (mode == 3) mode = MODE_PARTY;
   int party_rounds = 0, party_won = 0, party_crystal = 0, party_strikes = 0;
   int most_alive = 0;
-  bool inject = getenv("DESTRUCTO_SOAK_INJECT") != NULL;
+  bool inject = argc > 5 && !strcmp(argv[5], "inject"); /* the control: a NaN put into a block after a minute */
+  bool spike = argc > 5 && !strcmp(argv[5], "spike"); /* development: every tick over 3 ms, printed */
   long ticks_total = (long)minutes * 3600, t = 0, first_rss = 0;
   int levels = 0, won = 0, lost = 0, fails = 0, stars = 0, shots = 0, over_par = 0, jitter = 0, replays = 0;
   long broken = 0, frags = 0, booms = 0;
@@ -83,7 +88,7 @@ int main(int argc, char **argv) {
       game_step(&G, &in);
       replay_after_step(&G);
       replay_follow(&G, G.awake_now < 150 ? 3.0 : 0.0);
-      if (getenv("DESTRUCTO_SPIKE") && G.tick_ms > 3) printf("  spike level %d tick %d: %.2f ms (pre %.2f, world %.2f [box3d %.2f], post %.2f), awake %d, %d broke, bodies %d -> %d\n", G.level, G.tick, G.tick_ms, G.pre_ms, G.world_ms, G.step_ms, G.post_ms, G.awake_now, G.broken - br0, nb0, G.nalive);
+      if (spike && G.tick_ms > 3) printf("  spike level %d tick %d: %.2f ms (pre %.2f, world %.2f [box3d %.2f], post %.2f), awake %d, %d broke, bodies %d -> %d\n", G.level, G.tick, G.tick_ms, G.pre_ms, G.world_ms, G.step_ms, G.post_ms, G.awake_now, G.broken - br0, nb0, G.nalive);
       double dt = now_ms() - t0;
       step_sum += dt, steps++;
       if (dt > step_worst) step_worst = dt;

@@ -131,10 +131,11 @@ jobs:
     # too long to share the carts job's limit. A tag skips them: a tag releases only a commit whose run on main is
     # green, these jobs included
     if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    # destructo is not here: its checks all run as carts through romdev, locally (tests/destructo-coplanar.mjs)
     strategy:
       fail-fast: false
       matrix:
-        game: [towers, destructo, emberthrone, skate, pinball]
+        game: [towers, emberthrone, skate, pinball]
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     steps:

@@ -102,3 +102,48 @@ export function mustFail(label, run, opts = {}, { fine = 0 } = {}) {
   else console.log(`CONTROL PASSED (a failure): ${label} went unseen: ${describeFlash(a.m)}${fine ? '; on the fine grid ' + describeFlash(b.m) : ''}`);
   return why.length > 0;
 }
+
+/**
+ * The same capture from a cart on romdev: frames `from` to `frames` of an opened host (tests/lib/romdev.mjs openCart,
+ * already set up and stepped to before `from`) taken in one recordSession call, each PNG box-filtered down by `scale`
+ * in linear light as the native frame dump does (and deleted once read).
+ * @param {object} h an openCart host
+ * @returns {Promise<{w: number, h: number, frames: Uint8Array[], status: number}>}
+ */
+export async function captureRomdev(h, { from, frames, scale = 8, name = 'run' }) {
+  const { readImage } = await import(join(ENGINE, 'tools/lib/png.mjs'));
+  const { call } = await import('./romdev.mjs');
+  const { readdirSync } = await import('node:fs');
+  if (from - 1 > h.frame) await h.step(from - 1 - h.frame);
+  const dir = join(ROOT, 'out/flash', `${name}-${process.pid}-${Date.now()}`);
+  mkdirSync(dir, { recursive: true });
+  const n = frames - from + 1;
+  await call('recordSession', { frames: n, sampleEvery: 1, outputDir: dir }, h.session, { timeoutMs: 600000 + n * 2000 });
+  const names = readdirSync(dir).filter((f) => f.endsWith('.png')).sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
+  const lin = Float32Array.from({ length: 256 }, (_, i) => { const c = i / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; });
+  let ow = 0, oh = 0;
+  const out = names.map((f) => {
+    const img = readImage(join(dir, f));
+    ow = Math.floor(img.w / scale), oh = Math.floor(img.h / scale);
+    const rgb = new Uint8Array(ow * oh * 3);
+    for (let oy = 0; oy < oh; oy++)
+      for (let ox = 0; ox < ow; ox++) {
+        let r = 0, g = 0, b = 0;
+        for (let y = 0; y < scale; y++) {
+          let p = ((oy * scale + y) * img.w + ox * scale) * 4;
+          for (let x = 0; x < scale; x++, p += 4) r += lin[img.rgba[p]], g += lin[img.rgba[p + 1]], b += lin[img.rgba[p + 2]];
+        }
+        const o = (oy * ow + ox) * 3;
+        [r, g, b].forEach((v, c) => {
+          v /= scale * scale;
+          v = v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055;
+          rgb[o + c] = Math.max(0, Math.min(255, Math.round(v * 255)));
+        });
+      }
+    return rgb;
+  });
+  if (process.env.CW_FLASH_KEEP) renameSync(dir, join(resolve(process.env.CW_FLASH_KEEP), basename(dir)));
+  else rmSync(dir, { recursive: true, force: true });
+  if (out.length !== n) throw new Error(`romdev ${h.app}: ${out.length} frames captured, want ${n}`);
+  return { w: ow, h: oh, frames: out, status: 0 };
+}

@@ -62,6 +62,13 @@ int cop_separate(t3_object *root, float eps, int *left);
 int cop_separate_model(t3_geometry *const *geos, int n, float eps);
 /* the debug command and fields (call in init) */
 void cop_init(void);
+/* where the switches (COPLANAR_CONTROL, COPLANAR_SEPARATE, COPLANAR_SWEEP, ...) are read: the environment by default; a
+ * game whose checks run as a cart passes its own run options (destructo: opt_get, set over the debug channel). Call it
+ * before cop_init. */
+void cop_set_options(const char *(*get)(const char *));
+/* COPLANAR_SWEEP as the options hold it now (cop_init reads it once; a game that sets it later over its debug channel
+ * calls this): the sweep's frames count from this call */
+void cop_sweep_arm(void);
 /* how near two faces' planes must be to count as one plane (m; 1 mm by default): what the game's depth buffer cannot
  * tell apart at the distances it is seen from. A game whose camera resolves far finer (a table a metre from the eye)
  * sets less, so faces it lays a fraction of a millimetre apart on purpose are not counted. */
