@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.13.1
+
+- **Lanternfall**: the camera no longer whips a bright room in and out of view when the hero hops through a doorway
+  (it had reached five flashes a second at the top of the screen); the view takes a new room after a moment and glides
+  to it at most a screen in 0.6 s, and the far layers ease with it. The backdrop's trees stand on painted ground in
+  every layer, with a grounding check across every level.
+- **Launcher art**: the Lanternfall cover shows the lamplighter large beside a lit lamp, the Towers cover the crimson
+  crowd on the volcano map, and Ember Throne's logo is bold in two lines. All art is now taken from the carts through
+  romdev.
+- **All games**: a photosensitivity sweep runs a busy stretch of every game on GL and WebGPU, with a strobe control that
+  must fail.
+
 ## 0.13.0
 
 - **All games**: each cover carries the game's name across the top, large enough to read at a launcher's grid size,
