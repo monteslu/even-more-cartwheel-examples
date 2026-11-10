@@ -11,6 +11,12 @@
   romdev.
 - **All games**: a photosensitivity sweep runs a busy stretch of every game on GL and WebGPU, with a strobe control that
   must fail.
+- **Towers**: the snow maps (16 to 20) no longer crash the cart when they load (the depth-fighting scan's grid is now
+  bounded by memory). Every map's ground and pools draw with their baked light on a cart; they had drawn unbaked
+  because one maths function differed by a hair between the machine that bakes and the cart. The explosion's scorch
+  image is in the pack. A timing check runs every map through romdev on GL and WebGPU with bounds per map.
+- Engine v0.46.2: physics uses at most 12 worker threads by default, decal images load when they are assigned, and the
+  photosensitivity check runs through romdev.
 
 ## 0.13.0
 
