@@ -200,7 +200,7 @@ function operaShell(X, Y, Z, s) {
   /* the vault's foot: the shell springs from piers, the walls under it glazed and set back (a dark band along the
    * podium that parts each shell from the next) */
   if (Y < 5 && skin) return dz < hw - 1.2 ? 'glass:DARK_GLASS' : null;
-  if (skin) return Math.floor((Y + u * 0.6) / 3.2) & 1 ? 'stone:TILE_WHITE' : 'stone:MARBLE'; /* the vault, its tiles in chevrons */
+  if (skin) return Math.floor((Y + u * 0.6) / 9) & 1 ? 'stone:TILE_WHITE' : 'stone:MARBLE'; /* the vault, its tiles in broad chevrons (a welded member cannot run across two paints) */
   if (u < 2.5) return 'glass:DARK_GLASS'; /* the glazed mouth under the tip */
   return null;
 }
@@ -292,7 +292,7 @@ function sbChapel(X, Y, Z, cx, cz, R, body, R2, scheme, oct) {
   if (Y < body + 3) return rr < R * 0.62 ? (Y < body + 0.8 ? 'stone:MARBLE' : 'stone:RED_BRICK') : null; /* the drum */
   const o = onion(dx, Y, dz, body + 3, R2, R2 * 2.3, scheme);
   if (o) return o;
-  return Y < body + 3 + R2 * 2.3 + 3 && Math.hypot(dx, dz) < 0.5 ? 'stone:GOLD' : null; /* the cross's post */
+  return Y < body + 3 + R2 * 2.3 + 1.2 && Math.hypot(dx, dz) < 0.9 ? 'stone:GOLD' : null; /* the gilded finial (a thin post would hum and never sleep) */
 }
 function stBasils(x, y, z) {
   const X = x / SB_S, Y = y / SB_S, Z = z / SB_S;
@@ -308,7 +308,7 @@ function stBasils(x, y, z) {
   if (Y < 30) { if (ro < 7) return Math.abs(Y - 22) < 0.8 || Math.abs(Y - 15) < 0.6 ? 'stone:MARBLE' : 'stone:RED_BRICK'; }
   else if (Y < 45) { const t = (Y - 30) / 15; if (ro < 7.4 * (1 - t) + 1.4 * t) return (Math.floor((Y - 30) / 1.6) & 1) && ro > 6.6 * (1 - t) + 0.6 ? 'stone:GOLD' : 'stone:WHITE_PAINT'; }
   else if ((c = onion(X, Y, Z, 45, 1.9, 4.4, ['GOLD', 'GOLD', 'stripe']))) return c;
-  else if (Y < 52 && Math.hypot(X, Z) < 0.5) return 'stone:GOLD';
+  else if (Y < 50.5 && Math.hypot(X, Z) < 0.9) return 'stone:GOLD';
   /* the four big chapels and their domes */
   const SCH = [['ROOF_RED', 'TURQUOISE', 'spiral'], ['GOLD', 'ROOF_COPPER', 'spiral'], ['WHITE_PAINT', 'ROOF_RED', 'zig'], ['TURQUOISE', 'GOLD', 'stripe'],
                ['ROOF_COPPER', 'GOLD', 'zig'], ['ROOF_RED', 'WHITE_PAINT', 'stripe'], ['GOLD', 'ROOF_RED', 'spiral'], ['TURQUOISE', 'WHITE_PAINT', 'spiral']];
