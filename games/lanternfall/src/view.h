@@ -3,6 +3,7 @@
 #define LANTERNFALL_VIEW_H
 
 #include "cartwheel/platform.h"
+#include "cartwheel/debug.h"
 #include "cartwheel/render2d.h"
 #include "sim.h"
 
@@ -29,5 +30,14 @@ cw_vec2 view_world_to_screen(cw_vec2 w); /* canvas units */
 cw_vec2 view_canvas(void); /* the window pass's canvas size, valid before the first pass too */
 float view_px_per_tile(void);
 extern cw_camera2d g_cam;
+
+/* the grounding gate's views (tests/lanternfall-grounding.mjs; main.c's lf_* debug commands): the camera held at a place
+ * (clamped to the room as always), the players out of the frame, the sky layer drawn alone, and the backdrop's
+ * geometry with every painted tree's, spire's, pier's and stack's foot in canvas pixels */
+void view_lock_camera(bool lock, float x, float y);
+void view_sky_only(bool on);
+void view_par_only(int k); /* -2 every depth, -1 none, else that depth alone */
+void view_hide_players(bool on);
+void view_par_report(const sim *s, cw_reply *r);
 
 #endif

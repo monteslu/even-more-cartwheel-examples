@@ -1,6 +1,7 @@
 /* lanternfall: the art made in code (art.h). Height fields per material become colour and a tangent-space normal map
  * (OpenGL convention), so the 2D lights shade every bevel, crack and grain. Render code: libm is fine here. */
 #include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -335,10 +336,11 @@ static void make_wall(int m) {
   cw_texture_set_normal_map(A.wall[m], nrm);
 }
 
+static uint8_t par_px[1024 * 512 * 4]; /* the pixels of each texture painted at start-up, and of the parallax painted again (art_par.h) */
 #include "art_par.h"
 
 static void make_misc(void) {
-  static uint8_t px[1024 * 512 * 4];
+  uint8_t *px = par_px;
   /* soft glow: gaussian-ish, premultiplied white */
   for (int y = 0; y < 64; y++)
     for (int x = 0; x < 64; x++) {

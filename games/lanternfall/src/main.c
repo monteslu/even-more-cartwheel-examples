@@ -31,6 +31,7 @@
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
 #include "hud.h"
+#include "art.h"
 #include "view.h"
 
 static world W;
@@ -55,6 +56,39 @@ static double wall(void) {
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
+}
+
+/* ── the grounding gate's views (tests/lanternfall-grounding.mjs): the camera held at a place in a room, the game
+ * still, the players out of the frame; the backdrop's geometry and its painted trees' feet reported ── */
+static bool frozen, hud_off;
+static bool hold_view(int room, float x, float y) {
+  if (room < 0 || room >= W.nrooms) return false;
+  sim_teleport(&S, x, y);
+  G.snap = true;
+  view_lock_camera(true, x, y);
+  view_hide_players(true);
+  frozen = true;
+  return true;
+}
+static void cmd_view(int argc, const char **argv, cw_reply *r) {
+  if (argc < 4) { cw_reply_error(r, "lf_view <room> <x> <y>"); return; }
+  if (!hold_view(atoi(argv[1]), (float)atof(argv[2]), (float)atof(argv[3]))) { cw_reply_error(r, "no room %s (lf_rooms lists them)", argv[1]); return; }
+  cw_reply_printf(r, "{\"room\":%d}", S.room);
+}
+static void cmd_freeze(int argc, const char **argv, cw_reply *r) { frozen = argc < 2 || atoi(argv[1]) != 0; cw_reply_printf(r, "{\"frozen\":%d}", frozen); }
+static void cmd_sky_only(int argc, const char **argv, cw_reply *r) { bool on = argc < 2 || atoi(argv[1]) != 0; view_sky_only(on); cw_reply_printf(r, "{\"sky_only\":%d}", on); }
+static void cmd_par_only(int argc, const char **argv, cw_reply *r) { int k = argc < 2 ? -2 : atoi(argv[1]); view_par_only(k); cw_reply_printf(r, "{\"par_only\":%d}", k); }
+static void cmd_hud(int argc, const char **argv, cw_reply *r) { hud_off = argc >= 2 && atoi(argv[1]) == 0; cw_reply_printf(r, "{\"hud\":%d}", !hud_off); }
+static void cmd_lift(int argc, const char **argv, cw_reply *r) { art_par_lift(argc < 2 ? 0 : atoi(argv[1])); cw_reply_printf(r, "{\"lift\":%d}", argc < 2 ? 0 : atoi(argv[1])); }
+static void cmd_par(int argc, const char **argv, cw_reply *r) { (void)argc, (void)argv; view_par_report(&S, r); }
+static void cmd_rooms(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  cw_reply_printf(r, "{\"cell\":[%d,%d],\"rooms\":[", CELL_W, CELL_H);
+  for (int i = 0; i < W.nrooms; i++) {
+    const room *m = &W.rooms[i];
+    cw_reply_printf(r, "%s{\"i\":%d,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"region\":%d,\"kind\":%d}", i ? "," : "", i, m->x, m->y, m->w, m->h, m->region, m->kind);
+  }
+  cw_reply_printf(r, "]}");
 }
 
 /* ── the match ── */
@@ -88,6 +122,13 @@ static void new_game(int players) {
 #else
   if (getenv("LANTERNFALL_ABILITIES")) S.abilities = (uint32_t)strtoul(getenv("LANTERNFALL_ABILITIES"), NULL, 16);
   if (getenv("LANTERNFALL_ROOM")) go_room(atoi(getenv("LANTERNFALL_ROOM")));
+  if (getenv("LANTERNFALL_VIEW")) { /* room,x,y (the grounding gate, natively): the camera held there, the game still, nobody in the frame */
+    int n = -1;
+    float x = 0, y = 0;
+    if (sscanf(getenv("LANTERNFALL_VIEW"), "%d,%f,%f", &n, &x, &y) == 3) hold_view(n, x, y);
+  }
+  if (getenv("LANTERNFALL_SKY_ONLY")) view_sky_only(true);
+  if (getenv("LANTERNFALL_PAR_ONLY")) view_par_only(atoi(getenv("LANTERNFALL_PAR_ONLY")));
 #ifndef LANTERNFALL_AUTOPILOT
   /* the save: abilities, finds, opened ways, shrines, from the last rest */
   save_state *sv = cw_shell_game_save();
@@ -177,6 +218,14 @@ static void init(void *u) {
   cw_debug_i32("bot.step", &G.step);
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("shell.screen_game", &G.screen);
+  cw_debug_command("lf_view", "lf_view <room> <x> <y>: hold the camera at x,y (tiles) in that room, the game still and the players out of the frame", cmd_view);
+  cw_debug_command("lf_freeze", "lf_freeze [1|0]: hold the game still", cmd_freeze);
+  cw_debug_command("lf_sky_only", "lf_sky_only [1|0]: draw the sky layer alone (the backdrop and its parallax)", cmd_sky_only);
+  cw_debug_command("lf_par_only", "lf_par_only [k]: draw one parallax depth alone (0 far, 1 middle, 2 near; -1 none, the hazy gradient alone; -2 or none: all)", cmd_par_only);
+  cw_debug_command("lf_hud", "lf_hud [1|0]: the HUD on or off", cmd_hud);
+  cw_debug_command("lf_lift", "lf_lift <rows>: paint the backdrop trees again with one trunk stopped that many rows above its ground (the grounding gate's control; 0 restores)", cmd_lift);
+  cw_debug_command("lf_par", "lf_par: the backdrop's depths on the canvas and every painted tree's, spire's, pier's and stack's foot", cmd_par);
+  cw_debug_command("lf_rooms", "lf_rooms: every room: its cells, region and kind", cmd_rooms);
 #ifdef LANTERNFALL_AUTOPILOT
 #ifndef LANTERNFALL_AUTO_PLAYERS
 #define LANTERNFALL_AUTO_PLAYERS 1
@@ -337,6 +386,7 @@ static void fixed_update(void *u, double dt) {
     return;
   }
 #endif
+  if (frozen) return;
   pinput in[MAXP];
   read_input(in);
   sim_step(&S, in);
@@ -369,6 +419,7 @@ static void render(void *u, double alpha) {
 #ifdef LANTERNFALL_AUTOPILOT
   if (cw_test_env("LANTERNFALL_NO_HUD")) show_hud = false;
 #endif
+  if (hud_off) show_hud = false;
   if (show_hud) hud_draw(&S, &H, t);
   if (bench_env) cw_gpu_finish(), G.t_gpu += (wall() - tb0) * 1000;
   double now = wall();

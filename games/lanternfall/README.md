@@ -44,6 +44,7 @@ node tests/lanternfall-soak.mjs      # the bot clears the game (every pickup, ev
 node tests/lanternfall-flash.mjs     # a warden fight, every frame, through the engine's flash check (WCAG 2.3.1); a 5 Hz blink and an 8 Hz strobe must fail
 node tests/lanternfall-look.mjs      # frames of eight regions: value, contrast, a complementary accent; a flattened grade must fail
 node tests/lanternfall-creatures.mjs # every creature painted with colour and fine detail at game scale; the old flat shapes must fail
+node tests/lanternfall-grounding.mjs [--hosts native,romdev] [--gpu gl|webgpu]  # no painted tree, spire, pier or stack of the backdrop floats: each foot on its ground in the texture and under it in the frames of every region; a trunk lifted 12 px must fail
 node tests/lanternfall-flashes.mjs   # every creature struck fast, the heroes hurt: the engine's flash check, again on regions a 24th of the screen; hit flashes must fail
 node tests/gate.mjs --gates-file lanternfall-gates.json   # GL and WebGPU, frames and state across hosts
 node tests/lanternfall-perf.mjs      # 1080p High on the test GPU

@@ -29,4 +29,13 @@ extern art A;
 void art_init(void);
 int region_material(int region);
 
+/* the parallax families' ground (art_par.h): everything painted standing in a family stands on a band of ground in
+ * the same texture, from the family's ground line down to its bottom row. These are what tests/lanternfall-grounding.mjs
+ * measures the painted trees against, through the game's debug channel (main.c). */
+typedef struct par_feature { float x, hw, top; int id; } par_feature; /* the foot's centre and half width on the ground line, the top, in texture shares */
+float art_par_ground(int k);                                /* the ground line as a share of the height, -1 for a family with none */
+int art_par_features(int k, par_feature *out, int max);     /* what stands in family k */
+void art_par_lift(int rows);                                /* the control: the trees painted again with one trunk stopped rows above its ground (0 restores) */
+int art_par_lift_rows(void);
+
 #endif
