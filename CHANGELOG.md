@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.1
+
+- **Towers**: the cursor's P1 to P4 label no longer covers a deploy button. The pills and the label are laid out from
+  measured boxes, the label sits just above the top pill (under the bottom one near the top of the screen), and every
+  HUD element registers its extent so a cursor slides to the nearest clear place: two cursors a couple of tiles apart,
+  the top row of maps 8, 10, 17 and 22 under the wave line, the side columns of maps 7, 13, 20 and 25, and the map
+  banners are all clear. A check sweeps every slot of all 30 maps at 1 to 4 seats and three screen sizes. A second
+  layout with one face-button diamond at the cursor is built behind a switch and is not the default.
+- **Towers**: a long session no longer runs out of memory by map 16 (a map's lightmap was never freed when the map
+  changed).
+
 ## 0.14.0
 
 - **Destructo**: famous buildings of the world as the first levels, nineteen of them (the Great Sphinx, the Pyramids of
