@@ -44,7 +44,6 @@ static struct {
   t3_vec3 mark_at[MARKS];
   float mark_t[MARKS], mark_size[MARKS], mark_a[MARKS];
   int nmark, plume_wait, plumes;
-  int prime_mark; /* frames the priming mark has left (fx_prime) */
   bool frame_dirty;
   int per_tick[16];
   float rum_low, rum_high;
@@ -378,10 +377,6 @@ void fx_update(float dt) {
     }
     cw_node_set(FX.light[i], "energy", cw_val_float(FX.light_peak[i] > 0 ? FX.light_peak[i] * e : 0));
   }
-  if (FX.prime_mark > 0 && --FX.prime_mark == 0 && FX.mark_size[MARKS - 1] <= 0) {
-    cw_node_set(FX.mark[MARKS - 1], "visible", cw_val_bool(false));
-    cw_node_set(FX.mark[MARKS - 1], "texture", cw_val_string("")); /* (a ground mark has no image) */
-  }
   /* the ground marks fade in over a second */
   for (int i = 0; i < MARKS; i++) {
     if (FX.mark_size[i] <= 0) continue;
@@ -419,16 +414,6 @@ void fx_prime(t3_vec3 under) {
   for (int m = 0; m < M_COUNT; m++) if (cw_node_valid(FX.chips[m])) cw_particles_burst(FX.chips[m], under, up);
   cw_particles_burst(FX.glass, under, up), cw_particles_burst(FX.sparks, under, up), cw_particles_burst(FX.sparkle, under, up);
   cw_particles_burst(FX.muzzle, under, up), cw_particles_burst(FX.smoke, under, up);
-  /* a decal too, for a few frames at the field's middle, all but clear, with the explosion kit's scorch image: the
-   * first scorch put fx/scorch.png into the decal atlas in the blast's own frame (the image decoded, the 2048x2048
-   * atlas and its mips written again), 13 to 21 ms of that frame on WebGPU and 4 on GL (romdev, destructo_bench,
-   * the profiler's "pass decals"); now that happens at load */
-  cw_node d = FX.mark[MARKS - 1];
-  FX.mark_size[MARKS - 1] = 0;
-  cw_node_set(d, "texture", cw_val_string("fx/scorch.png"));
-  cw_node_set(d, "color", cw_val_color(1, 1, 1, 0.01f));
-  cw_node_set(d, "size", cw_val_vec3(1, 1, 0.8f));
-  cw_node3d_set_position(d, (t3_vec3){ 0, 0.2f, 0 });
-  cw_node_set(d, "visible", cw_val_bool(true));
-  FX.prime_mark = 10;
+  /* no priming decal: since engine v0.46.2 a decal's image loads as its node enters the tree and the atlas's first
+   * image no longer costs the blast's frame */
 }
