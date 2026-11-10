@@ -129,14 +129,8 @@ function needle(x, y, z) {
     return r < rc && r > rc - 2.2 ? 'steel:ROOF_RED' : null; /* the cap */
   }
   if (Y >= 163) return Y < 184 && r < (Y < 168 ? 2.6 : 1.0) ? 'steel:WHITE_PAINT' : null; /* the spire */
-  /* the lift shaft: a dark lattice */
-  if (Math.abs(X) < 3.2 && Math.abs(Z) < 3.2) {
-    const edge = Math.abs(X) > 2.2 || Math.abs(Z) > 2.2;
-    if (!edge) return 'steel:BRONZE'; /* (solid: the shaft carries the saucer) */
-    const corner = Math.abs(X) > 2.2 && Math.abs(Z) > 2.2;
-    const t = (Math.abs(X) > 2.2 ? Z : X) + (Y % 8) - 4;
-    return corner || Math.abs(t) < 1.2 || Y % 8 < 1 ? 'steel:BRONZE' : null;
-  }
+  /* the lift shaft: dark, solid (it carries the saucer, and a stack of short welded members would sag) */
+  if (Math.abs(X) < 3.2 && Math.abs(Z) < 3.2) return 'steel:BRONZE';
   /* the legs: radius of the pair's middle from the axis, and the spread between its two columns */
   const rl = Y < 60 ? 4 + 15 * Math.pow(1 - Y / 60, 1.5) : 4 + 9.5 * sq((Y - 60) / 87);
   const spread = Y < 60 ? 1.8 + 4.5 * Math.pow(1 - Y / 60, 1.3) : 1.8 + 2.5 * ((Y - 60) / 87);
@@ -228,18 +222,17 @@ function neuschwanstein(x, y, z) {
 const OP_S = 0.1, OP_POD = 12;
 /* [tip x, tip height over the podium, back foot x, half width at the foot, z of the row] */
 const OP_SHELLS = [
-  [-56, 60, -22, 20, 20], [-32, 50, -2, 18, 20], [-10, 40, 16, 15, 20], [36, 28, 12, 14, 20],
-  [-50, 50, -20, 16, -24], [-28, 42, 0, 15, -24], [-8, 33, 18, 13, -24], [30, 24, 8, 12, -24],
-  [46, 20, 60, 10, -2], [68, 17, 54, 9, -2],
+  [-58, 62, -20, 19, 20], [-30, 52, 2, 17, 20], [-6, 40, 22, 15, 20], [40, 26, 16, 13, 20],
+  [-52, 52, -16, 15, -24], [-26, 44, 4, 14, -24], [-4, 34, 22, 12, -24], [34, 24, 10, 11, -24],
 ];
 function operaShell(X, Y, Z, s) {
   const [xt, ht, xb, w, zr] = s, dir = Math.sign(xb - xt); /* the tip toward -dir */
-  const len = Math.abs(xb - xt), FR = 0.9; /* the front edge sweeps down to the podium FR len ahead of the tip */
+  const len = Math.abs(xb - xt), FR = 0.45; /* the front edge drops from the tip and curves out to the podium FR len ahead of it */
   const u = (X - xt) * dir;                                   /* behind the tip: 0..len; ahead: -FR len..0 */
   if (u < -FR * len || u > len) return null;
-  const yr = u >= 0 ? ht * Math.pow(1 - u / len, 0.45) : ht * Math.sqrt(clamp01(1 - sq(u / (FR * len)))); /* a fin: the ridge drops steeply behind the pointed tip, the front edge sweeps down to the podium ahead of it */
+  const yr = u >= 0 ? ht * Math.pow(1 - u / len, 0.45) : ht * (1 - Math.sqrt(clamp01(-u / (FR * len)))); /* a sail: a sharp tip, the front edge falling near vertical from it and curving out to the podium, the ridge behind bulging down to the back foot */
   if (Y > yr || Y < 0) return null;
-  const wb = 0.62 * w * (0.3 + 0.7 * Math.sqrt(Math.min(1, Math.max(0, u + FR * len) / ((1 + FR) * len) * 1.4))), dz = Math.abs(Z - zr); /* narrow at the tip, wider at the foot; thin vaults */
+  const wb = 0.5 * w * (0.3 + 0.7 * Math.sqrt(Math.min(1, Math.max(0, u + FR * len) / ((1 + FR) * len) * 1.4))), dz = Math.abs(Z - zr); /* narrow at the tip, wider at the foot; thin vaults */
   const hw = wb * Math.sqrt(Math.max(0, 1 - Math.pow(Y / yr, 3))); /* the vault's sides near vertical, curving in only at the ridge */
   if (dz > hw + 0.1) return null;
   const skin = dz > hw - 2.0 || Y > yr - 2.2;
@@ -473,8 +466,8 @@ function angkorWat(x, y, z) {
   }
   if ((c = awGallery(aX, aZ, Y, 26, 24, 30, 6))) return c;
   /* the towers: four at the corners of the top terrace, the tall one in the middle */
-  for (const [cx, cz] of [[21, 19], [21, -19], [-21, 19], [-21, -19]]) if ((c = lotus(X - cx, Y, Z - cz, 30, 8, 34))) return c;
-  if ((c = lotus(X, Y, Z, 30, 11, 46))) return c;
+  for (const [cx, cz] of [[21, 19], [21, -19], [-21, 19], [-21, -19]]) if ((c = lotus(X - cx, Y, Z - cz, 30, 8.5, 40))) return c;
+  if ((c = lotus(X, Y, Z, 30, 11.5, 55))) return c;
   if (Y >= 30 && Y < 34 && aX < 26 && aZ < 24) return 'stone:LIMESTONE'; /* the top floor between the towers */
   return null;
 }
@@ -608,7 +601,7 @@ export default {
   giza: { ext: [26, 6.0, 20], cell: (x, y, z) => giza(x - 1.5, y, z + 1.5) },
   petronas: { ext: [154 * PT_S, 453 * PT_S, 52 * PT_S], cell: petronas },
   cn_tower: { ext: [72 * CN_S, 554 * CN_S, 72 * CN_S], cell: cnTower },
-  angkor_wat: { ext: [126 * AW_S, 77 * AW_S, 110 * AW_S], cell: angkorWat },
+  angkor_wat: { ext: [126 * AW_S, 86 * AW_S, 110 * AW_S], cell: angkorWat },
   st_basils: { ext: [60 * SB_S, 53 * SB_S, 60 * SB_S], cell: stBasils },
   tower_bridge: { ext: [244 * TB_S, 66 * TB_S, 38 * TB_S], cell: towerBridge },
   opera: { ext: [184 * OP_S, 70 * OP_S, 100 * OP_S], cell: opera },

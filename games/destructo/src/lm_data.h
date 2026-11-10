@@ -10,6 +10,7 @@ typedef struct lm_vox {
   float cell, course, x0, z0;
   int core;
   int weld;
+  int mh, mw;  /* a welded member at most this many courses tall and cells across */
   int npal;
   const uint16_t *pal;
   int nruns;

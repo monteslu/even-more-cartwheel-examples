@@ -202,8 +202,6 @@ static uint16_t sh_vox_core2(float x, float y, float z) { return vx_at(x, y, z) 
 #define WELD_FORCE 2.0e6f
 #define WELD_TORQUE 5.0e5f
 #define WELD_SLEEP 0.15f /* m/s */
-#define WELD_MAXH 12 /* a member at most this many courses tall ... */
-#define WELD_MAXW 6  /* ... and cells across */
 static void weld_blocks(game *g, int from, int to) {
   cw_phys_filter f = cw_phys_filter_layers(2u);
   for (int i = from; i < to; i++) {
@@ -261,12 +259,12 @@ static int build_vox(game *g, const lm_vox *v, float dx, float dy, float dz) {
           uint8_t c0 = VXG[VI(i, j, k)];
           if (!c0 || c0 >= 254 || used[VI(i, j, k)]) continue;
           int h = 1, w = 1, d = 1;
-          while (j + h < NY && h < WELD_MAXH && VXG[VI(i, j + h, k)] == c0 && !used[VI(i, j + h, k)]) h++;
-          for (bool grow = true; grow && i + w < NX && w < WELD_MAXW;) {
+          while (j + h < NY && h < v->mh && VXG[VI(i, j + h, k)] == c0 && !used[VI(i, j + h, k)]) h++;
+          for (bool grow = true; grow && i + w < NX && w < v->mw;) {
             for (int t = 0; t < h && grow; t++) grow = VXG[VI(i + w, j + t, k)] == c0 && !used[VI(i + w, j + t, k)];
             if (grow) w++;
           }
-          for (bool grow = true; grow && k + d < NZ && d < WELD_MAXW;) {
+          for (bool grow = true; grow && k + d < NZ && d < v->mw;) {
             for (int t = 0; t < h && grow; t++)
               for (int s2 = 0; s2 < w && grow; s2++) grow = VXG[VI(i + s2, j + t, k + d)] == c0 && !used[VI(i + s2, j + t, k + d)];
             if (grow) d++;
@@ -410,7 +408,7 @@ static void build_christ(game *g, const level_def *L) {
 void landmark_build(game *g, const level_def *L) {
   g->paint_now = P_NONE;
   switch (L->lm) {
-  case LM_SPHINX: { static const float s[][2] = { { 5.5f, 0.75f }, { -3.6f, 0 }, { 1.4f, 0 } }; build_model(g, L, &LMV_sphinx, s, 3); break; }
+  case LM_SPHINX: { static const float s[][2] = { { -3.6f, 0 }, { 1.4f, 0 }, { 5.5f, 0.75f } }; build_model(g, L, &LMV_sphinx, s, 3); break; }
   case LM_SPACE_NEEDLE: { static const float s[][2] = { { 0, 1.35f }, { -1.35f, 0 } }; build_model(g, L, &LMV_needle, s, 2); break; }
   case LM_GIZA: { static const float s[][2] = { { -5.8f, -6.7f }, { 3.4f, -0.7f }, { 10.2f, 5.3f } }; build_model(g, L, &LMV_giza, s, 3); break; }
   case LM_EIFFEL: { static const float s[][2] = { { 1.0f, 1.6f }, { -1.0f, -1.6f } }; build_model(g, L, &LMV_eiffel, s, 2); break; }
