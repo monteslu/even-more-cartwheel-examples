@@ -9,8 +9,11 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }} # a push to main never wipes out the run before it
+  # pull requests: one run per branch, the newest wins. Pushes and tags: one group per commit, so a push to main never
+  # cancels or replaces the run before it (GitHub keeps only one queued run per group, so a shared group dropped the
+  # main runs that tags needed)
+  group: ci-${{ github.ref }}-${{ github.event_name == 'pull_request' && 'pr' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # every game in the repo (the release ships one cart each)
