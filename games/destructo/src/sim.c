@@ -23,6 +23,7 @@ static double profile_clock(void) { return (double)cw_profile_now_ns() * 1e-9; }
 double (*g_sim_clock)(void) = profile_clock; /* the real monotonic clock, in carts too (cw_time is the host's, pinned in a replay) */
 static double sim_clock(void) { return g_sim_clock(); }
 #include "game.h"
+#include "opts.h"
 
 const material_info MATS[M_COUNT] = {
   [M_WOOD] = { "wood", 620, 0.65f, 0.05f, 52000, 160, 2, 10 },
@@ -281,6 +282,11 @@ void game_new(game *g, int level, int players, int mode) {
   wd.hit_speed = 1.2f;
   wd.restitution_threshold = 2.0f;
   wd.layers[LAYER_GROUND] = "ground", wd.layers[LAYER_BLOCK] = "block", wd.layers[LAYER_PROJ] = "shot";
+  /* the physics on at most 12 of the pool's threads: past about 12 a step stops getting faster (tests/destructo-physics.mjs:
+   * 6000 bodies 5.8 ms on 12 threads, 5.4 on 16 and 24), and on a loaded machine all 24 made the blast's steps slower
+   * (Great Keep's collapse on romdev, load about 13: a step 6.2 to 7.1 ms on 24, 4.0 to 4.2 on 12). The same bits on any
+   * count. dm set WORKERS n measures another */
+  wd.workers = opt_get("WORKERS") ? atoi(opt_get("WORKERS")) : 12;
   g->w = cw_world3d_create(&wd);
   /* the ground: a slab under the whole field */
   cw_body3d_def bd = cw_body3d_default_def();
