@@ -11,6 +11,10 @@
 //              level is cleared by at least 7 of the 8, and 97% of all the plays clear
 //   skill      par is the reward for skill: a steadier player (a third of the newcomer's aim error) clears within
 //              par (two stars or three) on at least two levels in three, and more often than the newcomer does
+//   goes round where a crystal is hidden from where the launcher stands (its glow blocked, its beacon showing where it
+//              is), the newcomer moves the launcher round the structure to a side it can see it from (East held with the
+//              d-pad, through the game's pad mapping): some plays must do so, and those plays must clear their level as
+//              often as the rest. Control: the player who never goes round (--never-moves) must show no such play
 //   control    the cannon before the fix (--old-damage: the ball breaks only the block it touches and flies on, as in
 //              round 3 and before) must fail the newcomer check
 // Run: node tests/destructo-human.mjs [--seeds n]
@@ -55,6 +59,19 @@ for (const [l, rs] of byLevel(rows)) {
 }
 const why = newcomer(rows, 'newcomer');
 if (why.length) { bad++; console.log(`FAIL newcomer: ${why.join('; ')}`); } else console.log('ok   newcomer: every first level cleared by every player, every level by 7 of 8 or more, 97% of plays');
+
+const orbiters = (rs) => rs.filter((r) => r.orbit_ticks > 0);
+{
+  const o = orbiters(rows), oc = o.filter((r) => r.cleared).length;
+  const ok = o.length > 0 && oc / o.length >= rows.filter((r) => r.cleared).length / rows.length - 0.05;
+  if (!ok) bad++;
+  const levels = [...new Set(o.map((r) => r.name))];
+  console.log(`${ok ? 'ok  ' : 'FAIL'} goes round: ${o.length} plays moved the launcher round to a hidden crystal (${levels.join(', ') || 'none'}), ${oc} of them cleared`);
+  const never = run(['--seeds', String(SEEDS), '--never-moves', ...[...new Set(o.map((r) => String(r.level)))]]);
+  const no = orbiters(never);
+  if (no.length === 0) console.log(`ok   control (never goes round) fails its goes-round check as it must: 0 plays moved; on those levels it cleared ${never.filter((r) => r.cleared).length} of ${never.length} in ${never.reduce((a, r) => a + r.shots, 0)} shots (the newcomer: ${o.length ? rows.filter((r) => levels.includes(r.name)).reduce((a, r) => a + r.shots, 0) : 0} shots)`);
+  else { bad++; console.log(`CONTROL PASSED (a failure): the never-moving player moved round in ${no.length} plays`); }
+}
 
 const skilled = run(['--seeds', String(Math.max(2, SEEDS >> 1)), '--skill', '0.33']);
 const sp = withinPar(skilled), np = withinPar(rows);

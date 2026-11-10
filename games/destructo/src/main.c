@@ -10,7 +10,8 @@
  *   result    judged once the world is still: the stars on a card at the side, the last shot's instant replay (slow
  *             motion on the impact; any button skips it), then the next level or another try
  *   destructo_auto plays itself (the bot, through the same controls); destructo_bench is the perf gate's scene
- *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse). Environment (development, native):
+ *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse;
+ *   destructo_bench_landmark the same on Neuschwanstein Castle, the landmark of the most blocks a collapse wakes). Environment (development, native):
  *   DESTRUCTO_LEVEL=n, DESTRUCTO_PLAYERS=n, DESTRUCTO_QUALITY=0..4, DESTRUCTO_NO_HUD=1. */
 #include <math.h>
 #include <stdio.h>
@@ -41,8 +42,8 @@
 #ifndef DESTRUCTO_BENCH
 #define DESTRUCTO_BENCH 0
 #endif
-#ifndef DESTRUCTO_BENCH_LEVEL
-#define DESTRUCTO_BENCH_LEVEL 24
+#ifndef DESTRUCTO_BENCH_NAME
+#define DESTRUCTO_BENCH_NAME "Great Keep" /* the perf and hitch gates' scene, by name (levels move as more are added) */
 #endif
 
 typedef struct save_data {
@@ -61,14 +62,14 @@ static struct {
   bool free_fire;    /* the select screen's free fire */
   int last_cur, turn_banner;
   bool result_sound;
-  cw_action aim_l, aim_r, aim_u, aim_d, pow_u, pow_d, fire, ammo, view;
+  cw_action aim_l, aim_r, aim_u, aim_d, pow_u, pow_d, fire, ammo, view, orb_l, orb_r, orb;
   cw_node camera;
   bool overview;
   /* debug fields */
   int32_t phase_dbg, level, state, shots, tleft, blocks, awake, broken, frags, booms, stars_dbg, cur, tick;
   int32_t score[MAXP];
   uint32_t hash;
-  float yaw, pitch, power, step_ms, step_max, step_busy;
+  float yaw, pitch, power, orbit, step_ms, step_max, step_busy;
   double busy_sum;
   int busy_n;
   int32_t instances;
@@ -134,7 +135,13 @@ static void load_level_as(int level, bool settle) {
 #ifdef DESTRUCTO_NO_BUDGET
   G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
 #endif
-  if (settle) game_settle(&G.g, 180); /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
+#ifdef DESTRUCTO_AUTOPILOT
+  if (getenv("DESTRUCTO_FREEZE")) settle = false;
+#endif
+  if (settle) game_settle(&G.g, level_settle_ticks(G.g.L));
+#ifdef DESTRUCTO_AUTOPILOT
+  if (getenv("DESTRUCTO_ORBIT")) G.g.orbit = (float)atof(getenv("DESTRUCTO_ORBIT")), G.g.ring = G.g.L->range, G.g.muzzle = (t3_vec3){ G.g.ring * sinf(G.g.orbit), 1.7f, G.g.ring * cosf(G.g.orbit) }; /* development: looking from round the circle */
+#endif /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
   G.have_game = true;
   bot_reset(&G.bot);
   if (G.built) fx_clear(), view_level(&G.g), prime_effects();
@@ -149,9 +156,9 @@ static void begin_level(int level) {
   G.sel = level;
   load_level(level);
 #ifdef DESTRUCTO_NO_BUDGET
-  replay_reset(level, G.players, G.mode, true, 180);
+  replay_reset(level, G.players, G.mode, true, level_settle_ticks(level_get(level)));
 #else
-  replay_reset(level, G.players, G.mode, false, 180);
+  replay_reset(level, G.players, G.mode, false, level_settle_ticks(level_get(level)));
 #endif
   G.replayed = false;
 #ifdef DESTRUCTO_AUTOPILOT
@@ -165,8 +172,9 @@ static void begin_level(int level) {
 }
 
 static int start_level(void) {
-  int lv = DESTRUCTO_BENCH ? DESTRUCTO_BENCH_LEVEL : 0;
+  int lv = DESTRUCTO_BENCH ? CW_MAX(0, level_find(DESTRUCTO_BENCH_NAME)) : 0;
   if (getenv("DESTRUCTO_LEVEL")) lv = CW_CLAMP(atoi(getenv("DESTRUCTO_LEVEL")), 0, NLEVELS - 1);
+  if (getenv("DESTRUCTO_LEVEL_NAME") && level_find(getenv("DESTRUCTO_LEVEL_NAME")) >= 0) lv = level_find(getenv("DESTRUCTO_LEVEL_NAME")); /* tests: a level by its name */
   return lv;
 }
 
@@ -207,6 +215,7 @@ static void init(void *u) {
   G.aim_l = cw_action_find("aim_left"), G.aim_r = cw_action_find("aim_right"), G.aim_u = cw_action_find("aim_up"), G.aim_d = cw_action_find("aim_down");
   G.pow_u = cw_action_find("power_up"), G.pow_d = cw_action_find("power_down"), G.fire = cw_action_find("fire"), G.ammo = cw_action_find("ammo");
   G.view = cw_action_find("view");
+  G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right"), G.orb = cw_action_find("orbit");
   cw_shell_init(&(cw_shell_desc){ .title = "DESTRUCTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
@@ -244,6 +253,7 @@ static void init(void *u) {
   cw_debug_f32("aim.yaw", &G.yaw);
   cw_debug_f32("aim.pitch", &G.pitch);
   cw_debug_f32("aim.power", &G.power);
+  cw_debug_f32("aim.orbit", &G.orbit); /* where the launcher stands on its circle round the structure (radians from the start) */
   cw_debug_f32("phys.step_ms", &G.step_ms);
   cw_debug_f32("phys.step_max", &G.step_max);   /* the slowest step since the app started (host-dependent) */
   cw_debug_f32("phys.step_busy", &G.step_busy); /* the mean step while more than 500 bodies were awake */
@@ -282,7 +292,7 @@ static void seat_watch(void) {
     return;
   }
   bool any = false;
-  cw_action acts[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.pow_u, G.pow_d, G.fire, G.ammo, G.view };
+  cw_action acts[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.pow_u, G.pow_d, G.fire, G.ammo, G.view, G.orb_l, G.orb_r, G.orb };
   for (size_t k = 0; k < sizeof acts / sizeof acts[0] && !any; k++) any = cw_action_pressed(G.g.cur, acts[k]);
   seat_idle = any ? 0 : seat_idle + 1;
 }
@@ -307,11 +317,17 @@ static void read_input(input *in) {
   memset(in, 0, sizeof *in);
 #ifdef DESTRUCTO_AUTOPILOT
   bot_input(&G.g, &G.bot, in);
-  G.overview = false;
+  G.overview = getenv("DESTRUCTO_OVERVIEW") != NULL; /* development: the wide view */
 #else
   int s = seat_of_turn();
-  in->left = held(G.aim_l, s), in->right = held(G.aim_r, s), in->up = held(G.aim_u, s), in->down = held(G.aim_d, s);
-  in->turn_k = fmaxf(strength(G.aim_l, s), strength(G.aim_r, s));
+  /* the move button held: the turn's left and right roll the launcher round the structure instead (a pad with no right
+   * stick still goes round); the right stick (or its keys) rolls it on its own */
+  bool round = held(G.orb, s);
+  bool l = held(G.aim_l, s), r = held(G.aim_r, s);
+  in->left = l && !round, in->right = r && !round, in->up = held(G.aim_u, s), in->down = held(G.aim_d, s);
+  in->turn_k = round ? 0 : fmaxf(strength(G.aim_l, s), strength(G.aim_r, s));
+  in->orbit_left = held(G.orb_l, s) || (round && l), in->orbit_right = held(G.orb_r, s) || (round && r);
+  in->orbit_k = fmaxf(fmaxf(strength(G.orb_l, s), strength(G.orb_r, s)), round && (l || r) ? fmaxf(strength(G.aim_l, s), strength(G.aim_r, s)) : 0);
   in->raise_k = fmaxf(strength(G.aim_u, s), strength(G.aim_d, s));
   in->power_up = held(G.pow_u, s), in->power_down = held(G.pow_d, s);
   in->fire = pressed(G.fire, s);
@@ -364,6 +380,9 @@ static void fixed_update(void *u, double dt) {
     break;
   }
   case PH_PLAY: {
+#ifdef DESTRUCTO_AUTOPILOT
+    if (getenv("DESTRUCTO_FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
+#endif
     input in;
     seat_watch();
     read_input(&in);
@@ -411,7 +430,7 @@ static void fixed_update(void *u, double dt) {
     if (watch && G.phase_t > 60) watch = false, G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
     if (G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
       int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
-      if (DESTRUCTO_BENCH || getenv("DESTRUCTO_LEVEL")) next = G.g.level;
+      if (DESTRUCTO_BENCH || getenv("DESTRUCTO_LEVEL") || getenv("DESTRUCTO_LEVEL_NAME")) next = G.g.level;
       begin_level(next);
     }
 #else
@@ -440,7 +459,7 @@ static void fixed_update(void *u, double dt) {
   if (G.phase == PH_RESULT) G.share = g->judged_share;
   else if (G.phase == PH_PLAY && (g->tick % 10 == 0 || g->state == GS_AIM)) G.share = game_share(g);
   for (int i = 0; i < MAXP; i++) G.score[i] = g->P[i].score;
-  G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.step_ms = g->step_ms;
+  G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.orbit = g->orbit, G.step_ms = g->step_ms;
   if (g->step_ms > G.step_max) G.step_max = g->step_ms;
   if (g->awake_now > 500) G.busy_sum += g->step_ms, G.busy_n++, G.step_busy = (float)(G.busy_sum / G.busy_n);
 }
@@ -479,9 +498,12 @@ static void hud_play(cw_vec2 cs, float u) {
   char b[96];
   /* the level: its name, crystals left, shots against par */
   float x = 28 * u, y = 24 * u;
-  panel(x, y, 430 * u, 190 * u, u, rgba(1, 0.82f, 0.3f, 0.8f));
+  float pl = g->L->place ? 30 * u : 0; /* a landmark: where it stands, under its name */
+  panel(x, y, 500 * u, 190 * u + pl, u, rgba(1, 0.82f, 0.3f, 0.8f));
   snprintf(b, sizeof b, "%d  %s", g->level + 1, g->L->name);
   text(b, x + 20 * u, y + 12 * u, 34 * u, GOLD, CW_ALIGN_LEFT);
+  if (g->L->place) text(g->L->place, x + 22 * u, y + 52 * u, 23 * u, rgba(0.88f, 0.86f, 0.8f, 0.95f), CW_ALIGN_LEFT);
+  y += pl;
   snprintf(b, sizeof b, "Crystals left: %d of %d", g->tgt_left, g->ntgt);
   text(b, x + 20 * u, y + 60 * u, 27 * u, PINK, CW_ALIGN_LEFT);
   if (g->sandbox) snprintf(b, sizeof b, "Free fire   Shots: %d", g->shots);
@@ -499,6 +521,11 @@ static void hud_play(cw_vec2 cs, float u) {
     bool kegs = false;
     for (int i = 0; i < g->nb && !kegs; i++) kegs = g->b[i].alive && g->b[i].keg;
     if (kegs) text("The red kegs go off when hit, and set off the next", x + 6 * u, y + 204 * u, 23 * u, rgba(1, 0.6f, 0.45f, 1), CW_ALIGN_LEFT);
+    else if (g->ntgt > 0 && G.phase == PH_PLAY) { /* a crystal hidden from where the launcher stands: going round shows it */
+      bool hid = false;
+      for (int t = 0; t < g->ntgt && !hid; t++) hid = !g->tgt[t].down && view_hidden(g, t);
+      if (hid) cw_prompt_text(font, "A crystal is hidden from here: {orbit_left|orbit_right} moves you round to it", -1, cw_v2(x + 6 * u, y + 204 * u), 23 * u, rgba(0.75f, 0.92f, 1, 1), CW_ALIGN_LEFT);
+    }
   }
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
@@ -527,9 +554,9 @@ static void hud_play(cw_vec2 cs, float u) {
     text(b, cs.x * 0.5f, cs.y * 0.18f, 64 * u, c, CW_ALIGN_CENTER);
   }
   /* the launcher: ammunition, power, and the controls while aiming */
-  float bw = 680 * u, bx = cs.x * 0.5f - bw * 0.5f, by = cs.y - 166 * u;
+  float bw = 760 * u, bx = cs.x * 0.5f - bw * 0.5f, by = cs.y - 194 * u;
   if (g->state == GS_AIM) {
-    panel(bx, by, bw, 152 * u, u, SEAT[g->cur]);
+    panel(bx, by, bw, 180 * u, u, SEAT[g->cur]);
     float cw = 200 * u;
     for (int a = 0; a < NAMMO; a++) {
       float cx = bx + 25 * u + a * (cw + 15 * u);
@@ -551,7 +578,8 @@ static void hud_play(cw_vec2 cs, float u) {
       text(aw, cs.x * 0.5f, by - 44 * u, 26 * u, SEAT[g->cur], CW_ALIGN_CENTER);
     }
     cw_prompt_text(font, "{aim_left|aim_right}: turn   {aim_up|aim_down}: raise   {power_down|power_up}: power", seat, cw_v2(cs.x * 0.5f, by + 88 * u), sz, WHITE, CW_ALIGN_CENTER);
-    cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 116 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+    cw_prompt_text(font, "{orbit_left|orbit_right} or hold {orbit} with {aim_left|aim_right}: move round the structure", seat, cw_v2(cs.x * 0.5f, by + 116 * u), sz, rgba(0.75f, 0.92f, 1, 1), CW_ALIGN_CENTER);
+    cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 144 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
   } else if (g->state == GS_SETTLE || g->state == GS_FLIGHT) {
     text(g->state == GS_FLIGHT ? "" : "Settling...", cs.x * 0.5f, cs.y - 70 * u, 28 * u, rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
   }
@@ -626,20 +654,24 @@ static void hud_replay(cw_vec2 cs, float u) {
 static void hud_select(cw_vec2 cs, float u) {
   float y0 = 40 * u;
   text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
-  float cw = 250 * u, ch = 92 * u, gap = 14 * u;
+  float cw = 272 * u, ch = 92 * u, gap = 14 * u;
   float gx = cs.x * 0.5f - (6 * cw + 5 * gap) * 0.5f, gy = y0 + 80 * u;
   int open = G.free_fire ? NLEVELS - 1 : unlocked(); /* free fire: every structure */
-  for (int i = 0; i < NLEVELS; i++) {
-    float x = gx + (i % 6) * (cw + gap), y = gy + (i / 6) * (ch + gap);
+  /* five rows in view, scrolled to keep the choice in the middle row where it can be */
+  int rows = (NLEVELS + 5) / 6, first = CW_CLAMP(G.sel / 6 - 2, 0, rows - 5);
+  if (first > 0) cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f + 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f, gy - 26 * u) }, 3, rgba(1, 0.82f, 0.3f, 0.9f));
+  if (first + 5 < rows) { float by = gy + 5 * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
+  for (int i = first * 6; i < NLEVELS && i < (first + 5) * 6; i++) {
+    float x = gx + (i % 6) * (cw + gap), y = gy + (i / 6 - first) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
     cw_r2d_round_rect(cw_rect_make(x, y, cw, ch), 10 * u, 6, sel ? rgba(0.95f, 0.6f, 0.2f, 0.92f) : rgba(0.06f, 0.07f, 0.12f, lock ? 0.5f : 0.78f));
     char b[64];
     snprintf(b, sizeof b, "%d  %s", i + 1, LEVELS[i].name);
-    text(b, x + 12 * u, y + 10 * u, 22 * u, lock ? rgba(0.6f, 0.6f, 0.65f, 0.7f) : sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE, CW_ALIGN_LEFT);
+    text(b, x + 12 * u, y + 10 * u, 21 * u, lock ? rgba(0.6f, 0.6f, 0.65f, 0.7f) : sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE, CW_ALIGN_LEFT);
     if (!lock) star_row(x + cw * 0.5f, y + ch - 28 * u, 30 * u, save()->stars[i], 3);
     else text("locked", x + cw * 0.5f, y + ch - 42 * u, 20 * u, rgba(0.6f, 0.6f, 0.65f, 0.7f), CW_ALIGN_CENTER);
   }
-  float y = gy + 5 * (ch + gap) + 16 * u;
+  float y = gy + 5 * (ch + gap) + 22 * u;
   char b[128];
   if (G.players > 1) {
     snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,

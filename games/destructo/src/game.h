@@ -67,7 +67,8 @@ typedef struct target_state {
 
 /* paints the level builder gives blocks (the look only) */
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
-       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG, P_COUNT };
+       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG,
+       P_MARBLE, P_LIMESTONE, P_BRONZE, P_DARK_GLASS, P_TILE_WHITE, P_RED_BRICK, P_WHITE_PAINT, P_BLUE_GLASS, P_ROCK, P_SILVER, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
 #define MAXBANNER 24
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
@@ -85,12 +86,16 @@ typedef struct sim_event {
 typedef struct input {
   bool left, right, up, down;        /* aim: turn and raise */
   float turn_k, raise_k;             /* analog strength 0..1 of the held direction (1 for a button) */
+  bool orbit_left, orbit_right;      /* move the launcher round the structure on its circle */
+  float orbit_k;                     /* analog strength of the orbit (1 for a button) */
   bool power_up, power_down;
   bool fire, ammo_next, ammo_prev;
 } input;
 
 /* a level, as generated (levels.c) */
-enum { K_TOWER, K_WALL, K_BRIDGE, K_CASTLE, K_SCAFFOLD, K_PYRAMID, K_KEEP, K_COUNT };
+enum { K_TOWER, K_WALL, K_BRIDGE, K_CASTLE, K_SCAFFOLD, K_PYRAMID, K_KEEP, K_LANDMARK, K_COUNT };
+/* the settings a structure stands in (view.c): each kit's own, in the kits' order, a city and a harbour */
+enum { ST_HIGHLAND, ST_MEADOW, ST_GORGE, ST_HEADLAND, ST_QUARRY, ST_DESERT, ST_SNOW, ST_CITY, ST_HARBOUR, ST_COUNT };
 typedef struct level_def {
   const char *name;
   int kind;
@@ -101,8 +106,17 @@ typedef struct level_def {
   int ammo[NAMMO];   /* what the level gives */
   float range;       /* launcher distance from the structure's middle */
   int theme;         /* ground and sky */
+  int lm;            /* K_LANDMARK: which landmark (landmarks.c LM_*) */
+  const char *place; /* K_LANDMARK: where it stands (shown under its name) */
+  int setting;       /* the setting (ST_*) + 1; 0: the kit's own */
+  float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
 } level_def;
-#define NLEVELS 30
+#define NLEVELS 40
+int level_find(const char *name); /* a level's index by its name, -1 none */
+int level_setting(const level_def *L);
+/* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or
+ * five seconds before it is still) */
+int level_settle_ticks(const level_def *L);
 extern const level_def LEVELS[NLEVELS];
 const level_def *level_get(int i);
 
@@ -133,8 +147,10 @@ typedef struct game {
   int ntgt, tgt_left;
   /* the launcher */
   t3_vec3 muzzle;    /* launch point */
-  float yaw, pitch, power;  /* aim: yaw 0 = straight at the structure (-z) */
-  int hold_turn, hold_raise;
+  float yaw, pitch, power;  /* aim: yaw 0 = straight at the structure's middle, from wherever the launcher stands */
+  float orbit;       /* where the launcher stands on its circle round the structure: 0 on +z (the start), growing to its right */
+  float ring;        /* the circle's radius (the level's range) */
+  int hold_turn, hold_raise, hold_orbit;
   int ammo_sel;
   int ammo[NAMMO];
   /* the shot in flight */
@@ -186,7 +202,7 @@ typedef struct game {
   bool old_rules;    /* tests only: the rules before the fix (the level judged 1.5 s after its last crystal fell, stars by shots alone): the result check's control */
   float extent;      /* the structure's radius (camera) */
   float top;         /* its height */
-  float front;       /* the z of its face nearest the launcher (the aim path is drawn that far) */
+  float front;       /* how far its face nearest the launcher stands toward the launcher, at the start (game_front for now) */
   /* events this tick */
   sim_event ev[MAXEV];
   int nev;
@@ -206,6 +222,13 @@ void game_settle(game *g, int ticks);       /* step with no input (a level settl
 void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */
 int game_awake(const game *g);
 t3_vec3 game_aim_dir(const game *g);
+float game_world_yaw(const game *g);       /* the aim's yaw in the world: the launcher's place on its circle plus its turn */
+t3_vec3 game_out_dir(const game *g);       /* from the structure's middle out to the launcher, on the ground (unit) */
+/* how far toward the launcher (along game_out_dir) the structure's nearest face stands, by the blocks' settled places:
+ * the aim path is drawn that far */
+float game_front(const game *g);
+/* a world yaw as the launcher's own turn from where it stands (wrapped to -pi..pi) */
+float game_yaw_from_world(const game *g, float world_yaw);
 float game_speed(const game *g);
 t3_vec3 game_block_pos(const game *g, int i);
 bool game_over(const game *g);
@@ -238,6 +261,11 @@ void game_fire(game *g);
 
 /* levels.c */
 void level_build(game *g, const level_def *L);
+/* landmarks.c */
+enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA_HOUSE, LM_TAJ_MAHAL, LM_WILLIS, LM_NEUSCHWANSTEIN, LM_BURJ_KHALIFA, LM_COUNT };
+void landmark_build(game *g, const level_def *L);
+/* a crystal standing on whatever is highest at (x, z) (a flat top wide enough for it); false: no such place near */
+bool landmark_crystal(game *g, float x, float z);
 
 /* bot.c: the bot's buttons this tick (it aims through the same controls a person holds) */
 typedef struct bot_state {
@@ -247,6 +275,10 @@ typedef struct bot_state {
   bool planned, lob, solved;
   t3_vec3 aim_at;
   int last_shots;
+  float want_orbit;  /* where on its circle the launcher is being rolled to (orbiting) */
+  bool orbiting;
+  bool orbited[MAXTGT]; /* it has looked round for a clear view of this crystal */
+  bool no_orbit;     /* tests: the bot that never moves the launcher (the orbit check's control) */
   int yaw_jitter_control; /* tests: aim this many milliradians off (a bot that cannot solve) */
 } bot_state;
 void bot_reset(bot_state *b);

@@ -43,6 +43,7 @@ int main(int argc, char **argv) {
   cw_jobs_init(-1);
   int minutes = argc > 1 ? atoi(argv[1]) : 10, players = argc > 2 ? atoi(argv[2]) : 1, level = argc > 3 ? atoi(argv[3]) : 0;
   int mode = argc > 4 ? atoi(argv[4]) : 0;
+  if (argc > 3 && level_find(argv[3]) >= 0) level = level_find(argv[3]); /* a level by its name */
   bool sandbox = mode == 2;
   if (sandbox) mode = MODE_COOP;
   else if (mode == 3) mode = MODE_PARTY;
@@ -60,7 +61,7 @@ int main(int argc, char **argv) {
   while (t < ticks_total && !fails) {
     game_new(&G, level % NLEVELS, players, mode);
     G.sandbox = sandbox;
-    game_settle(&G, 180);
+    game_settle(&G, level_settle_ticks(G.L));
     { /* memory: once every level has been played (the heap at its high water), a level played again must hold
        * no more than it did on its second visit */
       static long rss_at[NLEVELS];
@@ -71,7 +72,7 @@ int main(int argc, char **argv) {
       if (v > 2) printf("  level %d again: rss %ld kB (first time %ld)\n", G.level, kb, rss_at[G.level]);
     }
     bot_reset(&bot);
-    replay_reset(G.level, players, mode, false, 180);
+    replay_reset(G.level, players, mode, false, level_settle_ticks(G.L));
     int lt = 0, quiet_after = -1;
     while (!game_over(&G) && t < ticks_total && !fails) {
       input in;

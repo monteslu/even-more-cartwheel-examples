@@ -2,7 +2,7 @@
 // level after level: 60 minutes alone, then 20 minutes each with 2, 3 and 4 players taking turns (co-op, then
 // versus). Each run must exit 0 with "soak ok" (no NaN, nothing flung out of the world, the block counts adding up),
 // win every level it finishes, report no debris left jittering awake 30 s after a turn, and hold its memory: the
-// highest resident size over its last lap of the thirty levels within 5% of the lap before (it stops growing; one malloc
+// highest resident size over its last lap of the levels within 5% of the lap before (it stops growing; one malloc
 // arena: glibc gives each job thread an arena of its own, and those grow by fragments the game does not hold; --quick
 // runs, and the 20-minute ones, are too short for two laps after the first and skip it).
 // Free fire: 10 minutes (--quick: 4) shooting at Great Keep with ammunition without end, never judged: soak ok, at
@@ -65,7 +65,7 @@ for (const players of [2, 4]) {
 }
 {
   const minutes = quick ? 4 : 10;
-  const r = run(minutes, 1, 24, 2);
+  const r = run(minutes, 1, 'Great Keep', 2);
   const out = r.stdout || '';
   const m = /free fire: (\d+) shots, (\d+) broken, (\d+) pieces, (\d+) charges, most bodies (\d+), level judged (\w+)/.exec(out);
   const rss = [...out.matchAll(/minute (\d+): rss (\d+) kB/g)].map((x) => +x[2]), end = +(/rss (\d+) kB at the end/.exec(out) || [])[1];

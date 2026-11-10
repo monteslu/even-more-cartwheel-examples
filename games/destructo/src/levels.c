@@ -18,8 +18,19 @@
 #include "cartwheel/math.h"
 #include "game.h"
 
-/* name, kind, seed, size, targets, par, ammo {shot, heavy, charge}, range, theme */
+/* name, kind, seed, size, targets, par, ammo {shot, heavy, charge}, range, theme; landmarks: which, where, setting + 1, mark */
+#define LANDMARK(name, lm, targets, par, s, h, c, range, place, setting, mark) { name, K_LANDMARK, 1000 + lm, 0, targets, par, { s, h, c }, range, 0, lm, place, setting + 1, mark }
 const level_def LEVELS[NLEVELS] = {
+  LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 24, "Giza, Egypt", ST_DESERT, 0.1f),
+  LANDMARK("Space Needle", LM_SPACE_NEEDLE, 1, 2, 4, 1, 0, 28, "Seattle, United States", ST_CITY, 0.4f),
+  LANDMARK("Eiffel Tower", LM_EIFFEL, 2, 2, 5, 1, 1, 32, "Paris, France", ST_CITY, 0.35f),
+  LANDMARK("Willis Tower", LM_WILLIS, 2, 2, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f),
+  LANDMARK("Empire State Building", LM_EMPIRE_STATE, 2, 2, 5, 1, 1, 32, "New York, United States", ST_CITY, 0.35f),
+  LANDMARK("Sydney Opera House", LM_OPERA_HOUSE, 2, 2, 5, 1, 1, 30, "Sydney, Australia", ST_HARBOUR, 0.05f),
+  LANDMARK("Pyramids of Giza", LM_GIZA, 3, 3, 6, 2, 1, 38, "Giza, Egypt", ST_DESERT, 0.012f) /* a pyramid is nearly all its base: its top courses are a hundredth of it */,
+  LANDMARK("Taj Mahal", LM_TAJ_MAHAL, 3, 3, 5, 2, 1, 34, "Agra, India", ST_MEADOW, 0.2f),
+  LANDMARK("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f),
+  LANDMARK("Burj Khalifa", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.35f),
   { "First Stones", K_TOWER, 11, 2, 1, 2, { 4, 0, 0 }, 26, 0 },
   { "Lookout", K_TOWER, 23, 3, 1, 3, { 4, 1, 0 }, 28, 0 },
   { "Garden Wall", K_WALL, 31, 3, 2, 3, { 5, 1, 0 }, 28, 0 },
@@ -54,7 +65,15 @@ const level_def LEVELS[NLEVELS] = {
 
 /* the share of the structure that counts as brought down (game_mark), by kit: each kit has a level the bot (which
  * aims at the crystals, not at a collapse) brings down this far within par (tests/destructo-levels.mjs) */
-const float KIT_MARK[K_COUNT] = { [K_TOWER] = 0.5f, [K_WALL] = 0.35f, [K_BRIDGE] = 0.2f, [K_CASTLE] = 0.25f, [K_SCAFFOLD] = 0.5f, [K_PYRAMID] = 0.15f, [K_KEEP] = 0.4f };
+const float KIT_MARK[K_COUNT] = { [K_TOWER] = 0.5f, [K_WALL] = 0.35f, [K_BRIDGE] = 0.2f, [K_CASTLE] = 0.25f, [K_SCAFFOLD] = 0.5f, [K_PYRAMID] = 0.15f, [K_KEEP] = 0.4f,
+                                  [K_LANDMARK] = 0.3f /* each landmark has its own (level_def.mark) */ };
+
+int level_find(const char *name) {
+  for (int i = 0; i < NLEVELS; i++) if (!strcmp(LEVELS[i].name, name)) return i;
+  return -1;
+}
+int level_setting(const level_def *L) { return L->setting ? L->setting - 1 : L->kind; }
+int level_settle_ticks(const level_def *L) { return L->kind == K_LANDMARK ? 330 : 180; }
 
 const level_def *level_get(int i) {
   if (i < 0) i = 0;
@@ -573,8 +592,11 @@ void level_build(game *g, const level_def *L) {
   case K_SCAFFOLD: build_scaffold(g, L); break;
   case K_PYRAMID: build_pyramid(g, L); break;
   case K_KEEP: build_keep(g, L); break;
+  case K_LANDMARK: landmark_build(g, L); return;
   default: build_tower(g, L); break;
   }
-  int li = (int)(L - LEVELS);
+  /* the kits' levels in their own order (the landmarks come first) */
+  int li = 0;
+  for (const level_def *k = LEVELS; k < L; k++) li += k->kind != K_LANDMARK;
   if (li >= 7 && li % 3 == 1) place_kegs(g, L, li >= 19 ? 3 : 2);
 }

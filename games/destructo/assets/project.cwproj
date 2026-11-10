@@ -14,6 +14,10 @@ input.power_down = key:q, key:pagedown, pad:lshoulder, axis:lt+@0.3
 input.fire = key:space, key:enter, pad:south
 input.ammo = key:tab, key:f, pad:north
 input.view = key:v, key:lshift, pad:west
+; moving round the structure: the right stick (or Z / C), or the move button held with the turn's left and right
+input.orbit_left = key:z, axis:rx-@0.3
+input.orbit_right = key:c, axis:rx+@0.3
+input.orbit = key:x, pad:east
 render.width = 1280
 render.height = 720
 render.msaa = 1

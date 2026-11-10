@@ -70,6 +70,7 @@ static int overlapping(game *g, int *first) {
     f.ignore_body = k->body.id;
     cw_shape3d hit[4];
     if (cw_world3d_overlap(g->w, &q, &f, hit, 4) > 0) {
+      if (getenv("LC_DEBUG") && n < 6) { cw_body3d ob = cw_shape3d_body(hit[0]); t3_vec3 op = cw_body3d_transform(ob).p; fprintf(stderr, "overlap %d %s at %.3f %.3f %.3f half %.3f %.3f %.3f with body at %.3f %.3f %.3f\n", i, MATS[k->mat].name, x.p.x, x.p.y, x.p.z, k->half.x, k->half.y, k->half.z, op.x, op.y, op.z); }
       if (*first < 0) *first = i;
       n++;
     }
@@ -88,6 +89,7 @@ static void check(int level, const char *control) {
     game_add_block(&G, M_STONE, (t3_vec3){ 7.0f, 1.5f, 6.0f }, (t3_vec3){ 0.25f, 1.5f - 0.004f, 0.25f }, 0);
     game_add_block(&G, M_STONE, (t3_vec3){ 8.8f, 3.05f, 6.0f }, (t3_vec3){ 2.0f, 0.05f, 0.15f }, 0);
   }
+  if (getenv("LC_SIZES")) { float mn = 1e9f, mx = 0; int mi = -1; for (int i = 0; i < G.nb; i++) { if (!G.b[i].alive) continue; t3_vec3 h = G.b[i].half; float m = fminf(h.x, fminf(h.y, h.z)), M = fmaxf(h.x, fmaxf(h.y, h.z)); if (m < mn || m != m) mn = m, mi = i; if (M > mx) mx = M; } fprintf(stderr, "sizes: smallest half %.4f (block %d), largest %.3f\n", mn, mi, mx); }
   int first = -1;
   int nfloat = floating(&G, &first);
   int first_over = -1, nover = overlapping(&G, &first_over);
@@ -98,7 +100,15 @@ static void check(int level, const char *control) {
   static t3_vec3 p0[MAXBLK];
   for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 };
   if (getenv("LC_TRACE")) for (int t = 0; t < 120; t++) { cw_world3d_step(G.w, TICK); float vm = 0; int vi = -1; for (int i = 0; i < G.nb; i++) { if (!G.b[i].alive) continue; t3_vec3 v = cw_body3d_velocity(G.b[i].body); float s = sqrtf(v.x*v.x+v.y*v.y+v.z*v.z); if (s > vm) vm = s, vi = i; } if (t % 5 == 0 || vm > 1) { t3_vec3 p = cw_body3d_transform(G.b[vi].body).p; fprintf(stderr, "t%d fastest %d %s %.3f at %.2f %.2f %.2f joints %d\n", t, vi, MATS[G.b[vi].mat].name, vm, p.x, p.y, p.z, cw_world3d_stats(G.w).joints); if (vm > 1) break; } }
-  game_settle(&G, 180);
+  if (getenv("LC_WATCH")) { /* development: the tallest block's way over the first 20 s, a line a second */
+    int top = -1;
+    for (int i = 0; i < G.nb; i++) if (G.b[i].alive && (top < 0 || p0[i].y > p0[top].y)) top = i;
+    for (int t = 0; t <= 1200; t++) {
+      if (t % 60 == 0) { t3_vec3 p = cw_body3d_transform(G.b[top].body).p; float mv = 0; int wi = -1, big = 0; float lowbig = 99; for (int i = 0; i < G.nb; i++) { if (!G.b[i].alive) continue; t3_vec3 q = cw_body3d_transform(G.b[i].body).p; float d = sqrtf((q.x-p0[i].x)*(q.x-p0[i].x)+(q.y-p0[i].y)*(q.y-p0[i].y)+(q.z-p0[i].z)*(q.z-p0[i].z)); if (d > 0.3f) { big++; if (p0[i].y < lowbig) lowbig = p0[i].y; } if (d > mv) mv = d, wi = i; } fprintf(stderr, "t=%2ds top %d at %.3f %.3f %.3f (from %.3f %.3f %.3f) awake %d; most moved %d by %.3f from y %.2f; %d moved 0.3 m+, the lowest from y %.2f\n", t / 60, top, p.x, p.y, p.z, p0[top].x, p0[top].y, p0[top].z, game_awake(&G), wi, mv, wi >= 0 ? p0[wi].y : 0, big, lowbig); }
+      cw_world3d_step(G.w, TICK);
+    }
+  }
+  game_settle(&G, level_settle_ticks(G.L));
   float settle_move = 0;
   int settle_worst = -1;
   for (int i = 0; i < G.nb; i++) {
@@ -138,7 +148,7 @@ static void check(int level, const char *control) {
   /* solve: a fresh game, the bot on the controls */
   game_new(&G, level, 1, MODE_COOP);
   G.old_rules = c_old;
-  game_settle(&G, 180);
+  game_settle(&G, level_settle_ticks(G.L));
   /* the structure as it stands before the first shot: this tool's own record, for the result check */
   static cw_body3d placed[MAXBLK];
   static t3_vec3 placed_at[MAXBLK];
@@ -156,7 +166,7 @@ static void check(int level, const char *control) {
   memset(&bot, 0, sizeof bot);
   bot.yaw_jitter_control = c_solve ? 150 : 0;
   bot_reset(&bot);
-  replay_reset(level, 1, MODE_COOP, false, 180);
+  replay_reset(level, 1, MODE_COOP, false, level_settle_ticks(G.L));
   int ticks = 0, max_awake = 0;
   float step_max = 0;
   while (!game_over(&G) && ticks < 60 * 60 * 6) {
@@ -203,6 +213,60 @@ static void check(int level, const char *control) {
   fflush(stdout);
 }
 
+/* a block resting on something: a contact under it (the normal from it to the other pointing down) */
+static bool rests(game *g, int i) {
+  cw_contact3d c[16];
+  int n = cw_body3d_contacts(g->b[i].body, c, 16);
+  for (int k = 0; k < n; k++) if (c[k].normal.y < -0.5f) return true;
+  return false;
+}
+
+/* --landmarks: every landmark level, as the game starts it: as built every block stands on something (its bottom face
+ * on a block or the ground) and none is placed inside another; after the level's settle every block lies on something
+ * (a contact under it) and nothing moved more than 0.6 m settling; and the bot clears it within par.
+ * Controls: float (a block put 1 m over the first landmark's highest block once it has settled, unstepped: nothing
+ * under it; and one put in the air as built), solve (the bot aiming 150 milliradians off) */
+static void landmark_check(int level, const char *control) {
+  bool c_float = control && !strcmp(control, "float"), c_solve = control && !strcmp(control, "solve");
+  game_new(&G, level, 1, MODE_COOP);
+  if (c_float) game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, G.top + 2.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+  int first = -1, nfloat = floating(&G, &first), first_over = -1, nover = overlapping(&G, &first_over);
+  static t3_vec3 p0[MAXBLK];
+  for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 };
+  game_settle(&G, level_settle_ticks(G.L));
+  if (c_float) { /* the block now hangs over the structure, where nothing holds it */
+    float top = 0;
+    for (int i = 0; i < G.nb; i++) if (G.b[i].alive) top = fmaxf(top, cw_body3d_transform(G.b[i].body).p.y);
+    game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, top + 1.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
+  }
+  int unrested = 0, first_un = -1;
+  float moved = 0;
+  for (int i = 0; i < G.nb; i++) {
+    if (!G.b[i].alive) continue;
+    if (!rests(&G, i)) { unrested++; if (first_un < 0) first_un = i; }
+    t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
+    if (i < MAXBLK && (p0[i].x != 0 || p0[i].y != 0 || p0[i].z != 0)) moved = fmaxf(moved, sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)));
+  }
+  int blocks = G.nalive;
+  /* the bot from the start */
+  game_new(&G, level, 1, MODE_COOP);
+  game_settle(&G, level_settle_ticks(G.L));
+  bot_state bot;
+  memset(&bot, 0, sizeof bot);
+  bot.yaw_jitter_control = c_solve ? 150 : 0;
+  bot_reset(&bot);
+  int ticks = 0;
+  while (!game_over(&G) && ticks < 60 * 60 * 6) {
+    input in;
+    bot_input(&G, &bot, &in);
+    game_step(&G, &in);
+    ticks++;
+  }
+  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
+         level, G.L->name, control ? control : "", blocks, nfloat, first, nover, unrested, first_un, moved * 1000, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
+  fflush(stdout);
+}
+
 /* kegs: two powder kegs in level 1's yard, gap metres apart; the first is set off; how many blasts follow */
 static void kegs(float gap) {
   game_new(&G, 0, 1, MODE_COOP);
@@ -225,9 +289,21 @@ int main(int argc, char **argv) {
     game_free(&G);
     return 0;
   }
+  if (argc > 1 && !strcmp(argv[1], "--landmarks")) {
+    const char *c = argc > 3 && !strcmp(argv[2], "--control") ? argv[3] : NULL;
+    for (int l = 0; l < NLEVELS; l++) {
+      if (LEVELS[l].kind != K_LANDMARK) continue;
+      landmark_check(l, c);
+      if (c) break; /* a control: the first landmark */
+    }
+    game_free(&G);
+    return 0;
+  }
   if (argc > 2 && !strcmp(argv[1], "--control")) {
     const char *c = argv[2];
-    check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : !strcmp(c, "early") ? 23 : !strcmp(c, "stars") ? 2 : 0, c);
+    /* by name: the levels before them move as levels are added */
+    int early = level_find("Stone Giant"), stars = level_find("Garden Wall");
+    check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : !strcmp(c, "early") ? (early >= 0 ? early : 23) : !strcmp(c, "stars") ? (stars >= 0 ? stars : 2) : 0, c);
     game_free(&G);
     game_free(&G);
     return 0;

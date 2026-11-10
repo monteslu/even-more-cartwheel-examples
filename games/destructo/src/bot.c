@@ -13,8 +13,9 @@
 
 void bot_reset(bot_state *b) {
   int jc = b->yaw_jitter_control;
+  bool no = b->no_orbit;
   memset(b, 0, sizeof *b);
-  b->yaw_jitter_control = jc;
+  b->yaw_jitter_control = jc, b->no_orbit = no;
   b->plan_tgt = -1;
 }
 
@@ -75,10 +76,11 @@ static bool solve_high(const game *g, t3_vec3 t, float speed, float *yaw, float 
   return true;
 }
 
-/* the crystal is in plain view from the launcher (nothing of the structure between) */
-static bool in_view(const game *g, int t, t3_vec3 at) {
+/* the crystal is in plain view from a launcher standing at m (nothing of the structure between) */
+static bool in_view_from(const game *g, t3_vec3 m, int t, t3_vec3 at) {
   /* a ball the shot's size swept from the launcher to the crystal must meet the crystal first */
-  t3_vec3 o = { g->muzzle.x, g->muzzle.y + 0.3f, g->muzzle.z - 1.6f };
+  float ml = sqrtf(m.x * m.x + m.z * m.z) + 1e-4f;
+  t3_vec3 o = { m.x - m.x / ml * 1.6f, m.y + 0.3f, m.z - m.z / ml * 1.6f };
   t3_vec3 d = { at.x - o.x, at.y - o.y, at.z - o.z };
   cw_qshape3d q = cw_qshape3d_sphere(o, AMMO[A_SHOT].radius);
   cw_ray_hit3d h;
@@ -86,7 +88,27 @@ static bool in_view(const game *g, int t, t3_vec3 at) {
   int i = g->tgt[t].blk;
   return i >= 0 && g->b[i].alive && h.body.id == g->b[i].body.id;
 }
+static bool in_view(const game *g, int t, t3_vec3 at) { return in_view_from(g, g->muzzle, t, at); }
 
+static float wrap_pi(float a) {
+  while (a > 3.14159265f) a -= 6.2831853f;
+  while (a < -3.14159265f) a += 6.2831853f;
+  return a;
+}
+/* hidden from here: the nearest place on the launcher's circle the crystal can be seen from (false: nowhere) */
+static bool find_view(const game *g, int t, t3_vec3 at, float *orbit) {
+  float best = 1e9f;
+  bool any = false;
+  for (int k = 1; k < 32; k++) {
+    float d = (k & 1 ? 1 : -1) * (float)((k + 1) / 2) * 0.19634954f; /* out from here both ways, pi/16 a step */
+    float a = wrap_pi(g->orbit + d), s, c;
+    cw_sincos(a, &s, &c);
+    t3_vec3 m = { g->ring * s, g->muzzle.y, g->ring * c };
+    if (fabsf(d) < best && in_view_from(g, m, t, at)) best = fabsf(d), *orbit = a, any = true;
+    if (any) break;
+  }
+  return any;
+}
 static void plan(game *g, bot_state *b) {
   int t = -1;
   for (int i = 0; i < g->ntgt; i++) if (!g->tgt[i].down) { t = i; break; }
@@ -118,7 +140,7 @@ static void plan(game *g, bot_state *b) {
     b->aim_at = cw_body3d_transform(g->b[pick].body).p;
     b->solved = false;
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
-    b->want_yaw = cw_atan2(-dx, -dz), b->want_pitch = 0.1f;
+    b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)), b->want_pitch = 0.1f;
     b->planned = true, b->wait = 0;
     return;
   }
@@ -134,7 +156,7 @@ static void plan(game *g, bot_state *b) {
     b->aim_at = cw_body3d_transform(g->b[pick].body).p;
     b->solved = false;
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
-    b->want_yaw = cw_atan2(-dx, -dz), b->want_pitch = 0.1f;
+    b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)), b->want_pitch = 0.1f;
     b->planned = true, b->wait = 0;
     return;
   }
@@ -144,6 +166,14 @@ static void plan(game *g, bot_state *b) {
   t3_vec3 at = ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home;
   int a = b->attempt[t];
   bool seen = in_view(g, t, at);
+  if (!seen && a >= 1 && !b->orbited[t] && !b->no_orbit && g->mode != MODE_PARTY) { /* hidden from here: roll round to where it shows */
+    b->orbited[t] = true;
+    float o;
+    if (find_view(g, t, at, &o)) {
+      b->want_orbit = o, b->orbiting = true, b->plan_tgt = t, b->planned = true, b->wait = 0;
+      return;
+    }
+  }
   /* the plan by attempt: in view, a shot straight at it; hidden, a lob onto it (a charge when there is one);
    * then a charge at it; then a heavy ball low into what holds it up; then round again, the aim walked about */
   int ammo = A_SHOT;
@@ -166,7 +196,7 @@ static void plan(game *g, bot_state *b) {
   b->aim_at = aimp;
   b->solved = false;
   float dx = aimp.x - g->muzzle.x, dz = aimp.z - g->muzzle.z;
-  b->want_yaw = cw_atan2(-dx, -dz) + (float)b->yaw_jitter_control * 0.001f;
+  b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)) + (float)b->yaw_jitter_control * 0.001f;
   b->want_pitch = lob ? 0.95f : 0.1f;
   b->planned = true;
   b->wait = 0;
@@ -181,7 +211,7 @@ static void resolve(game *g, bot_state *b) {
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
-  b->want_yaw = cw_clampf(yaw + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
+  b->want_yaw = cw_clampf(game_yaw_from_world(g, yaw) + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
   b->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
   b->solved = true;
   if (getenv("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
@@ -205,6 +235,14 @@ void bot_input(game *g, bot_state *b, input *in) {
   if (!b->planned) return;
   b->wait++;
   int tk = g->tick;
+  if (b->orbiting) { /* rolling round the circle: held while far, tapped when near, then a fresh plan from there */
+    float e = wrap_pi(b->want_orbit - g->orbit);
+    if (fabsf(e) <= 0.004f) { b->orbiting = false, b->planned = false; return; }
+    bool press = fabsf(e) > 0.05f || (tk & 1) == 0;
+    if (press) { if (e > 0) in->orbit_right = true; else in->orbit_left = true; }
+    in->orbit_k = 1;
+    return;
+  }
   /* the turn: right lowers the yaw */
   steer(b->want_yaw - g->yaw, tk, &in->right, &in->left, 0.0012f);
   steer(b->want_pitch - g->pitch, tk, &in->down, &in->up, 0.0012f);

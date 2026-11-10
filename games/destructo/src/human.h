@@ -11,6 +11,8 @@
  *             once the aim looks right (to a few milliradians, what a person can see) and has been still a moment
  *   ammo      the shot first; once shots at a crystal have twice brought nothing down, the next kind on the HUD
  *   power     left where the level starts it, or pushed to full (half the players do each)
+ *   moves     a crystal hidden behind the structure from where it stands (its glow blocked, its beacon still showing
+ *             where it is): it rolls the launcher round toward that side until the glow shows, then aims from there
  *
  * The buttons it holds go through human_buttons (the pad the game reads in main.c) and then the game's own mapping
  * from buttons to the launcher (human_to_input, the same one main.c uses for a person's pad). */
@@ -21,9 +23,10 @@
 
 #include "game.h"
 
-/* the pad as main.c reads it: d-pad, the shoulders, South (fire), North (ammunition) */
+/* the pad as main.c reads it: d-pad, the shoulders, South (fire), North (ammunition), East held (the d-pad's left
+ * and right roll the launcher round the structure instead of turning it) */
 typedef struct pad_buttons {
-  bool left, right, up, down, rshoulder, lshoulder, south, north;
+  bool left, right, up, down, rshoulder, lshoulder, south, north, east;
 } pad_buttons;
 
 /* how good the hands are (the gate's newcomer: human_newcomer) */
@@ -55,6 +58,11 @@ typedef struct human_state {
   int down_before, awaiting;    /* crystals standing when it fired; a shot whose end it has yet to read */
   int prev_ammo_press;
   bool lob;                    /* a high arc: the crystal is hidden behind the structure and a straight shot found the wall */
+  bool moving_round;           /* rolling the launcher round the circle to want_orbit */
+  float want_orbit;
+  bool moved_for[MAXTGT];      /* it has gone round for this crystal already */
+  bool never_moves;            /* tests: the player who never rolls the launcher (the orbit gate's control) */
+  int release_o;
 } human_state;
 
 void human_reset(human_state *h, human_skill s, uint32_t seed);

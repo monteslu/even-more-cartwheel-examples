@@ -42,7 +42,7 @@ const range = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const towerMaps = Number(readFileSync(join(ROOT, 'games/towers/assets/maps/count.txt'), 'utf8').trim());
 const GAMES = {
   towers: range(towerMaps, (i) => ({ name: `map ${i + 1}`, app: 'towers_auto', frames: 90, env: { TOWERS_MAP: String(i + 1) }, field: 'game.map' })),
-  destructo: range(30, (i) => ({ name: `level ${i}`, app: 'destructo_auto', frames: 200, env: { DESTRUCTO_LEVEL: String(i) }, field: 'game.level' })),
+  destructo: range(40, (i) => ({ name: `level ${i}`, app: 'destructo_auto', frames: 360, env: { DESTRUCTO_LEVEL: String(i) }, field: 'game.level' })),
   emberthrone: [{ name: 'the world', app: 'emberthrone_auto', frames: 120, env: {}, field: 'game.region' }],
   skate: range(5, (i) => ({ name: `park ${i}`, app: 'skate_auto', frames: 150, env: { SKATE_PARK: String(i) }, field: 'game.park' })),
   pinball: range(3, (i) => ({ name: `table ${i}`, app: 'pinball_auto', frames: 90, env: { PINBALL_TABLE: String(i) }, field: 'game.table' })),

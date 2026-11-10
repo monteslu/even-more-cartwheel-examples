@@ -4,6 +4,8 @@
 // 120-frame windows while the collapse is on screen (from the first window with a hundred blocks broken; one window
 // the shared machine stalls does not decide it). Every run must draw everything (no "not in any program table" line)
 // and must show a real collapse (a hundred blocks broken, a thousand bodies awake at once).
+// The same for destructo_bench_landmark (the bot on Neuschwanstein Castle, the landmark whose collapse wakes the most
+// bodies): the landmarks' piece counts are held to this bound.
 // Controls, which must fail: GL at 3840x2160 (four times the pixels) against the same bound, and WebGPU against an
 // impossible 0.5 ms.
 // Holds the GPU suite lock (the engine's tools/with-gpu-suite.mjs) for its own runs only.
@@ -23,7 +25,8 @@ if (!process.env.CW_GPU_SUITE_INNER) {
 }
 const controls = !process.argv.includes('--no-controls');
 const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mjs'));
-const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/destructo_bench.json'), 'utf8')).binary;
+const binary = (app) => JSON.parse(readFileSync(join(ROOT, `build/native/apps/${app}.json`), 'utf8')).binary;
+let exe = binary('destructo_bench');
 
 function run(gpu, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '1080', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', DESTRUCTO_BENCH_PRINT: '1',
@@ -59,6 +62,10 @@ const check = (name, r, bound, mustFail = false) => {
 const gl = run('gl'), wg = run('webgpu');
 check('GL 1920x1080 High', gl, BOUND);
 check('WebGPU 1920x1080 High', wg, BOUND);
+exe = binary('destructo_bench_landmark');
+check('landmark GL 1920x1080 High', run('gl'), BOUND);
+check('landmark WebGPU 1920x1080 High', run('webgpu'), BOUND);
+exe = binary('destructo_bench');
 if (controls) {
   check('GL at 3840x2160', run('gl', { CW_RENDER_SCALE: '3' }), BOUND, true);
   check('WebGPU against 0.5 ms', wg, 0.5, true);

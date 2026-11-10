@@ -1,7 +1,7 @@
 // destructo levels gate: every level, checked by build/native/games/destructo/destructo_levelcheck
 // (games/destructo/tools/levelcheck.c):
 //   floats    every block as placed stands on another block or the ground, and none is placed inside another
-//   rest      the level settles 3 s (as the game does before play; nothing may move more than 0.6 m doing it: the
+//   rest      the level settles 3 s, a landmark 5.5 s (as the game does before play; nothing may move more than 0.6 m doing it: the
 //             tallest towers squeeze down about 0.4 m), then 60 s alone: no block moves more than 5 mm, nothing
 //             breaks, no crystal moves, and everything is asleep at the end
 //   solve     the bot, through the controls, brings every crystal down within the level's par
@@ -15,7 +15,8 @@
 //   kegs      two powder kegs 1.6 m apart, the first set off: the second goes off too (a chain of two blasts);
 //             control: 8 m apart, one blast only
 //   marks     each kit's mark is reachable: the bot (which aims at crystals, not at a collapse) brings at least one
-//             level of every kit that far down within par
+//             level of every kit that far down within par; a landmark has a mark of its own, and the bot brings that
+//             landmark that far down within par
 // Controls, each must fail its check: the result rules before the fix (judged 1.5 s after the last crystal fell,
 // stars by shots alone) on Stone Giant (judged while 1600 bodies still fall) and Garden Wall (three stars with the
 // wall standing); a replay whose last shot is fired 3 milliradians off (level 1) must end elsewhere; a floating block and two blocks placed in one another (level 1), a plank on a post
@@ -50,8 +51,15 @@ for (const r of all) {
   if (r.solved && r.shots <= r.par) k.best = Math.max(k.best, r.share_after);
   k.three += r.stars === 3, k.names.push(r.name);
 }
-const KITS = ['tower', 'wall', 'bridge', 'castle', 'scaffold', 'pyramid', 'keep'];
+const KITS = ['tower', 'wall', 'bridge', 'castle', 'scaffold', 'pyramid', 'keep', 'landmark'];
+const LANDMARK = 7;
+for (const r of all.filter((x) => x.kind === LANDMARK)) { /* a landmark's mark is its own: the bot brings that one that far down */
+  const ok = r.solved && r.shots <= r.par && r.share_after >= r.mark - 0.005;
+  if (!ok) bad++;
+  console.log(`${ok ? 'ok  ' : 'FAIL'} marks: ${r.name}: mark ${(r.mark * 100).toFixed(0)}%, the bot within par ${(r.share_after * 100).toFixed(0)}%`);
+}
 for (const [kind, k] of Object.entries(kits)) {
+  if (+kind === LANDMARK) continue;
   const ok = k.best >= k.mark;
   if (!ok) bad++;
   console.log(`${ok ? 'ok  ' : 'FAIL'} marks: ${KITS[kind]} (${k.names.length} levels): mark ${(k.mark * 100).toFixed(0)}%, the bot's best within par ${(k.best * 100).toFixed(0)}%, three stars on ${k.three}`);

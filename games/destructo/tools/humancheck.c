@@ -38,17 +38,20 @@ static game G;
 static int ammo_total(const game *g) { return g->L->ammo[0] + g->L->ammo[1] + g->L->ammo[2]; }
 
 static bool old_damage;
+static bool never_moves; /* --never-moves: the player who never goes round the structure (the orbit check's control) */
 
 static void play(int level, int seed, float skill_k) {
   game_new(&G, level, 1, MODE_COOP);
 #ifndef PRE_R3
   G.old_damage = old_damage;
 #endif
-  game_settle(&G, 180);
+  game_settle(&G, level_settle_ticks(G.L));
   human_skill s = human_newcomer();
   s.across_sd *= skill_k, s.height_sd *= skill_k;
   human_state h;
   human_reset(&h, s, (uint32_t)(level * 131 + seed * 7 + 1));
+  h.never_moves = never_moves;
+  int orbit_ticks = 0;
   pad_buttons pad, last;
   memset(&last, 0, sizeof last);
   int ticks = 0, first_down = -1;
@@ -58,6 +61,7 @@ static void play(int level, int seed, float skill_k) {
     human_to_input(&pad, &last, &in);
     last = pad;
     int left = G.tgt_left, st0 = G.state;
+    orbit_ticks += in.orbit_left || in.orbit_right;
     game_step(&G, &in);
     if (getenv("HC_DEBUG") && st0 == GS_AIM && G.state == GS_FLIGHT) fprintf(stderr, "shot %d %s at crystal %d (%.2f %.2f %.2f) aim point %.2f %.2f %.2f power %.2f\n", G.shots, AMMO[G.proj_kind].name, h.tgt, h.tgt_seen.x, h.tgt_seen.y, h.tgt_seen.z, h.aim_point.x, h.aim_point.y, h.aim_point.z, G.power);
     if (getenv("HC_DEBUG") && st0 == GS_SETTLE && G.state != GS_SETTLE) fprintf(stderr, "   struck %.2f %.2f %.2f (hit %d), broken %d, crystals left %d, share %.3f\n", G.impact.x, G.impact.y, G.impact.z, G.proj_hit_tick >= 0, G.broken, G.tgt_left, JUDGED_SHARE);
@@ -65,9 +69,9 @@ static void play(int level, int seed, float skill_k) {
     ticks++;
   }
   printf("{\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"seed\":%d,\"full_power\":%d,\"cleared\":%s,\"shots\":%d,\"ammo\":%d,\"par\":%d,\"stars\":%d,"
-         "\"targets\":%d,\"left\":%d,\"first_down_shot\":%d,\"share\":%.3f,\"mark\":%.3f,\"broken\":%d,\"ticks\":%d}\n",
+         "\"targets\":%d,\"left\":%d,\"first_down_shot\":%d,\"share\":%.3f,\"mark\":%.3f,\"broken\":%d,\"ticks\":%d,\"orbit_ticks\":%d,\"orbit\":%.3f}\n",
          level, G.L->name, G.L->kind, seed, h.full_power, G.state == GS_WON ? "true" : "false", G.shots, ammo_total(&G), G.L->par, game_stars(&G),
-         G.ntgt, G.tgt_left, first_down, JUDGED_SHARE, MARK, G.broken, ticks);
+         G.ntgt, G.tgt_left, first_down, JUDGED_SHARE, MARK, G.broken, ticks, orbit_ticks, G.orbit);
   fflush(stdout);
 }
 
@@ -79,7 +83,7 @@ static void shot(int level, int ammo) {
 #ifndef PRE_R3
   G.old_damage = old_damage;
 #endif
-  game_settle(&G, 180);
+  game_settle(&G, level_settle_ticks(G.L));
   static cw_body3d body[MAXBLK];
   static t3_vec3 at[MAXBLK];
   static float vol[MAXBLK], lim[MAXBLK];
@@ -159,6 +163,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(argv[a], "--skill") && a + 1 < argc) k = (float)atof(argv[++a]);
     else if (!strcmp(argv[a], "--shot")) shots = true;
     else if (!strcmp(argv[a], "--old-damage")) old_damage = true;
+    else if (!strcmp(argv[a], "--never-moves")) never_moves = true;
     else if (nl < NLEVELS) levels[nl++] = atoi(argv[a]);
   }
   if (nl == 0) for (int l = 0; l < NLEVELS; l++) levels[nl++] = l;

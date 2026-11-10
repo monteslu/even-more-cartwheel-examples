@@ -69,6 +69,13 @@ static t3_vec3 qrot(t3_quat q, t3_vec3 v) {
 
 /* ── blocks ──────────────────────────────────────────────────────────── */
 
+/* the launcher stands on its circle round the structure, at its orbit */
+static void place_launcher(game *g) {
+  float s, c;
+  cw_sincos(g->orbit, &s, &c);
+  g->muzzle = v3(g->ring * s, 1.7f, g->ring * c);
+}
+
 static int alloc_block(game *g) {
   if (g->nfree > 0) return g->free_list[--g->nfree];
   if (g->nb < MAXBLK) return g->nb++;
@@ -289,7 +296,8 @@ void game_new(game *g, int level, int players, int mode) {
   level_build(g, g->L);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) g->vol_total += g->b[i].vol;
-  g->muzzle = v3(0, 1.7f, g->L->range);
+  g->ring = g->L->range, g->orbit = 0;
+  place_launcher(g);
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
   g->ammo_sel = A_SHOT;
   /* the structure's size (the camera frames it) */
@@ -304,6 +312,30 @@ void game_new(game *g, int level, int players, int mode) {
   }
   g->extent = ext, g->top = top, g->front = front;
   g->state = GS_AIM;
+}
+
+float game_world_yaw(const game *g) { return g->yaw + g->orbit; }
+t3_vec3 game_out_dir(const game *g) {
+  float s, c;
+  cw_sincos(g->orbit, &s, &c);
+  return v3(s, 0, c);
+}
+float game_yaw_from_world(const game *g, float world_yaw) {
+  float y = world_yaw - g->orbit;
+  while (y > 3.14159265f) y -= 6.2831853f;
+  while (y < -3.14159265f) y += 6.2831853f;
+  return y;
+}
+float game_front(const game *g) {
+  t3_vec3 u = game_out_dir(g);
+  float front = 0;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (!k->alive || !k->tag || k->keg) continue;
+    float f = k->home.x * u.x + k->home.z * u.z + fmaxf(k->half.x, k->half.z);
+    if (f > front) front = f;
+  }
+  return front;
 }
 
 void game_settle(game *g, int ticks) {
@@ -328,7 +360,7 @@ int game_awake(const game *g) { return cw_world3d_stats(g->w).awake_bodies; }
 
 t3_vec3 game_aim_dir(const game *g) {
   float sy, cy, sp, cp;
-  cw_sincos(g->yaw, &sy, &cy);
+  cw_sincos(game_world_yaw(g), &sy, &cy);
   cw_sincos(g->pitch, &sp, &cp);
   return v3(-sy * cp, sp, -cy * cp);
 }
@@ -578,6 +610,17 @@ static void aim(game *g, const input *in) {
   float rt = (0.0015f + 0.009f * fminf(1, g->hold_turn / 45.0f)) * kt, rr = (0.0015f + 0.007f * fminf(1, g->hold_raise / 45.0f)) * kr;
   g->yaw = cw_clampf(g->yaw - dt * rt, -0.75f, 0.75f);
   g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.15f);
+  /* the launcher's place on its circle: held, it rolls faster (a full turn round the structure in about 9 s); the aim
+   * keeps its turn and raise, so it still points at the middle from the new place */
+  int dorb = (in->orbit_right ? 1 : 0) - (in->orbit_left ? 1 : 0);
+  g->hold_orbit = dorb ? g->hold_orbit + 1 : 0;
+  if (dorb) {
+    float ko = in->orbit_k > 0 ? in->orbit_k : 1;
+    g->orbit += dorb * (0.002f + 0.010f * fminf(1, g->hold_orbit / 40.0f)) * ko;
+    if (g->orbit > 3.14159265f) g->orbit -= 6.2831853f;
+    if (g->orbit < -3.14159265f) g->orbit += 6.2831853f;
+    place_launcher(g);
+  }
   if (in->power_up) g->power = cw_clampf(g->power + 0.008f, 0, 1);
   if (in->power_down) g->power = cw_clampf(g->power - 0.008f, 0, 1);
   if (in->ammo_next || in->ammo_prev) {
@@ -636,7 +679,7 @@ static bool block_moved(const game *g, const block *k) {
   return vlen(vsub(p, k->home)) > lim;
 }
 
-float game_mark(const game *g) { return KIT_MARK[g->L->kind]; }
+float game_mark(const game *g) { return g->L->mark > 0 ? g->L->mark : KIT_MARK[g->L->kind]; }
 
 float game_share(const game *g) {
   if (g->vol_total <= 0) return 0;

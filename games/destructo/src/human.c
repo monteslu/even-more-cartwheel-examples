@@ -35,6 +35,12 @@ void human_reset(human_state *h, human_skill s, uint32_t seed) {
 }
 
 /* the height of the flight where it has come d metres (along the ground) from the launcher */
+static float wrap_pi(float a) {
+  while (a > 3.14159265f) a -= 6.2831853f;
+  while (a < -3.14159265f) a += 6.2831853f;
+  return a;
+}
+
 static float path_height(const game *g, float yaw, float pitch, float speed, float d) {
   float sy, cy, sp, cp;
   cw_sincos(yaw, &sy, &cy);
@@ -110,14 +116,18 @@ static void learn(const game *g, human_state *h) {
 
 /* what the screen shows: the crystal's glow, or a block in front of it (a ray from the aiming camera's eye: behind the
  * launcher, up and to the right, view.c) */
-static bool hidden(const game *g, int t, t3_vec3 c) {
-  t3_vec3 eye = { g->muzzle.x + 2.6f, g->muzzle.y + 3.6f, g->muzzle.z + 8.5f };
+static bool hidden_from(const game *g, float orbit, int t, t3_vec3 c) {
+  float s, co;
+  cw_sincos(orbit, &s, &co);
+  t3_vec3 m = { g->ring * s, g->muzzle.y, g->ring * co }, out = { s, 0, co }, right = { co, 0, -s };
+  t3_vec3 eye = { m.x + out.x * 8.5f + right.x * 2.6f, m.y + 3.6f, m.z + out.z * 8.5f + right.z * 2.6f };
   cw_phys_filter f = cw_phys_filter_layers(1u << 1); /* the block layer */
   cw_ray_hit3d hit;
   if (!cw_world3d_raycast(g->w, eye, (t3_vec3){ c.x - eye.x, c.y - eye.y, c.z - eye.z }, &f, &hit)) return false;
   int i = g->tgt[t].blk;
   return !(i >= 0 && g->b[i].alive && hit.body.id == g->b[i].body.id);
 }
+static bool hidden(const game *g, int t, t3_vec3 c) { return hidden_from(g, g->orbit, t, c); }
 
 static void plan(const game *g, human_state *h) {
   int best = -1;
@@ -131,6 +141,16 @@ static void plan(const game *g, human_state *h) {
   h->tgt = best;
   if (best < 0) return;
   t3_vec3 c = crystal_seen(g, best), across, fwd;
+  /* hidden from here: go round toward its side (its beacon shows where it stands) to where its glow shows, a step of
+   * the circle at a time out from its own side */
+  if (!h->never_moves && !h->moved_for[best] && hidden(g, best, c)) {
+    h->moved_for[best] = true;
+    float side = cw_atan2(c.x, c.z);
+    for (int k = 0; k < 13; k++) {
+      float a = wrap_pi(side + (k & 1 ? 1 : -1) * (float)((k + 1) / 2) * 0.3f);
+      if (!hidden_from(g, a, best, c)) { h->want_orbit = a, h->moving_round = true; return; }
+    }
+  }
   h->tgt_seen = c;
   across_up(g, c, &across, &fwd);
   float ea = h->corr_across[best] + nrand(h) * h->skill.across_sd * 0.5f, eu = h->corr_up[best] + nrand(h) * h->skill.height_sd * 0.5f;
@@ -168,8 +188,17 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
     return;
   }
   if (h->awaiting) { learn(g, h); h->awaiting = 0; }
+  if (h->moving_round) { /* East held, the d-pad's left or right: held while far, let go a reaction late, tapped near */
+    float e = wrap_pi(h->want_orbit - g->orbit);
+    if (fabsf(e) <= 0.03f) { h->moving_round = false; h->release_o = 0; return; }
+    pad->east = true;
+    if (h->release_o > 0) { h->release_o--; return; }
+    if (e > 0) pad->right = true; else pad->left = true;
+    if (fabsf(e) < 0.15f) h->release_o = h->skill.react;
+    return;
+  }
   if (!h->planned) plan(g, h);
-  if (!h->planned) return;
+  if (!h->planned || h->moving_round) return;
   /* the ammunition on the HUD */
   if (g->ammo_sel != h->want_ammo) {
     if (h->prev_ammo_press == 0) pad->north = true, h->prev_ammo_press = 8;
@@ -186,7 +215,7 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
     float dx = h->aim_point.x - g->muzzle.x, dz = h->aim_point.z - g->muzzle.z;
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
-  h->want_yaw = cw_clampf(yaw, -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
+  h->want_yaw = cw_clampf(game_yaw_from_world(g, yaw), -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
   /* the hands: held while far off (let go once it looks there, a reaction late), tapped when close */
   float ey = h->want_yaw - seen_yaw, ep = h->want_pitch - seen_pitch, tol = h->skill.tol;
   bool moving = false;
@@ -213,8 +242,10 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
 
 void human_to_input(const pad_buttons *pad, const pad_buttons *last, input *in) {
   memset(in, 0, sizeof *in);
-  in->left = pad->left, in->right = pad->right, in->up = pad->up, in->down = pad->down;
-  in->turn_k = pad->left || pad->right ? 1 : 0;
+  in->left = pad->left && !pad->east, in->right = pad->right && !pad->east, in->up = pad->up, in->down = pad->down;
+  in->orbit_left = pad->left && pad->east, in->orbit_right = pad->right && pad->east;
+  in->orbit_k = in->orbit_left || in->orbit_right ? 1 : 0;
+  in->turn_k = in->left || in->right ? 1 : 0;
   in->raise_k = pad->up || pad->down ? 1 : 0;
   in->power_up = pad->rshoulder, in->power_down = pad->lshoulder;
   in->fire = pad->south && !last->south;

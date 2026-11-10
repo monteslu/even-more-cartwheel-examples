@@ -1,6 +1,6 @@
 // destructo result check, in the game itself (destructo_auto: the bot through the controls, natively on the test
 // GPU): a level is judged once the world is still, and the instant replay of its last shot ends where the level did.
-//   Stone Giant (level 24: one charge brings a six-storey tower down) and First Stones (level 1: two shots, so the
+//   Stone Giant (one charge brings a six-storey tower down) and First Stones (two shots, so the
 //   replay re-runs the first one before it shows the second):
 //     judged    when the game says won or lost (result.last), at most 10 bodies were awake (result.awake)
 //     replay    the replay ran (replay.ticks) and ended on the live game's judged state (replay.match: every block's
@@ -30,7 +30,7 @@ mkdirSync(OUT, { recursive: true });
 function run(level, frames, name, extra = {}) {
   const dump = join(OUT, `${name}.json`);
   const env = { ...process.env, CW_FRAMES: String(frames), CW_DEBUG_DUMP: dump, CW_SCREENSHOT: join(OUT, `${name}.png`), SDL_AUDIODRIVER: 'dummy',
-    CW_WARMUP_SPREAD: '0', CW_GPU: 'gl', DESTRUCTO_LEVEL: String(level), DESTRUCTO_QUALITY: '3', ...extra };
+    CW_WARMUP_SPREAD: '0', CW_GPU: 'gl', DESTRUCTO_LEVEL_NAME: level, DESTRUCTO_QUALITY: '3', ...extra };
   const gl = glPin();
   if (gl) Object.assign(env, gl.env);
   scrubDisplay(env);
@@ -45,14 +45,14 @@ const replayed = (r) => r.status === 0 && r.ticks > 0 && r.match === 1;
 const show = (r) => r.status !== 0 ? `exit ${r.status}` : `level ${r.level + 1}, phase ${r.phase}, result ${['playing', 'brought down', 'crystals down', 'out of ammunition'][r.result]}, ${r.awake} awake when judged, replay ${r.ticks} ticks, match ${r.match}`;
 let bad = 0;
 const say = (ok, what) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); };
-for (const [level, frames, name] of [[23, 1500, 'stone-giant'], [0, 1500, 'first-stones']]) {
+for (const [level, frames, name] of [['Stone Giant', 1500, 'stone-giant'], ['First Stones', 1500, 'first-stones']]) {
   /* a frame of the replay's slow motion and one of the card, for review (the same deterministic run, cut short) */
   run(level, name === 'stone-giant' ? 1000 : 1150, `${name}-replay`);
   const r = run(level, frames, name);
   say(judged(r) && replayed(r), `${name}: ${show(r)}`);
 }
-const c1 = run(23, 1500, 'control-early', { DESTRUCTO_OLD_RULES: '1' });
+const c1 = run('Stone Giant', 1500, 'control-early', { DESTRUCTO_OLD_RULES: '1' });
 say(!judged(c1), `control (the rules before the fix) fails its judged check as it must: ${show(c1)}`);
-const c2 = run(0, 1500, 'control-replay', { DESTRUCTO_REPLAY_PERTURB: '1' });
+const c2 = run('First Stones', 1500, 'control-replay', { DESTRUCTO_REPLAY_PERTURB: '1' });
 say(!replayed(c2), `control (a nudged replay) fails its replay check as it must: ${show(c2)}`);
 process.exit(bad ? 1 : 0);

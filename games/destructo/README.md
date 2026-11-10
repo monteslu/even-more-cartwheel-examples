@@ -1,5 +1,11 @@
 # Destructo
 
+Bring famous buildings of the world down, and a few dozen structures besides. The landmarks come first: the Great
+Sphinx, the Space Needle, the Pyramids of Giza, the Eiffel Tower, the Empire State Building, the Sydney Opera House,
+the Taj Mahal, Willis Tower, Neuschwanstein Castle and the Burj Khalifa, each scaled to the field with its proportions
+kept and built of up to two thousand blocks of stone, steel, glass and brick that break the way their material does.
+Each level shows the landmark's name and where it stands.
+
 Bring structures down. Towers, walls, bridges, castles, scaffolds and stepped pyramids of wood, stone, glass and steel,
 hundreds to a few thousand blocks each, stand on a field. You have a launcher, a few rounds of shot, a heavy ball or
 two and some charges. Every structure hides glowing crystals: bring them all down to clear it. Red powder kegs stand
@@ -17,6 +23,7 @@ for eight seconds of its turn is away, and any pad can take that turn (the HUD s
 | Control | Does |
 |---|---|
 | d-pad or left stick | turn and raise the launcher (a tap moves it a hair, held it speeds up) |
+| right stick, or east held with the d-pad's left and right | move the launcher round the structure on its circle, so any face can be attacked (the aim keeps pointing at the structure) |
 | shoulders (triggers too) | power |
 | north | the ammunition: shot, heavy ball, charge |
 | west, held | the wide view of the structure |
@@ -52,7 +59,12 @@ that shot was fired. When the level is judged it therefore stands where the last
 shot, turns slowly round the impact in slow motion for the first second and a quarter after it, and ends on exactly
 the state the live game was judged on (every block's pose to the bit, the counters and the scores).
 
-The aim path shows the shot's flight as the world will fly it, as far as the structure's near face: how high it
+The launcher stands on a circle round the structure and rolls along it (a full turn in about nine seconds, held); its
+turn and raise stay as they were, so it still points at the structure's middle from its new place, and the camera, the
+aim path and the bots all work from wherever it stands. When a crystal is hidden from where the launcher stands, the
+HUD says so and shows the control that moves round.
+
+The aim path shows the shot's flight as the world will fly it, as far as the structure's near face (seen from where the launcher stands): how high it
 arrives there shows, where it comes down behind does not. A ball crushes the masonry round where it first strikes (a
 shot within about 1.6 m, a heavy ball 2.2 m) and drives what stands behind it back (3.4 m and 4.6 m): a shot breaks a
 hole a few bricks across and knocks a small tower's top off, a heavy ball topples a tower. Charges go off on the first
@@ -67,7 +79,17 @@ thing they touch and push and break everything within about four and a half metr
   when it is glass, small or already a piece. Past 3000 bodies a break leaves dust only; past 1500 awake bodies stone
   splits in two, not four. Breaks wait in a fracture queue (24 a tick) and a charge's blast runs outward over four
   ticks, a shell a tick: a blast that broke hundreds of blocks in one tick was a dropped frame in the cart.
-- `src/levels.c`: thirty levels from seven kits. Walls are running-bond brick courses that hand the corners to the
+- `src/landmarks.c`: the landmarks. A landmark is a shape (a function: which material and paint fills a point)
+  sampled on a grid of cells a course at a time and laid as masonry: each course runs its bricks along x or z in turn,
+  and a run of cells is split into bricks one to fourteen cells long by a small search that keeps every brick's middle
+  over something it stands on, so a brick can reach a cell past the course below (a dome swelling) or bridge a gap (a
+  lintel over an arch, a platform between a tower's legs), and a cell nothing can hold is left out. Courses are laid
+  all but touching (every course is a contact that gives a few millimetres under load, and a tall tower laid 4 mm a
+  course apart dropped a hand span and slammed); slender towers use tall courses for the same reason, masts and
+  antennas are single blocks, and a landmark settles 5.5 s before play (a tall tower sways a few centimetres for four or
+  five seconds). Two settings are the landmarks' own: a city (a lawn and a paved square, a skyline of towers far out)
+  and a harbour (a paved point out in the water, the city across the bay).
+- `src/levels.c`: the levels' table, and thirty levels from seven kits. Walls are running-bond brick courses that hand the corners to the
   other pair of walls each course, so they lock; floors are planks that the storey above stands on. Each kit has a
   character: stepped roofs in red, slate or copper with gilded finials (a wide step is a ring of four boards, a third
   the weight of a solid slab; a six-storey tower's roof stands on its top floor, since every course more on it is a
@@ -76,12 +98,16 @@ thing they touch and push and break everything within about four and a half metr
 - `src/replay.c`: the instant replay (above).
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
-  ball into what holds it up, then holds and taps the aim buttons until the launcher points there. It reads each
+  ball into what holds it up, then holds and taps the aim buttons until the launcher points there. A crystal still
+  hidden after a first try sends it round the structure on the launcher's circle to the nearest place it can be seen
+  from. It reads each
   crystal's exact place and aims to a milliradian, so it proves a level can be cleared, not that a person can.
 - `src/human.c`: the human-like player of the playability gate: it sees only what the screen shows (the crystals and
   their beacons, the aim path, the HUD, where its last shot struck), aims with a person's error (0.5 m across and 0.8 m
   up and down at the structure, mostly a lean it keeps and corrects from where its shots strike), lets go of the d-pad
-  a quarter of a second late, and sends its buttons through the game's pad mapping.
+  a quarter of a second late, and sends its buttons through the game's pad mapping. A crystal whose glow the structure
+  hides from where the launcher stands (its beacon still shows where it is) sends it round toward that side, East held
+  with the d-pad, until the glow shows.
 - `src/view.c`, `src/trees.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at
   start-up and the builder's paints in real material colours (warm stone, timber, plaster, slate, terracotta,
   copper), the roofs' boards drawn with a course texture of their own; a setting per kit (highlands under
@@ -143,12 +169,13 @@ collapse: about 2.3 ms a step at worst over the collapse windows.
 | Command | Checks |
 |---|---|
 | `node tests/destructo-physics.mjs` | the measurements above, each with a control that must fail |
-| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
+| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark, and each landmark's own, is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
+| `node tests/destructo-landmarks.mjs` | every landmark: as built every block stands on something and none is inside another, after its settle every block lies on something and nothing moved 0.6 m, and the bot clears it within par (controls: a block put in the air, as built and after the settle; the bot aiming 150 milliradians off) |
 | `node tests/destructo-human.mjs` | eight human-like players (src/human.c) on every level with the ammunition it gives: every one clears levels 1 to 3, every level is cleared by 7 of 8, 97% of all plays clear; a steadier player is within par on two levels in three and more often than the newcomer (control: the cannon before the fix, the ball breaking only the block it touches, must fail) |
 | `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep |
 | `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
 | `node tests/destructo-flash.mjs` | every frame of Great Keep's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
-| `node tests/destructo-perf.mjs` | the GPU frame at 1920x1080 on High during a castle's collapse, GL and WebGPU, on the 890M |
+| `node tests/destructo-perf.mjs` | the GPU frame at 1920x1080 on High during a keep's collapse and a landmark's (Neuschwanstein Castle), GL and WebGPU, on the 890M |
 | `node tests/destructo-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms, natively and in the cart on romdev |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) |
 | `node tests/gate.mjs --gates-file destructo-gates.json` | a person's first shot: the same collapse on every host and both GPU paths; two pads join and the second walks away, and the first still plays the second seat's turn (control: the seat rule before the fix waits on the idle pad) |

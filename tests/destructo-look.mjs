@@ -1,5 +1,6 @@
-// destructo look gate: one frame of each kit's setting (a tower in the highlands, a wall in a meadow, a bridge over a
-// river gorge, a castle on sea cliffs, a scaffold in a quarry, a pyramid among desert mesas, a keep in a snowy pass),
+// destructo look gate: one frame of each setting (a tower in the highlands, a wall in a meadow, a bridge over a
+// river gorge, a castle on sea cliffs, a scaffold in a quarry, a pyramid among desert mesas, a keep in a snowy pass,
+// the Eiffel Tower in the city, the Sydney Opera House on the harbour),
 // as the player aims, without the HUD, natively on the test GPU at 1920x1080. Each frame's luma (Rec. 709 of the sRGB
 // values, 0..255) must average 95 to 125 and spread with a standard deviation of 55 or more: lit, contrasty, never
 // washed out. Control, which must fail: the same frames at three times the exposure (DESTRUCTO_LOOK_CONTROL).
@@ -22,10 +23,11 @@ const { glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wgpu-pin.mj
 const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/destructo_auto.json'), 'utf8')).binary;
 const OUT = join(ROOT, 'out/look');
 mkdirSync(OUT, { recursive: true });
-const KITS = [['tower', 0], ['wall', 2], ['bridge', 6], ['castle', 7], ['scaffold', 4], ['pyramid', 5], ['keep', 12]];
+const KITS = [['tower', 'First Stones'], ['wall', 'Garden Wall'], ['bridge', 'Mill Bridge'], ['castle', 'The Gatehouse'], ['scaffold', 'Glass House'],
+  ['pyramid', 'Step Shrine'], ['keep', 'Old Keep'], ['city', 'Eiffel Tower'], ['harbour', 'Sydney Opera House']];
 function shot(level, file, extra = {}) {
   const env = { ...process.env, CW_FRAMES: '50', CW_SCREENSHOT: file, SDL_AUDIODRIVER: 'dummy', CW_RENDER_SCALE: '1.5', CW_WARMUP_SPREAD: '0',
-    DESTRUCTO_LEVEL: String(level), DESTRUCTO_NO_HUD: '1', DESTRUCTO_QUALITY: '3', CW_GPU: 'gl', ...extra };
+    DESTRUCTO_LEVEL_NAME: level, DESTRUCTO_NO_HUD: '1', DESTRUCTO_QUALITY: '3', CW_GPU: 'gl', ...extra };
   const gl = glPin();
   if (gl) Object.assign(env, gl.env);
   scrubDisplay(env);
@@ -38,7 +40,7 @@ const ok = (r) => r.status === 0 && r.mean >= 95 && r.mean <= 125 && r.sd >= 55;
 let bad = 0;
 for (const [kit, level] of KITS) {
   const r = shot(level, join(OUT, `${kit}.png`));
-  const line = `${kit} (level ${level + 1}): luma mean ${r.mean.toFixed(1)}, deviation ${r.sd.toFixed(1)} (status ${r.status})`;
+  const line = `${kit} (${level}): luma mean ${r.mean.toFixed(1)}, deviation ${r.sd.toFixed(1)} (status ${r.status})`;
   if (ok(r)) console.log(`ok   ${line}`); else { bad++; console.log(`FAIL ${line}: mean 95..125 and deviation 55 or more`); }
 }
 if (!process.argv.includes('--no-control')) {

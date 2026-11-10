@@ -31,7 +31,7 @@ static struct {
   cw_node root, field, sky, sun, post;
   t3_instanced_mesh *poles, *flags, *beams;
   t3_instanced_mesh *blk[M_COUNT];
-  t3_instanced_mesh *path, *roof;
+  t3_instanced_mesh *path, *roof, *curtain; /* curtain: a tower's tinted glass (glass painted dark or blue): no lamps behind it, the sky in it */
   float wind;
   cw_node crystal_light[MAXTGT];
   cw_node launcher, yaw, barrel;
@@ -44,6 +44,11 @@ static struct {
   int last_state;
   float orbit;
   float rp_orbit;    /* the replay camera's turn round the impact */
+  float beam_w;      /* the beacons' width: narrower on a landmark (a tower's silhouette shows through) */
+  float cliff;       /* the sea setting: the z of the headland's cliff, clear of the launcher's circle */
+  float front;       /* the structure's near face toward the launcher (game_front), for the aim path */
+  float front_orbit; /* ... at this orbit */
+  int front_level;   /* the level (+1) front was found for */
   int built_level;
   uint8_t lay[MAXBLK][3]; /* each block's drawn layers along its own axes (block_layers) */
   int lay_born[MAXBLK]; /* the block (its born tick + 1) the layer was given to: 0 none */
@@ -295,6 +300,11 @@ void view_init(cw_node root) {
     t3_material_set_map(rm, tx);
     t3_release(tx);
     V.roof = imesh(world, "Roofs", t3_box_geometry_new(1, 1, 1, 1, 1, 1), rm, MAXBLK / 4, true);
+    t3_material *cm = std_mat(1, 1, 1, 0.1f, 0.65f);
+    t3_texture *ct = block_texture(M_GLASS);
+    t3_material_set_map(cm, ct);
+    t3_release(ct);
+    V.curtain = imesh(world, "CurtainGlass", t3_box_geometry_new(1, 1, 1, 1, 1, 1), cm, MAXBLK / 2, true);
   }
   trees_init();
   for (int i = 0; i < MAXTGT; i++) {
@@ -341,6 +351,7 @@ static void build_launcher(const game *g) {
   V.launcher = cw_node_new("Node3D", "Launcher");
   cw_node_add_child(V.field, V.launcher);
   cw_node3d_set_position(V.launcher, (t3_vec3){ g->muzzle.x, 0, g->muzzle.z });
+  cw_node3d_set_rotation(V.launcher, (t3_vec3){ 0, g->orbit, 0 }); /* facing the structure's middle from its place on the circle */
   V.yaw = cw_node_new("Node3D", "Yaw");
   cw_node_add_child(V.launcher, V.yaw);
   /* a carriage: two cheeks on an axle, four spoked-looking wheels, a trail behind */
@@ -367,7 +378,7 @@ static void build_launcher(const game *g) {
 
 /* ── the settings: each kit stands somewhere of its own ─────────────── */
 
-enum { BD_HILLS, BD_MOUNTAINS, BD_MESAS, BD_SEA, BD_GORGE, BD_QUARRY };
+enum { BD_HILLS, BD_MOUNTAINS, BD_MESAS, BD_SEA, BD_GORGE, BD_QUARRY, BD_CITY, BD_HARBOUR };
 typedef struct setting {
   float tod, north, sun_energy, sky_energy, exposure;
   float ground[3], yard[3];
@@ -384,7 +395,7 @@ typedef struct setting {
   float leaf[2][3];  /* their foliage */
 } setting;
 
-static const setting SETTINGS[K_COUNT] = {
+static const setting SETTINGS[ST_COUNT] = {
   /* tower: a highland valley under grey-blue mountains; oaks and a few spruces */
   [K_TOWER] = { 15.7f, 55, 4.6f, 1.6f, 1.85f, { 0.18f, 0.37f, 0.08f }, { 0.36f, 0.27f, 0.17f }, { 0.55f, 0.65f, 0.8f }, 0.0012f,
                 BD_MOUNTAINS, { 0.06f, 0.1f, 0.08f }, { 0.85f, 0.88f, 0.92f },
@@ -420,10 +431,20 @@ static const setting SETTINGS[K_COUNT] = {
                BD_MOUNTAINS, { 0.04f, 0.045f, 0.06f }, { 0.78f, 0.8f, 0.86f },
                { { 0.48f, 0.28f, 0.14f }, { 0.42f, 0.42f, 0.45f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } },
                0.22f, 3.0f, { SP_FIR_SNOW, SP_FIR_SNOW }, 0, 72, { { 1, 1, 1 }, { 1, 1, 1 } } },
+  /* city: a paved square in a park, plane trees, a skyline of towers all round in the haze */
+  [ST_CITY] = { 15.6f, 60, 4.6f, 1.6f, 1.6f, { 0.2f, 0.36f, 0.1f }, { 0.6f, 0.57f, 0.52f }, { 0.68f, 0.72f, 0.8f }, 0.0015f,
+                BD_CITY, { 0.16f, 0.17f, 0.2f }, { 0.42f, 0.45f, 0.5f },
+                { { 0.5f, 0.31f, 0.16f }, { 0.55f, 0.52f, 0.47f }, { 1.0f, 0.82f, 0.5f }, { 0.35f, 0.37f, 0.4f } },
+                0.2f, 0, { SP_OAK, SP_BIRCH }, 0.3f, 60, { { 0.16f, 0.3f, 0.07f }, { 0.22f, 0.36f, 0.08f } } },
+  /* harbour: a paved point out in the water, the city's towers across the bay */
+  [ST_HARBOUR] = { 15.8f, 50, 4.6f, 1.6f, 1.55f, { 0.2f, 0.36f, 0.1f }, { 0.58f, 0.55f, 0.5f }, { 0.68f, 0.76f, 0.86f }, 0.0012f,
+                   BD_HARBOUR, { 0.16f, 0.17f, 0.2f }, { 0.42f, 0.45f, 0.5f },
+                   { { 0.5f, 0.31f, 0.16f }, { 0.55f, 0.52f, 0.47f }, { 1.0f, 0.82f, 0.5f }, { 0.35f, 0.37f, 0.4f } },
+                   0.15f, 0, { SP_PALM, SP_PALM }, 0, 0, { { 0.2f, 0.32f, 0.07f }, { 0.2f, 0.32f, 0.07f } } },
 };
 /* how much of the contrast grade (assets/grade/contrast.cube) each setting takes */
-static const float GRADE[K_COUNT] = { [K_TOWER] = 0.55f, [K_WALL] = 0.55f, [K_BRIDGE] = 0.55f, [K_CASTLE] = 0.65f,
-                                      [K_SCAFFOLD] = 0.65f, [K_PYRAMID] = 1.0f, [K_KEEP] = 0.95f };
+static const float GRADE[ST_COUNT] = { [ST_HIGHLAND] = 0.55f, [ST_MEADOW] = 0.55f, [ST_GORGE] = 0.55f, [ST_HEADLAND] = 0.65f,
+                                       [ST_QUARRY] = 0.65f, [ST_DESERT] = 1.0f, [ST_SNOW] = 0.95f, [ST_CITY] = 0.7f, [ST_HARBOUR] = 0.7f };
 static const setting *SET;
 
 /* the paints (game.h P_*), linear colours */
@@ -433,6 +454,10 @@ static const float PAINT[P_COUNT][3] = {
   [P_GOLD] = { 1.0f, 0.68f, 0.12f }, [P_TURQUOISE] = { 0.04f, 0.42f, 0.46f }, [P_BRICK] = { 0.45f, 0.15f, 0.08f },
   [P_DARK_STONE] = { 0.2f, 0.2f, 0.23f }, [P_SAND_STONE] = { 0.68f, 0.5f, 0.3f }, [P_ROSE_STONE] = { 0.62f, 0.38f, 0.32f },
   [P_WHITE_STONE] = { 0.66f, 0.63f, 0.56f }, [P_KEG] = { 0.62f, 0.07f, 0.03f },
+  [P_MARBLE] = { 0.8f, 0.78f, 0.74f }, [P_LIMESTONE] = { 0.6f, 0.55f, 0.45f }, [P_BRONZE] = { 0.13f, 0.095f, 0.07f },
+  [P_DARK_GLASS] = { 0.05f, 0.055f, 0.065f }, [P_TILE_WHITE] = { 0.84f, 0.82f, 0.77f }, [P_RED_BRICK] = { 0.5f, 0.21f, 0.12f },
+  [P_WHITE_PAINT] = { 0.76f, 0.76f, 0.74f }, [P_BLUE_GLASS] = { 0.16f, 0.26f, 0.36f }, [P_ROCK] = { 0.27f, 0.25f, 0.23f },
+  [P_SILVER] = { 0.5f, 0.53f, 0.57f },
 };
 static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8f }, { 1.0f, 0.72f, 0.05f }, { 0.08f, 0.55f, 0.2f } };
 
@@ -457,7 +482,7 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
       case BD_MESAS: h = terrace(fmaxf(0, n - 0.42f) * 160, 14) * rise; top = 40; break;
       case BD_QUARRY: h = terrace(rise * (14 + n * 24), 6); top = 34; break;
       case BD_GORGE: h = (40 + n * 50) * cw_smoothstep(0.0f, 0.3f, t) * cw_smoothstep(30, 80, fabsf(x)); top = 80; break;
-      case BD_SEA: h = z > -40 ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
+      case BD_SEA: h = z > V.cliff ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
       default: h = (n * 30 + 6) * rise * (1 - 0.3f * t); top = 35; break;
       }
       int i = r * NA + a;
@@ -483,6 +508,81 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
   t3_geometry_compute_bounding_sphere(g);
   t3_geometry_compute_bounding_box(g);
   free(pos), free(col), free(uv), free(idx);
+  return g;
+}
+
+/* the skyline's walls: rows of windows between floors, a repeat 4 floors by 4 bays */
+static t3_texture *windows_texture(void) {
+  enum { N = 128 };
+  static uint8_t px[N * N * 4];
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      int fx = x % 32, fy = y % 32;
+      bool win = fx > 5 && fx < 27 && fy > 9 && fy < 26;
+      float n = hashf((uint32_t)(x / 32) * 7u + (uint32_t)(y / 32) * 131u);
+      float v = win ? 0.35f + 0.25f * n : 1.0f;
+      uint8_t *p = &px[(y * N + x) * 4];
+      p[0] = p[1] = (uint8_t)(v * 255), p[2] = (uint8_t)(fminf(1, v * 1.08f) * 255), p[3] = 255;
+    }
+  t3_texture *t = t3_texture_new(N, N, px);
+  t->color_space = T3_SRGB_COLOR_SPACE;
+  return t;
+}
+
+/* the city's skyline: towers in a ring far out, each its own height and stone, steel or glass, lighter at the top in
+ * the haze; a few tall ones stand out */
+static t3_geometry *city_geo(const setting *S, uint32_t seed, int part, int parts) {
+  enum { NB = 30 }; /* towers a part, six parts (520 towers in all trapped the cart on GL, 180 do not) */
+  float *pos = malloc(sizeof(float) * 3 * 20 * NB), *nrm = malloc(sizeof(float) * 3 * 20 * NB), *col = malloc(sizeof(float) * 3 * 20 * NB), *uv = malloc(sizeof(float) * 2 * 20 * NB);
+  unsigned *idx = malloc(sizeof(unsigned) * 30 * NB);
+  int nv = 0, ni = 0;
+  for (int b = 0; b < NB; b++) {
+    float a = (part + hashf(seed * 7u + (uint32_t)b * 2654435761u)) * 6.2831853f / parts, r = 210 + powf(hashf(seed * 13u + (uint32_t)b * 40503u), 0.8f) * 220;
+    float cx = cosf(a) * r, cz = sinf(a) * r, w = 16 + hashf((uint32_t)b * 977u) * 30, d = 16 + hashf((uint32_t)b * 613u) * 30;
+    float hh = hashf((uint32_t)b * 331u), h = 10 + hh * hh * 32 + (hashf((uint32_t)b * 71u) < 0.06f ? 30 : 0);
+    float tone = hashf((uint32_t)b * 151u), rot = hashf((uint32_t)b * 29u) * 1.57f, cr = cosf(rot), sr = sinf(rot);
+    float base[3];
+    for (int c = 0; c < 3; c++) base[c] = (S->back_low[c] + (S->back_high[c] - S->back_low[c]) * (0.25f + 0.6f * tone)) * 0.45f;
+    if (tone > 0.8f) base[0] *= 0.75f, base[1] *= 0.85f; /* blue glass */
+    /* four walls and a roof */
+    static const float F[5][3] = { { 1, 0, 0 }, { -1, 0, 0 }, { 0, 0, 1 }, { 0, 0, -1 }, { 0, 1, 0 } };
+    for (int f = 0; f < 5; f++) {
+      float nx = F[f][0] * cr - F[f][2] * sr, nz = F[f][0] * sr + F[f][2] * cr;
+      float q[4][3];
+      for (int k = 0; k < 4; k++) {
+        float u = (k == 1 || k == 2) ? 1 : -1, v = k >= 2 ? 1 : -1, lx, ly, lz;
+        if (f < 2) lx = F[f][0] * w * 0.5f, lz = u * d * 0.5f * F[f][0], ly = v > 0 ? h : 0;
+        else if (f < 4) lz = F[f][2] * d * 0.5f, lx = -u * w * 0.5f * F[f][2], ly = v > 0 ? h : 0;
+        else lx = u * w * 0.5f, lz = -v * d * 0.5f, ly = h;
+        q[k][0] = cx + lx * cr - lz * sr, q[k][1] = ly - 1.5f, q[k][2] = cz + lx * sr + lz * cr;
+      }
+      for (int k = 0; k < 4; k++) {
+        int i = nv + k;
+        pos[i * 3] = q[k][0], pos[i * 3 + 1] = q[k][1], pos[i * 3 + 2] = q[k][2];
+        nrm[i * 3] = f == 4 ? 0 : nx, nrm[i * 3 + 1] = f == 4 ? 1 : 0, nrm[i * 3 + 2] = f == 4 ? 0 : nz;
+        float up = cw_clampf(q[k][1] / 90, 0, 1), sh = f == 4 ? 1.1f : 0.85f + 0.15f * (f & 1);
+        for (int c = 0; c < 3; c++) col[i * 3 + c] = base[c] * sh * (0.85f + 0.3f * up);
+        uv[i * 2] = (k == 1 || k == 2) ? (f < 2 ? d : w) / 28.0f : 0, uv[i * 2 + 1] = f == 4 ? 0.25f : q[k][1] / 28.0f; /* a repeat: 4 floors of 3.5 m, 4 bays */
+      }
+      /* wound to face out (f < 4) or up: the corners' turn checked against the face's normal */
+      unsigned i0 = (unsigned)nv;
+      float ax = q[1][0] - q[0][0], ay = q[1][1] - q[0][1], az = q[1][2] - q[0][2], bx = q[2][0] - q[0][0], by = q[2][1] - q[0][1], bz = q[2][2] - q[0][2];
+      float cxn = ay * bz - az * by, cyn = az * bx - ax * bz, czn = ax * by - ay * bx;
+      bool ccw = (f == 4 ? cyn : cxn * nx + czn * nz) > 0;
+      if (ccw) idx[ni++] = i0, idx[ni++] = i0 + 1, idx[ni++] = i0 + 2, idx[ni++] = i0, idx[ni++] = i0 + 2, idx[ni++] = i0 + 3;
+      else idx[ni++] = i0, idx[ni++] = i0 + 2, idx[ni++] = i0 + 1, idx[ni++] = i0, idx[ni++] = i0 + 3, idx[ni++] = i0 + 2;
+      nv += 4;
+    }
+  }
+  t3_geometry *g = t3_geometry_new();
+  t3_geometry_set_attribute(g, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, nv, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, nrm, nv, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_COLOR, t3_attribute_new(T3_FLOAT32, col, nv, 3));
+  t3_geometry_set_attribute(g, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, nv, 2));
+  t3_geometry_set_index(g, t3_attribute_new(T3_UINT32, idx, ni, 1));
+  t3_geometry_compute_bounding_sphere(g);
+  t3_geometry_compute_bounding_box(g);
+  free(pos), free(nrm), free(col), free(uv), free(idx);
   return g;
 }
 
@@ -517,8 +617,9 @@ static void wander(const setting *S, float x, float z, uint32_t seed, float *c) 
  * past it (sand in dunes); always at or above the physics ground, so nothing that flies out there floats */
 static float relief_h(const setting *S, const game *g, float x, float z) {
   if (S->relief <= 0) return 0;
-  float r = g->extent + 5, tz = g->muzzle.z + 6;
-  float d = fminf(sqrtf(x * x + z * z) - r, fmaxf(fabsf(x) - 4.0f, fmaxf(-z, z - tz)));
+  /* the field of play: the structure's yard and the launcher's circle round it, and all between (it fires from anywhere
+   * on the circle) */
+  float d = sqrtf(x * x + z * z) - g->ring - 4;
   if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
   float rise = cw_smoothstep(6.0f, 36.0f, d), n = fbm(x / 38.0f + 3, z / 38.0f + 11, 71);
   if (S->backdrop == BD_MESAS) n = 0.55f * n + 0.45f * (0.5f + 0.5f * sinf(x * 0.08f + z * 0.035f + n * 5)); /* dunes */
@@ -536,7 +637,7 @@ static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float
   unsigned *idx = malloc(sizeof(unsigned) * 6 * (nx - 1) * (nz - 1));
   float yard[3];
   for (int c = 0; c < 3; c++) yard[c] = powf(S->yard[c], 2.2f);
-  float r = g->extent + 5, tz = g->muzzle.z + 4;
+  float r = g->extent + 5;
   for (int j = 0; j < nz; j++)
     for (int i = 0; i < nx; i++) {
       int v = j * nx + i;
@@ -547,9 +648,9 @@ static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float
       float c[3];
       wander(S, x, z, g->L->seed, c);
       if (decal) {
-        float d1 = sqrtf(x * x + z * z) - r, d2 = fmaxf(fabsf(x) - 2.4f, fmaxf(-z, z - tz));
+        float rad = sqrtf(x * x + z * z), d1 = rad - r, d2 = fabsf(rad - g->ring) - 2.4f; /* the yard, and the track the launcher rolls round on */
         float d = fminf(d1, d2) + (fbm(x * 0.35f + 40, z * 0.35f + 40, 23) - 0.5f) * 2.4f;
-        float f = cw_smoothstep(-1.4f, 0.9f, d), rut = fabsf(fabsf(x) - 0.75f) < 0.22f && z > r * 0.6f && z < tz ? 0.82f : 1.0f; /* the launcher's wheel ruts */
+        float f = cw_smoothstep(-1.4f, 0.9f, d), rut = fabsf(fabsf(rad - g->ring) - 0.75f) < 0.22f ? 0.82f : 1.0f; /* the launcher's wheel ruts */
         float w = 0.9f + 0.2f * fbm(x * 0.6f, z * 0.6f, 29); /* the earth patchy too */
         for (int k = 0; k < 3; k++) c[k] = yard[k] * w * rut + (c[k] - yard[k] * w * rut) * f;
       }
@@ -581,7 +682,7 @@ void view_level(const game *g) {
   if (cw_node_valid(V.field)) cw_node_free(V.field);
   V.field = cw_node_new("Node3D", "Field");
   cw_node_add_child(V.root, V.field);
-  const setting *S = SET = &SETTINGS[g->L->kind];
+  const setting *S = SET = &SETTINGS[level_setting(g->L)];
   for (int m = 0; m < 4; m++) memcpy(V.pal[m], S->pal[m], sizeof V.pal[m]);
   V.pal[M_TARGET][0] = V.pal[M_TARGET][1] = V.pal[M_TARGET][2] = 1;
   /* the light: a strong low sun behind the launcher, a cooler sky */
@@ -616,36 +717,56 @@ void view_level(const game *g) {
     cw_node_set(f, "max_opacity", cw_val_float(0.55f));
   }
   /* the ground, and the yard and track worn into it */
-  bool sea = S->backdrop == BD_SEA;
+  bool sea = S->backdrop == BD_SEA, harbour = S->backdrop == BD_HARBOUR;
+  V.cliff = -(g->ring + 10); /* the headland reaches past the launcher's circle */
+  V.beam_w = g->L->kind == K_LANDMARK ? 0.45f : 1;
   {
     static const float grey[3] = { 1, 1, 1 };
     t3_material *gm = ground_mat(grey, 1, 1, S->ground[1] > S->ground[0] * 1.3f ? 0 : 4, 0.95f); /* blades on grass, grit elsewhere */
     gm->vertex_colors = true;
     t3_retain(gm);
-    float r = g->extent + 5, zt = fmaxf(r, g->muzzle.z + 4) + 4;
-    const float hole[4] = { -r - 4, r + 4, -r - 4, zt };
-    piece(V.field, "Ground", ground_grid(S, g, -320, sea ? -40 : -320, 640, sea ? 360 : 640, 5, false, hole), gm, false);
-    piece(V.field, "Yard", ground_grid(S, g, -r - 4, -r - 4, 2 * r + 8, zt + r + 4, 0.5f, true, NULL), gm, false);
+    float zt = fmaxf(g->extent + 5, g->ring + 3) + 5; /* the yard and the launcher's track, all round */
+    const float hole[4] = { -zt, zt, -zt, zt };
+    if (!harbour) piece(V.field, "Ground", ground_grid(S, g, -320, sea ? V.cliff : -320, 640, sea ? 320 - V.cliff : 640, 5, false, hole), gm, false);
+    else t3_release(gm);
+    piece(V.field, "Yard", ground_grid(S, g, -zt, -zt, 2 * zt, 2 * zt, 0.5f, true, NULL), gm, false);
+    if (harbour) { /* the point's quay: stone walls down into the water on its four sides */
+      t3_material *qm = std_mat(0.5f, 0.47f, 0.42f, 0.9f, 0);
+      t3_retain(qm), t3_retain(qm), t3_retain(qm);
+      for (int k = 0; k < 4; k++) {
+        t3_geometry *qg = t3_plane_geometry_new(2 * zt, 3, 1, 1);
+        float a = k * 1.5707963f;
+        xform_geo(qg, (t3_vec3){ sinf(a) * zt, -1.5f, cosf(a) * zt }, qaxis(0, 1, 0, a), (t3_vec3){ 1, 1, 1 });
+        piece(V.field, "Quay", qg, qm, false);
+      }
+    }
   }
-  if (sea) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon */
-    t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
-    t3_geometry *cg = t3_plane_geometry_new(640, 40, 1, 1);
-    xform_geo(cg, (t3_vec3){ 0, -20, -40 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
-    piece(V.field, "Cliff", cg, cm, false);
+  if (sea || harbour) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon (the harbour: all round, at the quay's foot) */
+    if (sea) {
+      t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
+      t3_geometry *cg = t3_plane_geometry_new(640, 40, 1, 1);
+      xform_geo(cg, (t3_vec3){ 0, -20, V.cliff }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 });
+      piece(V.field, "Cliff", cg, cm, false);
+    }
     /* the sea: the engine's water (long swells, glints of the sun, foam on the crests), rings round the camera */
     cw_node w = cw_node_new("Water3D", "Sea");
     cw_node_add_child(V.field, w);
-    cw_node3d_set_position(w, (t3_vec3){ 0, -38, -390 });
+    cw_node3d_set_position(w, harbour ? (t3_vec3){ 0, -0.7f, 0 } : (t3_vec3){ 0, -38, V.cliff - 350 });
+    static const char *const BAY[] = { "size", "vec2(1400, 1400)", "grid", "VIEW", "horizon_distance", "900", "subdivisions", "48",
+      "wave_count", "3", "wave0", "vec4(250, 14, 0.12, 0.3)", "wave1", "vec4(230, 7, 0.06, 0.3)", "wave2", "vec4(270, 4, 0.03, 0.3)",
+      "color", "color(0.08, 0.3, 0.4, 1)", "deep_color", "color(0.02, 0.12, 0.2, 1)", "detail", "0.6", "roughness", "0.1",
+      "reflection", "false", "refraction", "false", "crest_foam", "0.1", "floor_map_size", "0", "normal_scale", "0.05", "flow_speed", "0.02", NULL };
     static const char *const SEA[] = { "size", "vec2(1400, 700)", "grid", "VIEW", "horizon_distance", "900", "subdivisions", "48",
       "wave_count", "3", "wave0", "vec4(250, 38, 0.5, 0.35)", "wave1", "vec4(230, 17, 0.22, 0.4)", "wave2", "vec4(270, 9, 0.1, 0.4)",
       "color", "color(0.1, 0.32, 0.42, 1)", "deep_color", "color(0.02, 0.12, 0.2, 1)", "detail", "0.6", "roughness", "0.12",
       "reflection", "false", "refraction", "false", "crest_foam", "0.25", "floor_map_size", "0", "normal_scale", "0.05", "flow_speed", "0.02", NULL };
-    for (int i = 0; SEA[i]; i += 2) {
-      const cw_prop *p = cw_node_find_prop(w, SEA[i], NULL);
+    const char *const *W = harbour ? BAY : SEA;
+    for (int i = 0; W[i]; i += 2) {
+      const cw_prop *p = cw_node_find_prop(w, W[i], NULL);
       cw_value v;
-      if (p && p->type == CW_T_ENUM) cw_node_set(w, SEA[i], cw_val_enum(SEA[i + 1]));
-      else if (p && cw_value_parse(SEA[i + 1], p->type, &v)) cw_node_set(w, SEA[i], v);
-      else cw_warn("destructo: bad sea setting %s", SEA[i]);
+      if (p && p->type == CW_T_ENUM) cw_node_set(w, W[i], cw_val_enum(W[i + 1]));
+      else if (p && cw_value_parse(W[i + 1], p->type, &v)) cw_node_set(w, W[i], v);
+      else cw_warn("destructo: bad sea setting %s", W[i]);
     }
   }
   if (S->backdrop == BD_GORGE) { /* a river under the bridge's first span, running down the gorge */
@@ -661,7 +782,23 @@ void view_level(const game *g) {
     t3_texture *t = ground_texture(grey, 9);
     t3_material_set_map(m, t);
     t3_release(t);
-    piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
+    if (S->backdrop == BD_CITY || harbour) {
+      t3_retain(m); /* the hills under the towers take it too (piece() lets one go) */
+      t3_material *cm = std_mat(1, 1, 1, 0.75f, 0);
+      cm->vertex_colors = true;
+      t3_texture *wt = windows_texture();
+      wt->repeat = (t3_vec2){ 2, 2 };
+      wt->wrap_s = wt->wrap_t = T3_REPEAT;
+      t3_material_set_map(cm, wt);
+      t3_release(wt);
+      for (int p = 0; p < 6; p++) {
+        t3_retain(cm);
+        piece(V.field, "Skyline", city_geo(S, g->L->seed + (uint32_t)p * 7919u, p, 6), cm, false);
+      }
+      t3_release(cm);
+      if (!harbour) piece(V.field, "Backdrop", backdrop_geo(&SETTINGS[ST_MEADOW], g->L->seed), m, false); /* low hills under the towers */
+      else t3_release(m);
+    } else piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
   }
   /* grass on green ground: tufts in the field round the yard, thick near it and thinning out to 45 m, off the yard,
    * the track and the river; the setting's green, lighter and drier in patches */
@@ -669,17 +806,18 @@ void view_level(const game *g) {
     enum { NG = 9000 };
     static grass_tuft tufts[NG];
     int n = 0;
-    float r = g->extent + 5, tz = g->muzzle.z + 6;
+    float r = g->extent + 5;
     t3_color base = { powf(S->ground[0], 2.2f) * 2.6f, powf(S->ground[1], 2.2f) * 2.6f, powf(S->ground[2], 2.2f) * 2.6f };
     for (int i = 0; i < NG * 4 && n < NG; i++) {
       float a = hashf(g->L->seed * 7u + (uint32_t)i * 2654435761u) * 6.2831853f;
       float rr = r + 2 + powf(hashf((uint32_t)i * 40503u + 17u), 1.8f) * 32;
       float x = cosf(a) * rr, z = sinf(a) * rr;
-      float d = fminf(sqrtf(x * x + z * z) - r, fmaxf(fabsf(x) - 4.0f, fmaxf(-z, z - tz)));
+      float rad = sqrtf(x * x + z * z), d = fminf(rad - r, fabsf(rad - g->ring) - 4.0f);
       if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
       float clump = fbm(x / 9.0f + 5, z / 9.0f + 2, 33);
       if (d < 1.5f + clump * 3 || clump < 0.3f) continue;
-      if (sea && z < -38) continue;
+      if (sea && z < V.cliff + 2) continue;
+      if (harbour && (fabsf(x) > fmaxf(g->extent + 5, g->ring + 3) + 4.5f || fabsf(z) > fmaxf(g->extent + 5, g->ring + 3) + 4.5f)) continue;
       float dry = cw_smoothstep(0.55f, 0.8f, fbm(x / 25.0f + 1, z / 25.0f + 8, 44)), v = 0.8f + 0.4f * hashf((uint32_t)i * 977u);
       grass_tuft *t = &tufts[n++];
       t->x = x, t->z = z, t->y = relief_h(S, g, x, z);
@@ -693,13 +831,13 @@ void view_level(const game *g) {
   if (S->ntrees > 0 && !getenv("DESTRUCTO_NO_TREES")) {
     static tree_spot spots[TREES_MAX];
     int n = 0;
-    bool autumn = g->L->kind == K_WALL, groves = S->sp[0] == SP_PALM;
+    bool autumn = level_setting(g->L) == ST_MEADOW, groves = S->sp[0] == SP_PALM;
     for (int i = 0; n < S->ntrees && n < TREES_MAX && i < S->ntrees * 12; i++) {
-      float a = hashf(g->L->seed * 31u + (uint32_t)i * 7u) * 6.2831853f, r = 33 + hashf(g->L->seed * 17u + (uint32_t)i * 13u) * 75;
+      float a = hashf(g->L->seed * 31u + (uint32_t)i * 7u) * 6.2831853f, r = g->ring + 12 + hashf(g->L->seed * 17u + (uint32_t)i * 13u) * 70;
       float x = cosf(a) * r, z = sinf(a) * r;
-      if (fabsf(x) < 18 && z > -10 && z < g->muzzle.z + 12) continue; /* the field of fire and the launcher's place */
+      if (x * x + z * z < (g->ring + 12) * (g->ring + 12)) continue; /* the field of fire: the launcher fires from anywhere on its circle */
       if (x * x + z * z < (g->extent + 12) * (g->extent + 12)) continue;
-      if (sea && z < -36) continue;
+      if (sea && z < V.cliff + 4) continue;
       if (S->backdrop == BD_GORGE && fabsf(x - 4.8f) < 6) continue;
       if (fbm(x / 34.0f + 9, z / 34.0f + 9, 61) < (groves ? 0.52f : 0.38f)) continue; /* groves and clearings */
       tree_spot *t = &spots[n];
@@ -823,15 +961,16 @@ static void block_layers(const game *g) {
 
 void view_sync(const game *g, float alpha) {
   block_layers(g);
-  int cnt[M_COUNT] = { 0 }, nroof = 0;
+  int cnt[M_COUNT] = { 0 }, nroof = 0, ncurt = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
     if (!k->alive) continue;
     int m = k->mat;
     bool roofing = k->paint == P_ROOF_RED || k->paint == P_ROOF_SLATE || k->paint == P_ROOF_COPPER;
     if (roofing && nroof >= MAXBLK / 4) roofing = false;
-    t3_instanced_mesh *im = roofing ? V.roof : V.blk[m];
-    int s = roofing ? nroof++ : cnt[m]++;
+    bool curtain = m == M_GLASS && (k->paint == P_DARK_GLASS || k->paint == P_BLUE_GLASS) && ncurt < MAXBLK / 2;
+    t3_instanced_mesh *im = roofing ? V.roof : curtain ? V.curtain : V.blk[m];
+    int s = roofing ? nroof++ : curtain ? ncurt++ : cnt[m]++;
     cw_xform3 x = cw_body3d_interpolated(k->body, alpha);
     t3_mat4 mx;
     const float proud = m == M_TARGET || getenv_layers_off() ? 0 : 2.0f * LAY_STEP; /* a layer (both ends) */
@@ -872,6 +1011,10 @@ void view_sync(const game *g, float alpha) {
     if (V.blk[m]->instance_color) V.blk[m]->instance_color->version++;
     inst += cnt[m];
   }
+  V.curtain->count = ncurt;
+  V.curtain->instance_matrix->version++;
+  if (V.curtain->instance_color) V.curtain->instance_color->version++;
+  inst += ncurt;
   V.roof->count = nroof;
   V.roof->instance_matrix->version++;
   if (V.roof->instance_color) V.roof->instance_color->version++;
@@ -898,7 +1041,7 @@ void view_sync(const game *g, float alpha) {
       cw_xform3 x = cw_body3d_interpolated(g->b[g->tgt[t].blk].body, alpha);
       float pulse = 1 + 0.08f * sinf((float)g->tick * 0.05f + t * 1.7f);
       t3_mat4 mx;
-      t3_mat4_compose(&mx, (t3_vec3){ x.p.x, x.p.y + 0.3f, x.p.z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ pulse, 18, pulse });
+      t3_mat4_compose(&mx, (t3_vec3){ x.p.x, x.p.y + 0.3f, x.p.z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ pulse * V.beam_w, 18, pulse * V.beam_w });
       t3_instanced_mesh_set_matrix_at(V.beams, nb++, &mx);
     }
     V.beams->count = nb;
@@ -936,6 +1079,8 @@ void view_sync(const game *g, float alpha) {
   }
   /* the launcher follows the aim */
   if (cw_node_valid(V.yaw)) {
+    cw_node3d_set_position(V.launcher, (t3_vec3){ g->muzzle.x, 0, g->muzzle.z });
+    cw_node3d_set_rotation(V.launcher, (t3_vec3){ 0, g->orbit, 0 });
     cw_node3d_set_rotation(V.yaw, (t3_vec3){ 0, g->yaw, 0 });
     cw_node3d_set_rotation(V.barrel, (t3_vec3){ g->pitch, 0, 0 });
   }
@@ -958,6 +1103,8 @@ void view_sync(const game *g, float alpha) {
    * took shot after shot over its top from a path that seemed to run into it */
   int np = 0;
   if (g->state == GS_AIM && !g_view_no_path) {
+    if (V.front_level != g->level + 1 || V.front_orbit != g->orbit) V.front = game_front(g), V.front_orbit = g->orbit, V.front_level = g->level + 1;
+    t3_vec3 out = game_out_dir(g);
     t3_vec3 d = game_aim_dir(g);
     float sp = game_speed(g);
     t3_vec3 p = { g->muzzle.x + d.x * 1.4f, g->muzzle.y + d.y * 1.4f, g->muzzle.z + d.z * 1.4f };
@@ -979,7 +1126,7 @@ void view_sync(const game *g, float alpha) {
         t3_instanced_mesh_set_color_at(V.path, np, (t3_color){ b, b, b });
         np++;
         next += 1.1f;
-        if (p.z <= g->front) break;
+        if (p.x * out.x + p.z * out.z <= V.front) break;
       }
     }
   }
@@ -993,20 +1140,23 @@ static t3_vec3 lerp3(t3_vec3 a, t3_vec3 b, float t) { return (t3_vec3){ a.x + (b
 void view_camera(const game *g, cw_node camera, float aspect, float dt, bool overview, float alpha) {
   t3_vec3 eye, at;
   float k = 3.0f; /* how fast the camera follows */
-  float sy = sinf(g->yaw), cy = cosf(g->yaw);
+  float wy = game_world_yaw(g), sy = sinf(wy), cy = cosf(wy);
   t3_vec3 fwd = { -sy, 0, -cy }, right = { cy, 0, -sy };
+  float so = sinf(g->orbit), co = cosf(g->orbit); /* the launcher's place: out from the middle, and its right */
   float ext = g->extent, top = g->top;
   t3_vec3 mid = { 0, top * 0.42f, 0 };
   if (overview) {
-    eye = (t3_vec3){ ext * 1.6f + 10, top * 0.9f + 8, g->muzzle.z * 0.55f };
+    float ox = ext * 1.6f + 10, oz = g->ring * 0.55f; /* to the launcher's right and out toward it */
+    eye = (t3_vec3){ ox * co + oz * so, top * 0.9f + 8, -ox * so + oz * co };
     at = mid;
     k = 4;
   } else if (g->state == GS_AIM) {
     /* behind the launcher, a little to the right, looking down the aim over the structure */
     t3_vec3 m = g->muzzle;
-    eye = (t3_vec3){ m.x - fwd.x * 8.5f + right.x * 2.6f, m.y + 3.6f, m.z - fwd.z * 8.5f + right.z * 2.6f };
+    float tall = fmaxf(0, top - 12); /* a tall landmark: the camera rises and looks up its height */
+    eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f, m.z - fwd.z * (8.5f + tall * 0.4f) + right.z * 2.6f };
     float pitch_look = cw_clampf(g->pitch, -0.05f, 0.5f);
-    at = (t3_vec3){ m.x + fwd.x * m.z, m.y + top * 0.25f + pitch_look * 8 - 1.0f, m.z + fwd.z * m.z };
+    at = (t3_vec3){ m.x + fwd.x * g->ring, m.y + top * 0.25f + tall * 0.3f + pitch_look * 8 - 1.0f, m.z + fwd.z * g->ring };
     k = g->state == V.last_state ? 4 : 2;
   } else if (g->state == GS_FLIGHT && g->proj_live) {
     cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);
@@ -1025,7 +1175,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   } else if (g->state == GS_WON || g->state == GS_LOST) {
     V.orbit += dt * 0.12f;
     float r = ext * 2.2f + 12;
-    eye = (t3_vec3){ sinf(V.orbit + 0.7f) * r, top * 0.6f + 6, cosf(V.orbit + 0.7f) * r };
+    eye = (t3_vec3){ sinf(V.orbit + g->orbit + 0.7f) * r, top * 0.6f + 6, cosf(V.orbit + g->orbit + 0.7f) * r };
     at = mid;
     k = 1.5f;
   } else {
@@ -1033,7 +1183,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
     c = lerp3(c, mid, 0.5f);
     float r = ext * 1.7f + 9;
-    float a = 0.75f + (float)g->state_t * 0.0012f;
+    float a = g->orbit + 0.75f + (float)g->state_t * 0.0012f; /* off to the side of where the shot came from */
     eye = (t3_vec3){ c.x + sinf(a) * r, top * 0.55f + 4.5f, c.z + cosf(a) * r };
     at = (t3_vec3){ c.x, fmaxf(1.5f, c.y * 0.7f), c.z };
     k = 1.8f;
@@ -1079,7 +1229,7 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
     V.rp_orbit += dt * (slow ? 0.05f : 0.14f);
     float settle = cw_clampf((float)(g->tick - g->proj_hit_tick) / 400.0f, 0, 1);
     float r = (ext * 1.05f + 6) * (1 + 0.45f * settle);
-    float a = -0.9f + V.rp_orbit;
+    float a = g->orbit - 0.9f + V.rp_orbit;
     eye = (t3_vec3){ c.x + sinf(a) * r, fmaxf(1.4f, top * (0.25f + 0.25f * settle) + 1.5f), c.z + cosf(a) * r };
     at = (t3_vec3){ c.x, fmaxf(1.2f, c.y * 0.75f), c.z };
     k = 2.2f;
@@ -1117,6 +1267,17 @@ bool view_screen(t3_vec3 p, float *u, float *v) {
   float sx = (d.x * r.x + d.y * r.y + d.z * r.z) / (zz * th * V.aspect), sy = (d.x * up.x + d.y * up.y + d.z * up.z) / (zz * th);
   *u = 0.5f + sx * 0.5f, *v = 0.5f - sy * 0.5f;
   return true;
+}
+
+bool view_hidden(const game *g, int t) {
+  if (t < 0 || t >= g->ntgt || g->tgt[t].blk < 0) return false;
+  t3_vec3 c = cw_body3d_transform(g->b[g->tgt[t].blk].body).p;
+  float so = sinf(g->orbit), co = cosf(g->orbit);
+  t3_vec3 eye = { g->muzzle.x + so * 8.5f + co * 2.6f, g->muzzle.y + 3.6f, g->muzzle.z + co * 8.5f - so * 2.6f };
+  cw_phys_filter f = cw_phys_filter_layers(1u << 1);
+  cw_ray_hit3d hit;
+  if (!cw_world3d_raycast(g->w, eye, (t3_vec3){ c.x - eye.x, c.y - eye.y, c.z - eye.z }, &f, &hit)) return false;
+  return hit.body.id != g->b[g->tgt[t].blk].body.id;
 }
 
 view_stats view_get_stats(void) { return V.st; }

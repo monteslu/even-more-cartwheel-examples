@@ -17,4 +17,6 @@ typedef struct view_stats { int instances, lights; float cam_dist; } view_stats;
 view_stats view_get_stats(void);
 extern bool g_view_no_path; /* key-art captures: no aim path */
 
+/* the crystal t's glow is hidden from the aiming camera by the structure (the HUD's hint to go round) */
+bool view_hidden(const game *g, int t);
 #endif
