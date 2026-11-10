@@ -248,6 +248,15 @@ the Skyreach, the Lantern Gate, the Archive, the Fen).
 from 80), luma standard deviation 55 or more, a complementary accent in 3% or more of the saturated pixels, a floor
 of local contrast; frames flattened halfway to their mean must fail.
 
+**Nothing in the backdrop floats.** Each parallax family that stands (trees, crystal spires, the colonnade's piers, the
+machinery's stacks) paints its own ground: a band from a straight ground line to the texture's bottom row, which the sky
+draws on down to the canvas's bottom edge however far a depth lifts as the camera drops down a tall room; the trees'
+roots spread where they meet it. The depths rest where the camera stands at the top of its room, and the rest line
+follows the camera into the next room at the camera's own pace, so a doorway never jolts them. `tests/lanternfall-grounding.mjs`
+measures every foot against its ground line in the painted texture (2 px at 1080p allowed) and, through the game's debug
+channel on every host, samples the rendered frames under each foot in views across every region: ground, never sky.
+One trunk stopped 12 px above its ground must fail.
+
 Lamps, the lantern, shots and pickups are 2D lights on the lit layers; glows and particles go on an additive layer
 over them.
 

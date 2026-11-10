@@ -11,6 +11,28 @@ static float wrapdx(float a, float b) { /* signed, across the wrap */
   return d > 0.5f ? d - 1 : d < -0.5f ? d + 1 : d;
 }
 
+/* Everything that stands in a family stands on ground painted in the same texture: a band from the family's ground
+ * line (PAR_GROUND, a share of the height) to the bottom row, which the sky draws on down to the canvas's bottom edge
+ * (view.c draw_sky). The ridges are ground themselves; the hanging growth stands on nothing. */
+#define PAR_GROUND_TREES 0.925f
+#define PAR_GROUND_CRYSTAL 0.925f
+#define PAR_GROUND_ARCH 0.88f
+#define PAR_GROUND_MACHINE 0.9f
+float art_par_ground(int k) {
+  return k == PAR_TREES ? PAR_GROUND_TREES : k == PAR_CRYSTAL ? PAR_GROUND_CRYSTAL : k == PAR_ARCH ? PAR_GROUND_ARCH : k == PAR_MACHINE ? PAR_GROUND_MACHINE : -1;
+}
+/* the control of tests/lanternfall-grounding.mjs: one tree's trunk stops this many rows above its ground (0: none) */
+static int par_lift_rows;
+#define PAR_LIFT_TREE 3
+/* earth under the trees and the spires: a lit rim along the ground line, then soil darkening toward the bottom row,
+ * with a little grain (luma only: the band's edge is one straight line, so the gate can measure against it) */
+static float par_ground_luma(float fx, float fy, float g, int seed) {
+  float d = (fy - g) / (1 - g);
+  float rim = sstep(0.08f, 0.0f, d) * 0.1f;
+  float grain = 0.05f * (vnoise(fx * 700, fy * 350, seed, 700) - 0.5f);
+  return 0.74f - 0.2f * d + rim + grain;
+}
+
 static void par_pixel(int k, float fx, float fy, float *a, float *l) {
   *a = 0, *l = 0.85f + 0.15f * (1 - fy);
   switch (k) {
@@ -56,8 +78,9 @@ static void par_pixel(int k, float fx, float fy, float *a, float *l) {
       float cx = ((float)t + 0.2f + 0.6f * hash2(t, 7, 110)) / 9, h = 0.35f + 0.45f * hash2(t, 8, 111), tw = 0.004f + 0.006f * hash2(t, 9, 112);
       float ctop = 1 - h, dx = wrapdx(fx, cx), lean = (hash2(t, 10, 113) - 0.5f) * 0.03f;
       float tx = dx - lean * (1 - fy) / h;
-      float flare = 1.0f + 1.5f * (fy - ctop) / h + 3 * sstep(0.9f, 1.0f, fy); /* (the roots spread at the foot) */
-      if (fy > ctop + h * 0.3f && fabsf(tx) < tw * flare) *a = 1, lv = 0.6f + 0.1f * bark + 0.12f * sstep(tw * flare, -tw * flare, tx * 1.5f);
+      float flare = 1.0f + 1.5f * (fy - ctop) / h + 3 * sstep(PAR_GROUND_TREES - 0.08f, PAR_GROUND_TREES, fy); /* (the roots spread where they meet the ground) */
+      bool foot = fy > ctop + h * 0.3f && (t != PAR_LIFT_TREE || !par_lift_rows || fy < PAR_GROUND_TREES - (float)par_lift_rows / 512);
+      if (foot && fabsf(tx) < tw * flare) *a = 1, lv = 0.6f + 0.1f * bark + 0.12f * sstep(tw * flare, -tw * flare, tx * 1.5f);
       for (int c = 0; c < 6; c++) {
         float ccx = (hash2(t, 20 + c, 114) - 0.5f) * 0.18f * h + lean, ccy = ctop + h * (0.08f + 0.28f * hash2(t, 30 + c, 115));
         float r = h * (0.1f + 0.13f * hash2(t, 40 + c, 116));
@@ -79,10 +102,11 @@ static void par_pixel(int k, float fx, float fy, float *a, float *l) {
         }
       }
     }
+    if (fy > PAR_GROUND_TREES) *a = 1, lv = par_ground_luma(fx, fy, PAR_GROUND_TREES, 148); /* the earth the trunks stand in */
     *l = lv;
     break;
   }
-  case PAR_CRYSTAL: { /* spires of crystal, leaning, each with a lit face and a shaded one */
+  case PAR_CRYSTAL: { /* spires of crystal, leaning, each with a lit face and a shaded one, out of a floor of rock */
     for (int s = 0; s < 14; s++) {
       float cx = ((float)s + hash2(s, 11, 118)) / 14, h = 0.25f + 0.55f * hash2(s, 12, 119), w = 0.01f + 0.022f * hash2(s, 13, 120);
       float lean = (hash2(s, 14, 121) - 0.5f) * 0.6f, top = 1 - h;
@@ -90,6 +114,7 @@ static void par_pixel(int k, float fx, float fy, float *a, float *l) {
       float t = (fy - top) / h, dx = wrapdx(fx, cx) - lean * w * (1 - t) * 3, half = w * fminf(1, t * 4);
       if (fabsf(dx) < half) *a = 1, *l = dx < 0 ? 0.97f : 0.66f;
     }
+    if (fy > PAR_GROUND_CRYSTAL) *a = 1, *l = par_ground_luma(fx, fy, PAR_GROUND_CRYSTAL, 149) - 0.04f;
     break;
   }
   case PAR_MACHINE: { /* gears with spokes, pipes across, chimney stacks, a gantry */
@@ -128,19 +153,71 @@ static void par_pixel(int k, float fx, float fy, float *a, float *l) {
   }
 }
 
-static void make_parallax(uint8_t *px) {
-  for (int k = 0; k < NPAR; k++) {
-    for (int y = 0; y < 512; y++)
-      for (int x = 0; x < 1024; x++) {
-        float a = 0, l = 0; /* four samples a pixel: smooth edges */
-        for (int q = 0; q < 4; q++) {
-          float sa, sl;
-          par_pixel(k, ((float)x + 0.25f + 0.5f * (float)(q & 1)) / 1024, ((float)y + 0.25f + 0.5f * (float)(q >> 1)) / 512, &sa, &sl);
-          a += sa * 0.25f, l += sl * sa;
-        }
-        uint8_t *o = px + 4 * (y * 1024 + x);
-        o[0] = o[1] = o[2] = u8(a > 0 ? l / (a * 4) : 0.8f), o[3] = u8(a);
+static void make_par_one(int k, uint8_t *px) {
+  for (int y = 0; y < 512; y++)
+    for (int x = 0; x < 1024; x++) {
+      float a = 0, l = 0; /* four samples a pixel: smooth edges */
+      for (int q = 0; q < 4; q++) {
+        float sa, sl;
+        par_pixel(k, ((float)x + 0.25f + 0.5f * (float)(q & 1)) / 1024, ((float)y + 0.25f + 0.5f * (float)(q >> 1)) / 512, &sa, &sl);
+        a += sa * 0.25f, l += sl * sa;
       }
-    A.par[k] = cw_texture_from_pixels(1024, 512, px, &(cw_texture_desc){ .repeat = true });
+      uint8_t *o = px + 4 * (y * 1024 + x);
+      o[0] = o[1] = o[2] = u8(a > 0 ? l / (a * 4) : 0.8f), o[3] = u8(a);
+    }
+  if (A.par[k].id) cw_texture_destroy(A.par[k]);
+  A.par[k] = cw_texture_from_pixels(1024, 512, px, &(cw_texture_desc){ .repeat = true });
+  const char *dump = getenv("LANTERNFALL_PAR_DUMP"); /* (the grounding gate, natively: each family's pixels, raw RGBA rows) */
+  if (dump) {
+    char path[512];
+    snprintf(path, sizeof path, "%s/par%d.rgba", dump, k);
+    FILE *f = fopen(path, "wb");
+    if (f) fwrite(px, 1, 1024 * 512 * 4, f), fclose(f);
   }
+}
+static void make_parallax(uint8_t *px) {
+  if (getenv("LANTERNFALL_PAR_LIFT")) par_lift_rows = atoi(getenv("LANTERNFALL_PAR_LIFT"));
+  for (int k = 0; k < NPAR; k++) make_par_one(k, px);
+}
+/* the trees painted again with one trunk stopped `rows` texture rows above the ground (the gate's control; 0 restores) */
+void art_par_lift(int rows) {
+  par_lift_rows = rows;
+  make_par_one(PAR_TREES, par_px);
+}
+int art_par_lift_rows(void) { return par_lift_rows; }
+
+/* what stands in a family: each feature's foot on the ground line, in texture shares (x across the wrap, hw its half
+ * width there), as the painter places them. The ridges and the hanging growth have none. */
+int art_par_features(int k, par_feature *out, int max) {
+  int n = 0;
+  switch (k) {
+  case PAR_TREES:
+    for (int t = 0; t < 9 && n < max; t++) {
+      float cx = ((float)t + 0.2f + 0.6f * hash2(t, 7, 110)) / 9, h = 0.35f + 0.45f * hash2(t, 8, 111), tw = 0.004f + 0.006f * hash2(t, 9, 112);
+      float ctop = 1 - h, lean = (hash2(t, 10, 113) - 0.5f) * 0.03f, g = PAR_GROUND_TREES;
+      float flare = 1.0f + 1.5f * (g - ctop) / h + 3;
+      float x = cx + lean * (1 - g) / h;
+      out[n++] = (par_feature){ .x = x - floorf(x), .hw = tw * flare, .top = ctop, .id = t };
+    }
+    break;
+  case PAR_CRYSTAL:
+    for (int s = 0; s < 14 && n < max; s++) {
+      float cx = ((float)s + hash2(s, 11, 118)) / 14, h = 0.25f + 0.55f * hash2(s, 12, 119), w = 0.01f + 0.022f * hash2(s, 13, 120);
+      float lean = (hash2(s, 14, 121) - 0.5f) * 0.6f, top = 1 - h, g = PAR_GROUND_CRYSTAL, t = (g - top) / h;
+      float x = cx + lean * w * (1 - t) * 3;
+      out[n++] = (par_feature){ .x = x - floorf(x), .hw = w * fminf(1, t * 4), .top = top, .id = s };
+    }
+    break;
+  case PAR_ARCH:
+    for (int b = 0; b < 7 && n < max; b++) out[n++] = (par_feature){ .x = (float)b / 7, .hw = 0.13f / 7, .top = 0.2f + 0.2f * hash2(b, 4, 106), .id = b };
+    break;
+  case PAR_MACHINE:
+    for (int p = 0; p < 4 && n < max; p++) {
+      float sx = ((float)p + hash2(p, 21, 128)) / 4, sw = 0.01f + 0.012f * hash2(p, 22, 129), st = 0.1f + 0.3f * hash2(p, 23, 130);
+      out[n++] = (par_feature){ .x = sx, .hw = sw, .top = st, .id = p };
+    }
+    break;
+  default: break;
+  }
+  return n;
 }

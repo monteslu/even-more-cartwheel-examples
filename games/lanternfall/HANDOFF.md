@@ -87,6 +87,16 @@
 - Bench: `LANTERNFALL_BENCH_DUMP=<file>` with `CW_R2D_TIMERS=1` writes each render part's GPU time; `bench_r2d` prints
   the world pass's draws and batches. The tiles layer draws in z bands (view.c `Z_*`) so each atlas array batches once.
 
+## Grounding round (2026-11-10, branch lanternfall-trees)
+- The backdrop trees floated: PAR_TREES (and the crystals) had no ground band, so each trunk ended at the texture's bottom
+  row, and draw_sky lifted the depths by the camera's drop from the room's TOP (never zero: even a one-cell room put
+  the near depth's bottom edge 104 px up the canvas, the mid depth's 60 px) with nothing drawn below. Fixed in
+  art_par.h (ground bands, roots meeting them, `art_par_features`) and view.c (`par_layout`: the rest line at the
+  camera's top clamp, eased across rooms; the ground drawn on to the canvas bottom).
+- Debug commands for the gate (main.c): lf_view, lf_freeze, lf_sky_only, lf_par_only, lf_hud, lf_lift, lf_par, lf_rooms;
+  natively LANTERNFALL_VIEW=room,x,y, LANTERNFALL_SKY_ONLY, LANTERNFALL_PAR_ONLY, LANTERNFALL_PAR_DUMP=<dir>,
+  LANTERNFALL_PAR_LIFT=<rows>.
+
 ## Debugging switches
 - Fast looks without the GPU lock: `node tests/lanternfall-look.mjs` (lavapipe, out/look-lanternfall/r<region>.png), or
   run lanternfall_auto on lavapipe by hand (SDL_VIDEODRIVER=offscreen, VK_ICD_FILENAMES=lvp, CW_GPU=webgpu,

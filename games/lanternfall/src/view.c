@@ -18,11 +18,17 @@
 #include "creatures.h"
 #include "scenery.h"
 #include "view.h"
+#include "cartwheel/debug.h"
 
 cw_camera2d g_cam;
 bool g_gi = true; /* 2D global illumination (v0.37 engines): on unless a test or a slow host turns it off */
 static float zoom = 60; /* canvas units per tile */
 static view_stats VS;
+/* the grounding gate's views (tests/lanternfall-grounding.mjs, through main.c's debug commands): the camera held at a
+ * place, the players kept out of the frame, the sky layer drawn alone */
+static bool cam_locked, cam_snapped, sky_only, hide_players;
+static int par_only = -2; /* -2 every parallax depth, -1 none (the hazy gradient alone), else that depth alone */
+static cw_vec2 cam_lock;
 #include <time.h>
 static double now_ms(void) {
   struct timespec ts;
@@ -118,6 +124,7 @@ void view_camera(const sim *s, float dt, bool snap) {
     if (s->p[i].active) tx += s->p[i].x, ty += s->p[i].y - 1.2f, n++;
   if (n) tx /= (float)n, ty /= (float)n;
   tx += s->p[0].vx * 0.18f;
+  if (cam_locked) tx = cam_lock.x, ty = cam_lock.y, snap = true;
   if (s->room >= 0 && !showcase_mode()) { /* the room's walls bound the view */
     const room *r = &s->w->rooms[s->room];
     float x0 = (float)(r->x * CELL_W) + vw * 0.5f, x1 = (float)((r->x + r->w) * CELL_W) - vw * 0.5f;
@@ -125,7 +132,7 @@ void view_camera(const sim *s, float dt, bool snap) {
     tx = x1 < x0 ? (x0 + x1) * 0.5f : tx < x0 ? x0 : tx > x1 ? x1 : tx;
     ty = y1 < y0 ? (y0 + y1) * 0.5f : ty < y0 ? y0 : ty > y1 ? y1 : ty;
   }
-  if (snap || g_cam.zoom == 0) g_cam.position = (cw_vec2){ tx, ty };
+  if (snap || g_cam.zoom == 0) g_cam.position = (cw_vec2){ tx, ty }, cam_snapped = true;
   else {
     float k = 1 - expf(-dt * 9);
     g_cam.position.x += (tx - g_cam.position.x) * k;
@@ -189,6 +196,48 @@ static cw_color comp_accent(int region) {
   cw_color k = hexc(REGIONS[region].sky, 1);
   return k.r > k.b + 0.05f ? rgba(0.42f, 0.66f, 1.0f, 1) : rgba(1.0f, 0.68f, 0.32f, 1);
 }
+/* where each parallax depth sits on the canvas this frame (draw_sky draws it, view_par_report tells the grounding gate) */
+typedef struct par_layer { int tex; float w, h, u0, su, y0, ground; cw_color col; } par_layer;
+static void par_layout(const sim *s, int region, par_layer out[3]) {
+  const region_info *ri = &REGIONS[region];
+  static const int8_t EXPO[NREGIONS] = { [R_FORGE] = 34, [R_CLOCK] = 10, [R_ROOTWAY] = 4, [R_FROST] = -4, [R_SKY] = -8, [R_GATE] = 16, [R_GLASS] = -8 };
+  int ex = EXPO[region];
+  cw_vec2 cs = view_canvas();
+  cw_color comp = comp_accent(region);
+  static const uint8_t SET[NREGIONS][3] = {
+    [R_GATE] = { PAR_RIDGE, PAR_ARCH, PAR_TREES },      [R_ROOTWAY] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_GLASS] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_FEN] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_CLOCK] = { PAR_RIDGE, PAR_MACHINE, PAR_ARCH },   [R_TIDAL] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },
+    [R_STAR] = { PAR_RIDGE, PAR_CRYSTAL, PAR_ARCH },    [R_SKY] = { PAR_RIDGE, PAR_ARCH, PAR_CRYSTAL },
+    [R_ARCHIVE] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },    [R_FORGE] = { PAR_RIDGE, PAR_MACHINE, PAR_MACHINE },
+    [R_FROST] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_BLOOM] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+    [R_HEART] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
+  };
+  static const float PAR[3] = { 0.14f, 0.32f, 0.55f };
+  bool cool = comp.r > comp.b; /* (a cool region: its far ridges glow the full lantern amber, the warm accent of the frame) */
+  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, cool ? 1.0f : 0.85f), VAL(V_FAR + ex - (cool ? 12 : 0))), toluma(region == R_FORGE || region == R_CLOCK ? mixc(comp, rgba(0.3f, 0.36f, 0.48f, 1), 0.35f) : mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.6f : 0.25f), VAL(V_MID + ex)), toluma(hexc(ri->near, 1), VAL(V_NEAR + ex)) };
+  if (region == R_FORGE || region == R_CLOCK) cols[2] = mixc(cols[2], rgba(0.42f, 0.5f, 0.6f, 1), 0.45f); /* cool steel against the heat */
+  /* the depths rest where the camera stands at the top of its room and lift as it drops down a tall room. The rest line
+   * follows the camera into the next room at the camera's own pace, so a doorway never jolts the backdrop; a cut
+   * (a teleport, a respawn) takes it there at once. */
+  static float ref_y;
+  static bool ref_set;
+  float ref_to = (float)(s->room >= 0 ? s->w->rooms[s->room].y * CELL_H : 0) + CELL_H * 0.5f;
+  if (!ref_set || cam_snapped) ref_y = ref_to, ref_set = true, cam_snapped = false;
+  else ref_y += (ref_to - ref_y) * (1 - expf(-9.0f / 60));
+  for (int k = 0; k < 3; k++) {
+    par_layer *l = &out[k];
+    l->tex = SET[region][k];
+    l->w = cs.y * (1.7f + 0.35f * (float)((region * 3 + k) % 4)) * (k == 2 && SET[region][1] == SET[region][2] ? 1.45f : 1), l->h = cs.y * (0.85f - 0.06f * (float)k);
+    l->u0 = g_cam.position.x * zoom * PAR[k] / l->w + (float)region * 0.37f + (float)k * 0.21f;
+    l->su = cs.x / l->w;
+    float yoff = -(g_cam.position.y - ref_y) * zoom * PAR[k] * 0.35f;
+    l->y0 = cs.y - l->h + yoff + cs.y * 0.1f * (float)(2 - k);
+    if (l->tex == PAR_HANG) l->y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
+    l->ground = l->tex == PAR_RIDGE ? 1.0f : art_par_ground(l->tex); /* (the ridges are ground down to their bottom row) */
+    l->col = cols[k];
+  }
+}
 static void draw_sky(const sim *s, float t, int region) {
   const region_info *ri = &REGIONS[region];
   /* a little more light behind the rock-heavy halls of the Forge, a little less in the snow (luma steps) */
@@ -214,30 +263,24 @@ static void draw_sky(const sim *s, float t, int region) {
   /* parallax: three depths of the region's own shapes (far ridges, then its family of arches, trees, crystals,
    * machinery or hanging growth), each a value step darker than the one behind, the haze of its depth baked in.
    * One unlit layer: no fog pass, no extra full-screen layers. */
-  static const uint8_t SET[NREGIONS][3] = {
-    [R_GATE] = { PAR_RIDGE, PAR_ARCH, PAR_TREES },      [R_ROOTWAY] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
-    [R_GLASS] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_FEN] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
-    [R_CLOCK] = { PAR_RIDGE, PAR_MACHINE, PAR_ARCH },   [R_TIDAL] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },
-    [R_STAR] = { PAR_RIDGE, PAR_CRYSTAL, PAR_ARCH },    [R_SKY] = { PAR_RIDGE, PAR_ARCH, PAR_CRYSTAL },
-    [R_ARCHIVE] = { PAR_RIDGE, PAR_ARCH, PAR_HANG },    [R_FORGE] = { PAR_RIDGE, PAR_MACHINE, PAR_MACHINE },
-    [R_FROST] = { PAR_RIDGE, PAR_CRYSTAL, PAR_HANG },   [R_BLOOM] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
-    [R_HEART] = { PAR_RIDGE, PAR_TREES, PAR_HANG },
-  };
-  static const float PAR[3] = { 0.14f, 0.32f, 0.55f };
-  bool cool = comp.r > comp.b; /* (a cool region: its far ridges glow the full lantern amber, the warm accent of the frame) */
-  cw_color cols[3] = { toluma(mixc(hexc(ri->far, 1), comp, cool ? 1.0f : 0.85f), VAL(V_FAR + ex - (cool ? 12 : 0))), toluma(region == R_FORGE || region == R_CLOCK ? mixc(comp, rgba(0.3f, 0.36f, 0.48f, 1), 0.35f) : mixc(hexc(ri->mid, 1), comp, comp.b > comp.r ? 0.6f : 0.25f), VAL(V_MID + ex)), toluma(hexc(ri->near, 1), VAL(V_NEAR + ex)) };
-  if (region == R_FORGE || region == R_CLOCK) cols[2] = mixc(cols[2], rgba(0.42f, 0.5f, 0.6f, 1), 0.45f); /* cool steel against the heat */
+  par_layer L[3];
+  par_layout(s, region, L);
   for (int k = 0; k < 3; k++) {
-    int tex = SET[region][k];
-    float w = cs.y * (1.7f + 0.35f * (float)((region * 3 + k) % 4)) * (k == 2 && SET[region][1] == SET[region][2] ? 1.45f : 1), h = cs.y * (0.85f - 0.06f * (float)k);
-    float u0 = g_cam.position.x * zoom * PAR[k] / w + (float)region * 0.37f + (float)k * 0.21f;
-    float yoff = -(g_cam.position.y - (float)(s->room >= 0 ? s->w->rooms[s->room].y * CELL_H : 0)) * zoom * PAR[k] * 0.35f;
-    float y0 = cs.y - h + yoff + cs.y * 0.1f * (float)(2 - k);
-    if (tex == PAR_HANG) y0 = -cs.y * 0.05f + yoff; /* the hanging growth comes from above */
-    cw_vec2 pos[4] = { { 0, y0 }, { cs.x, y0 }, { cs.x, y0 + h }, { 0, y0 + h } };
-    float su = cs.x / w;
-    cw_vec2 uv[4] = { { u0, 0.002f }, { u0 + su, 0.002f }, { u0 + su, 0.998f }, { u0, 0.998f } }; /* (inset: no bleed from the wrapped edge) */
-    cw_r2d_quad(A.par[tex], pos, uv, cols[k]);
+    const par_layer *l = &L[k];
+    if (par_only != -2 && par_only != k) continue;
+    cw_vec2 pos[4] = { { 0, l->y0 }, { cs.x, l->y0 }, { cs.x, l->y0 + l->h }, { 0, l->y0 + l->h } };
+    cw_vec2 uv[4] = { { l->u0, 0.002f }, { l->u0 + l->su, 0.002f }, { l->u0 + l->su, 0.998f }, { l->u0, 0.998f } }; /* (inset: no bleed from the wrapped edge) */
+    cw_r2d_quad(A.par[l->tex], pos, uv, l->col);
+    /* a standing family's ground runs on below its bottom row to the canvas's bottom edge (the layer lifts as the camera
+     * drops down a tall room; the trees and spires stay on their earth, which recedes into shadow toward the viewer) */
+    if (l->ground >= 0 && l->y0 + l->h < cs.y) {
+      float yb = l->y0 + l->h;
+      cw_color deep = scalec(l->col, 0.8f);
+      cw_vertex2d fv[4] = { { { 0, yb }, { l->u0, 0.997f }, l->col }, { { cs.x, yb }, { l->u0 + l->su, 0.997f }, l->col },
+                            { { cs.x, cs.y }, { l->u0 + l->su, 0.998f }, deep }, { { 0, cs.y }, { l->u0, 0.998f }, deep } };
+      uint32_t fidx[6] = { 0, 1, 2, 0, 2, 3 };
+      cw_r2d_triangles(A.par[l->tex], fv, 4, fidx, 6);
+    }
   }
 }
 
@@ -1739,6 +1782,10 @@ void view_draw(const sim *s, float t) {
   cw_r2d_layer_set(L_SKY, NULL);
   cw_r2d_layer_set(L_HUD, NULL);
   draw_sky(s, t, region);
+  if (sky_only) { /* (the grounding gate: the backdrop alone, nothing of the room over it) */
+    cw_r2d_end();
+    return;
+  }
   float vw = cs.x / zoom, vh = cs.y / zoom;
   float x0 = g_cam.position.x - vw * 0.5f, x1 = g_cam.position.x + vw * 0.5f, y0 = g_cam.position.y - vh * 0.5f, y1 = g_cam.position.y + vh * 0.5f;
   cw_r2d_use_layer(L_DROP);
@@ -1795,7 +1842,7 @@ void view_draw(const sim *s, float t) {
     if (s->en[i].alive) enemy_art(&s->en[i], region, t), VS.enemies++;
   creatures_draw_remnants(t);
   if (!showcase_mode()) boss_art(&s->b, region, t);
-  for (int i = s->players - 1; i >= 0 && !showcase_mode(); i--) {
+  for (int i = s->players - 1; i >= 0 && !showcase_mode() && !hide_players; i--) {
     const player *p = &s->p[i];
     if (p->state == PS_GRAPPLE && p->anchor >= 0 && p->anchor < s->pw.nanchors) { /* the line */
       const ent *a = s->pw.anchors[p->anchor];
@@ -1824,7 +1871,7 @@ void view_draw(const sim *s, float t) {
     glow(e->x, cy, (tinted ? 2.2f : 1.6f) * fl, scalec(acc, tinted ? 0.62f : 0.45f));
     glow(e->x, cy, 0.5f, tinted ? scalec(acc, 0.7f) : rgba(1, 1, 0.9f, 0.8f));
   }
-  for (int i = 0; i < s->players; i++) { /* the lantern's glow and the strike's arc */
+  for (int i = 0; i < s->players && !hide_players; i++) { /* the lantern's glow and the strike's arc */
     const player *p = &s->p[i];
     if (!p->active) continue;
     glow(p->x, p->y - 1.0f, 2.6f, rgba(1, 0.8f, 0.5f, 0.12f));
@@ -2002,3 +2049,85 @@ void view_tick(const sim *s, float dt) {
 }
 
 view_stats view_get_stats(void) { return VS; }
+
+/* ── the grounding gate's view of the backdrop (tests/lanternfall-grounding.mjs, through main.c's debug commands) ── */
+void view_lock_camera(bool lock, float x, float y) { cam_locked = lock, cam_lock = (cw_vec2){ x, y }; }
+void view_sky_only(bool on) { sky_only = on; }
+void view_par_only(int k) { par_only = k; }
+void view_hide_players(bool on) { hide_players = on; }
+
+/* is the sky layer all that is drawn at this canvas point: an open tile well away from the rock (no back wall), not a
+ * drop's dusk at a room's edge, none of the framing's silhouettes at the room's sides or hanging from its ceiling, no
+ * prop, lamp, pickup, anchor, enemy, warden or player near enough to paint over it */
+static bool sky_clear_at(const sim *s, float px, float py) {
+  cw_vec2 cs = view_canvas();
+  float wx = (px - cs.x * 0.5f) / zoom + g_cam.position.x, wy = (py - cs.y * 0.5f) / zoom + g_cam.position.y;
+  int tx = (int)floorf(wx), ty = (int)floorf(wy);
+  if (!w_in(tx, ty) || !rockdist) return false;
+  if (s->t[ty][tx] != T_EMPTY || rockdist[ty][tx] < 6) return false;
+  int row = ty % CELL_H;
+  if (row < 1 || row >= CELL_H - 1) return false; /* (a drop's dusk, a shaft's dark) */
+  int r = w_room_at(s->w, wx, wy);
+  if (r < 0) return false;
+  const room *rm = &s->w->rooms[r];
+  float X0 = (float)(rm->x * CELL_W), X1 = (float)((rm->x + rm->w) * CELL_W), Y0 = (float)(rm->y * CELL_H);
+  if (wx < X0 + 5 || wx > X1 - 5 || wy < Y0 + 9) return false; /* (the framing) */
+  for (int i = 0; i < s->w->nents; i++) {
+    const ent *e = &s->w->ents[i];
+    float reach = e->kind == EK_LAMP ? 2.8f : e->kind == EK_PROP && e->sub >= PR_PIPE ? 3.0f : 1.5f;
+    float ey = e->y + (e->kind == EK_PROP && e->sub == PR_SUPPORT ? ((e->hold & HOLD_CEIL) ? (float)e->arg * 0.5f : -(float)e->arg * 0.5f) : 0);
+    if (fabsf(e->x - wx) < reach && fabsf(ey - wy) < reach + 1.5f) return false;
+  }
+  for (int i = 0; i < s->nen; i++)
+    if (s->en[i].alive && fabsf(s->en[i].x - wx) < 2.5f && fabsf(s->en[i].y - wy) < 2.5f) return false;
+  if (s->b.active && fabsf(s->b.x - wx) < 8 && fabsf(s->b.y - wy) < 8) return false;
+  if (!hide_players)
+    for (int i = 0; i < s->players; i++)
+      if (s->p[i].active && fabsf(s->p[i].x - wx) < 7 && fabsf(s->p[i].y - wy) < 7) return false;
+  if (s->echo && fabsf(s->echo_x - wx) < 7 && fabsf(s->echo_y - wy) < 7) return false;
+  return true;
+}
+
+/* JSON: the canvas, the camera, the room, and for each depth its place on the canvas, its colour and every standing
+ * feature's foot in this view (canvas pixels: sx the foot's centre, sy the ground line, hw the half width; clear: the
+ * sky layer is all that is drawn in a patch round the foot) */
+void view_par_report(const sim *s, cw_reply *r) {
+  cw_vec2 cs = view_canvas();
+  int region = s->room >= 0 ? s->w->rooms[s->room].region : 0;
+  par_layer L[3];
+  par_layout(s, region, L);
+  cw_reply_printf(r, "{\"canvas\":[%g,%g],\"zoom\":%g,\"cam\":[%g,%g],\"room\":%d,\"region\":%d,\"lift\":%d,\"layers\":[", (double)cs.x, (double)cs.y, (double)zoom, (double)g_cam.position.x,
+                  (double)g_cam.position.y, s->room, region, art_par_lift_rows());
+  for (int k = 0; k < 3; k++) {
+    const par_layer *l = &L[k];
+    cw_reply_printf(r, "%s{\"k\":%d,\"tex\":%d,\"y0\":%g,\"h\":%g,\"w\":%g,\"u0\":%g,\"su\":%g,\"ground\":%g,\"col\":[%g,%g,%g],\"all\":[", k ? "," : "", k, l->tex, (double)l->y0, (double)l->h,
+                    (double)l->w, (double)l->u0, (double)l->su, (double)l->ground, (double)l->col.r, (double)l->col.g, (double)l->col.b);
+    par_feature ft[16];
+    int n = l->tex == PAR_RIDGE ? 0 : art_par_features(l->tex, ft, 16), m = 0;
+    for (int i = 0; i < n; i++) /* every feature of the family, in texture shares (the gate measures them in the texture itself) */
+      cw_reply_printf(r, "%s{\"id\":%d,\"x\":%g,\"hw\":%g,\"top\":%g}", i ? "," : "", ft[i].id, (double)ft[i].x, (double)ft[i].hw, (double)ft[i].top);
+    cw_reply_printf(r, "],\"copies\":[");
+    for (int i = 0; i < n; i++) {
+      float gy = l->y0 + l->ground * l->h, hw = ft[i].hw * l->w;
+      for (int c = (int)floorf(l->u0) - 1; c <= (int)ceilf(l->u0 + l->su) + 1; c++) { /* every copy of the wrapped texture that puts the foot on the canvas */
+        float sx = (ft[i].x + (float)c - l->u0) * l->w;
+        if (sx < -hw || sx > cs.x + hw) continue;
+        bool clear = true; /* (the pixels the gate samples: under the foot and just above the ground line) */
+        for (float dx = -hw; dx <= hw && clear; dx += hw > 0 ? hw : 1)
+          for (float dy = -8; dy <= 8 && clear; dy += 8) clear = sky_clear_at(s, sx + dx, gy + dy);
+        cw_reply_printf(r, "%s{\"id\":%d,\"x\":%g,\"top\":%g,\"sx\":%g,\"sy\":%g,\"hw\":%g,\"clear\":%d}", m++ ? "," : "", ft[i].id, (double)ft[i].x, (double)(l->y0 + ft[i].top * l->h), (double)sx,
+                        (double)gy, (double)hw, clear ? 1 : 0);
+      }
+    }
+    cw_reply_printf(r, "]}");
+  }
+  cw_reply_printf(r, "],\"families\":["); /* every family: its ground line and what stands on it, in texture shares */
+  for (int k = 0; k < NPAR; k++) {
+    par_feature ft[16];
+    int n = k == PAR_RIDGE ? 0 : art_par_features(k, ft, 16);
+    cw_reply_printf(r, "%s{\"tex\":%d,\"ground\":%g,\"all\":[", k ? "," : "", k, (double)(k == PAR_RIDGE ? 1.0f : art_par_ground(k)));
+    for (int i = 0; i < n; i++) cw_reply_printf(r, "%s{\"id\":%d,\"x\":%g,\"hw\":%g,\"top\":%g}", i ? "," : "", ft[i].id, (double)ft[i].x, (double)ft[i].hw, (double)ft[i].top);
+    cw_reply_printf(r, "]}");
+  }
+  cw_reply_printf(r, "]}");
+}
