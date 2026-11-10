@@ -417,8 +417,9 @@ static const setting SETTINGS[ST_COUNT] = {
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f },
                  { { 0.5f, 0.3f, 0.15f }, { 0.58f, 0.54f, 0.47f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } },
                  0.3f, 0, { SP_OAK, SP_SPRUCE }, 0.25f, 90, { { 0.12f, 0.25f, 0.06f }, { 1, 1, 1 } } },
-  /* scaffold: a quarry's floor among terraced orange walls, a few birches seeded on the spoil */
-  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.76f, { 0.34f, 0.31f, 0.28f }, { 0.26f, 0.23f, 0.2f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
+  /* scaffold: a quarry's floor among terraced orange walls, a few birches seeded on the spoil (exposure 1.9: at 1.76 the
+   * picture read at a mean luma of 93, under the look gate's 95, on GL and WebGPU) */
+  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.9f, { 0.34f, 0.31f, 0.28f }, { 0.26f, 0.23f, 0.2f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
                    BD_QUARRY, { 0.26f, 0.15f, 0.09f }, { 0.82f, 0.58f, 0.36f },
                    { { 0.55f, 0.36f, 0.18f }, { 0.46f, 0.44f, 0.41f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } },
                    0.25f, 0.8f, { SP_BIRCH, SP_BIRCH }, 0, 34, { { 0.3f, 0.42f, 0.08f }, { 0.3f, 0.42f, 0.08f } } },

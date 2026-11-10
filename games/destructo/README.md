@@ -134,8 +134,10 @@ thing they touch and push and break everything within about four and a half metr
   supports; and a tall frame of loose posts creeps, so scaffolds grow wide, not tall.
 - **Joints do not hold a frame.** Bolting a steel frame's posts and beams with rigid weld joints oscillated the frame
   apart within a second (3 or more storeys); soft welds sag. The game uses no joints.
-- **Budget.** All-awake colliding blocks on the job pool (24 threads here): 1000 bodies about 1.3 ms a step, 2000
-  about 2 to 3, 3000 about 2 to 5 depending on the load of the machine; one thread is 4 to 7 times slower.
+- **Budget.** All-awake colliding blocks in the cart on the job pool (24 threads on romdev; Box3D's wasm SIMD solver):
+  2000 bodies about 1.8 to 3 ms a step, 4000 about 3.5 to 4, 6000 about 5.4; one thread is 2.5 to 4.5 times slower
+  (6000 bodies: 24.5 ms). The step stops scaling past about 12 threads (6000 bodies: 7.2 ms on 8, 5.8 on 12, 5.4 on 16
+  and on 24).
 - **Determinism.** One collapse hashes the same with 1, 2, 4 and every worker; the play gate gets the same bits in
   the cart on romdev on GL and on WebGPU.
 - **Tunnelling.** At 60 Hz with 4 sub-steps a fast shot passes through thin dynamic blocks (a 2 cm pane, a 6 cm plank)
@@ -151,6 +153,11 @@ past the sun's shadow map) and the ground has a hole under the yard, which is dr
 edges of the block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU
 multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during the same
 collapse: about 2.3 ms a step at worst over the collapse windows.
+
+Through romdev's frame timing (the whole frame's GPU time, HUD and final copy included, as the perf gate now measures it):
+the same collapse 3.6 to 5.4 ms on GL and 3.6 to 4.1 ms on WebGPU, and Neuschwanstein Castle's 4.7 to 5.2 ms, with the
+890M's clock between about 740 and 2330 MHz; the gate's bound is 6 ms, and four times the pixels (3840x2160) reads
+12.5 ms.
 
 - **The blast frame.** A charge on Great Keep breaks about 800 blocks. Before the fix the frame it went off in took
   33 ms in the cart and 70 ms natively, and nearly all of that was not physics: the first explosion, dust and shards
@@ -182,8 +189,8 @@ gate steps frames in long ranges, at most two hosts at once (`tests/lib/romdev.m
 | `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep (control: a NaN put into a block) |
 | `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
 | `node tests/destructo-flash.mjs` | every frame of Great Keep's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
-| `node tests/destructo-perf.mjs` | during a keep's collapse and a landmark's (Neuschwanstein Castle) at 1920x1080 on High, GL and WebGPU, on the 890M: the cart's CPU a frame and the wall time of the range. The GPU bound (4 ms) waits on romdev's per-frame GPU timing: until it lands the gate says NOT JUDGED for it |
-| `node tests/destructo-hitch.mjs` | the longest frame of Great Keep's blast under 16.6 ms in the cart, GL and WebGPU (control: the game before the fix) |
+| `node tests/destructo-perf.mjs` | the frame's GPU time (romdev's `frame({op:'timing'})`) during a keep's collapse and a landmark's (Neuschwanstein Castle) at 1920x1080 on High, GL and WebGPU, on the 890M, within 6 ms (controls: GL at 3840x2160, WebGPU against 0.5 ms) |
+| `node tests/destructo-hitch.mjs` | the most CPU any frame of Great Keep's blast takes in the cart, timed by romdev, under 16.6 ms, GL and WebGPU (control: the game before the fix) |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) (control: three times the exposure) |
 | `node tests/destructo-play.mjs` (`tests/gate.mjs --gates-file destructo-gates.json`) | a person's first shot: the same collapse on GL and WebGPU; two pads join and the second walks away, and the first still plays the second seat's turn (controls: a script that never fires; the seat rule before the fix waits on the idle pad) |
 | `node tests/destructo-coplanar.mjs` | no two faces fight for the depth test on any level (the settled blocks held to their counts) (controls: the detector's selftest, a doubled face) |

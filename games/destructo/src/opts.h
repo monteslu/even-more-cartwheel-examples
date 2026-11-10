@@ -6,7 +6,7 @@
  *   dm restart             the game starts its level again with the options as they are now (autopilot builds: the
  *                          level LEVEL or LEVEL_NAME names; the counters and the blast's timing window start over)
  * Names are the game's old development switches without their DESTRUCTO_ prefix: LEVEL, LEVEL_NAME, PLAYERS,
- * QUALITY, FREEZE, ORBIT, OLD_RULES, REPLAY_PERTURB, SEAT_CONTROL, OVERVIEW, NO_HUD, LOOK_CONTROL, STROBE_CONTROL,
+ * QUALITY, FREEZE, HOLD, ORBIT, OLD_RULES, REPLAY_PERTURB, SEAT_CONTROL, OVERVIEW, NO_HUD, LOOK_CONTROL, STROBE_CONTROL,
  * FX_LOG, TOD, NORTH, MIE, RAYLEIGH, SUN, SKY, EXPOSURE, GRADE, TONEMAP, NOFOG, NO_GRASS, NO_TREES, LAYER_LOG. */
 #ifndef DESTRUCTO_OPTS_H
 #define DESTRUCTO_OPTS_H

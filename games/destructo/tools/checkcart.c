@@ -87,6 +87,7 @@ static struct {
 static void run_job(void *u) {
   (void)u;
   C.status = C.fn(C.argc, C.argv);
+  C.ms = (int32_t)((double)cw_profile_now_ns() * 1e-6 - C.t0);
   atomic_store(&C.state, 2);
 }
 

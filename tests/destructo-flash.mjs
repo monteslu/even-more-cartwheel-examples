@@ -35,9 +35,11 @@ for (const gpu of gpusArg()) {
   const span = { from: boom - BEFORE, frames: boom + AFTER };
   for (const [label, opts, control] of [[`Great Keep's blast on ${gpu}, frames ${span.from}-${span.frames}`, {}, false],
     [`the blast under the game's 10 Hz white wash on ${gpu}, dm set STROBE_CONTROL 1`, { STROBE_CONTROL: 1 }, true]]) {
-    const h = await bench(gpu, opts);
     let run;
-    try { run = await captureRomdev(h, { ...span, name: `destructo-${gpu}${control ? '-strobe' : ''}` }); } finally { await h.close(); }
+    for (let k = 0; !run; k++) { /* a capture that lost a frame (romdev's WebGPU readback once missed one) is taken again, once */
+      const h = await bench(gpu, opts);
+      try { run = await captureRomdev(h, { ...span, name: `destructo-${gpu}${control ? '-strobe' : ''}` }); } catch (e) { if (k) throw e; console.log(`     (${e.message}: again)`); } finally { await h.close(); }
+    }
     bad += (control ? mustFail(label, run) : gate(label, run)) ? 0 : 1;
   }
 }

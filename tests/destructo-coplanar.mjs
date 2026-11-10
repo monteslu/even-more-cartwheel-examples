@@ -1,8 +1,8 @@
 // destructo's leg of the depth-fighting scan (tests/coplanar.mjs says what it checks): every level as a cart on romdev
 // (destructo_auto: dm set LEVEL n, dm restart, 360 frames in one range), then the debug command `coplanar`
 // (games/common/coplanar.c): the overlapping same-plane pairs among every drawn depth-tested mesh and instance, by
-// region. Every level must have none, but for the settled blocks that lean on each other, held to the counts measured
-// for the 30 kit levels (by name: SETTLED in tests/coplanar.mjs, moved here when destructo left that native run).
+// region, the level settled as for play and held there (dm set HOLD 1). Every level must have none, but for the settled
+// blocks that lean on each other, held to the counts measured for each level (by name, SETTLED below).
 // CONTROLS, which must fail: `coplanar selftest` (the detector on made-up faces) and the first level with a doubled face
 // added to the real scene (dm set COPLANAR_CONTROL 1), which the scan must find.
 // --unfixed: every level as built before the separation (dm set COPLANAR_SEPARATE 0).
@@ -24,16 +24,16 @@ const NAMES = [...table.slice(0, table.indexOf('\n};')).matchAll(/(?:LANDMARK\(|
 // layer per axis that clears its settled neighbours (games/destructo/src/view.c, block_layers): that takes the settled
 // structures from 81,015 pairs over the 30 levels to 2,009, where a leaning face crosses its neighbour's.
 // They are held to these counts (a quarter over, and ten), so a change that brings the flush faces back fails.
-// the kits' settled counts (measured 18 30 34 20 0 1 0 44 39 42 0 0 166 6 65 70 2 27 272 2 0 155 0 87 411 152 0 17 0 349, a quarter over and ten)
-const KIT_COUNTS = [32, 47, 52, 35, 0, 11, 0, 65, 58, 62, 0, 0, 217, 17, 91, 97, 12, 43, 350, 12, 0, 203, 0, 118, 523, 200, 0, 31, 0, 446];
-const KIT_NAMES = ['First Stones', 'Lookout', 'Garden Wall'];
-const kitStart = NAMES.indexOf(KIT_NAMES[0]);
-const SETTLED = Object.fromEntries(KIT_COUNTS.map((n, i) => [NAMES[kitStart + i], n]));
+// Measured through romdev on 2026-11-10, every level settled as for play and held (dm set HOLD 1: no shot fired, so
+// the scan sees the level as built and settled, not debris of the bot's first shot).
+// Each is held to its count a quarter over, and ten; a level measured at none is held to none. The landmarks are
+// measured as built on that day: measure again (and set these again) when games/destructo/src/landmarks.c changes.
+const SETTLED = {"Great Sphinx": 29, "Space Needle": 479, "Eiffel Tower": 397, "Willis Tower": 353, "Empire State Building": 155, "Sydney Opera House": 55, "Pyramids of Giza": 15, "Taj Mahal": 200, "Neuschwanstein Castle": 390, "Burj Khalifa": 163, "First Stones": 33, "Lookout": 48, "Garden Wall": 53, "Two Floors": 35, "Glass House": 0, "Step Shrine": 0, "Mill Bridge": 0, "The Gatehouse": 65, "Watch Pair": 59, "Tall Order": 63, "Iron Frame": 0, "Sun Steps": 0, "Old Keep": 218, "River Span": 0, "Hill Fort": 92, "Lantern Tower": 95, "Workyard": 12, "Long Rampart": 44, "Tall Keep": 350, "High Steps": 0, "Viaduct": 0, "Twin Gates": 204, "Sky Frame": 0, "Stone Giant": 107, "Great Keep": 524, "Citadel": 200, "Grand Steps": 0, "Iron Bridge": 0, "Glass Works": 12, "The Last Fort": 420};
 
 async function scan(level, opts, cmds) {
   const h = await openCart('destructo_auto', { gpu, tag: `coplanar-${level}` });
   try {
-    for (const [k, v] of Object.entries({ LEVEL: level, ...(UNFIXED ? { COPLANAR_SEPARATE: 0 } : {}), ...opts })) await h.command(`dm set ${k} ${v}`);
+    for (const [k, v] of Object.entries({ LEVEL: level, HOLD: 1, ...(UNFIXED ? { COPLANAR_SEPARATE: 0 } : {}), ...opts })) await h.command(`dm set ${k} ${v}`);
     await h.command('dm restart');
     await h.step(360 - h.frame);
     const out = [];

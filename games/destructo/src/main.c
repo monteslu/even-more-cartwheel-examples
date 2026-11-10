@@ -83,6 +83,7 @@ static struct {
 } G;
 
 static cw_font font;
+static int32_t seat_devices[MAXP]; /* debug: each seat's input devices (seat.devices) */
 
 /* frame timing round a blast (the hitch gate reads these): the real monotonic clock, in carts too. Render only. */
 static struct {
@@ -295,6 +296,7 @@ static void init(void *u) {
   cw_debug_f32("perf.blast_frame_max", &P.frame_max); /* the slowest frame (render end to render end) in the 3 s from the first charge */
   cw_debug_f32("perf.blast_work_max", &P.work_max);   /* the most CPU a frame took there (its ticks and its render) */
   cw_debug_f32("perf.blast_tick_max", &P.tick_max);   /* the slowest game tick there */
+  cw_debug_field("seat.devices", seat_devices, CW_DBG_I32, MAXP); /* each seat's input devices (the seat gate) */
   cw_debug_u32("fx.boom_frame", &R.boom_frame);       /* the render frame (counted from the first) the first charge went off in; 0 before */
   cw_debug_u32("fx.frame", &R.frame);
   /* the perf gate: 120-frame windows while playing, from the first with a hundred blocks broken (the real clock) */
@@ -321,15 +323,18 @@ static void init(void *u) {
 #define SEAT_AWAY (60 * 8)
 static int seat_idle; /* ticks of this turn the turn's seat has pressed nothing */
 static bool seat_away(void) { return seat_idle >= SEAT_AWAY; }
+/* a seat with a pad or keys of its own (cw_input_player_devices counts keys, mouse and touch only, never the pad) */
+static bool seat_has_input(int c) { return cw_input_player_pad(c) >= 0 || cw_input_player_devices(c) != 0; }
 static int seat_of_turn(void) {
   int c = G.g.cur;
   /* tests/destructo-gates.json's seat gate control (dm set SEAT_CONTROL 1): the seat rule before the fix */
-  if (opt_on("SEAT_CONTROL")) return G.players > 1 && cw_input_player_devices(c) != 0 ? c : -1;
+  if (opt_on("SEAT_CONTROL")) return G.players > 1 && seat_has_input(c) ? c : -1;
   if (G.mode == MODE_COOP || seat_away()) return -1;
-  if (G.players > 1 && cw_input_player_devices(c) != 0) return c;
+  if (G.players > 1 && seat_has_input(c)) return c;
   return -1;
 }
 static void seat_watch(void) {
+  for (int i = 0; i < MAXP; i++) seat_devices[i] = (int32_t)cw_input_player_devices(i);
   static int turn_of = -1, shots = -1;
   if (G.g.state != GS_AIM || G.g.cur != turn_of || G.g.shots != shots) {
     if (G.g.state == GS_AIM) turn_of = G.g.cur, shots = G.g.shots;
@@ -427,6 +432,7 @@ static void fixed_update(void *u, double dt) {
   case PH_PLAY: {
 #ifdef DESTRUCTO_AUTOPILOT
     if (opt_get("FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
+    if (opt_on("HOLD")) break;    /* tests/destructo-coplanar.mjs: the level settled as for play, then held (no shot fired) */
 #endif
     input in;
     seat_watch();

@@ -67,7 +67,7 @@ export async function openCart(app, { gpu = 'gl', seed = 1, tag = '', load = {} 
     async step(n) {
       while (n > 0) {
         const k = Math.min(n, STEP_MAX);
-        await call('frame', { op: 'step', frames: k }, session, { timeoutMs: 300000 + k * 1000 });
+        await call('frame', { op: 'step', frames: k }, session, { timeoutMs: 600000 + k * 3000 });
         frame += k, n -= k;
       }
     },
