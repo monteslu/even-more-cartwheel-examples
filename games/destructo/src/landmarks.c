@@ -227,9 +227,30 @@ static void weld_blocks(game *g, int from, int to) {
     }
   }
 }
-/* the model's cells, the grid's middle at (dx, dz), its foot at dy; returns the blocks laid */
-static int build_vox(game *g, const lm_vox *v, float dx, float dy, float dz) {
+/* the blocks laid since `from` turned yaw about the vertical through (cx, cz): a landmark set on the field at the
+ * angle its default view wants (the grid stays square to the model, so its walls are clean and its members long) */
+static void turn_blocks(game *g, int from, float cx, float cz, float yaw) {
+  if (yaw == 0) return;
+  float s, c;
+  cw_sincos(yaw, &s, &c);
+  float hs, hc;
+  cw_sincos(yaw * 0.5f, &hs, &hc);
+  for (int i = from; i < g->nb; i++) {
+    block *b = &g->b[i];
+    if (!b->alive) continue;
+    cw_xform3 x = cw_body3d_transform(b->body);
+    float px = x.p.x - cx, pz = x.p.z - cz;
+    x.p.x = cx + px * c + pz * s, x.p.z = cz - px * s + pz * c;
+    x.q = (t3_quat){ 0, hs, 0, hc };
+    cw_body3d_set_transform(b->body, x);
+    b->home = x.p;
+  }
+}
+/* the model's cells, the grid's middle at (dx, dz), its foot at dy, the whole turned yaw about that middle; returns the
+ * blocks laid */
+static int build_vox_turned(game *g, const lm_vox *v, float dx, float dy, float dz, float yaw) {
   size_t n = (size_t)v->nx * v->ny * v->nz, c = 0;
+  int from0 = g->nb;
   VXG = malloc(n);
   for (int r = 0; r < v->nruns && c < n; r++) {
     uint8_t val = v->runs[2 * r], cnt = v->runs[2 * r + 1];
@@ -279,14 +300,17 @@ static int build_vox(game *g, const lm_vox *v, float dx, float dy, float dz) {
         }
 #undef VI
     free(used);
+    turn_blocks(g, from0, dx, dz, yaw);
     weld_blocks(g, from, g->nb);
   } else {
     sculpt s = { sh_vox, x0, x1, z0, z1, y0, y1, v->cell, v->course, false };
     laid += sculpt_run(g, &s);
+    turn_blocks(g, from0, dx, dz, yaw);
   }
   free(VXG), VXG = NULL;
   return laid;
 }
+static int build_vox(game *g, const lm_vox *v, float dx, float dy, float dz) { return build_vox_turned(g, v, dx, dy, dz, 0); }
 
 #define WT_T 0.78f /* Willis Tower: a tube's width (its antennas stand on the middle two) */
 
@@ -360,10 +384,14 @@ static void build_stonehenge(game *g, const level_def *L) {
 }
 
 /* a landmark made from its model alone, and its crystals */
-static void build_model(game *g, const level_def *L, const lm_vox *v, const float (*spot)[2], int nspot) {
-  build_vox(g, v, 0, 0, 0);
-  for (int t = 0; t < L->targets && t < nspot; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
+/* a model at the field's middle turned yaw, its crystals at the spots (given square to the model, turned with it) */
+static void build_model_turned(game *g, const level_def *L, const lm_vox *v, const float (*spot)[2], int nspot, float yaw) {
+  build_vox_turned(g, v, 0, 0, 0, yaw);
+  float s, c;
+  cw_sincos(yaw, &s, &c);
+  for (int t = 0; t < L->targets && t < nspot; t++) landmark_crystal(g, spot[t][0] * c + spot[t][1] * s, -spot[t][0] * s + spot[t][1] * c);
 }
+static void build_model(game *g, const level_def *L, const lm_vox *v, const float (*spot)[2], int nspot) { build_model_turned(g, L, v, spot, nspot, 0); }
 static uint16_t sh_box_fill(float x, float y, float z) { (void)x, (void)y, (void)z; return CELL(M_STONE, P_ROCK); }
 
 /* ── Ahu Tongariki: fifteen moai in a row on their stone platform, their backs to the sea ── */
@@ -419,7 +447,12 @@ void landmark_build(game *g, const level_def *L) {
     for (int t = 0; t < L->targets && t < 2; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
     break;
   }
-  case LM_OPERA_HOUSE: { static const float s[][2] = { { 5.8f, -4.9f }, { -4.0f, 6.75f } }; /* the podium is turned 40 degrees on the field (the view from the quay) */ build_vox(g, &LMV_opera_podium, 0, 0, 0); build_model(g, L, &LMV_opera_shells, s, 2); break; }
+  case LM_OPERA_HOUSE: { /* turned 40 degrees on the field: the default view is the one from the quay, into the shells' glazed mouths */
+    static const float s[][2] = { { 7.6f, 0 }, { -7.4f, 2.6f } };
+    build_vox_turned(g, &LMV_opera_podium, 0, 0, 0, 0.698f);
+    build_model_turned(g, L, &LMV_opera_shells, s, 2, 0.698f);
+    break;
+  }
   case LM_TAJ_MAHAL: { static const float s[][2] = { { 0, 2.6f }, { 2.6f, 0 }, { -4.2f, 4.2f } }; build_model(g, L, &LMV_taj_mahal, s, 3); break; }
   case LM_WILLIS: {
     build_vox(g, &LMV_willis, 0, 0, 0);
@@ -428,7 +461,12 @@ void landmark_build(game *g, const level_def *L) {
     for (int t = 0; t < L->targets && t < 2; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
     break;
   }
-  case LM_NEUSCHWANSTEIN: { static const float s[][2] = { { 6.6f, 3.1f }, { -3.0f, -0.7f }, { 2.55f, 1.2f } }; /* the crag is turned 25 degrees on the field */ build_vox(g, &LMV_ns_rock, 0, 0, 0); build_model(g, L, &LMV_neuschwanstein, s, 3); break; }
+  case LM_NEUSCHWANSTEIN: { /* turned 25 degrees: the default view is the three-quarter one, the gatehouse in front */
+    static const float s[][2] = { { 7.3f, 0 }, { -3.0f, 0.6f }, { 2.8f, 0 } };
+    build_vox_turned(g, &LMV_ns_rock, 0, 0, 0, -0.436f);
+    build_model_turned(g, L, &LMV_neuschwanstein, s, 3, -0.436f);
+    break;
+  }
   case LM_BURJ_KHALIFA: { static const float s[][2] = { { -0.95f, 0.9f }, { 0, -1.2f } }; build_model(g, L, &LMV_burj_khalifa, s, 2); break; }
   case LM_STONEHENGE: build_stonehenge(g, L); break;
   case LM_PETRONAS: { static const float s[][2] = { { 0, 0.75f }, { 0, -0.75f } }; build_vox(g, &LMV_pt_bridge, 0, 0, 0); build_model(g, L, &LMV_petronas, s, 2); break; }
