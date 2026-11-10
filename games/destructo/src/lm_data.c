@@ -17228,5 +17228,5 @@ static const uint8_t ns_gate_runs[] = {
   0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255, 0, 255,
   0, 255, 0, 94,
 };
-const lm_vox LMV_ns_gate = { 71, 59, 28, 0.28f, 0.21f, -9.8000f, -3.9200f, 0, 0, 12, 6, 1, ns_gate_pal, 794, ns_gate_runs };
+const lm_vox LMV_ns_gate = { 71, 59, 28, 0.28f, 0.21f, -9.8000f, -3.9200f, 0, 1, 3, 3, 1, ns_gate_pal, 794, ns_gate_runs };
 /* end ns_gate */
