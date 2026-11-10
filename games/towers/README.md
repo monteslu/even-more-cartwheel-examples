@@ -55,6 +55,12 @@ reaches the core costs it health; hold the core through the last wave to take th
 - `node tests/towers-look.mjs <frames>`: the look check (value, contrast, accent and smooth edges; frames as
   `TOWERS_NO_HUD=1 TOWERS_NO_CURSORS=1 TOWERS_WAVE=14`, masks with `TOWERS_LOOK_MASK=1`).
 - `node tests/towers-perf.mjs`: the perf gate (GPU time a frame at 1920x1080 High on GL and WebGPU, with controls).
+- `node tests/towers-perf-romdev.mjs`: the same gate on the built cart through romdev's `frame({op:'timing'})` on the
+  server's test GPU (GL and WebGPU, map 26 and one late map of every other theme, a bound per map and API set from
+  three clean runs and listed in the file's header; `--quick` for map 26 and the controls).
+- `node tests/towers-maps-romdev.mjs`: the bench taken to every map the perf gate runs on the cart (`--all`: all 30),
+  GL and WebGPU: no trap on the way, the crowd kept and drawn, no draw skipped, every mesh baked (control: map 20 with
+  the coplanar grid's old cell cap, `COPLANAR_CELL_CAP=60000000`, which traps the cart).
 - `node tests/towers-soak.mjs`: 30 game minutes of bots at one to four players with checks every tick
   (`TOWERS_BOT_BRANCH=0|1|2`: the bots take the A branch, the B branch, or each in turn).
 - `node tests/towers-flash.mjs`: the photosensitivity check (no strobe: the engine's flash check, WCAG 2.3.1's general
