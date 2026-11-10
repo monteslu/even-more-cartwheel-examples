@@ -37,6 +37,7 @@ convert -size 2800x400 xc:none -font "$F" -pointsize 260 -fill "#ffe6a8" -stroke
   -annotate +0+0 "LANTERNFALL" -trim +repage "$ART/logo.png"
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 88 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-0.png" -gravity center -crop 720x1080+0+0 +repage -resize 800x1200! -quality 90 "$ART/cover.jpg"
+"$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
 convert "$OUT/key-1.png" -resize 1920x1080! -brightness-contrast -18x-5 -quality 88 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -22x-5 \( "$ART/logo.png" -resize 1400x \) -gravity center -composite \
   -quality 90 "$ART/title.jpg"

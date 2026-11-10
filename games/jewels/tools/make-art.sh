@@ -23,6 +23,7 @@ convert -size 1900x420 xc:none -font "$FONT" -pointsize 300 -gravity center -fil
   -stroke none -fill "#f3dc98" -annotate +0+0 JEWELS -trim +repage -bordercolor none -border 24 "$ART/logo.png"
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 90 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-0.png" -crop 1440x2160+624+0 +repage -resize 1200x1800! -quality 92 "$ART/cover.jpg" # over the board
+"$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -20x-5 -quality 90 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -30x-5 -fill "rgba(0,0,0,0.6)" -draw "rectangle 0,360 1920,720" \
   \( "$ART/logo.png" -resize 1400x \) -gravity center -composite -quality 92 "$ART/title.jpg"

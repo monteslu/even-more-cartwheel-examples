@@ -22,6 +22,7 @@ fi
 "$ROOT/build/native/games/pinball/pinball_logo" "$ART/logo.png" >/dev/null
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 88 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-1.png" -gravity center -crop 1440x2160+0+0 +repage -resize 1200x1800! -quality 90 "$ART/cover.jpg"
+"$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
 convert "$OUT/key-2.png" -resize 1920x1080! -brightness-contrast -18x-5 -quality 88 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -25x-5 -fill "rgba(0,0,0,0.72)" -draw "rectangle 0,370 1920,710" \( "$ART/logo.png" -resize 1500x \) -gravity center -composite -quality 90 "$ART/title.jpg"
 convert "$OUT/key-0.png" -gravity south -crop 1500x1500+0+120 +repage -resize 512x512! "$ART/icon.png"

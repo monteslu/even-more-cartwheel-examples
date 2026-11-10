@@ -24,6 +24,7 @@ convert -size 1600x500 xc:none -font "$FONT" -pointsize 360 -gravity center \
   -fill "#ff6a2a" -annotate 0x-12+0+40 "" -trim +repage -bordercolor none -border 24 "$ART/logo.png"
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 88 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-1.png" -gravity center -crop 1440x2160+0+0 +repage -resize 1200x1800! -quality 90 "$ART/cover.jpg"
+"$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
 convert "$OUT/key-2.png" -resize 1920x1080! -brightness-contrast -18x-5 -quality 88 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -8x0 \( -size 1920x420 gradient:"rgba(10,20,60,0.75)"-"rgba(10,20,60,0)" \) -gravity north -composite \( "$ART/logo.png" -resize 1100x \) -gravity north -geometry +0+40 -composite -quality 90 "$ART/title.jpg"
 convert "$OUT/key-0.png" -gravity center -crop 1600x1600+0+0 +repage -resize 512x512! "$ART/icon.png"

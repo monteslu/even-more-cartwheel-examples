@@ -21,6 +21,7 @@ convert -size 1600x420 xc:none -font "$FONT" -pointsize 250 -gravity center \
   -stroke none -fill '#ffd27a' -annotate +0+0 'DESTRUCTO' -trim +repage "$ART/logo.png"
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 88 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-0.png" -gravity center -crop 1440x2160+0+0 +repage -resize 1200x1800! -quality 90 "$ART/cover.jpg"
+"$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
 convert "$OUT/key-1.png" -resize 1920x1080! -brightness-contrast -15x-5 -quality 88 "$ART/background.jpg"
 convert "$OUT/key-0.png" -resize 1920x1080! -brightness-contrast -20x-5 -fill "rgba(0,0,0,0.6)" -draw "rectangle 0,380 1920,700" \( "$ART/logo.png" -resize 1500x \) -gravity center -composite -quality 90 "$ART/title.jpg"
 convert "$OUT/key-0.png" -gravity center -crop 1400x1400+0-80 +repage -resize 512x512! "$ART/icon.png"

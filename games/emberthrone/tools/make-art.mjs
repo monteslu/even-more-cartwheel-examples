@@ -28,8 +28,11 @@ SHOTS.forEach(([n], i) => im(src(n), '-quality', '88', join(ART, `shot-${i + 1}.
 // background: the widest view; title: the same with the name over it
 im(src('vista'), '-quality', '88', join(ART, 'background.jpg'));
 im(src('vista'), ...words(150), '-gravity', 'north', '-annotate', '+0+120', TITLE, '-quality', '88', join(ART, 'title.jpg'));
-// cover: portrait 2:3 from the hero's frame, the name across the top
-im(src('hero'), '-gravity', 'center', '-crop', '720x1080+0+0', '+repage', '-resize', '800x1200!', ...words(66), '-gravity', 'north', '-annotate', '+0+80', TITLE,
+// cover: portrait 2:3 from the hero's frame, the name across the top in two lines, large enough to read at a
+// launcher's grid size, over a soft darkening of the sky
+im(src('hero'), '-gravity', 'center', '-crop', '720x1080+0+0', '+repage', '-resize', '800x1200!',
+  '(', '-size', '800x430', 'gradient:rgba(0,0,0,0.6)-rgba(0,0,0,0)', ')', '-gravity', 'north', '-composite',
+  ...words(132, ['-interline-spacing', '-18']), '-gravity', 'north', '-annotate', '+0+50', TITLE.replace(' ', '\n'),
   '-quality', '90', join(ART, 'cover.jpg'));
 // icon: the hero's head and shoulders, square
 im(src('hero'), '-gravity', 'center', '-crop', '520x520-70-30', '+repage', '-resize', '512x512', join(ART, 'icon.png'));
