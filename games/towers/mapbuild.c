@@ -787,5 +787,6 @@ t3_color mapbuild_light_at(const mb_built *b, float x, float z) {
 
 void mapbuild_free(mb_built *b) {
   if (cw_node_valid(b->node)) cw_node_free(b->node);
+  cw_lightmap_free(b->lm); /* the map's lightmap (5 to 6 MB a map: kept, it ran a long session out of memory by map 16) */
   memset(b, 0, sizeof *b);
 }

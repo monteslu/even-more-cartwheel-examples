@@ -52,7 +52,7 @@ static struct {
   bool in_match, built;
   int players, phase, pick_map, over_ticks, bench_crowd;
   int32_t state, map, wave, waves, core, enemies, kills, towers, maps_won, best_map, drawn, leaks, next_t, phase_dbg;
-  int32_t gold[MAXP], slot[MAXP];
+  int32_t gold[MAXP], slot[MAXP], players_dbg;
   float pu[MAXP], pv[MAXP];
   uint32_t hash;
   int banner_t, banner_kind;
@@ -153,13 +153,14 @@ static const char *dev_env(const char *name) {
 #endif
 }
 
+static int g_wave_cmd; /* the `players` request's starting wave (TOWERS_WAVE read in a frame, for hosts whose environment arrives late) */
 static bool map_go(int n) {
   int count = map_count();
   if (count > 0 && n > count) n = count;
   if (!map_load(n, &G.M, sim_kind_by_name)) return false;
   sim_map_start(&G.S, &G.M);
   G.bench_crowd = dev_env("TOWERS_CROWD") ? atoi(dev_env("TOWERS_CROWD")) : TOWERS_BENCH_CROWD;
-  int wave0 = dev_env("TOWERS_WAVE") ? atoi(dev_env("TOWERS_WAVE")) : 0;
+  int wave0 = g_wave_cmd > 0 ? g_wave_cmd : dev_env("TOWERS_WAVE") ? atoi(dev_env("TOWERS_WAVE")) : 0;
   if (G.bench_crowd > 0 || wave0 > 0) {
     G.S.god = G.bench_crowd > 0;
     int w = wave0 > 0 ? wave0 : 18;
@@ -197,8 +198,10 @@ static int first_map(void) {
   return G.pick_map > 0 ? G.pick_map : 1;
 }
 
+static int g_hint_t[MAXP]; /* the diamond's hint (the HUD, below): frames left, -1 once shown this match */
 static void begin_play(void) {
   sim_init(&G.S, G.players, 4242);
+  for (int i = 0; i < MAXP; i++) g_hint_t[i] = 0; /* the diamond's hint once a match, per seat */
   G.phase = PH_PLAY;
   G.over_ticks = 0;
   if (!map_go(first_map())) map_go(1);
@@ -238,13 +241,13 @@ static bool warmup(void *u) {
   return true;
 }
 
-#ifdef TOWERS_AUTOPILOT
 static void cmd_map(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: map <n>"); return; }
   int n = atoi(argv[1]);
   if (!map_go(n)) { cw_reply_error(r, "no such map"); return; }
   cw_reply_printf(r, "{\"map\":%d}", n);
 }
+#ifdef TOWERS_AUTOPILOT
 static void cmd_cam(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: cam <k> [x] [z]"); return; }
   float k = (float)atof(argv[1]);
@@ -252,8 +255,24 @@ static void cmd_cam(int argc, const char **argv, cw_reply *r) {
   g_cam_k = k, g_cam_x = argc > 2 ? (float)atof(argv[2]) : 0, g_cam_z = argc > 3 ? (float)atof(argv[3]) : 0;
   cw_reply_printf(r, "{\"k\":%g,\"x\":%g,\"z\":%g}", (double)g_cam_k, (double)g_cam_x, (double)g_cam_z);
 }
+/* players <n> [wave]: the self-playing match again with n bots, from that wave with towers on every pad (what
+ * TOWERS_PLAYERS and TOWERS_WAVE do in the environment, for a host whose environment arrives after the first frame:
+ * romdev's env request lands at frame 2, after init read them) */
+static void cmd_players(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: players <n> [wave]"); return; }
+  int n = CW_CLAMP(atoi(argv[1]), 1, MAXP);
+  g_wave_cmd = argc >= 3 ? atoi(argv[2]) : 0;
+  G.players = n;
+  if (!G.in_match) { cw_shell_start(n); cw_reply_printf(r, "{\"players\":%d,\"wave\":%d}", n, g_wave_cmd); return; }
+  sim_init(&G.S, n, 4242);
+  G.phase = PH_PLAY;
+  G.over_ticks = 0;
+  if (!map_go(first_map())) map_go(1);
+  cw_reply_printf(r, "{\"players\":%d,\"wave\":%d,\"map\":%d}", n, g_wave_cmd, G.S.m.num);
+}
 #endif
 
+static void cmd_hud(int argc, const char **argv, cw_reply *r); /* the HUD, below */
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
@@ -304,6 +323,7 @@ static void init(void *u) {
   cw_debug_i32("game.leaks", &G.leaks);
   cw_debug_i32("game.towers", &G.towers);
   cw_debug_i32("game.next_wave", &G.next_t);
+  cw_debug_i32("game.players", &G.players_dbg);
   cw_debug_i32("game.maps_won", &G.maps_won);
   cw_debug_field("player.gold", G.gold, CW_DBG_I32, MAXP);
   cw_debug_field("player.slot", G.slot, CW_DBG_I32, MAXP);
@@ -314,9 +334,13 @@ static void init(void *u) {
   cw_debug_f32("dev.cam_k", &g_cam_k);
   cw_debug_f32("dev.tilt", &g_tilt);
   cw_debug_f32("dev.lean", &g_lean);
-#ifdef TOWERS_AUTOPILOT
   cw_debug_command("map", "map <n>: go to that map", cmd_map);
+#ifdef TOWERS_AUTOPILOT
   cw_debug_command("cam", "cam <k> [x] [z]: the camera k times closer over the point x,z of the map (key art)", cmd_cam);
+  cw_debug_command("players", "players <n> [wave]: the match again with n bots, from that wave", cmd_players);
+#endif
+  cw_debug_command("hud", "hud [labels 0|1 | style 0|1 | push <px> | sweep [singles|pairs] | slots | cursor <seat> <slot>]: the HUD's rectangles (the overlap check)", cmd_hud);
+#ifdef TOWERS_AUTOPILOT
   if (getenv("TOWERS_BOT_BRANCH")) g_bot_branch = CW_CLAMP(atoi(getenv("TOWERS_BOT_BRANCH")), 0, 2);
   if (getenv("TOWERS_CAM")) sscanf(getenv("TOWERS_CAM"), "%f,%f,%f", &g_cam_k, &g_cam_x, &g_cam_z); /* key art: TOWERS_CAM=k,x,z (natively; a cart host answers `cam`) */
 #ifndef TOWERS_AUTO_PLAYERS
@@ -455,7 +479,7 @@ static void fixed_update(void *u, double dt) {
     }
   }
   G.state = G.S.state, G.map = G.S.m.num, G.wave = G.S.wave, G.waves = G.S.m.waves, G.core = G.S.core_hp, G.enemies = G.S.nenemies, G.kills = G.S.kills;
-  G.leaks = G.S.leaks, G.next_t = G.S.next_t, G.hash = G.S.hash;
+  G.leaks = G.S.leaks, G.next_t = G.S.next_t, G.hash = G.S.hash, G.players_dbg = G.S.players;
   int tw = 0;
   for (int k = 0; k < G.S.m.nslot; k++) tw += G.S.tw[k].alive;
   G.towers = tw;
@@ -467,9 +491,44 @@ static void fixed_update(void *u, double dt) {
 
 static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
 static cw_text_style tstyle(float size, cw_color c) { return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = rgba(0, 0, 0, 0.9f) }; }
+/* measurements cached by string, seat (its device: the glyphs differ), size and the player's text scale: the HUD asks
+ * for the same few strings every frame, and the overlap sweep (below) for thousands of layouts of them in one frame */
+typedef struct msz { char s[128]; int player, device; float size, scale; bool prompt; cw_vec2 sz; cw_text_metrics tm; } msz;
+#define MSZ_N 512
+static msz g_msz[MSZ_N];
+static msz *msz_find(const char *s, int player, float size, bool prompt, bool *found) {
+  int device = prompt && player >= 0 ? (int)cw_prompt_device_of(player) : -1;
+  float scale = cw_text_scale();
+  uint32_t h = 2166136261u;
+  for (const char *q = s; *q; q++) h = (h ^ (uint8_t)*q) * 16777619u;
+  h = (h ^ (uint32_t)(player + 7)) * 16777619u, h = (h ^ (uint32_t)(device + 3)) * 16777619u;
+  uint32_t fb;
+  memcpy(&fb, &size, 4), h = (h ^ fb) * 16777619u;
+  memcpy(&fb, &scale, 4), h = (h ^ fb) * 16777619u;
+  *found = false;
+  for (int k = 0; k < MSZ_N; k++) {
+    msz *e = &g_msz[(h + (uint32_t)k) % MSZ_N];
+    if (!e->s[0]) { snprintf(e->s, sizeof e->s, "%s", s), e->player = player, e->device = device, e->size = size, e->scale = scale, e->prompt = prompt; return e; }
+    if (e->prompt == prompt && e->player == player && e->device == device && e->size == size && e->scale == scale && !strcmp(e->s, s)) { *found = true; return e; }
+  }
+  return NULL; /* full (never, with the HUD's few strings): measured uncached */
+}
 static cw_text_metrics measure(const char *s, float size) {
+  bool found;
+  msz *e = strlen(s) < 127 ? msz_find(s, -1, size, false, &found) : NULL;
+  if (e && found) return e->tm;
   cw_text_style st = tstyle(size, rgba(1, 1, 1, 1));
-  return cw_font_measure(font, s, &st);
+  cw_text_metrics tm = cw_font_measure(font, s, &st);
+  if (e) e->tm = tm;
+  return tm;
+}
+static cw_vec2 prompt_size(const char *markup, int player, float size) {
+  bool found;
+  msz *e = strlen(markup) < 127 ? msz_find(markup, player, size, true, &found) : NULL;
+  if (e && found) return e->sz;
+  cw_vec2 sz = cw_prompt_text_size(font, markup, player, size);
+  if (e) e->sz = sz;
+  return sz;
 }
 static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
   cw_text_style st = tstyle(size, c);
@@ -485,7 +544,7 @@ static const char *const ACT_TAG[A_KINDS] = { "{act_n}", "{act_w}", "{act_e}", "
 
 /* a pill of text with prompts at (x, y): anchored by ax, ay (0 left/top .. 1 right/bottom) */
 static cw_vec2 pill(const char *markup, int player, float x, float y, float ax, float ay, float size, cw_color c, cw_color bg) {
-  cw_vec2 sz = cw_prompt_text_size(font, markup, player, size);
+  cw_vec2 sz = prompt_size(markup, player, size);
   float pad = size * 0.28f, w = sz.x + pad * 2, h = sz.y + pad * 1.2f;
   float l = x - w * ax, t = y - h * ay;
   cw_r2d_rect(cw_rect_make(l, t, w, h), bg);
@@ -493,13 +552,56 @@ static cw_vec2 pill(const char *markup, int player, float x, float y, float ax, 
   return (cw_vec2){ w, h };
 }
 
+/* ── the HUD's rectangles ───────────────────────────────────────────────
+ * Everything the HUD draws that text could hide or be hidden by, in canvas pixels, kept for the frame: the players'
+ * panels, the top line with its wave pills, each cursor's buttons (the pills round it) and its P1..P4 label. Later
+ * things keep out of the extents of earlier ones (a cursor's pills and label move out of a panel's or an earlier
+ * cursor's way, by exactly as much as they need), and the `hud` request lists the rectangles for the overlap check
+ * (tests/towers-hud-overlap.mjs: no label over any button, on any map, at any size, with any number of seats). */
+enum { HR_LABEL, HR_PANEL, HR_TOP, HR_BUTTON };
+typedef struct hud_rect { uint8_t kind, player; cw_rect box, text; char s[48]; } hud_rect;
+#define MAXHR 96
+static hud_rect g_hr[MAXHR];
+static int g_nhr;
+typedef struct extent { float l, t, r, b; } extent;
+static extent g_ext[MAXHR];
+static int g_next, g_nfixed;      /* the extents; the first g_nfixed are the panels and the top line */
+static cw_vec2 g_hud_cs;          /* the canvas the last HUD was drawn on */
+static int g_hud_style;           /* the deploy pills: 0 each with its button's glyph; 1 the text alone, one diamond of the four face buttons at
+                                   * the cursor's centre (the pill's place says which), and a hint the first time a seat's cursor opens (`hud style`) */
+#define HINT_FRAMES 120
+static bool g_hud_labels = true;  /* tests: the cursor labels hidden (`hud labels 0`) */
+static float g_hud_push;          /* tests: the labels pushed this far into their nearest button (`hud push 20`: the check's control) */
+static void hr_add(int kind, int player, cw_rect box, cw_rect text, const char *s) {
+  if (g_nhr >= MAXHR) return;
+  hud_rect *r = &g_hr[g_nhr++];
+  r->kind = (uint8_t)kind, r->player = (uint8_t)player, r->box = box, r->text = text;
+  strncpy(r->s, s, sizeof r->s - 1), r->s[sizeof r->s - 1] = 0;
+}
+static void ext_add(float l, float t, float r, float b) {
+  if (g_next < MAXHR) g_ext[g_next++] = (extent){ l, t, r, b };
+}
+static void ext_add_rect(cw_rect q) { ext_add(q.x, q.y, q.x + q.w, q.y + q.h); }
+static bool ext_hit(const extent *e, float l, float t, float r, float b, float m) {
+  return l < e->r + m && r > e->l - m && t < e->b + m && b > e->t - m;
+}
+/* a pill's box and the box of its text, as pill() lays them out */
+static void pill_box(const char *markup, int player, float x, float y, float ax, float ay, float size, cw_rect *box, cw_rect *tb) {
+  cw_vec2 sz = prompt_size(markup, player, size);
+  float pad = size * 0.28f, w = sz.x + pad * 2, h = sz.y + pad * 1.2f;
+  float l = x - w * ax, t = y - h * ay;
+  *box = cw_rect_make(l, t, w, h);
+  *tb = cw_rect_make(l + pad, t + pad * 0.6f, sz.x, sz.y);
+}
+
 /* the build diamond (an empty slot) or the tower's actions round a player's cursor, while the player is choosing (for
  * three seconds after the cursor hops or the tower under it changes, and while selling); then the labels fade and one
- * short line stays under the cursor. Where two cursors stand close, the later one's labels move up or down out of the
- * earlier ones' way (their P1..P4 says whose they are). One player alone keeps the full labels. */
-static float g_lab[MAXP][2];
-static int g_nlab;
+ * short line stays over the cursor. The cursor's P1..P4 label sits over the top pill (under the bottom one when the
+ * screen's top is too near), never on one. Where a cursor's pills and label would land on a panel, the top line or an
+ * earlier cursor's, the whole lot moves up or down, whichever is the shorter move, just far enough to clear it. One
+ * player alone keeps the full labels. */
 float g_cursor_k[MAXP]; /* how much of each cursor's detail shows (the labels and the reach rings): 0 .. 1 */
+#define PILL_MIN 0.1f   /* with less detail than this the pills are gone, and the label settles in over the cursor */
 static void cursor_detail(void) {
   static int last_slot[MAXP] = { -1, -1, -1, -1 }, last_key[MAXP], quiet[MAXP];
   for (int i = 0; i < MAXP; i++) {
@@ -513,72 +615,176 @@ static void cursor_detail(void) {
     g_cursor_k[i] = G.S.players <= 1 ? 1.0f : k;
   }
 }
+typedef struct cur_item { char s[128]; float x, y, ax, ay; cw_color c; cw_rect box, tb; } cur_item;
+typedef struct cur_lay {
+  int n, sell;          /* the pills (sell: which one is the sell pill, -1 none) */
+  cur_item it[6];
+  bool pills;           /* the pills show this frame */
+  bool diamond, hint;   /* style 1 on an empty slot: the face-button diamond at the centre (its box), the hint over the top pill */
+  cw_rect db, hb, htb;
+  char lab[128];        /* the label */
+  cw_rect lb;           /* its box */
+  float l, t, r, b;     /* the extents of what is drawn */
+} cur_lay;
+/* the pills and the label of player i's cursor at (cx, cy) on screen, with detail k, over a tower t (or an empty slot) */
+#define HINT_TEXT "face buttons choose"
+static const float DIAMOND_K = 1.1f; /* the diamond's height in text sizes */
+static void cursor_layout(int i, const tower *t, int gold, float cx, float cy, float k, float u, cw_vec2 cs, bool hint, cur_lay *L) {
+  float bs = 26 * u, gap = view_px_per_m(cs.y) * 1.25f;
+  cw_color grey = rgba(0.6f, 0.6f, 0.62f, 0.75f * k);
+  char b[128];
+  L->n = 0, L->sell = -1, L->pills = k > PILL_MIN;
+  L->diamond = L->hint = false;
+#define ITEM(X, Y, AX, AY, C) do { cur_item *q = &L->it[L->n++]; snprintf(q->s, sizeof q->s, "%s", b); q->x = (X), q->y = (Y), q->ax = (AX), q->ay = (AY), q->c = (C); \
+    pill_box(q->s, i, q->x, q->y, q->ax, q->ay, bs, &q->box, &q->tb); } while (0)
+  if (!t->alive) {
+    /* north, west, east, south: the four towers where their buttons sit */
+    static const float AX[A_KINDS] = { 0.5f, 1.0f, 0.0f, 0.5f }, AY[A_KINDS] = { 1.0f, 0.5f, 0.5f, 0.0f };
+    static const float DX[A_KINDS] = { 0, -1, 1, 0 }, DY[A_KINDS] = { -1, 0, 0, 1 };
+    for (int a = 0; a < A_KINDS; a++) {
+      int cost = sim_tower_cost(a, 1);
+      if (g_hud_style) snprintf(b, sizeof b, "%s %d", sim_tower_name(a), cost);
+      else snprintf(b, sizeof b, "%s %s %d", ACT_TAG[a], sim_tower_name(a), cost);
+      const float *tc = TCOL[a];
+      cw_color c = gold >= cost ? rgba(0.55f + 0.45f * tc[0], 0.55f + 0.45f * tc[1], 0.55f + 0.45f * tc[2], k) : grey;
+      ITEM(cx + DX[a] * gap, cy + DY[a] * gap * 0.8f, AX[a], AY[a], c);
+    }
+    if (g_hud_style && L->pills) { /* the diamond at the centre: the four face buttons where their pills are */
+      cw_vec2 gs = cw_prompt_action_size(G.act[A_S], i, bs * DIAMOND_K);
+      bool pad = cw_prompt_device_of(i) == CW_PROMPT_PAD; /* a pad: one diamond; a keyboard or touch: its four glyphs round the centre */
+      float r = pad ? 0 : gs.y * 0.9f, w = gs.x + 2 * r, h = gs.y + 2 * r;
+      L->diamond = true, L->db = cw_rect_make(cx - w * 0.5f, cy - h * 0.5f, w, h);
+      if (hint) {
+        float pt = 1e9f;
+        for (int n = 0; n < L->n; n++) pt = fminf(pt, L->it[n].box.y);
+        pill_box(HINT_TEXT, -1, cx, pt - 2 * u, 0.5f, 1.0f, bs, &L->hb, &L->htb);
+        L->hint = true;
+      }
+    }
+  } else {
+    if (t->level == 1) {
+      int cost = sim_tower_cost(t->kind, 2);
+      snprintf(b, sizeof b, "{act_s} upgrade %d", cost);
+      ITEM(cx, cy + gap * 0.8f, 0.5f, 0.0f, gold >= cost ? rgba(0.7f, 1, 0.6f, k) : grey);
+    } else if (t->level == 2) { /* the third level: two branches, south and east, each with what it does */
+      int cost = sim_tower_cost(t->kind, 3);
+      bool ok = gold >= cost;
+      snprintf(b, sizeof b, "{act_s} %s %d: %s", sim_branch_name(t->kind, BR_A), cost, sim_branch_does(t->kind, BR_A));
+      ITEM(cx, cy + gap * 0.8f, 0.5f, 0.0f, ok ? rgba(0.7f, 1, 0.6f, k) : grey);
+      snprintf(b, sizeof b, "{act_e} %s %d: %s", sim_branch_name(t->kind, BR_B), cost, sim_branch_does(t->kind, BR_B));
+      ITEM(cx + gap, cy, 0.0f, 0.5f, ok ? rgba(1, 0.85f, 0.55f, k) : grey);
+    }
+    if (t->kind != TK_FROST) {
+      snprintf(b, sizeof b, "{act_n} aim: %s", sim_aim_name(t->aim));
+      ITEM(cx, cy - gap * 0.8f, 0.5f, 1.0f, rgba(0.85f, 0.9f, 1, k));
+    }
+    snprintf(b, sizeof b, "{act_w} hold: sell %d", sim_sell_value(t));
+    L->sell = L->n;
+    ITEM(cx - gap, cy, 1.0f, 0.5f, rgba(1, 0.8f, 0.6f, k));
+  }
+#undef ITEM
+  /* the label: P1..P4 and the tower under the cursor (its level and branch) */
+  if (t->alive)
+    snprintf(L->lab, sizeof L->lab, "P%d %s %s%s%s", i + 1, sim_tower_name(t->kind), ROMAN[t->level], t->level >= 3 ? " " : "", t->level >= 3 ? sim_branch_name(t->kind, t->branch) : "");
+  else
+    snprintf(L->lab, sizeof L->lab, "P%d", i + 1);
+  cw_text_metrics lm = measure(L->lab, bs);
+  float pt = 1e9f, pb = -1e9f;
+  for (int n = 0; n < L->n; n++) pt = fminf(pt, L->it[n].box.y), pb = fmaxf(pb, L->it[n].box.y + L->it[n].box.h);
+  float ppt = pt; /* the pills' top */
+  if (L->hint) pt = L->hb.y; /* the label goes over the hint */
+  bool above = pt - 2 * u - lm.height >= 4 * u;                   /* over the top pill, or under the bottom one when the screen's top is too near */
+  float with = above ? pt - 2 * u - lm.height : pb + 2 * u;        /* with the pills */
+  float without = cy - gap * 0.8f - lm.height - 2 * u;             /* without them: close over the cursor */
+  float s = L->pills ? 0 : 1 - cw_clampf(k / PILL_MIN, 0, 1);      /* it settles as the last of the detail goes */
+  float top = with + (without - with) * s;
+  if (g_hud_push != 0 && L->pills) top = above ? ppt - lm.height + g_hud_push : pb - g_hud_push; /* the control: into the top pill */
+  L->lb = cw_rect_make(cx - lm.width * 0.5f, top, lm.width, lm.height);
+  L->l = L->lb.x, L->t = L->lb.y, L->r = L->lb.x + L->lb.w, L->b = L->lb.y + L->lb.h;
+  if (L->pills)
+    for (int n = 0; n < L->n; n++) {
+      cw_rect q = L->it[n].box;
+      L->l = fminf(L->l, q.x), L->t = fminf(L->t, q.y), L->r = fmaxf(L->r, q.x + q.w), L->b = fmaxf(L->b, q.y + q.h);
+    }
+  if (L->diamond) L->l = fminf(L->l, L->db.x), L->t = fminf(L->t, L->db.y), L->r = fmaxf(L->r, L->db.x + L->db.w), L->b = fmaxf(L->b, L->db.y + L->db.h);
+  if (L->hint) L->l = fminf(L->l, L->hb.x), L->t = fminf(L->t, L->hb.y), L->r = fmaxf(L->r, L->hb.x + L->hb.w), L->b = fmaxf(L->b, L->hb.y + L->hb.h);
+}
+/* lay the cursor out at (cx, cy), slid in from a side; where it lands on an extent already placed (the panels, the
+ * top line, earlier cursors), it moves to the nearest place just over or just under one of them that is clear of
+ * them all and on screen; returns the cy it ended on (and cx, slid in) */
+static bool lay_hits(const cur_lay *L, float m) {
+  for (int j = 0; j < g_next; j++)
+    if (ext_hit(&g_ext[j], L->l, L->t, L->r, L->b, m)) return true;
+  return false;
+}
+static float cursor_place(int i, const tower *t, int gold, float *cx, float cy, float k, float u, cw_vec2 cs, bool hint, cur_lay *L) {
+  float m = 4 * u;
+  cursor_layout(i, t, gold, *cx, cy, k, u, cs, hint, L);
+  /* a slot near a side: the lot slides in off the edge (a pill cut by the screen cannot be read) */
+  if (L->l < 2 * u) *cx += 2 * u - L->l;
+  else if (L->r > cs.x - 2 * u) *cx -= L->r - (cs.x - 2 * u);
+  cursor_layout(i, t, gold, *cx, cy, k, u, cs, hint, L);
+  if (!lay_hits(L, m * 0.5f)) return cy;
+  float best = cy, best_d = 1e9f;
+  for (int j = 0; j < g_next; j++)
+    for (int side = 0; side < 2; side++) {
+      /* just under extent j (side 1) or just over it (side 0), by this layout's reach over and under its cy */
+      float c = side ? g_ext[j].b + m + (cy - L->t) : g_ext[j].t - m - (L->b - cy);
+      if (fabsf(c - cy) >= best_d) continue;
+      static cur_lay T;
+      cursor_layout(i, t, gold, *cx, c, k, u, cs, hint, &T);
+      c = side ? g_ext[j].b + m + (c - T.t) : g_ext[j].t - m - (T.b - c); /* (the label may have changed sides) */
+      cursor_layout(i, t, gold, *cx, c, k, u, cs, hint, &T);
+      if (T.t < 2 * u || T.b > cs.y - 2 * u || lay_hits(&T, m * 0.5f)) continue; /* (tested at half the margin it was placed with: no knife edge) */
+      best = c, best_d = fabsf(c - cy);
+    }
+  cursor_layout(i, t, gold, *cx, best, k, u, cs, hint, L);
+  return best;
+}
 static void hud_cursor(int i, float u, cw_vec2 cs) {
   const player *p = &G.S.p[i];
   if (!p->active || p->slot < 0) return;
   float x = mp_wx(&G.S.m, G.S.m.slot[p->slot].x), z = mp_wz(&G.S.m, G.S.m.slot[p->slot].y), su, sv;
   if (!view_screen((t3_vec3){ x, MP_GROUND_H, z }, &su, &sv)) return;
-  float cx = su * cs.x, cy = sv * cs.y, bs = 26 * u, gap = view_px_per_m(cs.y) * 1.25f, k = g_cursor_k[i];
-  if (k > 0.01f) {
-    for (int pass = 0, dir = cy > cs.y * 0.5f ? -1 : 1; pass < MAXP; pass++) {
-      bool hit = false;
-      for (int j = 0; j < g_nlab; j++) hit |= fabsf(cx - g_lab[j][0]) < 15 * gap && fabsf(cy - g_lab[j][1]) < 4.6f * gap;
-      if (!hit) break;
-      cy += (float)dir * 4.8f * gap;
-    }
-    if (g_nlab < MAXP) g_lab[g_nlab][0] = cx, g_lab[g_nlab++][1] = cy;
-  }
-  const float *pc = PCOL[i];
-  cw_color bg = rgba(0.02f, 0.03f, 0.06f, 0.72f * k), grey = rgba(0.6f, 0.6f, 0.62f, 0.75f * k);
+  float cx = su * cs.x, cy = sv * cs.y, bs = 26 * u, k = g_cursor_k[i];
   const tower *t = &G.S.tw[p->slot];
-  char b[128];
+  static cur_lay L;
+  if (g_hud_style && !t->alive && k > PILL_MIN && g_hint_t[i] == 0) g_hint_t[i] = HINT_FRAMES; /* the first time this seat's list opens */
+  bool hint = g_hud_style && !t->alive && k > PILL_MIN && g_hint_t[i] > 0;
+  if (hint) g_hint_t[i] = g_hint_t[i] > 1 ? g_hint_t[i] - 1 : -1;
+  cy = cursor_place(i, t, p->gold, &cx, cy, k, u, cs, hint, &L);
+  ext_add(L.l, L.t, L.r, L.b);
+  const float *pc = PCOL[i];
+  cw_color bg = rgba(0.02f, 0.03f, 0.06f, 0.72f * k);
   cw_color pcol = rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1);
-  if (k > 0.01f) {
-    if (!t->alive) {
-      /* north, west, east, south: the four towers where their buttons sit */
-      static const float AX[A_KINDS] = { 0.5f, 1.0f, 0.0f, 0.5f }, AY[A_KINDS] = { 1.0f, 0.5f, 0.5f, 0.0f };
+  if (L.pills) {
+    for (int n = 0; n < L.n; n++) {
+      const cur_item *q = &L.it[n];
+      cw_r2d_rect(q->box, bg);
+      cw_prompt_text(font, q->s, i, cw_v2(q->tb.x, q->tb.y), bs, q->c, CW_ALIGN_LEFT);
+      hr_add(HR_BUTTON, i, q->box, q->tb, q->s);
+    }
+    if (L.diamond) { /* the four face buttons as the shell's prompts draw them: on a pad, one diamond with every dot solid */
+      cw_vec2 gs = cw_prompt_action_size(G.act[A_S], i, bs * DIAMOND_K);
+      bool pad = cw_prompt_device_of(i) == CW_PROMPT_PAD;
+      float r = pad ? 0 : gs.y * 0.9f;
       static const float DX[A_KINDS] = { 0, -1, 1, 0 }, DY[A_KINDS] = { -1, 0, 0, 1 };
-      for (int a = 0; a < A_KINDS; a++) {
-        int cost = sim_tower_cost(a, 1);
-        bool afford = p->gold >= cost;
-        snprintf(b, sizeof b, "%s %s %d", ACT_TAG[a], sim_tower_name(a), cost);
-        const float *tc = TCOL[a];
-        cw_color c = afford ? rgba(0.55f + 0.45f * tc[0], 0.55f + 0.45f * tc[1], 0.55f + 0.45f * tc[2], k) : grey;
-        pill(b, i, cx + DX[a] * gap, cy + DY[a] * gap * 0.8f, AX[a], AY[a], bs, c, bg);
-      }
-    } else {
-      if (t->level == 1) {
-        int cost = sim_tower_cost(t->kind, 2);
-        snprintf(b, sizeof b, "{act_s} upgrade %d", cost);
-        pill(b, i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, p->gold >= cost ? rgba(0.7f, 1, 0.6f, k) : grey, bg);
-      } else if (t->level == 2) { /* the third level: two branches, south and east, each with what it does */
-        int cost = sim_tower_cost(t->kind, 3);
-        bool ok = p->gold >= cost;
-        snprintf(b, sizeof b, "{act_s} %s %d: %s", sim_branch_name(t->kind, BR_A), cost, sim_branch_does(t->kind, BR_A));
-        pill(b, i, cx, cy + gap * 0.8f, 0.5f, 0.0f, bs, ok ? rgba(0.7f, 1, 0.6f, k) : grey, bg);
-        snprintf(b, sizeof b, "{act_e} %s %d: %s", sim_branch_name(t->kind, BR_B), cost, sim_branch_does(t->kind, BR_B));
-        pill(b, i, cx + gap, cy, 0.0f, 0.5f, bs, ok ? rgba(1, 0.85f, 0.55f, k) : grey, bg);
-      }
-      if (t->kind != TK_FROST) {
-        snprintf(b, sizeof b, "{act_n} aim: %s", sim_aim_name(t->aim));
-        pill(b, i, cx, cy - gap * 0.8f, 0.5f, 1.0f, bs, rgba(0.85f, 0.9f, 1, k), bg);
-      }
-      snprintf(b, sizeof b, "{act_w} hold: sell %d", sim_sell_value(t));
-      cw_vec2 sz = pill(b, i, cx - gap, cy, 1.0f, 0.5f, bs, rgba(1, 0.8f, 0.6f, k), bg);
-      if (p->sell_t > 0) { /* the hold's progress under it */
-        float q = (float)p->sell_t / 36.0f;
-        cw_r2d_rect(cw_rect_make(cx - gap - sz.x, cy + sz.y * 0.5f, sz.x * q, 5 * u), rgba(1, 0.6f, 0.3f, 1));
-      }
+      for (int a = 0; a < A_KINDS; a++)
+        cw_prompt_action(G.act[a], i, cw_v2(cx - gs.x * 0.5f + DX[a] * r, cy - gs.y * 0.5f + DY[a] * r), bs * DIAMOND_K, rgba(1, 1, 1, k));
+    }
+    if (L.hint) {
+      cw_r2d_rect(L.hb, bg);
+      cw_prompt_text(font, HINT_TEXT, -1, cw_v2(L.htb.x, L.htb.y), bs, rgba(1, 0.95f, 0.75f, k), CW_ALIGN_LEFT);
+      hr_add(HR_LABEL, i, L.hb, L.htb, HINT_TEXT);
+    }
+    if (p->sell_t > 0 && L.sell >= 0) { /* the hold's progress under the sell pill */
+      const cw_rect *sb = &L.it[L.sell].box;
+      float q = (float)p->sell_t / 36.0f;
+      cw_r2d_rect(cw_rect_make(sb->x, sb->y + sb->h, sb->w * q, 5 * u), rgba(1, 0.6f, 0.3f, 1));
     }
   }
-  /* the cursor's own line, always: P1..P4 and the tower under it (its level and branch) over the cursor */
-  if (t->alive)
-    snprintf(b, sizeof b, "P%d %s %s%s%s", i + 1, sim_tower_name(t->kind), ROMAN[t->level], t->level >= 3 ? " " : "", t->level >= 3 ? sim_branch_name(t->kind, t->branch) : "");
-  else
-    snprintf(b, sizeof b, "P%d", i + 1);
-  float top = cy - gap * 0.8f - (k > 0.01f && t->alive && t->kind != TK_FROST ? bs * 1.55f : 0) - measure(b, bs).height - 2 * u;
-  if (k < 0.99f && t->alive) top = top + (cy - gap * 0.6f - measure(b, bs).height - top) * (1 - k); /* settles in close over the cursor as the labels fade */
-  text(b, cx, top, bs, pcol, CW_ALIGN_CENTER);
+  if (g_hud_labels) text(L.lab, cx, L.lb.y, bs, pcol, CW_ALIGN_CENTER);
+  hr_add(HR_LABEL, i, L.lb, L.lb, L.lab);
 }
 
 static void hud_player(int i, float u, cw_vec2 cs) {
@@ -593,9 +799,13 @@ static void hud_player(int i, float u, cw_vec2 cs) {
   float w = 16 * u + nm.width + 14 * u + 26 * u + gm.width + 14 * u, h = fmaxf(nm.height, gm.height) + 12 * u;
   bool right = i & 1, bottom = i & 2;
   float x = right ? cs.x - w - 12 * u : 12 * u, y = bottom ? cs.y - h - 12 * u : 12 * u;
-  cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.02f, 0.03f, 0.06f, 0.72f));
+  cw_rect panel = cw_rect_make(x, y, w, h);
+  cw_r2d_rect(panel, rgba(0.02f, 0.03f, 0.06f, 0.72f));
   cw_r2d_rect(cw_rect_make(x, y, 6 * u, h), rgba(pc[0], pc[1], pc[2], 1));
-  text(b, x + 16 * u, y + (h - nm.height) * 0.5f, bs, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
+  float ny = y + (h - nm.height) * 0.5f;
+  text(b, x + 16 * u, ny, bs, rgba(0.6f + 0.4f * pc[0], 0.6f + 0.4f * pc[1], 0.6f + 0.4f * pc[2], 1), CW_ALIGN_LEFT);
+  hr_add(HR_PANEL, i, panel, cw_rect_make(x + 16 * u, ny, nm.width, nm.height), b);
+  ext_add_rect(panel);
   float cx = x + 16 * u + nm.width + 14 * u + 10 * u, cy = y + h * 0.5f;
   cw_r2d_circle(cw_v2(cx, cy), 10 * u, 20, rgba(1, 0.8f, 0.25f, 1)); /* a coin */
   cw_r2d_circle(cw_v2(cx, cy), 6 * u, 20, rgba(1, 0.92f, 0.55f, 1));
@@ -604,13 +814,220 @@ static void hud_player(int i, float u, cw_vec2 cs) {
     float by = bottom ? y - 6 * u : y + h + 6 * u;
     if (p->power_cd <= 0) {
       float glow = 0.85f + 0.15f * cw_sin((float)G.S.tick * 0.05f); /* (a slow glow, never a blink) */
+      cw_rect box, tb;
+      pill_box("{power} storm", i, right ? x + w : x, by, right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f, bs, &box, &tb);
       pill("{power} storm", i, right ? x + w : x, by, right ? 1.0f : 0.0f, bottom ? 1.0f : 0.0f, bs, rgba(0.75f * glow, 0.85f * glow, 1, 1), rgba(0.02f, 0.03f, 0.06f, 0.72f));
+      hr_add(HR_PANEL, i, box, tb, "storm");
+      ext_add_rect(box);
     } else {
       float k = 1.0f - (float)p->power_cd / (float)POWER_CD, bh = 8 * u, bx = x, bt = bottom ? by - bh : by;
       cw_r2d_rect(cw_rect_make(bx, bt, w, bh), rgba(0.02f, 0.03f, 0.06f, 0.72f));
       cw_r2d_rect(cw_rect_make(bx, bt, w * k, bh), rgba(0.45f, 0.6f, 1, 0.9f));
+      ext_add(bx, bt, bx + w, bt + bh);
     }
   }
+}
+
+/* the top line: the wave, the core, the next wave (drawn before the cursors, which keep out of it) */
+static void hud_top(float u, cw_vec2 cs) {
+  float bs = 26 * u;
+  char b[128], c[32];
+  snprintf(b, sizeof b, "WAVE %d / %d", G.S.wave, G.S.m.waves);
+  cw_text_metrics wm = measure(b, 34 * u);
+  snprintf(c, sizeof c, "CORE %d", G.S.core_hp);
+  cw_text_metrics cm = measure(c, 34 * u);
+  float w = wm.width + cm.width + 60 * u, h = wm.height + 12 * u, x = cs.x * 0.5f - w * 0.5f, y = 10 * u;
+  cw_rect panel = cw_rect_make(x, y, w, h);
+  cw_r2d_rect(panel, rgba(0.02f, 0.03f, 0.06f, 0.72f));
+  text(b, x + 16 * u, y + 6 * u, 34 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
+  float hurt = (float)G.S.core_hp / (float)CORE_HP;
+  /* low: the count glows amber and back, slowly (never a blink, never a red flash) */
+  float lo = hurt < 0.35f ? 0.5f + 0.5f * cw_sin((float)G.S.tick * 0.07f) : 0.0f;
+  cw_color cc = rgba(0.55f + 0.45f * (1 - hurt), 0.85f, 1, 1), warn = rgba(1, 0.6f, 0.32f, 1);
+  if (g_strobe_control && hurt < 0.35f) lo = (G.S.tick / 15) % 2 ? 1.0f : 0.0f, warn = rgba(1, 0.3f, 0.25f, 1);
+  text(c, x + w - 16 * u, y + 6 * u, 34 * u, rgba(cc.r + (warn.r - cc.r) * lo, cc.g + (warn.g - cc.g) * lo, cc.b + (warn.b - cc.b) * lo, 1), CW_ALIGN_RIGHT);
+  hr_add(HR_TOP, 255, panel, cw_rect_make(x + 16 * u, y + 6 * u, w - 32 * u, wm.height), "WAVE / CORE");
+  ext_add_rect(panel);
+  float ny = y + h + 6 * u;
+  cw_color pbg = rgba(0.02f, 0.03f, 0.06f, 0.6f);
+  cw_rect box, tb;
+  if (G.S.state == ST_PLAY && G.S.next_t > 0) {
+    int secs = (G.S.next_t + 59) / 60;
+    if (G.S.wave == 0) snprintf(b, sizeof b, "the first wave in %d   {call}: send it now", secs);
+    else snprintf(b, sizeof b, "the next wave in %d   {call}: send it now, +%d gold each", secs, G.S.next_t / 60);
+    pill_box(b, -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, &box, &tb);
+    cw_vec2 tsz = pill(b, -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 1, 1, 0.95f), pbg);
+    hr_add(HR_TOP, 255, box, tb, "next wave"), ext_add_rect(box);
+    int ks[2], nk = sim_wave_kinds(&G.S, G.S.wave + 1, ks);
+    if (nk) { /* what comes next, so the towers can be chosen for it */
+      static const char *const KN[CK_KINDS] = { "skitters", "ghouls", "hounds", "imps", "sporelings", "bloaters", "shades", "ogres" };
+      bool boss = (G.S.wave + 1) % 10 == 0 || G.S.wave + 1 == G.S.m.waves;
+      snprintf(b, sizeof b, "next: %s%s%s%s", KN[ks[0]], nk > 1 ? " and " : "", nk > 1 ? KN[ks[1]] : "", boss ? ", and a boss" : "");
+      pill_box(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, &box, &tb);
+      cw_vec2 nsz = pill(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, rgba(1, 0.85f, 0.7f, 0.95f), pbg);
+      hr_add(HR_TOP, 255, box, tb, "next kinds"), ext_add_rect(box);
+      int nw = sim_wave_new_kind(&G.S, G.S.wave + 1);
+      if (nw >= 0 && sim_kind_hint(nw)[0]) { /* a kind not met on this map yet: what it does, and what answers it */
+        snprintf(b, sizeof b, "new: %s, %s", KN[nw], sim_kind_hint(nw));
+        pill_box(b, -1, cs.x * 0.5f, ny + tsz.y + nsz.y + 8 * u, 0.5f, 0.0f, bs, &box, &tb);
+        pill(b, -1, cs.x * 0.5f, ny + tsz.y + nsz.y + 8 * u, 0.5f, 0.0f, bs, rgba(1, 0.95f, 0.6f, 1), pbg);
+        hr_add(HR_TOP, 255, box, tb, "new kind"), ext_add_rect(box);
+      }
+    }
+  } else if (G.S.state == ST_PLAY && G.S.next_t < 0) {
+    pill_box("THE LAST WAVE", -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, &box, &tb);
+    pill("THE LAST WAVE", -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 0.7f, 0.5f, 1), pbg);
+    hr_add(HR_TOP, 255, box, tb, "THE LAST WAVE"), ext_add_rect(box);
+  }
+}
+
+/* the `hud` request: the frame's rectangles; `hud labels 0|1`, `hud push <px>` (tests); `hud sweep`: every slot of
+ * the map, alone in every state and in pairs with every other player's slot, laid out as the HUD would lay them out
+ * (the panels and the top line as they stand), counting what would overlap: the check's whole-map case */
+static void reply_rect(cw_reply *r, cw_rect q) { cw_reply_printf(r, "[%.1f,%.1f,%.1f,%.1f]", (double)q.x, (double)q.y, (double)q.w, (double)q.h); }
+static bool rect_hit(cw_rect a, cw_rect b) { return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+static void hud_sweep(cw_reply *r, bool singles, bool pairs, int only) {
+  cw_vec2 cs = g_hud_cs;
+  if (cs.x <= 0 || !G.in_match || G.phase != PH_PLAY) { cw_reply_error(r, "hud sweep: the match's HUD has not been drawn yet"); return; }
+  float u = cs.y / 1080.0f;
+  int n = G.S.players, bad = 0, cases = 0;
+  /* the states a cursor can be over: an empty slot, a bolt at each level (the aim pill, upgrade, the two branches),
+   * a frost (no aim pill) */
+  const tower ST[5] = { { .alive = false }, { .alive = true, .kind = TK_BOLT, .level = 1, .tgt = -1 }, { .alive = true, .kind = TK_BOLT, .level = 2, .tgt = -1 },
+                        { .alive = true, .kind = TK_BOLT, .level = 3, .branch = BR_A, .tgt = -1 }, { .alive = true, .kind = TK_FROST, .level = 1, .tgt = -1 } };
+  static cur_lay A, B;
+  int saved_next = g_next;
+  cw_reply_printf(r, "{\"players\":%d,\"slots\":%d,\"first\":[", n, G.S.m.nslot);
+  int listed = 0;
+  for (int a = 0; a < G.S.m.nslot; a++) {
+    if (only >= 0 && a != only) continue;
+    int i = mp_owner(&G.S.m.slot[a], n);
+    float su, sv;
+    if (!view_screen((t3_vec3){ mp_wx(&G.S.m, G.S.m.slot[a].x), MP_GROUND_H, mp_wz(&G.S.m, G.S.m.slot[a].y) }, &su, &sv)) continue;
+    float ax = su * cs.x, ay = sv * cs.y;
+    for (int sa = 0; sa < 5 && singles; sa++) { /* alone: on screen, clear of the panels and the top line */
+      g_next = g_nfixed;
+      float x1 = ax;
+      cursor_place(i, &ST[sa], 999, &x1, ay, 1, u, cs, false, &A);
+      bool off = A.l < 0 || A.t < 0 || A.r > cs.x || A.b > cs.y, hit = false;
+      int on = -1;
+      for (int j = 0; j < g_nfixed; j++) if (ext_hit(&g_ext[j], A.l, A.t, A.r, A.b, 0)) hit = true, on = on < 0 ? j : on;
+      for (int q = 0; q < A.n; q++) hit |= rect_hit(A.lb, A.it[q].box);
+      cases++;
+      if (off || hit) {
+        bad++;
+        if (listed++ < 8) {
+          cw_reply_printf(r, "%s{\"slot\":%d,\"state\":%d,\"why\":\"%s\",\"lay\":[%.1f,%.1f,%.1f,%.1f],\"at\":[%.1f,%.1f]", listed > 1 ? "," : "", a, sa, off ? "off screen" : on >= 0 ? "on a panel" : "label on own pill",
+                          (double)A.l, (double)A.t, (double)A.r, (double)A.b, (double)x1, (double)ay);
+          if (on >= 0) cw_reply_printf(r, ",\"ext\":[%.1f,%.1f,%.1f,%.1f]", (double)g_ext[on].l, (double)g_ext[on].t, (double)g_ext[on].r, (double)g_ext[on].b);
+          cw_reply_printf(r, "}");
+        }
+      }
+    }
+    if (n < 2 || !pairs) continue;
+    for (int b = 0; b < G.S.m.nslot; b++) { /* in pairs with another player's slot: the lower seat placed first */
+      int j = mp_owner(&G.S.m.slot[b], n);
+      if (j == i || !view_screen((t3_vec3){ mp_wx(&G.S.m, G.S.m.slot[b].x), MP_GROUND_H, mp_wz(&G.S.m, G.S.m.slot[b].y) }, &su, &sv)) continue;
+      float bx = su * cs.x, by = sv * cs.y;
+      for (int sa = 0; sa < 5; sa += 2) /* empty, the second level, frost */
+        for (int sb = 0; sb < 5; sb += 2)
+          for (int kk = 0; kk < 3; kk++) { /* both showing their pills; the first faded; the second faded */
+            float ka = kk == 1 ? 0 : 1, kb = kk == 2 ? 0 : 1;
+            g_next = g_nfixed;
+            float xa = ax, xb = bx;
+            if (i < j) {
+              cursor_place(i, &ST[sa], 999, &xa, ay, ka, u, cs, false, &A), ext_add(A.l, A.t, A.r, A.b);
+              cursor_place(j, &ST[sb], 999, &xb, by, kb, u, cs, false, &B);
+            } else {
+              cursor_place(j, &ST[sb], 999, &xb, by, kb, u, cs, false, &B), ext_add(B.l, B.t, B.r, B.b);
+              cursor_place(i, &ST[sa], 999, &xa, ay, ka, u, cs, false, &A);
+            }
+            cases++;
+            bool hit = rect_hit(A.lb, B.lb), off = A.l < 0 || A.t < 0 || A.r > cs.x || A.b > cs.y || B.l < 0 || B.t < 0 || B.r > cs.x || B.b > cs.y;
+            for (int q = 0; q < A.n && A.pills; q++) hit |= rect_hit(A.it[q].box, B.lb) || rect_hit(A.lb, A.it[q].box);
+            for (int q = 0; q < B.n && B.pills; q++) hit |= rect_hit(B.it[q].box, A.lb) || rect_hit(B.lb, B.it[q].box);
+            for (int q = 0; q < A.n && A.pills; q++)
+              for (int w = 0; w < B.n && B.pills; w++) hit |= rect_hit(A.it[q].box, B.it[w].box);
+            for (int q = 0; q < g_nfixed; q++) hit |= ext_hit(&g_ext[q], A.l, A.t, A.r, A.b, 0) || ext_hit(&g_ext[q], B.l, B.t, B.r, B.b, 0);
+            if (hit || off) {
+              bad++;
+              if (listed++ < 8)
+                cw_reply_printf(r, "%s{\"slot\":%d,\"other\":%d,\"state\":[%d,%d],\"detail\":[%g,%g],\"why\":\"%s\"}", listed > 1 ? "," : "", a, b, sa, sb, (double)ka, (double)kb, off ? "off screen" : "overlap");
+            }
+          }
+    }
+  }
+  g_next = saved_next;
+  cw_reply_printf(r, "],\"cases\":%d,\"bad\":%d,\"fixed\":[", cases, bad);
+  for (int j = 0; j < g_nfixed; j++) cw_reply_printf(r, "%s[%.1f,%.1f,%.1f,%.1f]", j ? "," : "", (double)g_ext[j].l, (double)g_ext[j].t, (double)g_ext[j].r, (double)g_ext[j].b);
+  cw_reply_printf(r, "]}");
+}
+static void hud_place_trace(cw_reply *r, int slot, int state) {
+  cw_vec2 cs = g_hud_cs;
+  float u = cs.y / 1080.0f, m = 4 * u, su, sv;
+  const tower ST[5] = { { .alive = false }, { .alive = true, .kind = TK_BOLT, .level = 1, .tgt = -1 }, { .alive = true, .kind = TK_BOLT, .level = 2, .tgt = -1 },
+                        { .alive = true, .kind = TK_BOLT, .level = 3, .branch = BR_A, .tgt = -1 }, { .alive = true, .kind = TK_FROST, .level = 1, .tgt = -1 } };
+  if (slot < 0 || slot >= G.S.m.nslot || state < 0 || state > 4) { cw_reply_error(r, "hud place <slot> <state 0..4>"); return; }
+  view_screen((t3_vec3){ mp_wx(&G.S.m, G.S.m.slot[slot].x), MP_GROUND_H, mp_wz(&G.S.m, G.S.m.slot[slot].y) }, &su, &sv);
+  float cx = su * cs.x, cy = sv * cs.y;
+  int i = mp_owner(&G.S.m.slot[slot], G.S.players), saved = g_next;
+  g_next = g_nfixed;
+  static cur_lay L, T;
+  cursor_layout(i, &ST[state], 999, cx, cy, 1, u, cs, false, &L);
+  cw_reply_printf(r, "{\"at\":[%.1f,%.1f],\"lay\":[%.1f,%.1f,%.1f,%.1f],\"hits\":%d,\"fixed\":%d,\"candidates\":[", (double)cx, (double)cy, (double)L.l, (double)L.t, (double)L.r, (double)L.b, lay_hits(&L, m * 0.5f), g_nfixed);
+  for (int j = 0; j < g_next; j++)
+    for (int side = 0; side < 2; side++) {
+      float c = side ? g_ext[j].b + m + (cy - L.t) : g_ext[j].t - m - (L.b - cy);
+      cursor_layout(i, &ST[state], 999, cx, c, 1, u, cs, false, &T);
+      c = side ? g_ext[j].b + m + (c - T.t) : g_ext[j].t - m - (T.b - c);
+      cursor_layout(i, &ST[state], 999, cx, c, 1, u, cs, false, &T);
+      int on = -1;
+      for (int q = 0; q < g_next && on < 0; q++) if (ext_hit(&g_ext[q], T.l, T.t, T.r, T.b, m * 0.5f)) on = q;
+      cw_reply_printf(r, "%s{\"ext\":%d,\"side\":%d,\"c\":%.1f,\"lay\":[%.1f,%.1f,%.1f,%.1f],\"off\":%d,\"on\":%d}", j || side ? "," : "", j, side, (double)c, (double)T.l, (double)T.t, (double)T.r, (double)T.b,
+                      T.t < 2 * u || T.b > cs.y - 2 * u, on);
+    }
+  float x1 = cx, placed = cursor_place(i, &ST[state], 999, &x1, cy, 1, u, cs, false, &T);
+  cw_reply_printf(r, "],\"placed\":%.1f,\"lay\":[%.1f,%.1f,%.1f,%.1f]}", (double)placed, (double)T.l, (double)T.t, (double)T.r, (double)T.b);
+  g_next = saved;
+}
+static void cmd_hud(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 4 && !strcmp(argv[1], "place")) { hud_place_trace(r, atoi(argv[2]), atoi(argv[3])); return; }
+  if (argc >= 3 && !strcmp(argv[1], "labels")) { g_hud_labels = atoi(argv[2]) != 0; cw_reply_printf(r, "{\"labels\":%d}", g_hud_labels); return; }
+  if (argc >= 3 && !strcmp(argv[1], "style")) { g_hud_style = atoi(argv[2]) ? 1 : 0; for (int i = 0; i < MAXP; i++) g_hint_t[i] = 0; cw_reply_printf(r, "{\"style\":%d}", g_hud_style); return; }
+  if (argc >= 3 && !strcmp(argv[1], "push")) { g_hud_push = (float)atof(argv[2]); cw_reply_printf(r, "{\"push\":%g}", (double)g_hud_push); return; }
+  if (argc >= 2 && !strcmp(argv[1], "sweep")) { bool one = argc >= 3; hud_sweep(r, !one || !strcmp(argv[2], "singles"), !one || !strcmp(argv[2], "pairs"), argc >= 4 ? atoi(argv[3]) : -1); return; }
+  if (argc >= 2 && !strcmp(argv[1], "slots")) { /* the map's slots: tile, owner (for the seats playing), where on the canvas */
+    cw_vec2 cs = g_hud_cs;
+    cw_reply_printf(r, "{\"players\":%d,\"slots\":[", G.S.players);
+    for (int k = 0; k < G.S.m.nslot; k++) {
+      float su = -1, sv = -1;
+      view_screen((t3_vec3){ mp_wx(&G.S.m, G.S.m.slot[k].x), MP_GROUND_H, mp_wz(&G.S.m, G.S.m.slot[k].y) }, &su, &sv);
+      cw_reply_printf(r, "%s{\"slot\":%d,\"x\":%d,\"y\":%d,\"owner\":%d,\"sx\":%.1f,\"sy\":%.1f,\"tower\":%d}", k ? "," : "", k, G.S.m.slot[k].x, G.S.m.slot[k].y,
+                      mp_owner(&G.S.m.slot[k], G.S.players), (double)(su * cs.x), (double)(sv * cs.y), G.S.tw[k].alive ? G.S.tw[k].kind * 8 + G.S.tw[k].level : -1);
+    }
+    cw_reply_printf(r, "]}");
+    return;
+  }
+  if (argc >= 4 && !strcmp(argv[1], "cursor")) { /* tests: a seat's cursor put on one of its slots */
+    int i = atoi(argv[2]), k = atoi(argv[3]);
+    if (i < 0 || i >= MAXP || !G.S.p[i].active) { cw_reply_error(r, "hud cursor: seat %d is not playing", i); return; }
+    if (!sim_slot_mine(&G.S, i, k)) { cw_reply_error(r, "hud cursor: slot %d is not seat %d's", k, i); return; }
+    G.S.p[i].slot = k;
+    cw_reply_printf(r, "{\"seat\":%d,\"slot\":%d}", i, k);
+    return;
+  }
+  if (argc >= 2) { cw_reply_error(r, "usage: hud | hud labels 0|1 | hud style 0|1 | hud push <px> | hud sweep [singles|pairs [slot]] | hud slots | hud cursor <seat> <slot>"); return; }
+  static const char *const KIND[4] = { "label", "panel", "top", "button" };
+  cw_reply_printf(r, "{\"canvas\":[%g,%g],\"players\":%d,\"labels\":%d,\"style\":%d,\"push\":%g,\"rects\":[", (double)g_hud_cs.x, (double)g_hud_cs.y, G.S.players, g_hud_labels, g_hud_style, (double)g_hud_push);
+  for (int k = 0; k < g_nhr; k++) {
+    const hud_rect *q = &g_hr[k];
+    cw_reply_printf(r, "%s{\"kind\":\"%s\",\"p\":%d,\"s\":", k ? "," : "", KIND[q->kind], q->player == 255 ? -1 : q->player + 1);
+    cw_reply_str(r, q->s);
+    cw_reply_printf(r, ",\"box\":"), reply_rect(r, q->box);
+    cw_reply_printf(r, ",\"text\":"), reply_rect(r, q->text);
+    cw_reply_printf(r, "}");
+  }
+  cw_reply_printf(r, "]}");
 }
 
 static void hud(void) {
@@ -638,62 +1055,11 @@ static void hud(void) {
     cw_r2d_end();
     return;
   }
+  g_nhr = 0, g_next = 0, g_hud_cs = cs;
   for (int i = 0; i < G.S.players; i++) hud_player(i, u, cs);
-#ifdef TOWERS_AUTOPILOT
-  bool cursors = !dev_env("TOWERS_NO_CURSORS");
-#else
-  bool cursors = true;
-#endif
-  g_nlab = 0;
-  if (cursors && G.S.state == ST_PLAY)
-    for (int i = 0; i < G.S.players; i++) hud_cursor(i, u, cs);
-  /* the top line: the wave, the core, the next wave */
-  {
-    snprintf(b, sizeof b, "WAVE %d / %d", G.S.wave, G.S.m.waves);
-    cw_text_metrics wm = measure(b, 34 * u);
-    char c[32];
-    snprintf(c, sizeof c, "CORE %d", G.S.core_hp);
-    cw_text_metrics cm = measure(c, 34 * u);
-    float w = wm.width + cm.width + 60 * u, h = wm.height + 12 * u, x = cs.x * 0.5f - w * 0.5f, y = 10 * u;
-    cw_r2d_rect(cw_rect_make(x, y, w, h), rgba(0.02f, 0.03f, 0.06f, 0.72f));
-    text(b, x + 16 * u, y + 6 * u, 34 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
-    float hurt = (float)G.S.core_hp / (float)CORE_HP;
-    /* low: the count glows amber and back, slowly (never a blink, never a red flash) */
-    float lo = hurt < 0.35f ? 0.5f + 0.5f * cw_sin((float)G.S.tick * 0.07f) : 0.0f;
-    cw_color cc = rgba(0.55f + 0.45f * (1 - hurt), 0.85f, 1, 1), warn = rgba(1, 0.6f, 0.32f, 1);
-    if (g_strobe_control && hurt < 0.35f) lo = (G.S.tick / 15) % 2 ? 1.0f : 0.0f, warn = rgba(1, 0.3f, 0.25f, 1);
-    text(c, x + w - 16 * u, y + 6 * u, 34 * u, rgba(cc.r + (warn.r - cc.r) * lo, cc.g + (warn.g - cc.g) * lo, cc.b + (warn.b - cc.b) * lo, 1), CW_ALIGN_RIGHT);
-    float ny = y + h + 6 * u;
-    if (G.S.state == ST_PLAY && G.S.next_t > 0) {
-      int secs = (G.S.next_t + 59) / 60;
-      if (G.S.wave == 0) snprintf(b, sizeof b, "the first wave in %d   {call}: send it now", secs);
-      else snprintf(b, sizeof b, "the next wave in %d   {call}: send it now, +%d gold each", secs, G.S.next_t / 60);
-      cw_vec2 tsz = pill(b, -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 1, 1, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
-      int ks[2], nk = sim_wave_kinds(&G.S, G.S.wave + 1, ks);
-      if (nk) { /* what comes next, so the towers can be chosen for it */
-        static const char *const KN[CK_KINDS] = { "skitters", "ghouls", "hounds", "imps", "sporelings", "bloaters", "shades", "ogres" };
-        bool boss = (G.S.wave + 1) % 10 == 0 || G.S.wave + 1 == G.S.m.waves;
-        snprintf(b, sizeof b, "next: %s%s%s%s", KN[ks[0]], nk > 1 ? " and " : "", nk > 1 ? KN[ks[1]] : "", boss ? ", and a boss" : "");
-        cw_vec2 nsz = pill(b, -1, cs.x * 0.5f, ny + tsz.y + 4 * u, 0.5f, 0.0f, bs, rgba(1, 0.85f, 0.7f, 0.95f), rgba(0.02f, 0.03f, 0.06f, 0.6f));
-        int nw = sim_wave_new_kind(&G.S, G.S.wave + 1);
-        if (nw >= 0 && sim_kind_hint(nw)[0]) { /* a kind not met on this map yet: what it does, and what answers it */
-          snprintf(b, sizeof b, "new: %s, %s", KN[nw], sim_kind_hint(nw));
-          pill(b, -1, cs.x * 0.5f, ny + tsz.y + nsz.y + 8 * u, 0.5f, 0.0f, bs, rgba(1, 0.95f, 0.6f, 1), rgba(0.02f, 0.03f, 0.06f, 0.6f));
-        }
-      }
-    } else if (G.S.state == ST_PLAY && G.S.next_t < 0)
-      pill("THE LAST WAVE", -1, cs.x * 0.5f, ny, 0.5f, 0.0f, bs, rgba(1, 0.7f, 0.5f, 1), rgba(0.02f, 0.03f, 0.06f, 0.6f));
-  }
-  /* boss health over the boss */
-  for (int i = 0; i < MAXE; i++) {
-    const creep *e = &G.S.e[i];
-    float su, sv;
-    if (!e->alive || !e->boss || !view_screen((t3_vec3){ e->x, 3.5f, e->y }, &su, &sv)) continue;
-    float w = 90 * u, h = 9 * u, x = su * cs.x - w * 0.5f, y = sv * cs.y - h;
-    cw_r2d_rect(cw_rect_make(x - 2 * u, y - 2 * u, w + 4 * u, h + 4 * u), rgba(0, 0, 0, 0.8f));
-    cw_r2d_rect(cw_rect_make(x, y, w * CW_CLAMP(e->hp / e->maxhp, 0.0f, 1.0f), h), rgba(1, 0.25f, 0.2f, 1));
-  }
-  /* banners: the map's name at the start, each wave as it comes, the end */
+  hud_top(u, cs);
+  g_nfixed = g_next;
+  /* banners: the map's name at the start, each wave as it comes (under the cursors' pills, which stay readable) */
   if (G.banner_t > 0 && cw_shell_screen_now() != CW_SHELL_PAUSE && G.S.state == ST_PLAY) {
     float a = cw_clampf((float)G.banner_t / 40.0f, 0, 1), y = cs.y * 0.3f;
     if (G.banner_kind == 0) {
@@ -725,6 +1091,22 @@ static void hud(void) {
         }
       }
     }
+  }
+#ifdef TOWERS_AUTOPILOT
+  bool cursors = !dev_env("TOWERS_NO_CURSORS");
+#else
+  bool cursors = true;
+#endif
+  if (cursors && G.S.state == ST_PLAY)
+    for (int i = 0; i < G.S.players; i++) hud_cursor(i, u, cs);
+  /* boss health over the boss */
+  for (int i = 0; i < MAXE; i++) {
+    const creep *e = &G.S.e[i];
+    float su, sv;
+    if (!e->alive || !e->boss || !view_screen((t3_vec3){ e->x, 3.5f, e->y }, &su, &sv)) continue;
+    float w = 90 * u, h = 9 * u, x = su * cs.x - w * 0.5f, y = sv * cs.y - h;
+    cw_r2d_rect(cw_rect_make(x - 2 * u, y - 2 * u, w + 4 * u, h + 4 * u), rgba(0, 0, 0, 0.8f));
+    cw_r2d_rect(cw_rect_make(x, y, w * CW_CLAMP(e->hp / e->maxhp, 0.0f, 1.0f), h), rgba(1, 0.25f, 0.2f, 1));
   }
   if (G.S.state == ST_WON) {
     float y = cs.y * 0.36f;

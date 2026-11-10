@@ -68,6 +68,10 @@ reaches the core costs it health; hold the core through the last wave to take th
   screen; controls: the old flickering effects, `TOWERS_STROBE_CONTROL=1`, and an 8 Hz strobe).
 - `node tests/towers-crowd.mjs`: a wave-18 crowd stands off its ground and parts into bodies on every theme
   (control: the old dark ink on the snowfields, `TOWERS_OLD_INK=1`).
+- `node tests/towers-hud-overlap.mjs`: no label over any deploy button, through romdev on GL and WebGPU (the HUD's
+  rectangles from the `hud` request and the pixels of every button's text against the frame with the labels hidden;
+  one to four seats, cursors side by side, the lists closing, a seat joining, every map swept, at the cart's own size
+  and a host's preferred sizes; control: `hud push 20`, the labels forced into their button).
 - `node tests/towers-shots.mjs <dir>`: the look check's frames (`--mask` for the edge masks).
 - `towers_soak --clear <map.cwtd>`: two bots play one map (the map check's clear run).
 - Development switches (native): `TOWERS_MAP=n` starts on map n, `TOWERS_PLAYERS=n` the auto build's players,

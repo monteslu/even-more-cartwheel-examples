@@ -6,6 +6,6 @@
     { "name": "pick", "frames": 90, "input": "towers-text-pick.json" },
     { "name": "build", "frames": 200, "input": "towers-play.json" },
     { "name": "play", "frames": 330, "input": "towers-play.json" },
-    { "name": "bots4", "app": "towers_auto", "frames": 900, "env": { "TOWERS_PLAYERS": "4", "TOWERS_WAVE": "8" } }
+    { "name": "bots4", "app": "towers_auto", "frames": 900, "startCmds": ["players 4 8"] }
   ]
 }
