@@ -26,7 +26,6 @@ extern const lm_vox LMV_burj_khalifa;
 extern const lm_vox LMV_liberty;
 extern const lm_vox LMV_christ_redeemer;
 extern const lm_vox LMV_chichen_itza;
-extern const lm_vox LMV_empire_state;
 extern const lm_vox LMV_moai;
 extern const lm_vox LMV_pagoda;
 extern const lm_vox LMV_taj_mahal;

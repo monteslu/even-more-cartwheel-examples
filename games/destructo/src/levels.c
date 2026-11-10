@@ -21,7 +21,7 @@
 /* name, kind, seed, size, targets, par, ammo {shot, heavy, charge}, range, theme; landmarks: which, where, setting + 1, mark */
 #define LANDMARK(name, lm, targets, par, s, h, c, range, place, setting, mark) { name, K_LANDMARK, 1000 + lm, 0, targets, par, { s, h, c }, range, 0, lm, place, setting + 1, mark }
 const level_def LEVELS[NLEVELS] = {
-  LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 26, "Giza, Egypt", ST_DESERT, 0.2f),
+  LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 22, "Giza, Egypt", ST_DESERT, 0.2f),
   LANDMARK("Space Needle", LM_SPACE_NEEDLE, 1, 2, 4, 1, 0, 28, "Seattle, United States", ST_CITY, 0.4f),
   LANDMARK("Eiffel Tower", LM_EIFFEL, 2, 2, 5, 1, 1, 32, "Paris, France", ST_CITY, 0.35f),
   LANDMARK("Willis Tower", LM_WILLIS, 2, 2, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f),

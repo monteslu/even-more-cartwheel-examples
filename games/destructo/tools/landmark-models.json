@@ -1,15 +1,14 @@
 {
   "sphinx": {"proc":"sphinx","size":{"axis":"x","len":18.24},"cell":0.12,"course":0.12,"wall":1,"core":4,"ymax":3.12},
   "eiffel": {"obj":"eiffel/eiffel.obj","yaw":0,"size":{"axis":"y","len":15.5},"cell":0.1,"course":0.1,"fill":"surface","weld":true,"default":{"mat":"steel","paint":"BRONZE"}},
-  "pisa": {"obj":"pisa/pisa.obj","yaw":0,"size":{"axis":"y","len":11},"cell":0.12,"course":0.15,"fill":"flood","wall":2,"core":0,"default":{"mat":"stone","paint":"MARBLE"},"weld":true},
-  "colosseum": {"proc":"colosseum","size":{"axis":"x","len":17.955000000000002},"cell":0.15,"course":0.15,"wall":1,"core":4,"except":"SAND_STONE|PLASTER"},
-  "parthenon": {"proc":"parthenon","except":"LIMESTONE","size":{"axis":"x","len":15.552},"cell":0.14,"course":0.1188,"wall":1,"core":4},
+  "pisa": {"obj":"pisa/pisa.obj","yaw":0,"size":{"axis":"y","len":11},"cell":0.12,"course":0.15,"fill":"flood","wall":2,"core":0,"default":{"mat":"stone","paint":"MARBLE"},"weld":true,"shear":0.04},
+  "colosseum": {"proc":"colosseum","size":{"axis":"x","len":17.955000000000002},"cell":0.15,"course":0.15,"wall":2,"core":0,"except":"SAND_STONE|PLASTER","weld":true},
+  "parthenon": {"proc":"parthenon","except":"LIMESTONE","size":{"axis":"x","len":15.552},"cell":0.14,"course":0.1188,"wall":2,"core":0,"weld":true,"connect":false},
   "big_ben": {"obj":"big-ben/big-ben.obj","yaw":0,"size":{"axis":"y","len":14},"cell":0.12,"course":0.15,"fill":"flood","wall":2,"core":0,"default":{"mat":"stone","paint":"LIMESTONE"},"weld":true},
   "burj_khalifa": {"obj":"burj-khalifa/burj-khalifa.obj","yaw":0,"size":{"axis":"y","len":22},"cell":0.14,"course":0.24,"fill":"flood","wall":1,"core":0,"default":{"mat":"glass","paint":"BLUE_GLASS"},"bands":[],"weld":true,"stripe":{"every":2,"mat":"steel","paint":"SILVER"},"coreMat":{"mat":"stone","paint":"CONCRETE"}},
   "liberty": {"obj":"liberty/liberty.obj","yaw":0,"size":{"axis":"y","len":14},"cell":0.1,"course":0.1,"fill":"flood","wall":2,"core":0,"weld":true,"default":{"mat":"stone","paint":"VERDIGRIS"},"bands":[{"y0":0,"y1":5.15,"mat":"stone","paint":"WHITE_STONE"}]},
   "christ_redeemer": {"obj":"christ-redeemer/christ-redeemer.obj","yaw":0,"size":{"axis":"y","len":9},"cell":0.1,"course":0.1,"fill":"flood","wall":2,"core":0,"weld":true,"default":{"mat":"stone","paint":"WHITE_STONE"}},
   "chichen_itza": {"obj":"chichen-itza/chichen-itza.obj","yaw":0,"size":{"axis":"x","len":13},"yscale":1.25,"cell":0.16,"course":0.2,"fill":"flood","wall":1,"core":4,"default":{"mat":"stone","paint":"LIMESTONE"},"bands":[{"y0":5.75,"y1":9,"mat":"stone","paint":"SAND_STONE"}]},
-  "empire_state": {"obj":"empire-state/empire-state.obj","yaw":0,"size":{"axis":"y","len":17},"cell":0.14,"course":0.2,"fill":"flood","wall":2,"core":0,"default":{"mat":"stone","paint":"LIMESTONE"}},
   "moai": {"obj":"moai/moai.obj","yaw":0,"size":{"axis":"y","len":3.4},"cell":0.08,"course":0.08,"fill":"flood","wall":2,"core":0,"weld":true,"default":{"mat":"stone","paint":"DARK_STONE"}},
   "pagoda": {"obj":"pagoda/pagoda.obj","yaw":0,"size":{"axis":"y","len":12},"cell":0.12,"course":0.12,"fill":"surface","weld":true,"default":{"mat":"wood","paint":"TIMBER"}},
   "taj_mahal": {"obj":"taj-mahal/taj-mahal.obj","yaw":0,"size":{"axis":"x","len":11},"cell":0.12,"course":0.15,"fill":"flood","wall":2,"core":0,"default":{"mat":"stone","paint":"MARBLE"},"weld":true},
@@ -29,7 +28,7 @@
   "willis": {"proc":"willis","size":{"axis":"x","len":2.34},"cell":0.13,"course":0.14,"wall":2,"core":0,"weld":true},
   "empire": {"proc":"empire","size":{"axis":"x","len":5},"cell":0.13,"course":0.14,"wall":2,"core":0,"weld":true},
   "giza": {"proc":"giza","size":{"axis":"x","len":26},"cell":0.2,"course":0.15,"wall":1,"core":4},
-  "sphinx_head": {"proc":"sphinx","size":{"axis":"x","len":18.24},"cell":0.12,"course":0.12,"wall":2,"core":0,"ymin":3.12,"weld":true,"connect":false},
+  "sphinx_head": {"proc":"sphinx","size":{"axis":"x","len":18.24},"cell":0.08,"course":0.08,"wall":2,"core":0,"ymin":3.12,"weld":true,"connect":false},
   "col_cavea": {"proc":"colosseum","only":"SAND_STONE|PLASTER","size":{"axis":"x","len":17.955000000000002},"cell":0.32,"course":0.3,"wall":1,"core":2},
   "pa_base": {"proc":"parthenon","only":"LIMESTONE","size":{"axis":"x","len":15.552},"cell":0.4,"course":0.1188,"wall":0,"core":0}
 }

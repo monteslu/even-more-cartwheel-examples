@@ -23,14 +23,8 @@ model's licence:
   under CC BY-SA 3.0 too, not MIT.
 - Leaning Tower of Pisa: "The Leaning Tower of Pisa" by Emmanouel Diaz Dominguez, Creative Commons Attribution
   (CC BY, as Printables offers it), https://www.printables.com/model/1028451
-- Colosseum: "The Roman Colosseum" by Emmanouel Diaz Dominguez, Creative Commons Attribution (CC BY, as Printables
-  offers it), https://www.printables.com/model/1029456
-  (here stretched to the real ellipse and its south side broken away, as it stands today)
 - Burj Khalifa: "Burj Khalifa (Burj Dubai)" by Emmanouel Diaz Dominguez, Creative Commons Attribution (CC BY, as
   Printables offers it), https://www.printables.com/model/1028728
-- Parthenon: "Parthenon" by Microsoft, CC BY 4.0,
-  https://sketchfab.com/3d-models/parthenon-8390c61a76cb48c989ddf975a0a06c8d
-  (here without its roof and cella, as it stands today)
 - Moai: "Easter Island Head" by Microsoft, CC BY 4.0,
   https://sketchfab.com/3d-models/easter-island-head-07818c9054494adca82a599a8d4a5de6
 - Statue of Liberty: "The Statue of Liberty" by The Kracken, Creative Commons Attribution (CC BY, as Printables
@@ -43,6 +37,6 @@ model's licence:
 - Taj Mahal: "Taj Mahal" by Julio Mendes, CC0, https://www.printables.com/model/1328502
 
 The other landmarks (the Great Sphinx, the Pyramids of Giza, the Space Needle, the Sydney Opera House, Neuschwanstein
-Castle, Willis Tower, the Empire State Building, Tower Bridge, Saint Basil's Cathedral, the Petronas Towers, Angkor
-Wat, the CN Tower and Stonehenge) are shaped in this repository's code (tools/landmark-procs.mjs, src/landmarks.c),
-MIT.
+Castle, Willis Tower, the Empire State Building, the Colosseum, the Parthenon, Tower Bridge, Saint Basil's Cathedral,
+the Petronas Towers, Angkor Wat, the CN Tower and Stonehenge) are shaped in this repository's code
+(tools/landmark-procs.mjs, src/landmarks.c), MIT.

@@ -14,6 +14,7 @@
  *   stripe     { "every": n, "mat", "paint" }: every n-th course takes this (a tower's floors); coreMat: the core's
  *              material when it is not the first one the model names
  *   yaw        degrees about y applied first (the game's camera looks from +z toward -z)
+ *   shear      x moved by this times the height (a lean the camera sees)
  *   yscale     the height stretched by this after `size` (a model flatter than the landmark)
  *   weld       true: the cells are members welded to each other (statues, steel lattice, roofs on eaves) and need no
  *              support below; only cells joined to the ground stay ("connect": false keeps parts that rest on
@@ -113,6 +114,7 @@ function voxelize(name, C) {
   const ys = s * (C.yscale || 1); /* a model flatter or taller than the landmark: its height stretched */
   const cx = (lo[0] + hi[0]) / 2, cz = (lo[2] + hi[2]) / 2;
   for (const v of V) v[0] = (v[0] - cx) * s, v[1] = (v[1] - lo[1]) * ys, v[2] = (v[2] - cz) * s;
+  if (C.shear) for (const v of V) v[0] += v[1] * C.shear; /* leaning further (the camera sees the lean across, x) */
   const ext = [(hi[0] - lo[0]) * s, (hi[1] - lo[1]) * ys, (hi[2] - lo[2]) * s];
   const cell = C.cell, course = C.course, K = Math.max(1, C.core || 0);
   /* the grid: whole cores across (a multiple of k cells), centred */

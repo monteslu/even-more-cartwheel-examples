@@ -410,7 +410,7 @@ static void build_christ(game *g, const level_def *L) {
 void landmark_build(game *g, const level_def *L) {
   g->paint_now = P_NONE;
   switch (L->lm) {
-  case LM_SPHINX: { static const float s[][2] = { { 1.4f, 0 }, { -3.6f, 0 }, { 5.5f, 0.75f } }; build_vox(g, &LMV_sphinx, 0, 0, 0); build_model(g, L, &LMV_sphinx_head, s, 3); break; }
+  case LM_SPHINX: { static const float s[][2] = { { 5.5f, 0.75f }, { -3.6f, 0 }, { 1.4f, 0 } }; build_vox(g, &LMV_sphinx, 0, 0, 0); build_model(g, L, &LMV_sphinx_head, s, 3); break; }
   case LM_SPACE_NEEDLE: { static const float s[][2] = { { 0, 1.35f }, { -1.35f, 0 } }; build_model(g, L, &LMV_needle, s, 2); break; }
   case LM_GIZA: { static const float s[][2] = { { -5.8f, -6.7f }, { 3.4f, -0.7f }, { 10.2f, 5.3f } }; build_model(g, L, &LMV_giza, s, 3); break; }
   case LM_EIFFEL: { static const float s[][2] = { { 1.0f, 1.6f }, { -1.0f, -1.6f } }; build_model(g, L, &LMV_eiffel, s, 2); break; }
@@ -442,7 +442,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_CHRIST_REDEEMER: build_christ(g, L); break;
   case LM_COLOSSEUM: { static const float s[][2] = { { -5.6f, 3.2f }, { 5.6f, -3.2f } }; build_vox(g, &LMV_col_cavea, 0, 0, 0); build_model(g, L, &LMV_colosseum, s, 2); break; }
   case LM_BIG_BEN: { static const float s[][2] = { { 0, 2.2f }, { 0, -2.2f } }; build_model(g, L, &LMV_big_ben, s, 2); break; }
-  case LM_PISA: { static const float s[][2] = { { 0, 2.6f } }; build_model(g, L, &LMV_pisa, s, 1); break; }
+  case LM_PISA: { static const float s[][2] = { { -2.8f, 0 } }; build_model(g, L, &LMV_pisa, s, 1); break; }
   case LM_PARTHENON: { static const float s[][2] = { { -3.5f, 0 }, { 3.5f, 0 } }; build_vox(g, &LMV_pa_base, 0, 0, 0); build_model(g, L, &LMV_parthenon, s, 2); break; }
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
   case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0, 0 }, { 0, 0 } }; build_model(g, L, &LMV_chichen_itza, s, 2); break; }
