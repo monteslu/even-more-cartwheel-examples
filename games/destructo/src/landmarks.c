@@ -459,7 +459,7 @@ void landmark_build(game *g, const level_def *L) {
     break;
   }
   case LM_OPERA_HOUSE: { /* turned 40 degrees on the field: the default view is the one from the quay, into the shells' glazed mouths */
-    static const float s[][2] = { { 7.6f, 0 }, { -7.4f, 2.6f } };
+    static const float s[][2] = { { 6.2f, 0 }, { -7.4f, 2.6f } }; /* the first spot well inside the podium's rounded harbour end (at 7.6 the crystal lay into its edge bricks) */
     build_vox_turned(g, &LMV_opera_podium, 0, 0, 0, 0.698f);
     build_model_turned(g, L, &LMV_opera_shells, s, 2, 0.698f);
     break;
