@@ -32,6 +32,7 @@ extern const lm_vox LMV_pagoda;
 extern const lm_vox LMV_taj_mahal;
 extern const lm_vox LMV_needle;
 extern const lm_vox LMV_neuschwanstein;
+extern const lm_vox LMV_ns_gate;
 extern const lm_vox LMV_ns_rock;
 extern const lm_vox LMV_opera_podium;
 extern const lm_vox LMV_opera_shells;

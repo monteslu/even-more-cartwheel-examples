@@ -464,6 +464,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_NEUSCHWANSTEIN: { /* turned 25 degrees: the default view is the three-quarter one, the gatehouse in front */
     static const float s[][2] = { { 7.3f, 0 }, { -3.0f, 0.6f }, { 2.8f, 0 } };
     build_vox_turned(g, &LMV_ns_rock, 0, 0, 0, -0.436f);
+    build_vox_turned(g, &LMV_ns_gate, 0, 0, 0, -0.436f); /* the gatehouse in brick courses (welded members read as planks) */
     build_model_turned(g, L, &LMV_neuschwanstein, s, 3, -0.436f);
     break;
   }
