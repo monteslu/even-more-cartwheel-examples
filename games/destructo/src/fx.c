@@ -164,6 +164,9 @@ static const char *const K_HAZE[] = { "amount", "24", "lifetime", "2.0", "explos
 
 static cw_node boom_node(int seed) {
   cw_node e = cw_node_new("Explosion3D", "Blast");
+  /* the scorch sheet is named before the node enters the tree: since engine v0.46.2 a decal loads its image as its
+   * node enters, and the kit's default 'scorch.png' is not in the pack */
+  cw_node_set(e, "scorch_texture", cw_val_string("fx/scorch.png"));
   cw_node_add_child(FX.root, e);
   cw_node_set(e, "autostart", cw_val_bool(false));
   cw_node_set(e, "duration", cw_val_float(4.5f));
@@ -171,7 +174,6 @@ static cw_node boom_node(int seed) {
   cw_node_set(e, "flash_color", cw_val_color(1, 0.65f, 0.3f, 1));
   cw_node_set(e, "flash_range", cw_val_float(18.0f));
   cw_node_set(e, "flash_duration", cw_val_float(0.55f));
-  cw_node_set(e, "scorch_texture", cw_val_string("fx/scorch.png"));
   cw_node_set(e, "scorch_size", cw_val_float(6.0f));
   cw_node_set(e, "scorch_time", cw_val_float(6.0f));
   cw_node_set(e, "scorch_life", cw_val_float(60.0f));

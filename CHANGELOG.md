@@ -1,8 +1,24 @@
 # Changelog
 
+## 0.14.0
+
+- **Destructo**: famous buildings of the world as the first levels, nineteen of them (the Great Sphinx, the Pyramids of
+  Giza, the Taj Mahal, the Parthenon, Tower Bridge, the Leaning Tower of Pisa, the Statue of Liberty, Angkor Wat,
+  Chichen Itza, the Moai, Big Ben's tower, the Eiffel Tower, the Space Needle, the Empire State Building, Willis
+  Tower, Burj Khalifa, the Sydney Opera House, Christ the Redeemer and the CN Tower, some under lightly changed names),
+  each scaled to the field with its proportions kept and built of thousands of small bricks of stone, steel, glass and
+  brick that break the way their material does; most come from openly licensed 3D models (CREDITS names each). Each
+  level opens on the view that identifies the building, and a check asks a judge who sees only the frame to name it.
+  Six more are built and held until they settle cleanly. The orbit camera (right stick, or hold East with the d-pad)
+  aims round a structure. Every Destructo check now runs as a cart through romdev, including frame timing.
+- **Destructo**: the city skyline no longer crashes a cart (the depth-fighting scan's grid is bounded by memory); the
+  physics steps on at most 12 threads (faster on a busy machine); a pad counts as a seat's input in versus; the quarry
+  is brighter; the explosion's scorch mark is named before it enters the scene, which the engine now needs.
+
 ## 0.13.2
 
-(0.13.1 was tagged on a commit whose CI run was dropped; this is the same release.)
+(0.13.1 was tagged on a commit whose CI run was dropped, and 0.13.2's build failed on Destructo's scorch mark under
+engine v0.46.2; 0.14.0 is the first release of this line that builds.)
 
 - **Lanternfall**: the camera no longer whips a bright room in and out of view when the hero hops through a doorway
   (it had reached five flashes a second at the top of the screen); the view takes a new room after a moment and glides
