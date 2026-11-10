@@ -1,6 +1,8 @@
 # Changelog
 
-## 0.13.1
+## 0.13.2
+
+(0.13.1 was tagged on a commit whose CI run was dropped; this is the same release.)
 
 - **Lanternfall**: the camera no longer whips a bright room in and out of view when the hero hops through a doorway
   (it had reached five flashes a second at the top of the screen); the view takes a new room after a moment and glides
