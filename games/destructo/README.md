@@ -137,7 +137,8 @@ thing they touch and push and break everything within about four and a half metr
 - **Budget.** All-awake colliding blocks in the cart on the job pool (24 threads on romdev; Box3D's wasm SIMD solver):
   2000 bodies about 1.8 to 3 ms a step, 4000 about 3.5 to 4, 6000 about 5.4; one thread is 2.5 to 4.5 times slower
   (6000 bodies: 24.5 ms). The step stops scaling past about 12 threads (6000 bodies: 7.2 ms on 8, 5.8 on 12, 5.4 on 16
-  and on 24).
+  and on 24), and on a loaded machine all 24 made it slower (a blast step 6.2 to 7.1 ms on 24 against 4.0 to 4.2 on 12),
+  so the game steps its world on at most 12 (`src/sim.c`; the same bits on any count).
 - **Determinism.** One collapse hashes the same with 1, 2, 4 and every worker; the play gate gets the same bits in
   the cart on romdev on GL and on WebGPU.
 - **Tunnelling.** At 60 Hz with 4 sub-steps a fast shot passes through thin dynamic blocks (a 2 cm pane, a 6 cm plank)
