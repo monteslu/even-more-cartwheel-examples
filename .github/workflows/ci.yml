@@ -174,14 +174,22 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-      # tag only commits whose push to main has a green run
+      # tag only commits whose push to main has a green run: a tag pushed together with its commit waits for that
+      # run (up to 90 minutes) instead of failing and needing a rerun
       - name: The tagged commit is green on main
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push \
-            --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq '.[0].databaseId')
-          [ -n "$id" ] || { echo "no green CI run on main for $GITHUB_SHA: push it to main and wait for green before tagging" >&2; exit 1; }
+          for i in $(seq 1 90); do
+            c=$(gh run list -R "$GITHUB_REPOSITORY" --workflow ci.yml --branch main --event push \
+              --commit "$GITHUB_SHA" --limit 1 --json status,conclusion --jq '.[0] | "\(.status) \(.conclusion)"')
+            case "$c" in
+              "completed success") echo "main is green for $GITHUB_SHA"; exit 0 ;;
+              completed*) echo "main's run for $GITHUB_SHA ended $c: fix main, then rerun this tag's run" >&2; exit 1 ;;
+              *) echo "main's run for $GITHUB_SHA: ${c:-not started} (waited $i min)"; sleep 60 ;;
+            esac
+          done
+          echo "no green CI run on main for $GITHUB_SHA after 90 minutes: push it to main and rerun this tag's run" >&2; exit 1
       # the carts this tag built, each carrying the tag's version
       - uses: actions/download-artifact@v7
         with:
