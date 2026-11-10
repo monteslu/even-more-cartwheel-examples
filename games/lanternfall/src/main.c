@@ -6,7 +6,9 @@
  *                   environment, so the scene is chosen at build time)
  * Environment (development, native): LANTERNFALL_ROOM=n starts in room n; LANTERNFALL_ABILITIES=hex grants abilities;
  * LANTERNFALL_BENCH=1 prints frame timings every 120 frames; LANTERNFALL_NO_HUD=1 hides the HUD (key art);
- * LANTERNFALL_MAP_AT=n opens the map at play frame n. */
+ * LANTERNFALL_MAP_AT=n opens the map at play frame n. A cart host reads the environment only from frame 2 (the
+ * engine's env request), so the auto cart answers `room <n>` instead of LANTERNFALL_ROOM, and the key art's camera
+ * (LANTERNFALL_ART_ZOOM, LANTERNFALL_ART_UP, view.c) is read every frame. */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,6 +59,16 @@ static double wall(void) {
 
 /* ── the match ── */
 
+/* every player to the floor of room n (development: LANTERNFALL_ROOM natively, the `room` request on a cart host) */
+static bool go_room(int n) {
+  if (n < 0 || n >= W.nrooms) return false;
+  const room *r = &W.rooms[n];
+  int x = r->x * CELL_W + 6;
+  for (int y = r->y * CELL_H + 3; y < (r->y + r->h) * CELL_H; y++)
+    if (t_solid(W.t[y][x]) && !t_solid(W.t[y - 1][x]) && !t_solid(W.t[y - 2][x])) { sim_teleport(&S, (float)x + 0.5f, (float)y); return true; }
+  return false;
+}
+
 static void new_game(int players) {
   sim_init(&S, &W, players);
 #ifdef LANTERNFALL_AUTOPILOT
@@ -75,15 +87,7 @@ static void new_game(int players) {
     }
 #else
   if (getenv("LANTERNFALL_ABILITIES")) S.abilities = (uint32_t)strtoul(getenv("LANTERNFALL_ABILITIES"), NULL, 16);
-  if (getenv("LANTERNFALL_ROOM")) {
-    int n = atoi(getenv("LANTERNFALL_ROOM"));
-    if (n >= 0 && n < W.nrooms) {
-      const room *r = &W.rooms[n];
-      int x = r->x * CELL_W + 6;
-      for (int y = r->y * CELL_H + 3; y < (r->y + r->h) * CELL_H; y++)
-        if (t_solid(W.t[y][x]) && !t_solid(W.t[y - 1][x]) && !t_solid(W.t[y - 2][x])) { sim_teleport(&S, (float)x + 0.5f, (float)y); break; }
-    }
-  }
+  if (getenv("LANTERNFALL_ROOM")) go_room(atoi(getenv("LANTERNFALL_ROOM")));
 #ifndef LANTERNFALL_AUTOPILOT
   /* the save: abilities, finds, opened ways, shrines, from the last rest */
   save_state *sv = cw_shell_game_save();
@@ -93,6 +97,16 @@ static void new_game(int players) {
 #endif
   G.snap = true;
 }
+
+#ifdef LANTERNFALL_AUTOPILOT
+static void cmd_room(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: room <n>"); return; }
+  int n = atoi(argv[1]);
+  if (!go_room(n)) { cw_reply_error(r, "no floor found in room %d (of %d)", n, W.nrooms); return; }
+  G.snap = true; /* the camera there at once */
+  cw_reply_printf(r, "{\"room\":%d}", n);
+}
+#endif
 
 static void start(int players, void *u) {
   (void)u;
@@ -167,6 +181,7 @@ static void init(void *u) {
 #ifndef LANTERNFALL_AUTO_PLAYERS
 #define LANTERNFALL_AUTO_PLAYERS 1
 #endif
+  cw_debug_command("room", "room <n>: every player to the floor of room n (key art on a cart host, where LANTERNFALL_ROOM is read too late)", cmd_room);
   cw_shell_start(LANTERNFALL_AUTO_PLAYERS);
 #endif
 }
@@ -176,7 +191,7 @@ static void init(void *u) {
 static void read_input(pinput in[MAXP]) {
   memset(in, 0, sizeof(pinput) * MAXP);
 #ifdef LANTERNFALL_AUTOPILOT
-  if (getenv("LANTERNFALL_IDLE")) return; /* (stills: nobody at the controls) */
+  if (cw_test_env("LANTERNFALL_IDLE")) return; /* (stills: nobody at the controls; cw_test_env: a cart host delivers it at frame 2) */
   bot_input(&B, &S, 0, &in[0]);
   for (int i = 1; i < S.players; i++) bot_follow(&S, i, &in[i]);
 #else
@@ -352,7 +367,7 @@ static void render(void *u, double alpha) {
   world_stats = *cw_r2d_get_stats();
   bool show_hud = G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE);
 #ifdef LANTERNFALL_AUTOPILOT
-  if (getenv("LANTERNFALL_NO_HUD")) show_hud = false;
+  if (cw_test_env("LANTERNFALL_NO_HUD")) show_hud = false;
 #endif
   if (show_hud) hud_draw(&S, &H, t);
   if (bench_env) cw_gpu_finish(), G.t_gpu += (wall() - tb0) * 1000;

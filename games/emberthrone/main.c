@@ -10,7 +10,9 @@
  *
  * emberthrone_auto plays itself (for hosts that send no input); emberthrone_bench is the perf gate's scene.
  * Environment (development, native): ADV_FROM=<route index> starts the bot further on (teleported, progress given),
- * ADV_QUALITY=0..4 a graphics preset, ADV_BENCH=1 prints timings every 120 frames, ADV_NO_HUD=1 hides the HUD. */
+ * ADV_QUALITY=0..4 a graphics preset, ADV_BENCH=1 prints timings every 120 frames, ADV_NO_HUD=1 hides the HUD.
+ * A cart host reads the environment only from frame 2 (the engine's env request), so the auto cart answers `from <n>`
+ * in ADV_FROM's place and reads the art camera (ADV_CAM_*, sim.c) from frame 2 (tools/capture-art.sh). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -157,6 +159,18 @@ static void jump_ahead(int to) {
   bot_jump(to);
 }
 
+#ifdef ADV_AUTOPILOT
+static void cmd_from(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: from <n>"); return; }
+  int n = atoi(argv[1]);
+  if (n < 0 || n >= g_nroute) { cw_reply_error(r, "route index %d is not in 0..%d", n, g_nroute - 1); return; }
+  bot_reset();
+  jump_ahead(n);
+  view_reset();
+  cw_reply_printf(r, "{\"from\":%d}", n);
+}
+#endif
+
 static void start(int players, void *u) {
   (void)u;
   build_all();
@@ -259,6 +273,7 @@ static void init(void *u) {
   cw_debug_i32("view.cam_blocked", &S.cam_blocked);
   cw_debug_i32("bot.stuck", &G.stuck);
 #ifdef ADV_AUTOPILOT
+  cw_debug_command("from", "from <n>: the bot further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);
   cw_shell_start(getenv("ADV_PLAYERS") ? CW_CLAMP(atoi(getenv("ADV_PLAYERS")), 1, MAXP) : 1);
 #endif
 }
@@ -493,7 +508,7 @@ static void render(void *u, double alpha) {
     if (sc == CW_SHELL_PLAY) fx_tick(t);
     G.t_view += (wall_s() - t0) * 1000;
   }
-  bool show = !getenv("ADV_NO_HUD") && !g_hide_hud;
+  bool show = !cw_test_env("ADV_NO_HUD") && !g_hide_hud; /* (cw_test_env: a cart host delivers it at frame 2) */
   if (show && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) hud();
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);
   double now = wall_s();

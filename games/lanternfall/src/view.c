@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "art.h"
+#include "cartwheel/debug.h"
 #include "creatures.h"
 #include "scenery.h"
 #include "view.h"
@@ -110,6 +111,15 @@ void view_camera(const sim *s, float dt, bool snap) {
   if (cs.y < 1) return;
   zoom = cs.y / (float)CELL_H;
   if (showcase_mode()) zoom *= showcase_zoom();
+  /* key art (development): LANTERNFALL_ART_ZOOM=k the camera k times closer on the players, LANTERNFALL_ART_UP=t
+   * looking t tiles above them (the hero in the lower half of the frame); read every frame, as a cart host delivers
+   * the environment at frame 2 */
+  float up = 0;
+  {
+    const char *z = cw_test_env("LANTERNFALL_ART_ZOOM"), *u = cw_test_env("LANTERNFALL_ART_UP");
+    if (z && atof(z) > 0) zoom *= (float)atof(z);
+    if (u) up = (float)atof(u);
+  }
   float vw = cs.x / zoom, vh = cs.y / zoom;
   /* the players' middle, a little ahead of where player 1 runs */
   float tx = 0, ty = 0;
@@ -117,6 +127,7 @@ void view_camera(const sim *s, float dt, bool snap) {
   for (int i = 0; i < s->players; i++)
     if (s->p[i].active) tx += s->p[i].x, ty += s->p[i].y - 1.2f, n++;
   if (n) tx /= (float)n, ty /= (float)n;
+  ty -= up;
   tx += s->p[0].vx * 0.18f;
   if (s->room >= 0 && !showcase_mode()) { /* the room's walls bound the view */
     const room *r = &s->w->rooms[s->room];

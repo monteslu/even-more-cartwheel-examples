@@ -9,7 +9,9 @@
  * Environment (development, native): TOWERS_MAP=n starts on map n; TOWERS_PLAYERS=n the auto build's players;
  * TOWERS_BENCH=1 prints timings every 120 frames; TOWERS_BAKE=<file> bakes the map's lightmap there (the bake tool,
  * tools/mapview, does it for every map); TOWERS_QUALITY=0..4 a graphics preset; TOWERS_CROWD=n keeps n creeps on the
- * paths (the bench's); TOWERS_WAVE=n starts at wave n with towers on every slot (screenshots). */
+ * paths (the bench's); TOWERS_WAVE=n starts at wave n with towers on every slot (screenshots). A cart host reads the
+ * environment only from frame 2 (the engine's env request), so the auto cart answers `map <n>` (TOWERS_WAVE and
+ * TOWERS_CROWD sent with it apply) and `cam <k> [x] [z]` (TOWERS_CAM) for the launcher art (tools/make-art.sh). */
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -140,13 +142,24 @@ static void fill_towers(int wave) {
   }
 }
 
+/* a development switch read as the game runs: natively from its environment; on a cart from the engine's env request,
+ * which a cart host delivers at frame 2 (a name read before that fails the request, so a cart never reads it in
+ * frame 1; the switches a cart cannot have by then come as the `map` and `cam` requests instead) */
+static const char *dev_env(const char *name) {
+#if CW_CART
+  return cw_test_env(name);
+#else
+  return getenv(name);
+#endif
+}
+
 static bool map_go(int n) {
   int count = map_count();
   if (count > 0 && n > count) n = count;
   if (!map_load(n, &G.M, sim_kind_by_name)) return false;
   sim_map_start(&G.S, &G.M);
-  G.bench_crowd = getenv("TOWERS_CROWD") ? atoi(getenv("TOWERS_CROWD")) : TOWERS_BENCH_CROWD;
-  int wave0 = getenv("TOWERS_WAVE") ? atoi(getenv("TOWERS_WAVE")) : 0;
+  G.bench_crowd = dev_env("TOWERS_CROWD") ? atoi(dev_env("TOWERS_CROWD")) : TOWERS_BENCH_CROWD;
+  int wave0 = dev_env("TOWERS_WAVE") ? atoi(dev_env("TOWERS_WAVE")) : 0;
   if (G.bench_crowd > 0 || wave0 > 0) {
     G.S.god = G.bench_crowd > 0;
     int w = wave0 > 0 ? wave0 : 18;
@@ -232,6 +245,13 @@ static void cmd_map(int argc, const char **argv, cw_reply *r) {
   if (!map_go(n)) { cw_reply_error(r, "no such map"); return; }
   cw_reply_printf(r, "{\"map\":%d}", n);
 }
+static void cmd_cam(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "usage: cam <k> [x] [z]"); return; }
+  float k = (float)atof(argv[1]);
+  if (!(k > 0)) { cw_reply_error(r, "k must be positive (1 = the whole map)"); return; }
+  g_cam_k = k, g_cam_x = argc > 2 ? (float)atof(argv[2]) : 0, g_cam_z = argc > 3 ? (float)atof(argv[3]) : 0;
+  cw_reply_printf(r, "{\"k\":%g,\"x\":%g,\"z\":%g}", (double)g_cam_k, (double)g_cam_x, (double)g_cam_z);
+}
 #endif
 
 static void init(void *u) {
@@ -296,8 +316,9 @@ static void init(void *u) {
   cw_debug_f32("dev.lean", &g_lean);
 #ifdef TOWERS_AUTOPILOT
   cw_debug_command("map", "map <n>: go to that map", cmd_map);
+  cw_debug_command("cam", "cam <k> [x] [z]: the camera k times closer over the point x,z of the map (key art)", cmd_cam);
   if (getenv("TOWERS_BOT_BRANCH")) g_bot_branch = CW_CLAMP(atoi(getenv("TOWERS_BOT_BRANCH")), 0, 2);
-  if (getenv("TOWERS_CAM")) sscanf(getenv("TOWERS_CAM"), "%f,%f,%f", &g_cam_k, &g_cam_x, &g_cam_z); /* key art: TOWERS_CAM=k,x,z */
+  if (getenv("TOWERS_CAM")) sscanf(getenv("TOWERS_CAM"), "%f,%f,%f", &g_cam_k, &g_cam_x, &g_cam_z); /* key art: TOWERS_CAM=k,x,z (natively; a cart host answers `cam`) */
 #ifndef TOWERS_AUTO_PLAYERS
 #define TOWERS_AUTO_PLAYERS 2
 #endif
@@ -619,7 +640,7 @@ static void hud(void) {
   }
   for (int i = 0; i < G.S.players; i++) hud_player(i, u, cs);
 #ifdef TOWERS_AUTOPILOT
-  bool cursors = !getenv("TOWERS_NO_CURSORS");
+  bool cursors = !dev_env("TOWERS_NO_CURSORS");
 #else
   bool cursors = true;
 #endif
@@ -743,7 +764,7 @@ static void render(void *u, double alpha) {
     bool show[MAXP];
     for (int i = 0; i < MAXP; i++) show[i] = G.in_match && G.phase == PH_PLAY && G.S.state == ST_PLAY;
 #ifdef TOWERS_AUTOPILOT
-    if (getenv("TOWERS_NO_CURSORS")) for (int i = 0; i < MAXP; i++) show[i] = false;
+    if (dev_env("TOWERS_NO_CURSORS")) for (int i = 0; i < MAXP; i++) show[i] = false;
 #endif
     if (G.in_match && G.phase == PH_PLAY) cursor_detail();
     { CW_PROFILE_SCOPE("towers.view_sync"); view_sync(&G.S, t, show); }
@@ -758,7 +779,7 @@ static void render(void *u, double alpha) {
   }
   bool show_hud = true;
 #ifdef TOWERS_AUTOPILOT
-  show_hud = !getenv("TOWERS_NO_HUD");
+  show_hud = !dev_env("TOWERS_NO_HUD");
 #endif
   if (show_hud && G.in_match && (sc == CW_SHELL_PLAY || sc == CW_SHELL_PAUSE)) { CW_PROFILE_SCOPE("towers.hud"); hud(); }
   cw_quality_auto_measure(sc == CW_SHELL_PLAY);

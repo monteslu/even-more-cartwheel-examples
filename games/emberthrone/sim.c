@@ -14,6 +14,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/debug.h"
+#include "cartwheel/platform.h"
 #include "game.h"
 
 sim S;
@@ -259,17 +261,19 @@ static void camera_step(const input *in) {
     }
   }
   S.cam_dist_want = 5.6f + spread * 0.55f + (S.boss >= 0 ? 1.4f : 0);
-  { /* art captures (development): ADV_CAM_DIST, ADV_CAM_PITCH, ADV_CAM_YAW (added to the yaw) */
+  { /* art captures (development): ADV_CAM_DIST, ADV_CAM_PITCH, ADV_CAM_YAW (added to the yaw); read once, from
+     * frame 2 on (cw_test_env: a cart host delivers the environment at frame 2) */
     static int art = -1;
     static float ad, ap, ay;
-    if (art < 0) art = getenv("ADV_CAM_DIST") != NULL, ad = art ? (float)atof(getenv("ADV_CAM_DIST")) : 0, ap = getenv("ADV_CAM_PITCH") ? (float)atof(getenv("ADV_CAM_PITCH")) : -0.2f, ay = getenv("ADV_CAM_YAW") ? (float)atof(getenv("ADV_CAM_YAW")) : 0;
-    if (art) S.cam_dist_want = ad, S.cam_pitch = ap, S.cam_yaw = wrapf(S.a[0].yaw + CW_PI + ay);
+    if (art < 0 && cw_test_env("ADV_CAM_DIST") != NULL) art = 1, ad = (float)atof(cw_test_env("ADV_CAM_DIST")), ap = cw_test_env("ADV_CAM_PITCH") ? (float)atof(cw_test_env("ADV_CAM_PITCH")) : -0.2f, ay = cw_test_env("ADV_CAM_YAW") ? (float)atof(cw_test_env("ADV_CAM_YAW")) : 0;
+    else if (art < 0 && cw_frame_index() > 3) art = 0; /* (not set by frame 4: none) */
+    if (art > 0) S.cam_dist_want = ad, S.cam_pitch = ap, S.cam_yaw = wrapf(S.a[0].yaw + CW_PI + ay);
     /* ADV_CAM_KIND: frame the nearest living actor of that kind instead (character close-ups), ADV_CAM_H the height
      * looked at in metres above its feet (default 1.5) */
     static int ck = -2;
     static float ch;
-    if (ck == -2) ck = getenv("ADV_CAM_KIND") ? atoi(getenv("ADV_CAM_KIND")) : -1, ch = getenv("ADV_CAM_H") ? (float)atof(getenv("ADV_CAM_H")) : 1.5f;
-    if (art && ck >= 0) {
+    if (ck == -2 && cw_frame_index() > 3) ck = cw_test_env("ADV_CAM_KIND") ? atoi(cw_test_env("ADV_CAM_KIND")) : -1, ch = cw_test_env("ADV_CAM_H") ? (float)atof(cw_test_env("ADV_CAM_H")) : 1.5f;
+    if (art > 0 && ck >= 0) {
       const actor *best = NULL;
       float bd = 1e9f;
       for (int i = 0; i < MAXA; i++) {
