@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.0
+
+- **All games**: each cover carries the game's name across the top, large enough to read at a launcher's grid size,
+  and each cart's manifest names its title (Destructo, Ember Throne, Jewels, Lanternfall, Pinball, Skate, Towers).
+- **Launcher art**: Destructo, Ember Throne, Jewels, Lanternfall, Pinball and Skate are taken again from the games as
+  they are now. Jewels and Skate have bolder logos.
+- Engine v0.45.0: the shell's menus take touch and mouse, a load without a seed asks for no extra draw states, and
+  split screen's fog holds.
+
 ## 0.12.0
 
 - **All 3D games**: no surface fights another for the depth test. Faces laid flush on others (props' parts, the rock's
