@@ -9,7 +9,7 @@
 #include "cartwheel/physics3d.h"
 
 #define MAXP 4
-#define MAXBLK 4096      /* block slots */
+#define MAXBLK 16384     /* block slots */
 #define BODY_CAP 3000    /* bodies alive at once: past it a break leaves dust, not pieces (physcheck: 3000 awake bodies step in about 2 ms on the pool) */
 #define BREAK_BUDGET 24  /* breaks a tick from the fracture queue */
 #define BLAST_SHELLS 4   /* ticks a charge's blast takes to reach its radius */
@@ -49,7 +49,7 @@ typedef struct block {
   uint8_t mat, gen, alive, tint;
   uint8_t paint;     /* 0: the material's colour in the level's palette; else a paint (view.c PAINT): roofs, trims, timber */
   int8_t target;     /* index into game.tgt, or -1 */
-  uint16_t tag;      /* the structure's own: 1 a block placed by the level (not a fragment) */
+  uint16_t tag;      /* the structure's own: 1 a block placed by the level (not a fragment), 2 one of a landmark's core (the big blocks inside, under its skin of bricks: not counted in the share brought down) */
   int born;          /* tick */
   t3_vec3 home;      /* where it sat when the level settled (placed blocks) */
   bool down;         /* counted as brought down (score) */
@@ -68,7 +68,8 @@ typedef struct target_state {
 /* paints the level builder gives blocks (the look only) */
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
        P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG,
-       P_MARBLE, P_LIMESTONE, P_BRONZE, P_DARK_GLASS, P_TILE_WHITE, P_RED_BRICK, P_WHITE_PAINT, P_BLUE_GLASS, P_ROCK, P_SILVER, P_COUNT };
+       P_MARBLE, P_LIMESTONE, P_BRONZE, P_DARK_GLASS, P_TILE_WHITE, P_RED_BRICK, P_WHITE_PAINT, P_BLUE_GLASS, P_ROCK, P_SILVER,
+       P_SARSEN, P_VERDIGRIS, P_CONCRETE, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
 #define MAXBANNER 24
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
@@ -111,7 +112,7 @@ typedef struct level_def {
   int setting;       /* the setting (ST_*) + 1; 0: the kit's own */
   float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
 } level_def;
-#define NLEVELS 40
+#define NLEVELS 55
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or
@@ -262,7 +263,9 @@ void game_fire(game *g);
 /* levels.c */
 void level_build(game *g, const level_def *L);
 /* landmarks.c */
-enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA_HOUSE, LM_TAJ_MAHAL, LM_WILLIS, LM_NEUSCHWANSTEIN, LM_BURJ_KHALIFA, LM_COUNT };
+enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA_HOUSE, LM_TAJ_MAHAL, LM_WILLIS, LM_NEUSCHWANSTEIN, LM_BURJ_KHALIFA,
+       LM_COLOSSEUM, LM_BIG_BEN, LM_PISA, LM_PARTHENON, LM_STONEHENGE, LM_TOWER_BRIDGE, LM_ST_BASILS, LM_PETRONAS, LM_PAGODA, LM_ANGKOR_WAT,
+       LM_CHICHEN_ITZA, LM_LIBERTY, LM_CHRIST_REDEEMER, LM_CN_TOWER, LM_MOAI, LM_COUNT };
 void landmark_build(game *g, const level_def *L);
 /* a crystal standing on whatever is highest at (x, z) (a flat top wide enough for it); false: no such place near */
 bool landmark_crystal(game *g, float x, float z);

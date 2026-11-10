@@ -459,7 +459,7 @@ static const float PAINT[P_COUNT][3] = {
   [P_MARBLE] = { 0.8f, 0.78f, 0.74f }, [P_LIMESTONE] = { 0.6f, 0.55f, 0.45f }, [P_BRONZE] = { 0.13f, 0.095f, 0.07f },
   [P_DARK_GLASS] = { 0.05f, 0.055f, 0.065f }, [P_TILE_WHITE] = { 0.84f, 0.82f, 0.77f }, [P_RED_BRICK] = { 0.5f, 0.21f, 0.12f },
   [P_WHITE_PAINT] = { 0.76f, 0.76f, 0.74f }, [P_BLUE_GLASS] = { 0.16f, 0.26f, 0.36f }, [P_ROCK] = { 0.27f, 0.25f, 0.23f },
-  [P_SILVER] = { 0.5f, 0.53f, 0.57f },
+  [P_SILVER] = { 0.5f, 0.53f, 0.57f }, [P_SARSEN] = { 0.46f, 0.47f, 0.42f }, [P_VERDIGRIS] = { 0.36f, 0.58f, 0.5f }, [P_CONCRETE] = { 0.58f, 0.57f, 0.54f },
 };
 static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8f }, { 1.0f, 0.72f, 0.05f }, { 0.08f, 0.55f, 0.2f } };
 
@@ -909,17 +909,52 @@ static void block_box(const block *k, float lo[3], float hi[3], uint8_t own[3]) 
 static void color_blocks(const game *g) {
   static float lo[MAXBLK][3], hi[MAXBLK][3];
   static uint8_t own[MAXBLK][3];
+  static int stamp[MAXBLK], near[MAXBLK];
+  float glo[3] = { 1e9f, 1e9f, 1e9f }, ghi[3] = { -1e9f, -1e9f, -1e9f };
   for (int i = 0; i < g->nb; i++)
-    if (g->b[i].alive && !g->b[i].gen) block_box(&g->b[i], lo[i], hi[i], own[i]);
+    if (g->b[i].alive && !g->b[i].gen) {
+      block_box(&g->b[i], lo[i], hi[i], own[i]);
+      for (int a = 0; a < 3; a++) glo[a] = fminf(glo[a], lo[i][a]), ghi[a] = fmaxf(ghi[a], hi[i][a]);
+    }
+  /* only blocks whose boxes come within LAY_TOUCH of each other can need apart (touching across the other two axes,
+   * and a face within LAY_NEAR of a plane along this one means they overlap along it too): a grid of buckets finds
+   * them (thousands of bricks: every pair would take seconds) */
+  float cs = 0.6f;
+  int gn[3];
+  for (int a = 0; a < 3; a++) {
+    if (ghi[a] < glo[a]) glo[a] = ghi[a] = 0;
+    while ((ghi[a] - glo[a]) / cs > 96) cs *= 1.5f;
+  }
+  for (int a = 0; a < 3; a++) gn[a] = (int)((ghi[a] - glo[a]) / cs) + 1;
+  int ncell = gn[0] * gn[1] * gn[2];
+  int *start = calloc((size_t)ncell + 1, sizeof(int)), *fillp = calloc((size_t)ncell, sizeof(int));
+#define GCELL(a, v) CW_CLAMP((int)(((v) - glo[a]) / cs), 0, gn[a] - 1)
+#define FOR_CELLS(i, pad, ...) \
+  for (int cx = GCELL(0, lo[i][0] - (pad)); cx <= GCELL(0, hi[i][0] + (pad)); cx++) \
+    for (int cy = GCELL(1, lo[i][1] - (pad)); cy <= GCELL(1, hi[i][1] + (pad)); cy++) \
+      for (int cz = GCELL(2, lo[i][2] - (pad)); cz <= GCELL(2, hi[i][2] + (pad)); cz++) { int cell = (cx * gn[1] + cy) * gn[2] + cz; __VA_ARGS__ }
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive && !g->b[i].gen) FOR_CELLS(i, 0, start[cell + 1]++;)
+  for (int c = 0; c < ncell; c++) start[c + 1] += start[c];
+  int *list = malloc(sizeof(int) * (size_t)(start[ncell] + 1));
+  for (int i = 0; i < g->nb; i++)
+    if (g->b[i].alive && !g->b[i].gen) FOR_CELLS(i, 0, list[start[cell] + fillp[cell]++] = i;)
+  memset(stamp, 0, sizeof stamp);
   for (int a = 0; a < 3; a++) /* each world axis on its own */
     for (int i = 0; i < g->nb; i++) {
       const block *k = &g->b[i];
       if (!k->alive || k->gen) continue;
+      /* the earlier blocks near it */
+      int nn = 0, tag = a * MAXBLK + i + 1;
+      FOR_CELLS(i, LAY_TOUCH, for (int t = start[cell]; t < start[cell + 1]; t++) {
+        int j = list[t];
+        if (j < i && stamp[j] != tag) stamp[j] = tag, near[nn++] = j;
+      })
       int c = 0;
       for (; c < LAY_N - 1; c++) { /* the lowest layer that clears every earlier neighbour across this axis */
         bool clear = true;
-        for (int j = 0; j < i && clear; j++) {
-          if (!g->b[j].alive || g->b[j].gen) continue;
+        for (int q = 0; q < nn && clear; q++) {
+          int j = near[q];
           float dh = hi[i][a] - hi[j][a], dl = lo[i][a] - lo[j][a];
           if (fabsf(dh) >= LAY_NEAR && fabsf(dl) >= LAY_NEAR) continue;
           bool touch = true;
@@ -934,6 +969,9 @@ static void color_blocks(const game *g) {
       }
       V.lay[i][own[i][a]] = (uint8_t)c;
     }
+#undef FOR_CELLS
+#undef GCELL
+  free(start), free(fillp), free(list);
   for (int i = 0; i < g->nb; i++)
     if (g->b[i].alive && !g->b[i].gen) V.lay_born[i] = g->b[i].born + 1;
   if (opt_get("LAYER_LOG")) {

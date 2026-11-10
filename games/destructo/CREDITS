@@ -2,7 +2,7 @@ Destructo: credits and licences
 
 Code: this repository (MIT, see LICENSE). The levels, every mesh, every texture of the blocks and the field, every
 sound and the HUD are made by code in this repository (src/levels.c, src/view.c, src/sound.c); no third-party art or
-audio is shipped, so there is nothing further to attribute.
+audio is shipped. The landmarks' shapes below are the exception.
 
 - assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png (fire and smoke flipbooks with their
   motion-vector sheets, the scorch shapes): baked by cartwheel-engine's tools/fx/bake-flipbooks.mjs (procedural, CC0,
@@ -11,3 +11,38 @@ audio is shipped, so there is nothing further to attribute.
 
 The launcher art (art/) is made from the game's own frames by tools/make-art.sh; its logo is set in Fira Sans Bold
 (SIL Open Font License 1.1, from cartwheel-engine's samples/ui_assets/fonts).
+
+Landmark shapes (src/lm_data.c). Some landmarks are laid from openly licensed 3D models: tools/voxelize.mjs turns
+each model into the cells the game builds in bricks (tools/landmark-models.json holds the settings; the models
+themselves are not in this repository). The brick layout made from a model is an adaptation of it, under the
+model's licence:
+
+- Eiffel Tower: "Eiffel Tower 3D simplified printable model" (EiffelTower_fixed.stl) by Newcandle, CC BY-SA 3.0,
+  https://commons.wikimedia.org/wiki/File:EiffelTower_fixed.stl (first published as Thingiverse thing:912478).
+  Share-alike: the Eiffel Tower's cells in src/lm_data.c (the block between "begin eiffel" and "end eiffel") are
+  under CC BY-SA 3.0 too, not MIT.
+- Leaning Tower of Pisa: "The Leaning Tower of Pisa" by Emmanouel Diaz Dominguez, Creative Commons Attribution
+  (CC BY, as Printables offers it), https://www.printables.com/model/1028451
+- Colosseum: "The Roman Colosseum" by Emmanouel Diaz Dominguez, Creative Commons Attribution (CC BY, as Printables
+  offers it), https://www.printables.com/model/1029456
+  (here stretched to the real ellipse and its south side broken away, as it stands today)
+- Burj Khalifa: "Burj Khalifa (Burj Dubai)" by Emmanouel Diaz Dominguez, Creative Commons Attribution (CC BY, as
+  Printables offers it), https://www.printables.com/model/1028728
+- Parthenon: "Parthenon" by Microsoft, CC BY 4.0,
+  https://sketchfab.com/3d-models/parthenon-8390c61a76cb48c989ddf975a0a06c8d
+  (here without its roof and cella, as it stands today)
+- Moai: "Easter Island Head" by Microsoft, CC BY 4.0,
+  https://sketchfab.com/3d-models/easter-island-head-07818c9054494adca82a599a8d4a5de6
+- Statue of Liberty: "The Statue of Liberty" by The Kracken, Creative Commons Attribution (CC BY, as Printables
+  offers it), https://www.printables.com/model/31771
+- Five-storey pagoda: "Pagoda" by Poly by Google, CC BY 3.0, https://poly.pizza/m/1zS7ucaAd4J
+- Big Ben: "Big Ben" by Tobias Hronek, CC0, https://www.printables.com/model/433226
+- Christ the Redeemer: "Christ the Redeemer" by RickyBobby262, CC0, https://www.printables.com/model/815592
+- Chichen Itza: "Kukulcan-Pyramide 20220523" by PantheraLeo1359531, CC0,
+  https://commons.wikimedia.org/wiki/File:Kukulc%C3%A1n-Pyramide_20220523.stl
+- Taj Mahal: "Taj Mahal" by Julio Mendes, CC0, https://www.printables.com/model/1328502
+
+The other landmarks (the Great Sphinx, the Pyramids of Giza, the Space Needle, the Sydney Opera House, Neuschwanstein
+Castle, Willis Tower, the Empire State Building, Tower Bridge, Saint Basil's Cathedral, the Petronas Towers, Angkor
+Wat, the CN Tower and Stonehenge) are shaped in this repository's code (tools/landmark-procs.mjs, src/landmarks.c),
+MIT.

@@ -182,7 +182,7 @@ static void kill_block(game *g, int i) {
     target_down(g, k->target);
   }
   if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); if (k->target < 0) g->down_count++; }
-  if (k->tag && k->target < 0) g->vol_gone += k->vol;
+  if (k->tag == 1 && k->target < 0) g->vol_gone += k->vol;
   cw_body3d_destroy(k->body);
   k->alive = 0;
   g->nalive--;
@@ -304,7 +304,7 @@ void game_new(game *g, int level, int players, int mode) {
   g->rng = g->L->seed;
   level_build(g, g->L);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
-  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag && g->b[i].target < 0) g->vol_total += g->b[i].vol;
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->ring = g->L->range, g->orbit = 0;
   place_launcher(g);
   g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
@@ -695,7 +695,7 @@ float game_share(const game *g) {
   float v = g->vol_gone;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
-    if (k->alive && k->tag && k->target < 0 && block_moved(g, k)) v += k->vol;
+    if (k->alive && k->tag == 1 && k->target < 0 && block_moved(g, k)) v += k->vol;
   }
   return fminf(1, v / g->vol_total);
 }

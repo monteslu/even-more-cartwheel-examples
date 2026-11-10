@@ -1,10 +1,13 @@
 # Destructo
 
-Bring famous buildings of the world down, and a few dozen structures besides. The landmarks come first: the Great
-Sphinx, the Space Needle, the Pyramids of Giza, the Eiffel Tower, the Empire State Building, the Sydney Opera House,
-the Taj Mahal, Willis Tower, Neuschwanstein Castle and the Burj Khalifa, each scaled to the field with its proportions
-kept and built of up to two thousand blocks of stone, steel, glass and brick that break the way their material does.
-Each level shows the landmark's name and where it stands.
+Bring famous buildings of the world down, and a few dozen structures besides. The landmarks come first, twenty-five
+of them from every continent and age: the Great Sphinx, the Space Needle, the Eiffel Tower, Willis Tower, the Empire
+State Building, the Sydney Opera House, the Pyramids of Giza, the Taj Mahal, Neuschwanstein Castle, the Burj Khalifa,
+the Colosseum, Big Ben, the Leaning Tower of Pisa, the Parthenon, Stonehenge, Tower Bridge, Saint Basil's Cathedral,
+the Petronas Towers, a five-storey pagoda, Angkor Wat, Chichen Itza, the Statue of Liberty, Christ the Redeemer, the CN
+Tower and the moai of Ahu Tongariki. Each is scaled to the field with its proportions kept and built of thousands of
+small bricks of stone, steel, glass and brick that break the way their material does. Each level shows the
+landmark's name and where it stands.
 
 Bring structures down. Towers, walls, bridges, castles, scaffolds and stepped pyramids of wood, stone, glass and steel,
 hundreds to a few thousand blocks each, stand on a field. You have a launcher, a few rounds of shot, a heavy ball or
@@ -79,8 +82,13 @@ thing they touch and push and break everything within about four and a half metr
   when it is glass, small or already a piece. Past 3000 bodies a break leaves dust only; past 1500 awake bodies stone
   splits in two, not four. Breaks wait in a fracture queue (24 a tick) and a charge's blast runs outward over four
   ticks, a shell a tick: a blast that broke hundreds of blocks in one tick was a dropped frame in the cart.
-- `src/landmarks.c`: the landmarks. A landmark is a shape (a function: which material and paint fills a point)
-  sampled on a grid of cells a course at a time and laid as masonry: each course runs its bricks along x or z in turn,
+- `src/landmarks.c`, `src/lm_data.c`: the landmarks. Most are cells made by `tools/voxelize.mjs` from an openly
+  licensed 3D model of the landmark (CREDITS names each; the models are not in this repository, and
+  `tools/landmark-models.json` holds the settings) or from a shape drawn in `tools/landmark-procs.mjs` where no
+  good open model exists: `node games/destructo/tools/voxelize.mjs --models <dir>` writes `src/lm_data.c`. A solid
+  landmark keeps a skin of small bricks over a core of big blocks (the core is not counted in the share brought
+  down); steel lattice, statues, shells and domes are welded members instead (each weld goes when either member
+  breaks), so a frame stands that masonry could not. The cells are laid as masonry: each course runs its bricks along x or z in turn,
   and a run of cells is split into bricks one to fourteen cells long by a small search that keeps every brick's middle
   over something it stands on, so a brick can reach a cell past the course below (a dome swelling) or bridge a gap (a
   lintel over an arch, a platform between a tower's legs), and a cell nothing can hold is left out. Courses are laid
