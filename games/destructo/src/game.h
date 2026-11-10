@@ -113,7 +113,7 @@ typedef struct level_def {
   float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
-#define NLEVELS 55
+#define NLEVELS 49 /* 19 landmarks (6 more built and held, levels.c) and 30 kit structures */
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or

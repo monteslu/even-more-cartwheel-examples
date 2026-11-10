@@ -251,10 +251,12 @@ static void check(int level, const char *control) {
 }
 
 /* a block resting on something: a contact under it (the normal from it to the other pointing down) */
-/* after the settle: what the block has a contact under it with (the ground, or blocks), then support run up the same way */
+/* after the settle: what the block has a contact under it with (the ground, or blocks), or what its bottom face lies on
+ * within a hair (the probe as built: a brick in a wall held by its neighbours can sit a hair over the one below), then
+ * support run up the same way */
 static void resting(game *g, bool *sup) {
+  under_as_built(g);
   for (int i = 0; i < g->nb; i++) {
-    nunder[i] = 0, on_ground[i] = false;
     if (!g->b[i].alive) continue;
     cw_contact3d c[16];
     int n = cw_body3d_contacts(g->b[i].body, c, 16);
@@ -326,8 +328,8 @@ static void landmark_check(int level, const char *control) {
     game_step(&G, &in);
     ticks++;
   }
-  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
-         level, G.L->name, control ? control : "", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
+  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"welded\":%s,\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
+         level, G.L->name, control ? control : "", G.nweld > 0 ? "true" : "false", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
   fflush(stdout);
 }
 

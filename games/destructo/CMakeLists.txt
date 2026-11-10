@@ -2,7 +2,7 @@
 #   destructo             the game
 #   destructo_auto        the bot plays it through the controls (for hosts that send no input)
 #   destructo_bench       the perf gate's scene: the bot on Great Keep, the collapse in view (carts read no environment)
-#   destructo_bench_landmark  the perf gate's landmark scene: the bot on Neuschwanstein Castle
+#   destructo_bench_landmark  the perf gate's landmark scene: the bot on The Empire (the heaviest landmark that ships: 2,700 welded bodies)
 #   destructo_bench_nobudget  the game as before the hitch fix: no fracture queue, no blast shells, no effects primed (the hitch gate's control)
 #   destructo_check       the checks as a cart (tools/checkcart.c), run on romdev by tests/destructo-*.mjs: levelcheck,
 #                         humancheck, physcheck and the soak, each started over the debug channel (check run <tool> ...)
@@ -19,7 +19,7 @@ cw_add_app(destructo_bench SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/as
 target_compile_definitions(destructo_bench PRIVATE DESTRUCTO_AUTOPILOT=1 DESTRUCTO_BENCH=1)
 add_dependencies(destructo_bench_pack destructo_pack)
 cw_add_app(destructo_bench_landmark SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
-target_compile_definitions(destructo_bench_landmark PRIVATE DESTRUCTO_AUTOPILOT=1 DESTRUCTO_BENCH=1 "DESTRUCTO_BENCH_NAME=\"Neuschwanstein Castle\"")
+target_compile_definitions(destructo_bench_landmark PRIVATE DESTRUCTO_AUTOPILOT=1 DESTRUCTO_BENCH=1 "DESTRUCTO_BENCH_NAME=\"The Empire\"")
 add_dependencies(destructo_bench_landmark_pack destructo_pack)
 cw_add_app(destructo_bench_nobudget SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 target_compile_definitions(destructo_bench_nobudget PRIVATE DESTRUCTO_AUTOPILOT=1 DESTRUCTO_BENCH=1 DESTRUCTO_NO_BUDGET=1)

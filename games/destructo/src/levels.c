@@ -21,6 +21,9 @@
 /* name, kind, seed, size, targets, par, ammo {shot, heavy, charge}, range, theme; landmarks: which, where, setting + 1, mark, orbit.
  * A landmark whose name or image is claimed goes by a nickname with its city (the shape is the real one) */
 /* orbit: where the launcher (and the camera) starts round the landmark, radians from +z: the view that names it */
+/* a landmark built but held out of the game until its gate is green (tests/destructo-landmarks.mjs: standing as built,
+ * still in the settle, no overlaps); its row stays here so it comes back by changing one word */
+#define LANDMARK_HELD(...)
 #define LANDMARK(name, lm, targets, par, s, h, c, range, place, setting, mark, orbit) { name, K_LANDMARK, 1000 + lm, 0, targets, par, { s, h, c }, range, 0, lm, place, setting + 1, mark, orbit }
 const level_def LEVELS[NLEVELS] = {
   LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 22, "Giza, Egypt", ST_DESERT, 0.2f, 0.3f),
@@ -31,17 +34,17 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Harbour Sails", LM_OPERA_HOUSE, 2, 2, 5, 1, 1, 27, "Sydney, Australia", ST_HARBOUR, 0.2f, -0.15f),
   LANDMARK("Pyramids of Giza", LM_GIZA, 3, 3, 6, 2, 1, 38, "Giza, Egypt", ST_DESERT, 0.12f, 0.3f) /* the core of each pyramid is not counted (only its skin of bricks): an eighth of the skin */,
   LANDMARK("Taj Mahal", LM_TAJ_MAHAL, 3, 3, 5, 2, 1, 34, "Agra, India", ST_MEADOW, 0.2f, 0.0f),
-  LANDMARK("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f),
+  LANDMARK_HELD("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f),
   LANDMARK("The Spire", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.35f, 0.3f),
-  LANDMARK("Colosseum", LM_COLOSSEUM, 2, 3, 6, 2, 1, 34, "Rome, Italy", ST_CITY, 0.3f, 0.4f),
+  LANDMARK_HELD("Colosseum", LM_COLOSSEUM, 2, 3, 6, 2, 1, 34, "Rome, Italy", ST_CITY, 0.3f, 0.4f),
   LANDMARK("The Great Clock", LM_BIG_BEN, 2, 2, 5, 1, 1, 30, "London, United Kingdom", ST_HARBOUR, 0.35f, 0.4f),
   LANDMARK("Leaning Tower of Pisa", LM_PISA, 1, 2, 4, 1, 0, 28, "Pisa, Italy", ST_MEADOW, 0.4f, 0.0f),
   LANDMARK("Parthenon", LM_PARTHENON, 2, 3, 6, 2, 1, 32, "Athens, Greece", ST_HEADLAND, 0.3f, 0.5f),
-  LANDMARK("Stonehenge", LM_STONEHENGE, 2, 3, 6, 2, 0, 28, "Wiltshire, United Kingdom", ST_MEADOW, 0.3f, 0.3f),
+  LANDMARK_HELD("Stonehenge", LM_STONEHENGE, 2, 3, 6, 2, 0, 28, "Wiltshire, United Kingdom", ST_MEADOW, 0.3f, 0.3f),
   LANDMARK("Tower Bridge", LM_TOWER_BRIDGE, 2, 5, 6, 2, 1, 36, "London, United Kingdom", ST_HARBOUR, 0.3f, 0.25f),
-  LANDMARK("Saint Basil's Cathedral", LM_ST_BASILS, 3, 3, 6, 2, 1, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.4f),
-  LANDMARK("Twin Spires", LM_PETRONAS, 2, 3, 6, 2, 2, 40, "Kuala Lumpur, Malaysia", ST_CITY, 0.35f, 0.25f),
-  LANDMARK("Five-Storey Pagoda", LM_PAGODA, 1, 2, 5, 1, 0, 28, "Kyoto, Japan", ST_MEADOW, 0.35f, 0.4f),
+  LANDMARK_HELD("Saint Basil's Cathedral", LM_ST_BASILS, 3, 3, 6, 2, 1, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.4f),
+  LANDMARK_HELD("Twin Spires", LM_PETRONAS, 2, 3, 6, 2, 2, 40, "Kuala Lumpur, Malaysia", ST_CITY, 0.35f, 0.25f),
+  LANDMARK_HELD("Five-Storey Pagoda", LM_PAGODA, 1, 2, 5, 1, 0, 28, "Kyoto, Japan", ST_MEADOW, 0.35f, 0.4f),
   LANDMARK("Angkor Wat", LM_ANGKOR_WAT, 3, 3, 6, 2, 1, 36, "Siem Reap, Cambodia", ST_MEADOW, 0.25f, 0.55f),
   LANDMARK("Chichen Itza", LM_CHICHEN_ITZA, 2, 3, 6, 2, 1, 34, "Yucatan, Mexico", ST_MEADOW, 0.2f, 0.6f),
   LANDMARK("Statue of Liberty", LM_LIBERTY, 2, 3, 5, 1, 1, 32, "New York, United States", ST_HARBOUR, 0.35f, 0.3f),

@@ -1,12 +1,12 @@
 # Destructo
 
-Bring famous buildings of the world down, and a few dozen structures besides. The landmarks come first, twenty-five
+Bring famous buildings of the world down, and a few dozen structures besides. The landmarks come first, nineteen
 of them from every continent and age: the Great Sphinx, the Needle of Seattle, the Iron Lady of Paris, the Black
-Tower of Chicago, the Empire of New York, the Harbour Sails of Sydney, the Pyramids of Giza, the Taj Mahal,
-Neuschwanstein Castle, the Spire of Dubai, the Colosseum, the Great Clock of London, the Leaning Tower of Pisa, the
-Parthenon, Stonehenge, Tower Bridge, Saint Basil's Cathedral, the Twin Spires of Kuala Lumpur, a five-storey pagoda,
-Angkor Wat, Chichen Itza, the Statue of Liberty, the Redeemer of Rio, the Tower of Toronto and the moai of Ahu
-Tongariki. Each is scaled to the field with its proportions kept and built of thousands of small bricks of stone,
+Tower of Chicago, the Empire of New York, the Harbour Sails of Sydney, the Pyramids of Giza, the Taj Mahal, the
+Spire of Dubai, the Great Clock of London, the Leaning Tower of Pisa, the Parthenon, Tower Bridge, Angkor Wat,
+Chichen Itza, the Statue of Liberty, the Redeemer of Rio, the Tower of Toronto and the moai of Ahu Tongariki (six
+more are built and held until they pass the landmarks gate: Neuschwanstein Castle, the Colosseum, Stonehenge, Saint
+Basil's Cathedral, the Twin Spires and the pagoda; `LANDMARK_HELD` in src/levels.c). Each is scaled to the field with its proportions kept and built of thousands of small bricks of stone,
 steel, glass and brick that break the way their material does. Each level shows the landmark's name and where it
 stands.
 

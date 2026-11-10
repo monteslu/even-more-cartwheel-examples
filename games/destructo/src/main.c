@@ -11,7 +11,7 @@
  *             motion on the impact; any button skips it), then the next level or another try
  *   destructo_auto plays itself (the bot, through the same controls); destructo_bench is the perf gate's scene
  *   (the bot on Great Keep: its first charge brings most of a five-storey keep down, the camera on the collapse;
- *   destructo_bench_landmark the same on Neuschwanstein Castle, the landmark of the most blocks a collapse wakes). Run options (the gates and
+ *   destructo_bench_landmark the same on The Empire, the landmark of the most blocks a collapse wakes). Run options (the gates and
  *   development, over the debug channel: src/opts.h): dm set LEVEL n | LEVEL_NAME name | PLAYERS n | QUALITY 0..4 |
  *   NO_HUD 1 ..., then dm restart. */
 #include <math.h>
