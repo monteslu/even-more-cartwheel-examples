@@ -18,9 +18,14 @@ node "$ROOT/tests/jewels-shot.mjs" \
   jewels_auto 60 "$OUT/key-2.png" gl CW_RENDER_SCALE=2 JEWELS_NO_HUD=1 JEWELS_SHOWCASE=3 JEWELS_SHOWCASE_SCALE=4.2
 fi
 [ "${1:-}" = --shots-only ] && exit 0
-# the logo: the name in Cinzel, pale gold over a dark edge, on transparency
-convert -size 1900x420 xc:none -font "$FONT" -pointsize 300 -gravity center -fill "#c99a3e" -stroke "#2e1c06" -strokewidth 16 -annotate +0+0 JEWELS \
-  -stroke none -fill "#f3dc98" -annotate +0+0 JEWELS -trim +repage -bordercolor none -border 24 "$ART/logo.png"
+# the logo: the name in Cinzel, thickened, pale gold inside a gold rim and a wide dark edge with a drop shadow, on
+# transparency: it must read at a launcher grid's size over any picture, and the art check wants it 1280 wide or more
+convert -size 2400x720 xc:none -font "$FONT" -pointsize 420 -gravity center \
+  -fill "#120a02" -stroke "#120a02" -strokewidth 30 -annotate +10+14 JEWELS \
+  -fill "#2e1c06" -stroke "#2e1c06" -strokewidth 44 -annotate +0+0 JEWELS \
+  -fill "#b07c22" -stroke "#b07c22" -strokewidth 20 -annotate +0+0 JEWELS \
+  -fill "#f6e3a4" -stroke "#f6e3a4" -strokewidth 6 -annotate +0+0 JEWELS \
+  -trim +repage -bordercolor none -border 24 "$ART/logo.png"
 for i in 0 1 2 3; do convert "$OUT/play-$i.png" -resize 1920x1080! -quality 90 "$ART/shot-$((i + 1)).jpg"; done
 convert "$OUT/key-0.png" -crop 1440x2160+624+0 +repage -resize 1200x1800! -quality 92 "$ART/cover.jpg" # over the board
 "$ROOT/scripts/cover-name.sh" "$ART/cover.jpg" "$ART/logo.png" # the name across the top
