@@ -12,8 +12,8 @@
 // the native gate's pass sums left out: the bounds are set from clean romdev runs on the 890M on 2026-11-10 (GL Great Keep
 // 4.1 to 5.4 ms with the GPU clock between 740 and 2330 MHz, the landmark 5.2; WebGPU Great Keep 4.1, the landmark
 // 5.1), a little over the slowest, not the native gate's 4 ms. Every run must be on the pinned GPU, not noisy
-// (romdev's contention check: a noisy run is measured again, up to three times, and one still noisy is reported, not
-// judged), draw everything (no "not in any
+// (romdev's contention check: a noisy run is measured again a minute later, for up to twenty minutes, and only a quiet
+// run is judged), draw everything (no "not in any
 // program table" line in the cart's log) and show a real collapse (a hundred blocks broken, a thousand bodies awake
 // at once). Reported beside it: the cart's CPU a frame (romdev's cpuMs), the wall time, the GPU clock.
 // Run one timing job at a time and nothing else on romdev beside it: a timing run holds the server.
@@ -21,6 +21,11 @@
 // against the GL bound, and WebGPU against an impossible 0.5 ms.
 // Run: node tests/destructo-perf.mjs [--no-controls] [--gpu gl|webgpu]
 import { openCart, gpusArg } from './lib/romdev.mjs';
+
+/* a run romdev calls noisy (otherProcessesGpuMs: other processes on the test GPU; a loaded machine) is run again a
+ * minute later, for up to QUIET_TRIES runs, and judged only once one is quiet */
+const QUIET_TRIES = 20, QUIET_WAIT_MS = 60000;
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const BOUND_GL = 6.0, BOUND_WGPU = 6.0;
 const controls = !process.argv.includes('--no-controls');
@@ -44,10 +49,11 @@ async function once(app, gpu, size) {
 }
 async function run(app, gpu, size) {
   let r;
-  for (let k = 0; k < 3; k++) { /* a noisy run (other work on the GPU or the machine) is measured again */
+  for (let k = 0; k < QUIET_TRIES; k++) {
+    if (k) await sleep(QUIET_WAIT_MS); /* wait for the GPU to go quiet */
     try { r = await once(app, gpu, size); } catch (e) { r = { err: e.message, all: [] }; }
     if (r.err || !r.noisy) break;
-    console.log(`     (${app} ${gpu} noisy: ${r.reasons.join('; ')}: again)`);
+    console.log(`     (${app} ${gpu} noisy: ${r.reasons.join('; ')}: again in a minute)`);
   }
   return r;
 }
@@ -55,7 +61,7 @@ let bad = 0;
 const check = (name, r, bound, mustFail = false) => {
   const within = !r.err && r.gpuAvailable && r.pinned && !r.noisy && !r.skipped && r.broken >= 100 && r.awake >= 1000 && r.wins.length >= 2 && r.gpu > 0 && r.gpu <= bound;
   const line = r.err ? `${name}: ${r.err}` : `${name}: GPU ${r.gpu.toFixed(2)} ms (bound ${bound}) at ${r.size ? `${r.size.width}x${r.size.height}` : '?'} over ${r.wins.length} collapse windows, cart CPU ${r.cpu.toFixed(2)} ms, wall ${r.wall.toFixed(2)} ms a frame, ${r.broken} blocks broken, ${r.awake} awake at most, ${r.inst} blocks drawn, GPU clock ${r.clock ? `${Math.round(r.clock.min)}-${Math.round(r.clock.max)} MHz` : '?'}${r.pinned ? '' : ', NOT ON THE PINNED GPU'}${r.noisy ? `, NOISY (${r.reasons.join('; ')})` : ''}${r.gpuAvailable ? '' : `, no GPU time (${r.gpuWhy})`}${r.skipped ? ', SKIPPED DRAWS' : ''} (windows: ${r.all.map((v) => v.toFixed(2)).join(' ')})`;
-  if (!mustFail && !r.err && r.noisy) { console.log(`NOT JUDGED (noisy three times) ${line}`); return; }
+  if (!mustFail && !r.err && r.noisy) { console.log(`NOT JUDGED (noisy for twenty minutes) ${line}`); return; }
   if (mustFail) {
     if (within) { console.log(`CONTROL PASSED (a failure): ${line}`); bad++; } else console.log(`ok   control fails as it must: ${line}`);
   } else if (!within) { console.log(`FAIL ${line}`); bad++; } else console.log(`ok   ${line}`);

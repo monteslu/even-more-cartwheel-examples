@@ -297,6 +297,7 @@ static void init(void *u) {
   cw_debug_f32("perf.blast_work_max", &P.work_max);   /* the most CPU a frame took there (its ticks and its render) */
   cw_debug_f32("perf.blast_tick_max", &P.tick_max);   /* the slowest game tick there */
   cw_debug_field("seat.devices", seat_devices, CW_DBG_I32, MAXP); /* each seat's input devices (the seat gate) */
+  { extern float g_phys_worst[10]; cw_debug_field("phys.worst", g_phys_worst, CW_DBG_F32, 10); } /* Box3D's split of the slowest step (sim.c) */
   cw_debug_u32("fx.boom_frame", &R.boom_frame);       /* the render frame (counted from the first) the first charge went off in; 0 before */
   cw_debug_u32("fx.frame", &R.frame);
   /* the perf gate: 120-frame windows while playing, from the first with a hundred blocks broken (the real clock) */
@@ -740,6 +741,11 @@ static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f;
   cw_r2d_begin(NULL);
+  { /* every glyph the HUD can show, baked in its first frame off the screen: a glyph first seen mid-play (the percent
+     * of the structure down, from the charge on) took a millisecond of that frame to bake */
+    static bool baked;
+    if (!baked) baked = true, text("0123456789%:/.,-+! ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", -cs.x * 4, -cs.y * 4, 27 * u, WHITE, CW_ALIGN_LEFT);
+  }
   if (G.phase == PH_SELECT) hud_select(cs, u);
   else if (G.phase == PH_RESULT && replay_running()) hud_replay(cs, u);
   else if (G.phase == PH_RESULT) hud_play(cs, u), hud_result(cs, u);

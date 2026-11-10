@@ -24,6 +24,9 @@ double (*g_sim_clock)(void) = profile_clock; /* the real monotonic clock, in car
 static double sim_clock(void) { return g_sim_clock(); }
 #include "game.h"
 #include "opts.h"
+#include "box3d/box3d.h"
+
+float g_phys_worst[10];
 
 const material_info MATS[M_COUNT] = {
   [M_WOOD] = { "wood", 620, 0.65f, 0.05f, 52000, 160, 2, 10 },
@@ -731,7 +734,14 @@ void game_step(game *g, const input *in) {
   double t_world = sim_clock();
   cw_phys_stats st = cw_world3d_stats(g->w);
   g->step_ms = st.step_ms;
-  if (st.step_ms > g->step_ms_max) g->step_ms_max = st.step_ms;
+  if (st.step_ms > g->step_ms_max) {
+    g->step_ms_max = st.step_ms;
+    /* measuring: Box3D's own split of the slowest step (phys.worst: step, pairs, collide, solve, split islands, refit,
+     * bullets, sleep islands, transforms, hit events) */
+    b3Profile pr = b3World_GetProfile(b3LoadWorldId((uint32_t)g->w.id));
+    const float v[10] = { pr.step, pr.pairs, pr.collide, pr.solve, pr.splitIslands, pr.refit, pr.bullets, pr.sleepIslands, pr.transforms, pr.hitEvents };
+    memcpy(g_phys_worst, v, sizeof v);
+  }
   if (st.awake_bodies > g->max_awake) g->max_awake = st.awake_bodies;
   g->awake_now = st.awake_bodies;
   read_hits(g, pv);
