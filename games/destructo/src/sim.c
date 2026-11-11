@@ -868,7 +868,8 @@ void game_step(game *g, const input *in) {
   g->ready = !g->old_feel && (g->mode == MODE_COOP || g->sandbox) && ((g->state == GS_SETTLE) || (g->state == GS_FLIGHT && (!g->proj_live || g->proj_hit_tick >= 0 || g->proj_burst)));
   g->ready_t = g->ready ? g->ready_t + 1 : 0;
   if (g->state == GS_AIM || g->ready) {
-    aim(g, in);
+    static const input none;
+    if (g->state == GS_AIM || memcmp(in, &none, sizeof none)) aim(g, in); /* (an idle pad under the rubble leaves the aim's hold counters as they were) */
     if ((in->fire || g->fire_buf > 0) && g->ammo[g->ammo_sel] > 0) {
       if (g->proj_live) proj_end(g); /* the last ball is spent */
       game_fire(g);
