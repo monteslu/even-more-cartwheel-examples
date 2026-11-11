@@ -28,6 +28,7 @@ static double sim_clock(void) { return g_sim_clock(); }
 #include "box3d/box3d.h"
 
 float g_phys_worst[10];
+float g_push_cap = 1e9f; /* the most a blow's pushes may add up to on one chunk (chunks.c flush) */
 
 const material_info MATS[M_COUNT] = {
   [M_WOOD] = { "wood", 620, 0.65f, 0.05f, 52000, 160, 2, 10 },
@@ -331,6 +332,7 @@ void game_free(game *g) {
   free(g->weld), g->weld = NULL, g->nweld = g->weld_cap = 0;
   free(g->ch), g->ch = NULL, g->nch = g->ch_cap = 0;
   free(g->cfree), g->cfree = NULL, g->ncfree = 0;
+  free(g->fg), free(g->fgrp), g->fg = NULL, g->fgrp = NULL, g->nfg_all = 0;
   free(g->sl_off), free(g->sl_to), free(g->sl_rect), free(g->bnd_off), free(g->bnd_to);
   g->sl_off = g->sl_to = g->bnd_off = g->bnd_to = NULL, g->sl_rect = NULL, g->nsl = 0;
 }
@@ -346,6 +348,7 @@ void game_disown(game *g) {
   g->weld = NULL, g->nweld = g->weld_cap = 0;
   g->ch = NULL, g->nch = g->ch_cap = 0, g->cfree = NULL, g->ncfree = 0;
   g->sl_off = g->sl_to = g->bnd_off = g->bnd_to = NULL, g->sl_rect = NULL, g->nsl = 0;
+  g->fg = NULL, g->fgrp = NULL, g->nfg_all = 0;
 }
 
 void game_new(game *g, int level, int players, int mode) {
@@ -548,7 +551,9 @@ static void blast_shell(game *g, int shell) {
     chunk_impulse(g, i, vscale(dn, imp), p);
     idx[m] = i, kk[m] = k, dirs[m] = dn, m++;
   }
+  g_push_cap = CHARGE_IMPULSE * 3.0f; /* a blast cannot give a standing mass more than a few charges' worth of push, however many of its blocks it reaches */
   chunks_flush(g);
+  g_push_cap = 1e9f;
   for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s], false);
 }
 
@@ -645,7 +650,9 @@ static bool strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
     chunk_impulse(g, i, vscale(dir, imp), p);
     idx[k] = i, dist[k] = d, dirs[k] = dir, k++;
   }
+  g_push_cap = m * sp * 1.5f; /* a ball cannot give what it hits more momentum than it has (and the splash back): not the sum of the pushes on every block it reaches */
   chunks_flush(g);
+  g_push_cap = 1e9f;
   for (int s = 0; s < k; s++)
     if (dist[s] < bi->crush_r) harm(g, idx[s], ke * bi->crush_k * (1 - dist[s] / bi->crush_r), dirs[s], false);
   if (g->proj_live) cw_body3d_set_velocity(g->proj, vscale(v, BURST_KEEP));

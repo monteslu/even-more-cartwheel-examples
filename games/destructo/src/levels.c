@@ -26,9 +26,9 @@
 #define LANDMARK_HELD(...) /* (no comma after a held row) */
 #define LANDMARK(name, lm, targets, par, s, h, c, range, place, setting, mark, orbit) { name, K_LANDMARK, 1000 + lm, 0, targets, par, { s, h, c }, range, 0, lm, place, setting + 1, mark, orbit }
 const level_def LEVELS[NLEVELS] = {
-  LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 22, "Giza, Egypt", ST_DESERT, 0.1f, 0.3f),
+  LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 22, "Giza, Egypt", ST_DESERT, 0.03f, 0.3f),
   LANDMARK("The Needle", LM_SPACE_NEEDLE, 1, 2, 4, 1, 0, 28, "Seattle, United States", ST_CITY, 0.4f, 0.0f),
-  LANDMARK("Iron Lady", LM_EIFFEL, 2, 2, 5, 1, 1, 32, "Paris, France", ST_CITY, 0.35f, 0.35f),
+  LANDMARK("Iron Lady", LM_EIFFEL, 2, 2, 5, 1, 1, 32, "Paris, France", ST_CITY, 0.05f, 0.35f),
   LANDMARK("The Black Tower", LM_WILLIS, 2, 5, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f, 0.5f),
   LANDMARK("The Empire", LM_EMPIRE_STATE, 2, 2, 5, 1, 1, 32, "New York, United States", ST_CITY, 0.17f, 0.45f),
   LANDMARK("Harbour Sails", LM_OPERA_HOUSE, 2, 2, 5, 1, 1, 27, "Sydney, Australia", ST_HARBOUR, 0.07f, -0.15f),
@@ -38,7 +38,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("The Spire", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.27f, 0.3f),
   LANDMARK_HELD("Colosseum", LM_COLOSSEUM, 2, 3, 6, 2, 1, 34, "Rome, Italy", ST_CITY, 0.3f, 0.4f)
   LANDMARK("The Great Clock", LM_BIG_BEN, 2, 2, 5, 1, 1, 30, "London, United Kingdom", ST_HARBOUR, 0.01f, 0.4f),
-  LANDMARK("Leaning Tower of Pisa", LM_PISA, 1, 2, 4, 1, 0, 28, "Pisa, Italy", ST_MEADOW, 0.4f, 0.0f),
+  LANDMARK("Leaning Tower of Pisa", LM_PISA, 1, 2, 4, 1, 0, 28, "Pisa, Italy", ST_MEADOW, 0.01f, 0.0f),
   LANDMARK("Parthenon", LM_PARTHENON, 2, 3, 6, 2, 1, 32, "Athens, Greece", ST_HEADLAND, 0.3f, 0.5f),
   LANDMARK_HELD("Stonehenge", LM_STONEHENGE, 2, 3, 6, 2, 0, 28, "Wiltshire, United Kingdom", ST_MEADOW, 0.3f, 0.3f)
   LANDMARK("Tower Bridge", LM_TOWER_BRIDGE, 2, 8, 6, 2, 3, 36, "London, United Kingdom", ST_HARBOUR, 0.3f, 0.25f),
@@ -47,7 +47,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK_HELD("Five-Storey Pagoda", LM_PAGODA, 1, 2, 5, 1, 0, 28, "Kyoto, Japan", ST_MEADOW, 0.35f, 0.4f)
   LANDMARK("Angkor Wat", LM_ANGKOR_WAT, 3, 5, 6, 2, 3, 36, "Siem Reap, Cambodia", ST_MEADOW, 0.25f, 0.55f),
   LANDMARK("Chichen Itza", LM_CHICHEN_ITZA, 2, 3, 6, 2, 1, 34, "Yucatan, Mexico", ST_MEADOW, 0.01f, 0.6f),
-  LANDMARK("Statue of Liberty", LM_LIBERTY, 2, 3, 5, 1, 1, 32, "New York, United States", ST_HARBOUR, 0.09f, 0.3f),
+  LANDMARK("Statue of Liberty", LM_LIBERTY, 2, 8, 8, 2, 6, 32, "New York, United States", ST_HARBOUR, 0.09f, 0.3f),
   LANDMARK("The Redeemer", LM_CHRIST_REDEEMER, 1, 2, 5, 1, 0, 30, "Rio de Janeiro, Brazil", ST_HIGHLAND, 0.35f, 0.0f),
   LANDMARK("The Tower", LM_CN_TOWER, 1, 2, 5, 1, 1, 34, "Toronto, Canada", ST_HARBOUR, 0.01f, 0.0f),
   LANDMARK("Moai of Ahu Tongariki", LM_MOAI, 3, 4, 6, 1, 0, 30, "Rapa Nui, Chile", ST_HEADLAND, 0.26f, -0.35f),

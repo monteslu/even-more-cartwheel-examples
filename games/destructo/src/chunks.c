@@ -395,6 +395,8 @@ static void flush_i(game *g) {
     chunk *k = &g->ch[c];
     k->pq = 0;
     if (!k->alive || k->dyn || k->mass <= 0) continue;
+    extern float g_push_cap;
+    { float pl = vlen(k->pj); if (pl > g_push_cap) k->pj = vscale(k->pj, g_push_cap / pl); }
     float dv = vlen(k->pj) / k->mass, vmove = opt_get("V_MOVE") ? (float)atof(opt_get("V_MOVE")) : V_MOVE;
     if (dv < vmove) continue; /* too heavy for this blow: it stays */
     static int ids[CH_MAX];
@@ -522,8 +524,130 @@ static void release_lean(game *g, int c) {
   }
 }
 
+/* ── load sharing: the supports (legs, base columns, shaft segments) of a big frame each carry a share of its weight, found by a statics solve over their footprints (the footing pressure of a
+ * rigid base: the share of each support grows with its area and with its distance toward where the weight leans); each is good for 1.25 times its design share. When one is destroyed the
+ * rest take more; any that is over its capacity crushes (its blocks break), the shares are shared again, and so on: a progressive failure, until it is stable or the foot is gone. ── */
+static bool lsolve(int n, const float *x, const float *z, const float *A, float cx, float cz, float *w) {
+  bool on[64];
+  for (int i = 0; i < n; i++) on[i] = true, w[i] = 0;
+  for (int it = 0; it < n; it++) {
+    double m[3][3] = { { 0, 0, 0 }, { 0, 0, 0 }, { 0, 0, 0 } };
+    int na = 0;
+    for (int i = 0; i < n; i++) {
+      if (!on[i]) continue;
+      na++;
+      double v[3] = { 1, x[i], z[i] };
+      for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) m[a][b] += A[i] * v[a] * v[b];
+    }
+    if (na == 0) return false;
+    double rhs[3] = { 1, cx, cz };
+    double det = m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+    double lam[3];
+    if (fabs(det) < 1e-9) { /* collinear or a single support: by area alone */
+      double sa = 0;
+      for (int i = 0; i < n; i++) if (on[i]) sa += A[i];
+      for (int i = 0; i < n; i++) w[i] = on[i] && sa > 0 ? (float)(A[i] / sa) : 0;
+      return true;
+    }
+    for (int c = 0; c < 3; c++) { /* Cramer */
+      double mm[3][3];
+      for (int a = 0; a < 3; a++) for (int b = 0; b < 3; b++) mm[a][b] = b == c ? rhs[a] : m[a][b];
+      double d = mm[0][0] * (mm[1][1] * mm[2][2] - mm[1][2] * mm[2][1]) - mm[0][1] * (mm[1][0] * mm[2][2] - mm[1][2] * mm[2][0]) + mm[0][2] * (mm[1][0] * mm[2][1] - mm[1][1] * mm[2][0]);
+      lam[c] = d / det;
+    }
+    bool neg = false;
+    for (int i = 0; i < n; i++) {
+      if (!on[i]) { w[i] = 0; continue; }
+      w[i] = (float)(A[i] * (lam[0] + lam[1] * x[i] + lam[2] * z[i]));
+      if (w[i] < -1e-6f) on[i] = false, neg = true; /* a support that would pull (tension): it carries nothing and the rest are solved again */
+    }
+    if (!neg) { for (int i = 0; i < n; i++) if (w[i] < 0) w[i] = 0; return true; }
+  }
+  return true;
+}
+
+static void groups_build(game *g, int c) {
+  chunk *k = &g->ch[c];
+  k->nfg = 0;
+  int tot = 0;
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext) tot += g->ch[cc].n;
+  if (tot < 200) return;
+  float x0 = 1e9f, x1 = -1e9f, z0 = 1e9f, z1 = -1e9f;
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext)
+    for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext)
+      for (int l = g->sl_off[i]; l < g->sl_off[i + 1]; l++) if (g->sl_to[l] < 0) { const float *r = &g->sl_rect[4 * l]; if (r[0] < x0) x0 = r[0]; if (r[2] > x1) x1 = r[2]; if (r[1] < z0) z0 = r[1]; if (r[3] > z1) z1 = r[3]; }
+  if (x1 <= x0) return;
+  float cs = fmaxf(0.8f, 0.2f * fmaxf(x1 - x0, z1 - z0));
+  static int cell[64][64];
+  for (int a = 0; a < 64; a++) for (int b = 0; b < 64; b++) cell[a][b] = -1;
+  float gx[64], gz[64], gA[64];
+  int ng = 0;
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext)
+    for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext)
+      for (int l = g->sl_off[i]; l < g->sl_off[i + 1]; l++) {
+        if (g->sl_to[l] >= 0) continue;
+        const float *r = &g->sl_rect[4 * l];
+        float px = 0.5f * (r[0] + r[2]), pz = 0.5f * (r[1] + r[3]), A = (r[2] - r[0]) * (r[3] - r[1]);
+        int ix = (int)((px - x0) / cs), iz = (int)((pz - z0) / cs);
+        if (ix > 63) ix = 63;
+        if (iz > 63) iz = 63;
+        if (cell[ix][iz] < 0 && ng < 64) cell[ix][iz] = ng, gx[ng] = gz[ng] = gA[ng] = 0, ng++;
+        int gi = cell[ix][iz];
+        if (gi < 0) continue;
+        gx[gi] += px * A, gz[gi] += pz * A, gA[gi] += A;
+        g->fgrp[i] = (uint16_t)(g->nfg_all + gi + 1);
+      }
+  if (ng < 3) { for (int cc = c; cc >= 0; cc = g->ch[cc].anext) for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext) g->fgrp[i] = 0; return; }
+  float px[64], pz[64], w[64];
+  for (int i = 0; i < ng; i++) px[i] = gx[i] / gA[i], pz[i] = gz[i] / gA[i];
+  lsolve(ng, px, pz, gA, k->com.x, k->com.z, w);
+  g->fg = realloc(g->fg, sizeof(float) * 6 * (size_t)(g->nfg_all + ng));
+  for (int i = 0; i < ng; i++) {
+    float *f = &g->fg[6 * (g->nfg_all + i)];
+    f[0] = px[i], f[1] = pz[i], f[2] = gA[i], f[3] = w[i];
+    f[4] = 1.25f * fmaxf(w[i], 0.02f) / gA[i]; /* the pressure it is good for */
+  }
+  k->fg0 = g->nfg_all, k->nfg = ng, g->nfg_all += ng;
+}
+
+/* the blocks to crush: those of every support group over its capacity (count returned) */
+static int load_check(game *g, int c, int *crush, int cap) {
+  chunk *k = &g->ch[c];
+  int ng = k->nfg;
+  float A[64] = { 0 }, x[64], z[64], w[64];
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext)
+    for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext) {
+      if (!g->fgrp[i]) continue;
+      int gi = g->fgrp[i] - 1 - k->fg0;
+      if (gi < 0 || gi >= ng) continue;
+      for (int l = g->sl_off[i]; l < g->sl_off[i + 1]; l++) if (g->sl_to[l] < 0) { const float *r = &g->sl_rect[4 * l]; A[gi] += (r[2] - r[0]) * (r[3] - r[1]); }
+    }
+  float Ae[64];
+  int alive = 0;
+  for (int i = 0; i < ng; i++) { const float *f = &g->fg[6 * (k->fg0 + i)]; x[i] = f[0], z[i] = f[1]; Ae[i] = A[i] > 0.05f * f[2] ? A[i] : 0; alive += Ae[i] > 0; }
+  if (alive == 0) return 0;
+  lsolve(ng, x, z, Ae, k->com.x, k->com.z, w);
+  bool over[64] = { false };
+  int nover = 0;
+  for (int i = 0; i < ng; i++) {
+    if (Ae[i] <= 0) continue;
+    const float *f = &g->fg[6 * (k->fg0 + i)];
+    if (w[i] / Ae[i] > f[4] * 1.0001f) over[i] = true, nover++;
+  }
+  if (!nover) return 0;
+  int n = 0;
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext)
+    for (int i = g->ch[cc].head; i >= 0 && n < cap; i = g->b[i].cnext) {
+      if (!g->fgrp[i]) continue;
+      int gi = g->fgrp[i] - 1 - k->fg0;
+      if (gi >= 0 && gi < ng && over[gi]) crush[n++] = i;
+    }
+  return n;
+}
+
 static void support_pass(game *g) {
-  static int out[CH_MAX];
+  static int out[CH_MAX], crush_list[400], crush_all[400];
+  int ncrush = 0;
   int nout = 0;
   int E = g->epoch;
   for (int c = 0; c < g->nch; c++) {
@@ -540,11 +664,16 @@ static void support_pass(game *g) {
         }
     k->seen = E;
     if (!need) continue;
+    if (k->nfg > 0 && !opt_on("OLD_LOAD")) { /* load sharing: a support over its capacity crushes (the blocks break), and what stands is judged again next tick */
+      int nc = load_check(g, c, crush_list, 400);
+      if (nc > 0) { for (int q = 0; q < nc && ncrush < 400; q++) crush_all[ncrush++] = crush_list[q]; continue; }
+    }
     float d = chunk_inside(g, c);
     float req = k->d0 >= 0 ? (k->frac > 0 ? k->frac : stand_frac()) * k->d0 : k->d0 - 0.03f;
     if (d < req) { out[nout++] = c; }
   }
   for (int s = 0; s < nout; s++) release_lean(g, out[s]);
+  for (int q = 0; q < ncrush; q++) if (g->b[crush_all[q]].alive && !g->b[crush_all[q]].gen) game_hit_block(g, crush_all[q], 1e9f);
 }
 
 /* what lies in a heap crumbles under its own weight: a let-go chunk of more than 6 blocks that has come nearly to rest breaks again
@@ -853,6 +982,7 @@ static void build_i(game *g) {
     b->shape = sh;
     chunk_add_member(g, c, i);
   }
+  g->fgrp = calloc((size_t)nb + 1, sizeof(uint16_t)), g->fg = NULL, g->nfg_all = 0;
   /* what each stands on as built: where its centre is inside its feet, and what it weighs */
   for (int c = 0; c < g->nch; c++) {
     chunk *k = &g->ch[c];
@@ -872,8 +1002,9 @@ static void build_i(game *g) {
           for (int l = g->sl_off[i]; l < g->sl_off[i + 1]; l++) if (g->sl_to[l] < 0) { const float *r = &g->sl_rect[4 * l]; if (r[0] < x0) x0 = r[0]; if (r[2] > x1) x1 = r[2]; if (r[1] < z0) z0 = r[1]; if (r[3] > z1) z1 = r[3]; }
         }
       float w = fmaxf(0.5f, fminf(x1 - x0, z1 - z0)), sl = x1 > x0 ? (y1 - y0) / w : 0;
-      k->frac = sl > 3 ? fminf(0.93f, stand_frac() + 0.05f * (sl - 3)) : 0;
+      k->frac = sl > 3 && opt_on("OLD_LOAD") ? fminf(0.93f, stand_frac() + 0.05f * (sl - 3)) : 0;
     }
+    groups_build(g, c);
     k->seen = g->epoch;
   }
   g->sup_dirty = 0;

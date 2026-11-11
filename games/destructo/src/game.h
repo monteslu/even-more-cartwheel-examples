@@ -70,6 +70,7 @@ typedef struct block {
 typedef struct chunk {
   cw_body3d body;
   int leader, anext;  /* the assembly it is bonded into (its leader: the first chunk, which carries the judgement), and the next chunk in it */
+  int fg0, nfg;       /* its support groups (legs, base columns, shaft segments: game.fg from fg0): load sharing, chunks.c */
   int head, n;        /* members (linked by block.cnext), live ones */
   uint8_t alive, dyn;
   uint8_t dirty;      /* lost a member: its pieces and its support are looked at again */
@@ -177,6 +178,7 @@ typedef struct game {
   chunk *ch; int nch, ch_cap;       /* every chunk (a dead one's slot is reused) */
   int *cfree; int ncfree;
   /* the support graph (chunks.c): each placed block's links to what it rests on (another block, or the ground: -1) */
+  float *fg; uint16_t *fgrp; int nfg_all; /* support groups: per group x, z, area, design share, pressure capacity; per block its group + 1 */
   int *sl_off, *sl_to; float *sl_rect; int nsl; /* CSR by block: sl_to[k] the block below, sl_rect[4k..] the touching footprint x0 z0 x1 z1 */
   int *bnd_off, *bnd_to;            /* the bonds (mortar and welds): the placed blocks that stay one piece */
   int epoch, sup_dirty, crumble_i;
