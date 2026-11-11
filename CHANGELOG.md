@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.18.0
+
+- **Destructo**: a structure that loses its footing now falls over as one solid piece. Before, a tower shot in the foot mostly sank into itself and crumbled in place. A bonded structure is now one rigid body: when its supports go it is released as one body and gravity topples it, then it breaks into slabs and rubble where it lands. With half of the Eiffel Tower's footing out, two seconds later it has gone sideways 9.4 m and tipped 61 degrees; the Black Tower tips 44 degrees, the Empire 45, Pisa 19.
+- **Destructo**: supports share the weight. Each leg, base column or shaft segment of a frame carries a share found from where the structure's weight sits over its supports and is good for 1.25 times that share; when one is destroyed its share moves to the rest and any support now over its limit crushes, until it is stable or the footing is gone. One shot at one leg of the Eiffel Tower crumbles the leg, and the tower leans toward it and goes over; a building with many columns absorbs the loss of one.
+- **Destructo**: a blow's push on a standing mass is capped at the blow's own momentum (a 50 kg ball was shoving a 25 tonne tower several metres a second), so one shot no longer shoves a tower over or releases it by push. Liberty, the Sphinx, Iron Lady and Pisa have retuned ammunition, pars and marks.
+- A check fires the launcher's own shot, heavy ball and charge at the foot of eight landmarks, and counts every tick in which something stands or sleeps with no path to the ground.
+- Build: Lanternfall's world check runs as four parallel jobs, so a run takes about 12 minutes.
+- Known: a charge at one leg topples the Eiffel Tower by four seconds, not two; the Needle and the Black Tower shot at one base column still fall; the Taj Mahal does not topple from a shot at its foot.
+
 ## 0.17.2
 
 - **Destructo**: structures no longer hang in the air. Forcing a piece of rubble to sleep put its whole connected group to sleep, so a tower or a statue's torso could stay motionless with nothing under it; forced sleep now applies only to rubble lying within 0.7 m of the ground when fewer than 120 bodies are awake, and a frame released out of balance keeps a lean as it falls. A check fires the launcher's own shot, heavy ball and charge at the foot of eight landmarks and counts every tick in which something stands or sleeps with no path to the ground (the old rule fails it with 508 ticks).
