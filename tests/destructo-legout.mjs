@@ -16,17 +16,18 @@
 import { runCheck, inPairs, gpusArg } from './lib/romdev.mjs';
 import { levelIndex } from './lib/levelindex.mjs';
 
-const TALL = { 3: 'The Black Tower', 4: 'The Empire', 8: 'The Spire', 9: 'The Great Clock', 10: 'Leaning Tower of Pisa', 1: 'The Needle', 17: 'The Tower' };
-const HALF = { ...TALL, 15: 'Statue of Liberty', 16: 'The Redeemer', 13: 'Angkor Wat' };
+const byName = (names) => Object.fromEntries(names.map((n) => [levelIndex(n), n]));
+const TALL = byName(['The Black Tower', 'The Empire', 'The Spire', 'The Great Clock', 'Leaning Tower of Pisa', 'The Needle', 'The Tower']);
+const HALF = { ...TALL, ...byName(['Statue of Liberty', 'The Redeemer', 'Angkor Wat']) };
 const LEVELS = { needle: levelIndex('The Needle'), iron: levelIndex('Iron Lady'), parthenon: levelIndex('Parthenon'), chichen: levelIndex('Chichen Itza') };
-const NAMES = { 1: 'The Needle', 2: 'Iron Lady', 11: 'Parthenon', 14: 'Chichen Itza' };
+const NAMES = byName(['The Needle', 'Iron Lady', 'Parthenon', 'Chichen Itza']);
 const at8 = (rows, level) => rows.filter((r) => NAMES[r.level] === r.name).filter((r) => r.phase === 'legout' && r.level === level && Math.abs(r.t - 8) < 0.01).pop();
 const stand = (rows, level) => rows.find((r) => r.phase === 'standing' && r.level === level);
 let bad = 0;
 for (const gpu of gpusArg()) {
   const run = async (args) => { const r = await runCheck('levels', args, { gpu }); if (r.status !== 0) { console.log(`FAIL check levels ${args} exited ${r.status}\n${r.text.slice(-800)}`); process.exit(1); } return r.rows; };
   const jobs = [() => run(['--legout', LEVELS.needle, LEVELS.iron]), () => run(['--legout', '--charge', LEVELS.iron, LEVELS.parthenon, LEVELS.chichen]),
-    () => run(['--legout', ...Object.keys(TALL)]), () => run(['--opt', 'LEG_HALF=1', '--legout', ...Object.keys(HALF)]), () => run(['--opt', 'SOLIDCORE=1', '--legout', 3]), () => run(['--opt', 'NO_SUPPORT=1', '--opt', 'LEG_HALF=1', '--legout', 3]),
+    () => run(['--legout', ...Object.keys(TALL)]), () => run(['--opt', 'LEG_HALF=1', '--legout', ...Object.keys(HALF)]), () => run(['--opt', 'SOLIDCORE=1', '--legout', levelIndex('The Black Tower')]), () => run(['--opt', 'NO_SUPPORT=1', '--opt', 'LEG_HALF=1', '--legout', levelIndex('The Black Tower')]),
     () => run(['--opt', 'LOOSE=1', '--legout', LEVELS.iron]), () => run(['--opt', 'NO_CHUNKS=1', '--legout', LEVELS.needle])];
   const [leg, charge, tall, half, solid, nosup, loose, nochunks] = await inPairs(jobs);
   const verdict = (rows, level, name) => {

@@ -51,7 +51,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("The Spire", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.27f, 0.3f),
   LANDMARK("The Black Tower", LM_WILLIS, 2, 5, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f, 0.5f),
   LANDMARK("Tower Bridge", LM_TOWER_BRIDGE, 2, 8, 6, 2, 3, 36, "London, United Kingdom", ST_HARBOUR, 0.3f, 0.25f),
-  LANDMARK("Mount Rushmore", LM_RUSHMORE, 3, 4, 6, 2, 2, 30, "South Dakota, United States", ST_HIGHLAND, 0.3f, 0.3f),
+  LANDMARK("Mount Rushmore", LM_RUSHMORE, 3, 4, 6, 2, 2, 30, "South Dakota, United States", ST_HIGHLAND, 0.1f, 0.3f),
   LANDMARK_HELD("The Kremlin", LM_KREMLIN, 2, 3, 6, 2, 2, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.25f)
   LANDMARK("Stacked Tower", LM_TAIPEI, 2, 3, 6, 2, 2, 36, "Taipei, Taiwan", ST_CITY, 0.3f, 0.3f),
   LANDMARK("Golden Span", LM_GOLDEN_GATE, 2, 3, 6, 2, 2, 46, "San Francisco, United States", ST_HARBOUR, 0.06f, 0.35f),
