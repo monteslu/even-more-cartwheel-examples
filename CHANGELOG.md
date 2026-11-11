@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.17.2
+
+- **Destructo**: structures no longer hang in the air. Forcing a piece of rubble to sleep put its whole connected group to sleep, so a tower or a statue's torso could stay motionless with nothing under it; forced sleep now applies only to rubble lying within 0.7 m of the ground when fewer than 120 bodies are awake, and a frame released out of balance keeps a lean as it falls. A check fires the launcher's own shot, heavy ball and charge at the foot of eight landmarks and counts every tick in which something stands or sleeps with no path to the ground (the old rule fails it with 508 ticks).
+- Known: a tower shot in the foot still mostly sinks into itself instead of toppling; the fix, a released mass falling as one rigid body, is next.
+
 ## 0.17.1
 
 - **Destructo**: a level start never freezes the screen. While a level builds, the dimmed last view stays up with a spinner turning on the real clock, "Building <level>", a progress bar and a phase line, and Back cancels. The level's drawing is built a slice a frame behind the screen, the replay's second world is never waited for, and the first level builds under the engine's progress bar at start. A check records the frames of a start and fails if the spinner stops, the text goes, the progress goes back or a frame takes over 100 ms; the old blocking path fails it with frames of up to 28 seconds.
