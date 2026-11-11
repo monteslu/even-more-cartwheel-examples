@@ -162,6 +162,7 @@ static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_v
   if (gen) b3Body_SetSleepThreshold(cw_body3d_raw(body), 0.12f); /* rubble sleeps sooner (Box3D: 0.05 m/s): a pile still awake keeps its whole island stepping */
   k->shape = block_shape(g, i, body, cw_xform3_identity());
   k->chunk = chunk_new(g, body, true, false);
+  g->ch[k->chunk].rel_tick = g->tick;
   k->local = cw_xform3_identity();
   chunk_add_member(g, k->chunk, i);
   k->vol = 8 * half.x * half.y * half.z;
@@ -1049,7 +1050,7 @@ int game_legout(game *g, bool charge) {
     const block *k = &g->b[i];
     if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y - k->half.y > 1.5f) continue; /* (what stands on the ground: a tall welded member reaches down to it) */
     float px = k->home.x - cx, pz = k->home.z - cz, r = sqrtf(px * px + pz * pz);
-    if (r < 0.35f * R || (px * fx + pz * fz) < (opt_on("LEG_HALF") ? 0.0f : 0.5f) * r * R) continue; /* (LEG_HALF: the whole half of the footprint, a core-out test: what stands on it must come down) */
+    if ((r < 0.35f * R && !opt_on("LEG_HALF")) || (px * fx + pz * fz) < (opt_on("LEG_HALF") ? 0.0f : 0.5f) * r * R) continue; /* (LEG_HALF: the whole half of the footprint, a core-out test: what stands on it must come down) */
     harm(g, i, 1e9f, v3(0, 1, 0), true), n++;
   }
   return n;

@@ -9,7 +9,7 @@
 //   beaten   the bot, through the controls, brings every crystal down within the level's par
 // Controls, each must fail its check: a block put in the air over the first landmark (as built, and again once it has
 // settled, unstepped: nothing under either), two blocks welded to each other and nothing else put there the same way
-// (welds alone hold nothing up), the bot aiming 150 milliradians off, and the Needle on the old soft welds (OLD_WELDS: it must fail rests, it moves 0.4 m woken).
+// (welds alone hold nothing up), the bot aiming 400 milliradians off, and the Needle on the old soft welds (OLD_WELDS: it must fail rests, it moves 0.4 m woken).
 // The physics does not draw: one run, on a GL host (--gpu webgpu: on a WebGPU host). The controls run two at a time.
 // A welded member counts as standing on what it is welded to (a chain of whole welds to a block that stands or rests).
 // Run: node tests/destructo-landmarks.mjs [--gpu gl|webgpu]

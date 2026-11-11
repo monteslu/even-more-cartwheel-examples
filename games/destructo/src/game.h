@@ -80,6 +80,7 @@ typedef struct chunk {
   int seen;           /* the support epoch it was last judged in */
   float mass;         /* kg of its live members (static chunks) */
   t3_vec3 com;        /* their centre (static chunks) */
+  float frac;         /* the share of its as-built margin it must keep to stand: a slender frame (tall over narrow) keeps more */
   float d0;           /* how far inside its support the centre stood as built (m, negative: outside) */
   t3_vec3 pj, pt;     /* pending impulse, and the points it was given at weighted by its size (chunk_impulse), applied by chunks_flush */
   float pm;           /* the sum of those sizes */

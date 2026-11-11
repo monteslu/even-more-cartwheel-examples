@@ -8,6 +8,7 @@ import { openCart, ROOT } from './lib/romdev.mjs';
 
 const a = process.argv.slice(2);
 const take = (flag, def) => { const i = a.indexOf(flag); if (i < 0) return def; const v = a[i + 1]; a.splice(i, 2); return v; };
+const extra = []; for (let i; (i = a.indexOf('--set')) >= 0;) extra.push(a.splice(i, 2)[1]);
 const gpu = take('--gpu', 'gl'), orbit = take('--orbit', null), times = take('--times', '0,0.5,1,2,4').split(',').map(Number);
 const [level, scene, name = level.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + scene] = a;
 const OUT = join(ROOT, 'out/gate/scene');
@@ -16,6 +17,7 @@ const h = await openCart('destructo_auto', { gpu, tag: 'scene' });
 try {
   const opts = { LEVEL_NAME: level, NO_HUD: 1, QUALITY: 3, SCENE: scene, OVERVIEW: 1 };
   if (orbit !== null) opts.ORBIT = orbit;
+  for (const kv of extra) { const [k, v] = kv.split('='); opts[k] = v; }
   for (const [k, v] of Object.entries(opts)) await h.command(`dm set ${k} "${v}"`);
   await h.command('dm restart');
   await h.step(5);

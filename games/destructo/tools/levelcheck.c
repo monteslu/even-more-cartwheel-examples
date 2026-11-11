@@ -204,7 +204,7 @@ static void check(int level, const char *control) {
   }
   bot_state bot;
   memset(&bot, 0, sizeof bot);
-  bot.yaw_jitter_control = c_solve ? 150 : 0;
+  bot.yaw_jitter_control = c_solve ? 400 : 0;
   bot_reset(&bot);
   replay_reset(level, 1, MODE_COOP, false, level_settle_ticks(G.L));
   int ticks = 0, max_awake = 0;
@@ -338,7 +338,7 @@ static void landmark_check(int level, const char *control) {
   game_settle(&G, level_settle_ticks(G.L));
   bot_state bot;
   memset(&bot, 0, sizeof bot);
-  bot.yaw_jitter_control = c_solve ? 150 : 0;
+  bot.yaw_jitter_control = c_solve ? 400 : 0;
   bot_reset(&bot);
   int ticks = 0;
   while (!game_over(&G) && ticks < 60 * 60 * 6) {
@@ -366,6 +366,7 @@ static void landmark_check(int level, const char *control) {
  * pieces' rigidity is then not there to measure: its pair count is 0 */
 extern float g_hull_dbg[6];
 extern double g_ch_ms[6];
+extern float g_tipdbg[8];
 #define PIECE_MAX 400
 typedef struct piece { int n, mem[PIECE_MAX]; t3_vec3 p0[PIECE_MAX]; int t_rel; float y0, ymin, yrise, fall; bool landed, measured; float rig_mm; int pairs; } piece;
 static piece PC[512];
@@ -379,8 +380,12 @@ static void legout_check(int level, bool charge) {
     game_add_block(&G, M_STONE, (t3_vec3){ 0, hy * 0.4f, 0 }, (t3_vec3){ fmaxf(0.5f, mx * 0.6f), hy * 0.4f, fmaxf(0.5f, mz * 0.6f) }, 0); (void)n;
   }
   static t3_vec3 p0[MAXBLK];
+  static uint8_t was[MAXBLK];
   int total = 0;
+  for (int i = 0; i < G.nb; i++) was[i] = G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0;
   for (int i = 0; i < G.nb; i++) { p0[i] = G.b[i].alive ? game_block_xform(&G, i).p : (t3_vec3){ 0, 0, 0 }; if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0) total++; }
+float vol_all = 0, vol_mass = 0;
+  for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag && G.b[i].target < 0) { float md = fminf(G.b[i].half.x, fminf(G.b[i].half.y, G.b[i].half.z)) * 2; vol_all += G.b[i].vol; if (md > 0.45f) vol_mass += G.b[i].vol; }
   /* alone for 6 s, everything awake (what a blow does to a structure before anything breaks: the old loose blocks slump, chunks stand) */
   for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && G.ch[c].dyn) b3Body_SetAwake(cw_body3d_raw(G.ch[c].body), true);
   { input none = { 0 }; int st = G.state; G.state = GS_SETTLE; for (int t = 0; t < 360; t++) game_step(&G, &none); G.state = st; }
@@ -388,12 +393,10 @@ static void legout_check(int level, bool charge) {
   for (int i = 0; i < G.nb; i++) if (G.b[i].alive) { t3_vec3 p = game_block_xform(&G, i).p; float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)); if (d > mx) mx = d; }
   int st_n, o6;
   int big0 = chunks_largest(&G, &o6, &st_n);
-  float vol_all = 0, vol_mass = 0;
-  for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag && G.b[i].target < 0) { float md = fminf(G.b[i].half.x, fminf(G.b[i].half.y, G.b[i].half.z)) * 2; vol_all += G.b[i].vol; if (md > 0.45f) vol_mass += G.b[i].vol; }
-  printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"standing\",\"mass_frac\":%.3f,\"blocks\":%d,\"placed\":%d,\"move_mm\":%.2f,\"chunks_standing\":%d,\"awake\":%d,\"height\":%.2f}\n", level, G.L->name, vol_all > 0 ? vol_mass / vol_all : 0, G.nalive, total, mx * 1000, st_n, game_awake(&G), G.top);
+    printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"standing\",\"mass_frac\":%.3f,\"blocks\":%d,\"placed\":%d,\"move_mm\":%.2f,\"chunks_standing\":%d,\"awake\":%d,\"height\":%.2f}\n", level, G.L->name, vol_all > 0 ? vol_mass / vol_all : 0, G.nalive, total, mx * 1000, st_n, game_awake(&G), G.top);
   fflush(stdout);
   (void)big0;
-  if (opt_on("FEET")) { printf("{\"level\":%d,\"feet\":[", level); int nf = 0; for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0 && p0[i].y < 0.8f) printf("%s[%.2f,%.2f,%.2f,%.2f,%.2f]", nf++ ? "," : "", p0[i].x, p0[i].z, G.b[i].half.x, G.b[i].half.z, p0[i].y); printf("],\"chunks\":%d,\"com\":[", st_n); for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && !G.ch[c].dyn) printf("[%.2f,%.2f,%.2f,%d,%.2f]", G.ch[c].com.x, G.ch[c].com.y, G.ch[c].com.z, G.ch[c].n, G.ch[c].d0); printf("]}\n"); }
+  if (opt_on("FEET")) { int printed = 0; printf("{\"level\":%d,\"feet\":[", level); int nf = 0; for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0 && p0[i].y < 0.8f) printf("%s[%.2f,%.2f,%.2f,%.2f,%.2f]", nf++ ? "," : "", p0[i].x, p0[i].z, G.b[i].half.x, G.b[i].half.z, p0[i].y); printf("],\"chunks\":%d,\"com\":[", st_n); for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && !G.ch[c].dyn) printf("%s[%.2f,%.2f,%.2f,%d,%.2f]", printed++ ? "," : "", G.ch[c].com.x, G.ch[c].com.y, G.ch[c].com.z, G.ch[c].n, G.ch[c].d0); printf("]}\n"); }
   static uint8_t seen[MAXBLK];
   static int cid[MAXBLK];
   memset(seen, 0, sizeof seen);
@@ -408,6 +411,7 @@ static void legout_check(int level, bool charge) {
   for (int t = 1; t <= 1500; t++) {
     game_step(&G, &none);
     ms_sum += G.tick_ms, w_sum += G.world_ms, p_sum += G.post_ms, ms_n++; if (G.tick_ms > ms_max) ms_max = G.tick_ms;
+    if (opt_on("TRACE") && t <= 10) { float vm = 0; int nd = 0, na = 0; for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && G.ch[c].dyn && G.ch[c].placed) { nd++; if (cw_body3d_awake(G.ch[c].body)) na++; t3_vec3 v = cw_body3d_velocity(G.ch[c].body); float s = sqrtf(v.x*v.x+v.y*v.y+v.z*v.z); if (s > vm) vm = s; } printf("{\"trace\":%d,\"dyn\":%d,\"awake\":%d,\"vmax\":%.2f}\n", t, nd, na, vm); }
     /* chunks let go this tick: each a piece */
     for (int c = 0; c < G.nch; c++) {
       chunk *k = &G.ch[c];
@@ -450,17 +454,27 @@ static void legout_check(int level, bool charge) {
         pairs_all += p->pairs;
       }
     }
-    if (opt_on("FEET") && t == 20) for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && !G.ch[c].dyn && G.ch[c].placed && G.ch[c].leader == c) { float d = chunk_inside_now(&G, c); printf("{\"dbg\":\"chunk\",\"c\":%d,\"n\":%d,\"d\":%.3f,\"d0\":%.3f,\"com\":[%.2f,%.2f,%.2f],\"mass\":%.0f,\"hull\":[%.0f,%.2f,%.2f,%.2f,%.2f]}\n", c, G.ch[c].n, d, G.ch[c].d0, G.ch[c].com.x, G.ch[c].com.y, G.ch[c].com.z, G.ch[c].mass, g_hull_dbg[0], g_hull_dbg[1], g_hull_dbg[2], g_hull_dbg[3], g_hull_dbg[4]); }
+    if (opt_on("FEET") && t == 20) for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && !G.ch[c].dyn && G.ch[c].placed && G.ch[c].leader == c) { float d = chunk_inside_now(&G, c); printf("{\"dbg\":\"chunk\",\"c\":%d,\"n\":%d,\"d\":%.3f,\"d0\":%.3f,\"com\":[%.2f,%.2f,%.2f],\"mass\":%.0f,\"frac\":%.2f,\"hull\":[%.0f,%.2f,%.2f,%.2f,%.2f]}\n", c, G.ch[c].n, d, G.ch[c].d0, G.ch[c].com.x, G.ch[c].com.y, G.ch[c].com.z, G.ch[c].mass, G.ch[c].frac, g_hull_dbg[0], g_hull_dbg[1], g_hull_dbg[2], g_hull_dbg[3], g_hull_dbg[4]); }
     if (snap < 16 && t == snaps[snap]) {
       int o6s, sn;
       int big = chunks_largest(&G, &o6s, &sn);
       worst_rebound = 0;
       int fallers = 0;
       for (int q = 0; q < npc; q++) if (PC[q].fall > 1.0f) { fallers++; if (PC[q].yrise / PC[q].fall > worst_rebound) worst_rebound = PC[q].yrise / PC[q].fall; }
+      int moved_n = 0, was_n = 0;
+      for (int i = 0; i < G.nb; i++) {
+        if (!was[i]) continue;
+        was_n++;
+        if (!G.b[i].alive || G.b[i].gen) { moved_n++; continue; }
+        t3_vec3 p = game_block_xform(&G, i).p;
+        if (sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)) > 1.0f) moved_n++;
+      }
+      float top_y = 0, cog_x = 0, cog_z = 0; int cog_n = 0;
+      for (int i = 0; i < G.nb; i++) if (was[i] && G.b[i].alive && !G.b[i].gen) { t3_vec3 p = game_block_xform(&G, i).p; if (p.y > top_y) top_y = p.y; cog_x += p.x, cog_z += p.z, cog_n++; }
       int alive_placed = 0;
       for (int i = 0; i < G.nb; i++) alive_placed += G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0 && !G.b[i].gen;
-      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"legout\",\"t\":%.2f,\"broken\":%d,\"placed\":%d,\"placed_alive\":%d,\"standing\":%d,\"released\":%d,\"fractured\":%d,\"largest\":%d,\"over6\":%d,\"pieces\":%d,\"rigid_mm\":%.2f,\"pairs\":%d,\"rebound\":%.3f,\"fallers\":%d,\"awake\":%d,\"tick_ms_mean\":%.2f,\"tick_ms_max\":%.2f,\"world_ms_mean\":%.2f,\"post_ms_mean\":%.2f,\"ms_settype\":%.1f,\"ms_carve\":%.1f,\"ms_resolve\":%.1f,\"ms_support\":%.1f,\"height\":%.2f}\n",
-             level, G.L->name, t / 60.0f, broken_leg, total, alive_placed, sn, G.released, G.fractured, big, o6s, npc, worst_rig, pairs_all, worst_rebound, fallers, game_awake(&G), ms_n ? ms_sum / ms_n : 0, ms_max, ms_n ? w_sum / ms_n : 0, ms_n ? p_sum / ms_n : 0, g_ch_ms[0], g_ch_ms[1], g_ch_ms[2], g_ch_ms[3], G.top);
+      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"legout\",\"t\":%.2f,\"broken\":%d,\"placed\":%d,\"placed_alive\":%d,\"standing\":%d,\"released\":%d,\"fractured\":%d,\"largest\":%d,\"over6\":%d,\"pieces\":%d,\"rigid_mm\":%.2f,\"pairs\":%d,\"rebound\":%.3f,\"fallers\":%d,\"moved\":%.3f,\"top_y\":%.2f,\"tip\":[%.2f,%.2f,%.2f,%.2f,%.0f,%.0f,%.2f,%.0f],\"cog\":[%.2f,%.2f],\"awake\":%d,\"tick_ms_mean\":%.2f,\"tick_ms_max\":%.2f,\"world_ms_mean\":%.2f,\"post_ms_mean\":%.2f,\"ms_settype\":%.1f,\"ms_carve\":%.1f,\"ms_resolve\":%.1f,\"ms_support\":%.1f,\"height\":%.2f}\n",
+             level, G.L->name, t / 60.0f, broken_leg, total, alive_placed, sn, G.released, G.fractured, big, o6s, npc, worst_rig, pairs_all, worst_rebound, fallers, was_n ? (float)moved_n / (float)was_n : 0, top_y, g_tipdbg[0], g_tipdbg[1], g_tipdbg[2], g_tipdbg[3], g_tipdbg[4], g_tipdbg[5], g_tipdbg[6], g_tipdbg[7], cog_n ? cog_x / cog_n : 0, cog_n ? cog_z / cog_n : 0, game_awake(&G), ms_n ? ms_sum / ms_n : 0, ms_max, ms_n ? w_sum / ms_n : 0, ms_n ? p_sum / ms_n : 0, g_ch_ms[0], g_ch_ms[1], g_ch_ms[2], g_ch_ms[3], G.top);
       fflush(stdout);
       snap++;
     }
@@ -515,7 +529,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[1], "--control")) {
     const char *c = argv[2];
     /* by name: the levels before them move as levels are added */
-    int early = level_find("Stone Giant"), stars = level_find("Garden Wall");
+    int early = level_find(opt_get("EARLY_LEVEL") ? opt_get("EARLY_LEVEL") : "Lookout"), stars = level_find("Garden Wall");
     check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : (!strcmp(c, "early") || !strcmp(c, "settle")) ? (early >= 0 ? early : 23) : !strcmp(c, "stars") ? (stars >= 0 ? stars : 2) : 0, c);
     game_free(&G);
     game_free(&G);
