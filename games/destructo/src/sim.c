@@ -170,6 +170,7 @@ static void target_down(game *g, int t) {
     g->P[g->cur].out = 1, g->P[g->cur].out_order = (int8_t)(n + 1);
   }
   g->tgt_left--;
+  if (g->tgt_left == 0) g->win_tick = g->tick;
   g->P[g->cur].targets++;
   g->P[g->cur].score += 1000;
   ev_push(g, EV_TARGET, M_TARGET, ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home, v3(0, 1, 0), 0.5f, 0, t);
@@ -667,6 +668,9 @@ static int ammo_left(const game *g) {
 }
 
 /* points for blocks the turn brought down: a placed block that left its home by more than its own size */
+/* the level ends the instant its last target is down: the rubble goes on falling, nothing waits for it (old_settle: the control waits for stillness) */
+static bool win_now(const game *g) { return !g->old_settle && !g->old_rules && !g->sandbox && g->tgt_left == 0 && g->ntgt > 0; }
+
 static void tally(game *g) {
   for (int i = 0; i < g->nb; i++) {
     block *k = &g->b[i];
@@ -800,12 +804,14 @@ void game_step(game *g, const input *in) {
   }
   /* turns */
   if (g->state == GS_FLIGHT) {
-    if (!g->proj_live || (g->proj_hit_tick >= 0 && g->tick - g->proj_hit_tick > 40) || g->state_t > 60 * 6) g->state = GS_SETTLE, g->state_t = 0, g->settle_quiet = 0;
+    if (!g->proj_live || (g->proj_hit_tick >= 0 && g->tick - g->proj_hit_tick > 40) || g->state_t > 60 * 6 || win_now(g)) g->state = GS_SETTLE, g->state_t = 0, g->settle_quiet = 0;
   } else if (g->state == GS_SETTLE) {
     int awake = st.awake_bodies - (g->proj_live ? 1 : 0);
     g->settle_quiet = awake <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->settle_quiet + 1 : 0;
     if (g->old_rules && g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999; /* the control: judged while it falls */
-    if (g->settle_quiet > SETTLE_QUIET || g->state_t > SETTLE_MAX) {
+    if (g->settle_quiet > SETTLE_QUIET || g->state_t > SETTLE_MAX || win_now(g)) {
+      g->judge_tick = g->tick;
+      g->rating_t = win_now(g) ? 1 : 0; /* judged at once: the rating goes on reading the rubble while the card shows */
       proj_end(g);
       tally(g);
       g->judged_awake = awake;
@@ -835,6 +841,13 @@ void game_step(game *g, const input *in) {
       }
       g->state_t = 0;
     }
+  }
+  /* the card is up and the rubble still falls: the share it shows only grows, until the world is still (at most 8 s) */
+  if (g->rating_t > 0 && game_over(g)) {
+    int aw = st.awake_bodies;
+    g->judged_share = fmaxf(g->judged_share, game_share(g));
+    g->rating_quiet = aw <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->rating_quiet + 1 : 0;
+    if (g->rating_quiet > SETTLE_QUIET || ++g->rating_t > 480) g->rating_t = 0;
   }
   /* the state hash: the world's (every moved transform and event) with the game's own counters */
   uint32_t h = st.hash;

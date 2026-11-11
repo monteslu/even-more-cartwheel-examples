@@ -187,6 +187,7 @@ static void check(int level, const char *control) {
   /* solve: a fresh game, the bot on the controls */
   game_new(&G, level, 1, MODE_COOP);
   G.old_rules = c_old;
+  G.old_settle = control && !strcmp(control, "settle");
   game_settle(&G, level_settle_ticks(G.L));
   /* the structure as it stands before the first shot: this tool's own record, for the result check */
   static cw_body3d placed[MAXBLK];
@@ -229,10 +230,12 @@ static void check(int level, const char *control) {
     while (replay_tick()) replay_ticks++;
   }
   /* the result: what the game judged, then the world 5 s on */
-  int judged_awake = game_awake(&G), stars = game_stars(&G), result = game_result(&G);
+  int judge_lag = G.win_tick ? G.judge_tick - G.win_tick : 0;
+  int judged_awake = game_awake(&G), result = game_result(&G), stars;
   float share_judged = game_share(&G);
   input idle = { 0 };
-  for (int t = 0; t < 300; t++) game_step(&G, &idle);
+  for (int t = 0; t < 480; t++) game_step(&G, &idle);
+  stars = game_stars(&G); /* the rating has read the rubble till it was still */
   float vol_down = 0;
   for (int i = 0; i < nplaced; i++) {
     bool down = !cw_body3d_valid(placed[i]);
@@ -243,7 +246,7 @@ static void check(int level, const char *control) {
     if (down) vol_down += placed_vol[i];
   }
   float share_after = vol_all > 0 ? vol_down / vol_all : 0;
-  printf("{\"judged_awake\":%d,\"share_judged\":%.4f,\"share_after\":%.4f,\"result\":%d,\"stars3\":%d,\"mark\":%.3f,\"replay\":%d,\"replay_ticks\":%d,", judged_awake, share_judged, share_after, result, stars == 3, game_mark(&G), replay_match(), replay_ticks);
+  printf("{\"judge_lag\":%d,\"judged_awake\":%d,\"share_judged\":%.4f,\"share_after\":%.4f,\"result\":%d,\"stars3\":%d,\"mark\":%.3f,\"replay\":%d,\"replay_ticks\":%d,", judge_lag, judged_awake, share_judged, share_after, result, stars == 3, game_mark(&G), replay_match(), replay_ticks);
   printf("\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"control\":\"%s\",\"blocks\":%d,\"kegs\":%d,\"targets\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"first_over\":%d,"
          "\"settle_move_mm\":%.2f,\"settle_worst\":\"%s %d y%.2f\",\"broken_settle\":%d,\"drift_mm\":%.3f,\"worst\":%d,\"awake_end\":%d,\"targets_moved\":%d,"
          "\"solved\":%s,\"shots\":%d,\"par\":%d,\"stars\":%d,\"bot_ticks\":%d,\"broken\":%d,\"fragments\":%d,\"max_awake\":%d,\"step_ms_max\":%.2f}\n",
@@ -545,7 +548,7 @@ int main(int argc, char **argv) {
     const char *c = argv[2];
     /* by name: the levels before them move as levels are added */
     int early = level_find("Stone Giant"), stars = level_find("Garden Wall");
-    check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : !strcmp(c, "early") ? (early >= 0 ? early : 23) : !strcmp(c, "stars") ? (stars >= 0 ? stars : 2) : 0, c);
+    check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : (!strcmp(c, "early") || !strcmp(c, "settle")) ? (early >= 0 ? early : 23) : !strcmp(c, "stars") ? (stars >= 0 ? stars : 2) : 0, c);
     game_free(&G);
     game_free(&G);
     return 0;

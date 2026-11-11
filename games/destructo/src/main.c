@@ -76,7 +76,7 @@ static struct {
   int busy_n;
   int32_t instances;
   float share;       /* the structure down (game_share), refreshed a few times a second for the HUD */
-  int32_t result, judged_awake;
+  int32_t result, judged_awake, judge_lag;
   bool replayed, replay_cut; /* this level's replay has been shown; the replay's first frame (the camera cuts) */
   int32_t replay_match_dbg, replay_ticks, last_result, last_awake, results;
   uint32_t replay_hash_dbg;
@@ -181,6 +181,7 @@ static void begin_level(int level) {
   /* tests/destructo-result.mjs's controls (native: carts read no environment): the result rules before the fix, and
    * a replay whose last shot is nudged */
   if (opt_get("OLD_RULES")) G.g.old_rules = true;
+  if (opt_get("OLD_SETTLE")) G.g.old_settle = true;
   if (opt_get("REPLAY_PERTURB")) g_replay_perturb = true;
 #endif
   G.phase = PH_PLAY, G.phase_t = 0;
@@ -283,6 +284,7 @@ static void init(void *u) {
   cw_debug_i32("game.result", &G.result);             /* 0 playing, 1 brought down, 2 crystals down, 3 out of ammunition */
   cw_debug_i32("game.judged_awake", &G.judged_awake); /* bodies awake when the level was judged */
   cw_debug_f32("game.share", &G.share);
+  cw_debug_i32("game.judge_lag", &G.judge_lag);  /* ticks from the last target down to the judgement (0 while playing) */
   cw_debug_i32("replay.match", &G.replay_match_dbg);  /* 1: the last replay ended on the live game's judged state; 0: elsewhere; -1: none yet */
   cw_debug_i32("replay.ticks", &G.replay_ticks);      /* ticks the last replay ran */
   cw_debug_i32("result.last", &G.last_result);        /* the last level judged: its result (game.result's values) ... */
@@ -490,6 +492,7 @@ static void fixed_update(void *u, double dt) {
     if (G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
       int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
       if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = G.g.level;
+      level_done();
       begin_level(next);
     }
 #else
@@ -499,9 +502,11 @@ static void fixed_update(void *u, double dt) {
         G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
       } else if (ui("ui_accept") || pressed(G.fire, -1)) {
         sound_menu(1);
+        level_done();
         begin_level(won ? CW_MIN(G.g.level + 1, NLEVELS - 1) : G.g.level);
       } else if (ui("ui_back")) {
         sound_menu(2);
+        level_done();
         G.phase = PH_SELECT, G.phase_t = 0;
         preview_level(G.sel);
       }
@@ -514,6 +519,7 @@ static void fixed_update(void *u, double dt) {
   G.phase_dbg = G.phase, G.level = g->level, G.state = g->state, G.tick = g->tick, G.shots = g->shots, G.tleft = g->tgt_left;
   G.blocks = g->nalive, G.awake = game_awake(g), G.broken = g->broken, G.frags = g->fragments, G.booms = g->booms, G.stars_dbg = game_stars(g);
   G.cur = g->cur, G.hash = g->hash;
+  G.judge_lag = g->judge_tick && g->win_tick ? g->judge_tick - g->win_tick : 0;
   G.result = game_result(g), G.judged_awake = g->judged_awake;
   if (G.phase == PH_RESULT) G.share = g->judged_share;
   else if (G.phase == PH_PLAY && (g->tick % 10 == 0 || g->state == GS_AIM)) G.share = game_share(g);

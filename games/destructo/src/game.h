@@ -188,6 +188,9 @@ typedef struct game {
   int npend, pend_wait;
   int breaks_tick, made_tick; /* this tick's breaks and bodies made (stats) */
   int settle_quiet;
+  int rating_t, rating_quiet; /* the rating still reading the rubble after an instant judgement (0: final) */
+  int win_tick, judge_tick; /* the tick the last target went down, and the tick the level was judged (0: not yet) */
+  bool old_settle;  /* tests only: judged only once the world is still, after the last target (the result gate control) */
   /* stats */
   int broken, fragments, booms, hits, max_awake;
   float step_ms, step_ms_max;

@@ -42,9 +42,9 @@ const checks = (r) => ({
   rest: r.settle_move_mm <= 600 && r.drift_mm <= 5 && r.broken_settle === 0 && r.targets_moved === 0 && r.awake_end === 0,
   solve: r.solved && r.shots <= r.par,
   replay: r.replay === 1,
-  result: r.judged_awake <= 10 && r.share_after - r.share_judged <= 0.02 && (!r.stars3 || r.share_after >= r.mark - 0.005) && (r.result !== 1 || r.share_after >= r.mark - 0.005),
+  result: r.judge_lag <= 60 && (!r.stars3 || r.share_after >= r.mark - 0.005) && (r.result !== 1 || r.share_after >= r.mark - 0.005), /* judged the instant the last crystal is down (a second at most), the stars by the share the rubble reaches */
 });
-const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.kegs} kegs, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
+const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.kegs} kegs, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged ${r.judge_lag} ticks after the last crystal with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
 let bad = 0;
 const all = (await inPairs([() => run(every(0)), () => run(every(1))])).flat().sort((a, b) => a.level - b.level);
 if (all.length !== NLEVELS) { console.log(`FAIL ${all.length} levels checked, not ${NLEVELS}`); process.exit(1); }
@@ -70,7 +70,7 @@ for (const [kind, k] of Object.entries(kits)) {
   console.log(`${ok ? 'ok  ' : 'FAIL'} marks: ${KITS[kind]} (${k.names.length} levels): mark ${(k.mark * 100).toFixed(0)}%, the bot's best within par ${(k.best * 100).toFixed(0)}%, three stars on ${k.three}`);
 }
 console.log(`     three stars on ${all.filter((r) => r.stars === 3).length} of ${all.length} levels; shots against par: ${all.map((r) => `${r.shots}/${r.par}`).join(' ')}`);
-const CONTROLS = [['float', 'floats'], ['rest', 'rest'], ['solve', 'solve'], ['early', 'result'], ['stars', 'result'], ['replay', 'replay']];
+const CONTROLS = [['float', 'floats'], ['rest', 'rest'], ['solve', 'solve'], ['early', 'result'], ['stars', 'result'], ['replay', 'replay'], ['settle', 'result']];
 const ctlRows = await inPairs(CONTROLS.map(([ctl]) => async () => (await run(['--control', ctl]))[0]));
 for (const [k, [ctl, check]] of CONTROLS.entries()) {
   const r = ctlRows[k];
