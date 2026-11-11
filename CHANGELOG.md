@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.0
+
+- **Destructo**: the game answers you at once. After a shot leaves, aim, ammunition and fire were shut until the rubble settled (2.7 seconds here, up to 15 on a big collapse) and presses in that time were thrown away. Now the aim opens when the shot strikes, the launcher turns and ammunition changes in the same tick, and a fire press made while the shot is in the air is kept and fires the moment the aim opens, with a "FIRE QUEUED" mark. The ammunition icon and the menu tile pop in the frame of the press.
+- **Destructo**: the sticks aim properly. They had a dead zone so wide that a push of 0.3 did nothing and a push of 0.6 turned at 0.07 rad/s; now the dead zone is 0.12 with a smooth curve, a full push turns at 1.2 rad/s (it was 0.58), speed eases on and off, a held d-pad sweeps half a radian in 0.62 s, and a one-frame tap is under a tenth of a degree. The orbit is eased. The level select repeats a held direction (40 tiles a second where it was 4) and wraps. Free fire has 99 of every ammunition.
+- **Destructo**: the barrel kicks back when it fires, and the winning blow runs the world at 0.35 speed for a third of a second, eased in and out, with input never held (no shake, no flash).
+
 ## 0.16.1
 
 - **Destructo**: the tall landmarks are no longer a thin shell over a solid core. A tower is a perimeter wall, a floor
