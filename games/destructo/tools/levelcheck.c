@@ -367,6 +367,7 @@ static void landmark_check(int level, const char *control) {
 extern float g_hull_dbg[6];
 extern double g_ch_ms[6];
 extern float g_tipdbg[8];
+extern float g_unsup_dbg[8][8];
 #define PIECE_MAX 400
 typedef struct piece { int n, mem[PIECE_MAX]; t3_vec3 p0[PIECE_MAX]; int t_rel; float y0, ymin, yrise, fall; bool landed, measured; float rig_mm; int pairs; } piece;
 static piece PC[512];
@@ -481,6 +482,71 @@ float vol_all = 0, vol_mass = 0;
   }
 }
 
+/* --realshot [--opt AMMO=n] level ...: a real shot (ammunition n: 0 shot, 1 heavy ball, 2 charge) fired through the launcher at the nearest low block of the structure (a foot or a base column), then 10 s. Per snapshot:
+ *   destroyed  placed blocks gone, moved  the share of the placed blocks that moved over 1 m or are gone, released  assemblies let go, unsupported  standing assemblies no longer
+ *   over their support (must be 0: every tick it is counted, worst_unsupported), top: the centre of the blocks in the top third (lateral drift and drop from where they were, tilt: the
+ *   angle of the line from the foot's middle to that centre from the vertical, degrees) */
+static void realshot_check(int level, int ammo) {
+  game_new(&G, level, 1, MODE_COOP);
+  static t3_vec3 p0[MAXBLK];
+  static uint8_t was[MAXBLK];
+  int total = 0;
+  float top0 = 0;
+  for (int i = 0; i < G.nb; i++) { was[i] = G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0; p0[i] = G.b[i].alive ? game_block_xform(&G, i).p : (t3_vec3){ 0, 0, 0 }; total += was[i]; if (was[i] && p0[i].y > top0) top0 = p0[i].y; }
+  float cx0 = 0, cy0 = 0, cz0 = 0; int cn0 = 0;
+  for (int i = 0; i < G.nb; i++) if (was[i] && p0[i].y > top0 * 0.66f) cx0 += p0[i].x, cy0 += p0[i].y, cz0 += p0[i].z, cn0++;
+  if (cn0) cx0 /= cn0, cy0 /= cn0, cz0 /= cn0;
+  int pick = game_aim_shot(&G, ammo, 0);
+  if (opt_on("LOWHALF")) { /* the whole lower half of the structure destroyed at once, what the player does with a few good shots (the statue's torso must fall) */
+    for (int i = 0; i < G.nb; i++) if (was[i] && G.b[i].alive && G.b[i].home.y < top0 * 0.5f) game_hit_block(&G, i, 1e9f);
+    pick = 0;
+  }
+  if (pick < 0) { printf("{\"level\":%d,\"phase\":\"realshot\",\"error\":\"no block to aim at\"}\n", level); return; }
+  t3_vec3 tg = G.b[pick].home;
+  if (!opt_on("LOWHALF")) game_fire(&G);
+  G.sandbox = true;
+  input none = { 0 };
+  int worst_unsup = 0, hit_tick = -1, worst_float = chunks_floating(&G), float_ticks = 0, worst_fdyn = 0, fdyn_ticks = 0;
+  const int snaps[8] = { 30, 60, 90, 120, 240, 360, 480, 600 };
+  int si = 0;
+  int shots_left = opt_get("SHOTS") ? atoi(opt_get("SHOTS")) - 1 : 0, nsteps = shots_left > 0 ? 3000 : 600;
+  for (int t = 1; t <= nsteps; t++) {
+    game_step(&G, &none);
+    if (shots_left > 0 && G.state == GS_AIM && !G.proj_live && t > 90) { /* the next shot, as a player fires it once the field is still */
+      int p2 = game_aim_shot(&G, ammo, shots_left); if (p2 >= 0) game_fire(&G);
+      shots_left--;
+    }
+    if (hit_tick < 0 && G.proj_hit_tick >= 0) hit_tick = t;
+    int u = chunks_unsupported(&G);
+    if (u > worst_unsup) worst_unsup = u;
+    { int fd = chunks_floating_dyn(&G); if (fd > worst_fdyn) worst_fdyn = fd; if (fd > 0 && t > 5) fdyn_ticks++; }
+    { int fl = chunks_floating(&G); if (fl > worst_float) worst_float = fl; if (fl > 0) float_ticks++; }
+    if ((si < 8 && t == snaps[si]) || t == nsteps) {
+      int moved = 0, gone = 0, alive_n = 0;
+      float cx = 0, cy = 0, cz = 0; int cn = 0;
+      for (int i = 0; i < G.nb; i++) {
+        if (!was[i]) continue;
+        if (!G.b[i].alive || G.b[i].gen) { moved++, gone++; continue; }
+        alive_n++;
+        t3_vec3 p = game_block_xform(&G, i).p;
+        if (sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)) > 1.0f) moved++;
+        if (p0[i].y > top0 * 0.66f) cx += p.x, cy += p.y, cz += p.z, cn++;
+      }
+      if (cn) cx /= cn, cy /= cn, cz /= cn;
+      float lat = sqrtf((cx - cx0) * (cx - cx0) + (cz - cz0) * (cz - cz0)), drop = cy0 - cy;
+      float tilt = cn ? atan2f(sqrtf(cx * cx + cz * cz), fmaxf(0.01f, cy)) * 57.2958f : 0;
+      int o6, sn;
+      int big = chunks_largest(&G, &o6, &sn);
+      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"realshot\",\"ammo\":%d,\"target\":[%.2f,%.2f,%.2f],\"hit_tick\":%d,\"t\":%.2f,\"placed\":%d,\"gone\":%d,\"moved\":%.3f,\"released\":%d,\"standing\":%d,\"largest\":%d,\"worst_unsupported\":%d,\"worst_floating\":%d,\"floating_ticks\":%d,\"asleep_in_air\":%d,\"asleep_ticks\":%d,\"top_lateral\":%.2f,\"top_drop\":%.2f,\"top_tilt\":%.1f,\"awake\":%d,\"top_height\":%.2f}\n",
+             level, G.L->name, ammo, tg.x, tg.y, tg.z, hit_tick, t / 60.0f, total, gone, total ? (float)moved / (float)total : 0, G.released, sn, big, worst_unsup, worst_float, float_ticks, worst_fdyn, fdyn_ticks, lat, drop, tilt, game_awake(&G), top0);
+      fflush(stdout);
+      si++;
+    }
+  }
+  chunks_unsupported(&G);
+  for (int u = 0; u < chunks_unsupported(&G) && u < 8; u++) printf("{\"unsup\":%d,\"n\":%.0f,\"d\":%.3f,\"req\":%.3f,\"dirty\":%.0f,\"stamp\":%.0f,\"seen\":%.0f,\"d0\":%.3f,\"c\":%.0f}\n", u, g_unsup_dbg[u][0], g_unsup_dbg[u][1], g_unsup_dbg[u][2], g_unsup_dbg[u][3], g_unsup_dbg[u][4], g_unsup_dbg[u][5], g_unsup_dbg[u][6], g_unsup_dbg[u][7]);
+}
+
 /* kegs: two powder kegs in level 1's yard, gap metres apart; the first is set off; how many blasts follow */
 static void kegs(float gap) {
   game_new(&G, 0, 1, MODE_COOP);
@@ -506,6 +572,12 @@ int main(int argc, char **argv) {
     for (int a = 2; a < argc; a++) { if (!strcmp(argv[a], "--charge")) charge = true; else if (argv[a][0] >= '0' && argv[a][0] <= '9') nl++; }
     for (int a = 2; a < argc; a++) if (argv[a][0] >= '0' && argv[a][0] <= '9') legout_check(atoi(argv[a]), charge);
     if (nl == 0) for (int l = 0; l < NLEVELS; l++) if (LEVELS[l].kind == K_LANDMARK) legout_check(l, charge);
+    game_free(&G);
+    return 0;
+  }
+  if (argc > 1 && !strcmp(argv[1], "--realshot")) {
+    int am = opt_get("AMMO") ? atoi(opt_get("AMMO")) : 0;
+    for (int a = 2; a < argc; a++) if (argv[a][0] >= '0' && argv[a][0] <= '9') realshot_check(atoi(argv[a]), am);
     game_free(&G);
     return 0;
   }

@@ -74,6 +74,7 @@ typedef struct chunk {
   uint8_t alive, dyn;
   uint8_t dirty;      /* lost a member: its pieces and its support are looked at again */
   uint8_t placed;     /* the level's own (bonded), not rubble */
+  float lean[2]; int lean_until; /* a frame that lost its footing keeps going over: a sideways pull (m/s^2) toward where it leans, growing with height, for a second and a half */
   int rel_tick;       /* the tick it was let go */
   int frac_tick;      /* the tick it last split (a piece splits again only after a few ticks) */
   int stamp;          /* the support epoch it last changed in */
@@ -278,6 +279,11 @@ void game_settle_finish(game *g);           /* game_settle's end: where everythi
 int game_awake(const game *g);
 void game_sleep_all(game *g); /* put every body to sleep at where it is (a structure at rest from the first frame) */
 void game_ev(game *g, int kind, int mat, t3_vec3 p, t3_vec3 n, float size, float speed, int a); /* an event for the view and the sound (chunks.c) */
+bool bot_solve(const game *g, t3_vec3 t, float speed, float *yaw, float *pitch);
+int game_aim_shot(game *g, int ammo, int pick); /* aim the launcher at the nearest low block of the structure (pick 0: the one nearest the launcher) and put the ammunition in: -1 when there is none; the shot is then fired with game_fire */
+int chunks_floating(game *g); /* standing assemblies with no load path to the ground through standing ones (gravity's invariant: must be 0 at every tick) */
+int chunks_floating_dyn(game *g); /* loose chunks asleep in the air (must be 0) */
+int chunks_unsupported(game *g); /* standing assemblies that are no longer over their support (must be 0 after a tick) */
 int game_cutaway(game *g); /* the near half of the structure cut away (the look sheets) */
 int game_legout(game *g, bool charge); /* a foot of the structure broken (or a charge at its middle): the checks and the look sheets */
 void game_charge_at(game *g, t3_vec3 at); /* a charge goes off at this point (the checks) */

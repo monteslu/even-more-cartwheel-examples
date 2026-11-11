@@ -61,6 +61,11 @@ static int pick_ammo(const game *g, int want) {
   return want;
 }
 
+/* the aim that sends the shot through t at this speed (low arc, else the high one): the checks and the look sheets fire real shots at a block */
+bool bot_solve(const game *g, t3_vec3 t, float speed, float *yaw, float *pitch) {
+  return solve(g, t, speed, yaw, pitch);
+}
+
 /* the high arc through t at this speed (a lob over a wall): pitch from 0.8 up, where a steeper shot lands nearer */
 static bool solve_high(const game *g, t3_vec3 t, float speed, float *yaw, float *pitch) {
   float dx = t.x - g->muzzle.x, dz = t.z - g->muzzle.z;

@@ -58,7 +58,8 @@ const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] 
 #define KEG_R 3.4f        /* a keg's blast: radius, ... */
 #define KEG_K 0.7f        /* ... and strength against a charge's */
 #define KEG_DELAY 7       /* ticks between the blasts of a chain */
-#define FRAC_SPEED 1.6f  /* m/s: a chunk landing this hard breaks in two */
+#define FRAC_SPEED 1.6f  /* m/s: a small chunk landing this hard breaks in two; a big one holds until it lands much harder (frac_speed) */
+static float frac_speed(int n) { return FRAC_SPEED + 0.08f * (float)(n > 60 ? 60 : n); } /* 6.4 m/s for a section of 60 blocks or more */
 #define FRAC_COOL 5      /* ticks before a piece breaks again */
 #define LAYER_GROUND 0
 #define LAYER_BLOCK 1
@@ -683,10 +684,10 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
         chunk_impulse(g, bs, vscale(h->normal, (da ? 1.0f : -1.0f) * mc * h->speed), h->point);
       }
       if (h->speed >= FRAC_SPEED) {
-        if (da && g->ch[ca].n > 1 && g->tick - g->ch[ca].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[ca].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = ca;
-        if (db && g->ch[cb].n > 1 && g->tick - g->ch[cb].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[cb].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = cb;
+        if (da && h->speed >= frac_speed(g->ch[ca].n) && g->ch[ca].n > 1 && g->tick - g->ch[ca].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[ca].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = ca;
+        if (db && h->speed >= frac_speed(g->ch[cb].n) && g->ch[cb].n > 1 && g->tick - g->ch[cb].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[cb].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = cb;
       }
-    } else if ((da || db) && h->speed >= FRAC_SPEED && nfq < 64) { /* ... onto the ground, or struck by the shot */
+    } else if ((da || db) && h->speed >= frac_speed(g->ch[da ? g->b[ia].chunk : g->b[ib].chunk].n) && nfq < 64) { /* ... onto the ground, or struck by the shot */
       int c = da ? g->b[ia].chunk : g->b[ib].chunk;
       if (g->ch[c].n > 1 && g->tick - g->ch[c].frac_tick > FRAC_COOL) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[c].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = c;
     }
@@ -1028,6 +1029,26 @@ void game_sleep_all(game *g) {
 }
 
 void game_charge_at(game *g, t3_vec3 at) { detonate(g, at); }
+
+/* the placed block near the ground nearest the launcher (a foot or a base column the player would shoot at), aimed at: the weapon is the real one */
+int game_aim_shot(game *g, int ammo, int pick) {
+  int best = -1;
+  float bd = 1e9f;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (!k->alive || k->tag != 1 || k->target >= 0 || k->keg || k->home.y - k->half.y > 1.2f || k->home.y > 3.0f) continue;
+    float dx = k->home.x - g->muzzle.x, dz = k->home.z - g->muzzle.z, d = dx * dx + dz * dz + (float)pick * 0.0f;
+    if (d < bd) bd = d, best = i;
+  }
+  if (best < 0) return -1;
+  g->ammo_sel = ammo;
+  g->ammo[ammo] += 1;
+  t3_vec3 t = g->b[best].home;
+  float yaw, pitch;
+  if (!bot_solve(g, t, game_speed(g), &yaw, &pitch)) { float dx = t.x - g->muzzle.x, dz = t.z - g->muzzle.z; yaw = cw_atan2(-dx, -dz), pitch = 0.3f; }
+  g->yaw = game_yaw_from_world(g, yaw), g->pitch = pitch;
+  return best;
+}
 
 /* the near half of the structure cut away (the look sheets: dm set SCENE cut): a section through it, to see what is inside */
 int game_cutaway(game *g) {

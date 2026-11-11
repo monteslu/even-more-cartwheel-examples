@@ -385,6 +385,7 @@ static void impulse_i(game *g, int blk, t3_vec3 J, t3_vec3 at) {
 
 void chunk_impulse(game *g, int blk, t3_vec3 J, t3_vec3 at) { ch_lock(); impulse_i(g, blk, J, at); ch_unlock(); }
 
+static void release_lean(game *g, int c);
 static void flush_i(game *g) {
   for (int s = 0; s < npush; s++) {
     int c = push_list[s];
@@ -399,7 +400,7 @@ static void flush_i(game *g) {
     t3_vec3 v = vscale(k->pj, 1.0f / k->mass);
     float vl = vlen(v);
     if (vl > 18.0f) v = vscale(v, 18.0f / vl); /* a blow never throws a chunk faster than this */
-    chunk_release(g, c);
+    release_lean(g, c);
     for (int s = 0; s < ni; s++) { /* each section moves at the speed the whole was given */
       b3BodyId rb = cw_body3d_raw(g->ch[ids[s]].body);
       float m = b3Body_GetMass(rb);
@@ -489,9 +490,33 @@ float chunk_inside_now(game *g, int c) { return chunk_inside(g, c); }
 static float stand_frac(void) { return opt_get("STAND_FRAC") ? (float)atof(opt_get("STAND_FRAC")) : 0.7f; }
 
 /* one judgement of every standing chunk whose support changed since it was last judged: those out of balance go */
+/* an assembly let go, by a lost footing or by a blow: it is an ordinary rigid body from now on; one that was out of balance (its centre not over what is left of its foot,
+ * by the margin the structure needs) also goes over: a turn about the edge of the foot's remains and a sideways pull growing with height, for a second and a half, which
+ * is what a frame with its foot half gone does and the solver's stack of resting sections would not (a stack standing on a thinner foot is in balance on paper) */
+static void release_lean(game *g, int c) {
+  static int rel_ids[CH_MAX];
+  chunk *k = &g->ch[c];
+  float d = chunk_inside(g, c);
+  float req = k->d0 >= 0 ? (k->frac > 0 ? k->frac : stand_frac()) * k->d0 : k->d0 - 0.03f;
+  float tx = k->com.x - g_cent[0], tz = k->com.z - g_cent[1], ex = g_edge[0], ez = g_edge[1];
+  bool unstable = d < req && g_cent[0] < 1e8f;
+  int ni = 0;
+  float lo = 1e9f, hi = -1e9f;
+  for (int cc = c; cc >= 0; cc = g->ch[cc].anext) { rel_ids[ni++] = cc; for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext) { float y = g->b[i].wxf.p.y; if (y < lo) lo = y; if (y > hi) hi = y; } }
+  chunk_release(g, c);
+  float tl = sqrtf(tx * tx + tz * tz);
+  if (!unstable || tl < 0.02f) return;
+  for (int q = 0; q < ni; q++) {
+    cw_body3d bd = g->ch[rel_ids[q]].body;
+    t3_vec3 om = v3(tz / tl * 0.32f, 0, -tx / tl * 0.32f), r = vsub(wcom(bd), v3(ex, 0, ez)), vv = cw_body3d_velocity(bd), av = cw_body3d_angular_velocity(bd);
+    float f = fmaxf(0.0f, fminf(1.0f, (wcom(bd).y - lo) / fmaxf(0.5f, hi - lo)));
+    g->ch[rel_ids[q]].lean[0] = tx / tl * 5.0f * f, g->ch[rel_ids[q]].lean[1] = tz / tl * 5.0f * f, g->ch[rel_ids[q]].lean_until = g->tick + 90;
+    cw_body3d_set_velocity(bd, vadd(vv, vcross(om, r))), cw_body3d_set_angular_velocity(bd, vadd(av, om));
+  }
+}
+
 static void support_pass(game *g) {
   static int out[CH_MAX];
-  static float tip[CH_MAX][4];
   int nout = 0;
   int E = g->epoch;
   for (int c = 0; c < g->nch; c++) {
@@ -510,24 +535,9 @@ static void support_pass(game *g) {
     if (!need) continue;
     float d = chunk_inside(g, c);
     float req = k->d0 >= 0 ? (k->frac > 0 ? k->frac : stand_frac()) * k->d0 : k->d0 - 0.03f;
-    if (d < req) { tip[nout][0] = k->com.x - g_cent[0], tip[nout][1] = k->com.z - g_cent[1], tip[nout][2] = g_edge[0], tip[nout][3] = g_edge[1]; if (g_cent[0] > 1e8f) tip[nout][0] = tip[nout][1] = 0; out[nout++] = c; }
+    if (d < req) { out[nout++] = c; }
   }
-  static int rel_ids[CH_MAX];
-  for (int s = 0; s < nout; s++) {
-    int ni = 0;
-    for (int cc = out[s]; cc >= 0; cc = g->ch[cc].anext) rel_ids[ni++] = cc;
-    chunk_release(g, out[s]);
-    float tl = sqrtf(tip[s][0] * tip[s][0] + tip[s][1] * tip[s][1]);
-    if (ni > 1) g_tipdbg[0] = tip[s][0], g_tipdbg[1] = tip[s][1], g_tipdbg[2] = tip[s][2], g_tipdbg[3] = tip[s][3], g_tipdbg[4] = (float)ni, g_tipdbg[5] += 1;
-    if (tl > 0.02f) /* it was standing on part of its foot: it goes over toward the side the foot is gone from (a start the solver's balance would give it only slowly) */
-      for (int q = 0; q < ni; q++) { /* the whole goes over together about the edge of what is left of its foot: a turn of 0.22 rad/s, every part moving as that turn moves it */
-        cw_body3d bd = g->ch[rel_ids[q]].body;
-        t3_vec3 om = v3(tip[s][1] / tl * 0.32f, 0, -tip[s][0] / tl * 0.32f), r = vsub(wcom(bd), v3(tip[s][2], 0, tip[s][3])), vv = cw_body3d_velocity(bd), av = cw_body3d_angular_velocity(bd);
-        t3_vec3 dv = vcross(om, r);
-        cw_body3d_set_velocity(bd, vadd(vv, dv)), cw_body3d_set_angular_velocity(bd, vadd(av, om));
-        if (ni > 1) { t3_vec3 v2 = cw_body3d_velocity(bd); float sp = vlen(v2); if (sp > g_tipdbg[6]) g_tipdbg[6] = sp; g_tipdbg[7] += cw_body3d_awake(bd) ? 1 : 0; }
-      }
-  }
+  for (int s = 0; s < nout; s++) release_lean(g, out[s]);
 }
 
 /* what lies in a heap crumbles under its own weight: a let-go chunk of more than 6 blocks that has come nearly to rest breaks again
@@ -556,7 +566,7 @@ static void crumble(game *g) {
     int c = g->crumble_i++;
     if (g->crumble_i >= g->nch) g->crumble_i = 0;
     chunk *k = &g->ch[c];
-    if (g->awake_now < 120 && k->alive && k->dyn && k->n <= 6 && g->tick - k->rel_tick > 90 && g->tick - k->frac_tick > 30 && cw_body3d_awake(k->body)) { /* rubble nearly at rest goes to sleep (a heap that hums keeps its whole island stepping) */
+    if ((opt_on("OLD_SLEEP") || (g->awake_now < 120 && k->alive && k->dyn && wcom(k->body).y < 0.7f)) && k->alive && k->dyn && k->n <= 6 && g->tick - k->rel_tick > 90 && g->tick - k->frac_tick > 30 && cw_body3d_awake(k->body)) { /* rubble nearly at rest goes to sleep (a heap that hums keeps its whole island stepping) */
       t3_vec3 v = cw_body3d_velocity(k->body), w = cw_body3d_angular_velocity(k->body);
       if (v.x * v.x + v.y * v.y + v.z * v.z < 0.4f * 0.4f && w.x * w.x + w.y * w.y + w.z * w.z < 0.8f * 0.8f) {
         cw_body3d_set_velocity(k->body, v3(0, 0, 0)), cw_body3d_set_angular_velocity(k->body, v3(0, 0, 0));
@@ -564,14 +574,23 @@ static void crumble(game *g) {
       }
     }
     if (!k->alive || !k->dyn || !k->placed || k->n <= 6 || g->tick - k->rel_tick < 50 || g->tick - k->frac_tick < 10) continue;
-    crumble_one(g, c), nf++; /* a let-go lump gives way in the air or on the heap (its sections held by nothing but their own weight) */
+    { /* a lump gives way only once it lies (nearly still: a tower going over is not crumbling), however long it takes */
+      t3_vec3 v = cw_body3d_velocity(k->body);
+      if (v.x * v.x + v.y * v.y + v.z * v.z < 1.0f && g->tick - k->rel_tick > 40) crumble_one(g, c), nf++;
+    }
   }
 }
 
 void chunks_flush(game *g) { ch_lock(); flush_i(g); ch_unlock(); }
 
 static void step_i(game *g) {
-  if (opt_on("NO_SUPPORT")) return; /* (the look sheets of a section: nothing judged, nothing falls) */
+  if (opt_on("NO_SUPPORT")) return;
+  for (int c = 0; c < g->nch; c++) { /* the lean of what lost its footing */
+    chunk *k = &g->ch[c];
+    if (!k->alive || !k->dyn || k->lean_until <= g->tick) continue;
+    float m = cw_body3d_mass(k->body);
+    b3Body_ApplyLinearImpulseToCenter(cw_body3d_raw(k->body), (b3Vec3){ k->lean[0] * m * TICK, 0, k->lean[1] * m * TICK }, true);
+  } /* (the look sheets of a section: nothing judged, nothing falls) */
   crumble(g);
   if (!g->sup_dirty) return;
   g->sup_dirty = 0;
@@ -583,6 +602,61 @@ static void step_i(game *g) {
   for (int c = 0; c < g->nch; c++) if (g->ch[c].alive && g->ch[c].dirty) resolve(g, c);
   /* a pass that let chunks go changed what the ones above stand on: judge them next tick */
   for (int c = 0; c < g->nch; c++) if (g->ch[c].alive && !g->ch[c].dyn && g->ch[c].placed && g->ch[c].leader == c && g->ch[c].stamp > g->ch[c].seen) { g->sup_dirty = 1; break; }
+}
+
+/* the invariant: every standing assembly has a load path to the ground: a link to the ground from one of its live blocks, or to a live block of a standing assembly that has one */
+int chunks_floating(game *g) {
+  static uint8_t ok[CH_MAX];
+  ch_lock();
+  int n = 0;
+  for (int c = 0; c < g->nch; c++) ok[c] = 0;
+  for (bool grew = true; grew;) {
+    grew = false;
+    for (int c = 0; c < g->nch; c++) {
+      chunk *k = &g->ch[c];
+      if (!k->alive || k->dyn || !k->placed || k->leader != c || ok[c]) continue;
+      bool found = false;
+      for (int cc = c; cc >= 0 && !found; cc = g->ch[cc].anext)
+        for (int i = g->ch[cc].head; i >= 0 && !found; i = g->b[i].cnext)
+          for (int l = g->sl_off[i]; l < g->sl_off[i + 1]; l++) {
+            int j = g->sl_to[l];
+            if (j < 0) { found = true; break; }
+            const block *b = &g->b[j];
+            if (b->alive && !b->gen && !g->ch[b->chunk].dyn && g->ch[g->ch[b->chunk].leader].leader != c && ok[g->ch[b->chunk].leader]) { found = true; break; }
+          }
+      if (found) ok[c] = 1, grew = true;
+    }
+  }
+  for (int c = 0; c < g->nch; c++) { chunk *k = &g->ch[c]; if (k->alive && !k->dyn && k->placed && k->leader == c && !ok[c]) n++; }
+  ch_unlock();
+  return n;
+}
+
+/* the same for what fell loose: a free chunk asleep in the air (nothing touching it, its middle higher than 0.4 m) hangs there for ever: a bug */
+int chunks_floating_dyn(game *g) {
+  int n = 0;
+  for (int c = 0; c < g->nch; c++) {
+    chunk *k = &g->ch[c];
+    if (!k->alive || !k->dyn || cw_body3d_awake(k->body)) continue;
+    if (wcom(k->body).y < 0.4f) continue;
+    cw_contact3d ct[2];
+    if (cw_body3d_contacts(k->body, ct, 2) == 0) n++;
+  }
+  return n;
+}
+
+float g_unsup_dbg[8][8];
+int chunks_unsupported(game *g) {
+  int n = 0;
+  ch_lock();
+  for (int c = 0; c < g->nch; c++) {
+    chunk *k = &g->ch[c];
+    if (!k->alive || k->dyn || !k->placed || k->leader != c || k->d0 < -1e7f) continue;
+    float d = chunk_inside(g, c), req = k->d0 >= 0 ? (k->frac > 0 ? k->frac : stand_frac()) * k->d0 : k->d0 - 0.03f;
+    if (d < req) { if (n < 8) { float *o = g_unsup_dbg[n]; int cnt = 0; for (int cc = c; cc >= 0; cc = g->ch[cc].anext) cnt += g->ch[cc].n; o[0] = (float)cnt, o[1] = d, o[2] = req, o[3] = k->dirty, o[4] = (float)k->stamp, o[5] = (float)k->seen, o[6] = k->d0, o[7] = (float)c; } n++; }
+  }
+  ch_unlock();
+  return n;
 }
 
 int chunks_largest(const game *g, int *over6, int *standing_n) {
