@@ -19,8 +19,9 @@
 //   control   --control: the pad and the rules before the change (dm set OLD_FEEL 1: the sim's held-key aim, the squared curve with
 //             its dead zone, the aim shut from the shot's launch to the settle's end) must fail the checks it is meant to
 // Run: node tests/destructo-feel.mjs [--gpu gl|webgpu] [--control] [--frame-gate] [--json out.json]
-import { writeFileSync } from 'node:fs';
-import { openCart, call, gpusArg } from './lib/romdev.mjs';
+import { writeFileSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { openCart, call, gpusArg, ROOT } from './lib/romdev.mjs';
 
 const control = process.argv.includes('--control');
 const frameGate = process.argv.includes('--frame-gate'); // the frame count is a timing: asserted only on a quiet lane
@@ -46,18 +47,24 @@ for (const gpu of gpusArg()) { // the select screen: a held direction runs along
     at += 3;
     await run(2);
     const one = (await h.state())['menu.sel'] - sel0;
-    await call('input', { op: 'timeline', timeline: [{ frame: at + 2, buttons: ['down'], until: at + 62 }] }, h.session);
-    at += 62;
+    /* the hold in two halves, each read: the list is shorter than a second's run, so one reading would wrap */
+    const N = +/#define NSHOWN (\d+)/.exec(readFileSync(join(ROOT, 'games/destructo/src/game.h'), 'utf8'))[1];
+    await call('input', { op: 'timeline', timeline: [{ frame: at + 2, buttons: ['down'], until: at + 32 }] }, h.session);
+    at += 32;
+    const mid = (await h.state())['menu.sel'];
+    await call('input', { op: 'timeline', timeline: [{ frame: at, buttons: ['down'], until: at + 30 }] }, h.session);
+    at += 30;
     await run(2);
-    const held = (await h.state())['menu.sel'];
-    const dist = Math.min((held - sel0 + 49) % 49, (sel0 - held + 49) % 49) + 0;
+    const end = (await h.state())['menu.sel'];
+    const first = (mid - (sel0 + one) + N) % N, second = (end - mid + N) % N, held = (sel0 + one) + first + second;
+    const dist = first + second;
     await call('input', { op: 'timeline', timeline: [tap(at + 2, 'up', 1)] }, h.session);
     at += 3;
     await run(5);
     const upSel = (await h.state())['menu.sel'];
     const chk = (ok, what, disc = true) => (control ? (disc ? say(!ok, `control (old build) ${what} fails as it must`) : console.log(`info ${what}: ${ok ? 'holds' : 'fails'} on the old build too`)) : say(ok, what));
     chk(one === 4, `menu ${gpu}: one press moves the highlight a row in the tick it is read (moved ${one})`, false);
-    chk(held >= 28 && held !== sel0, `menu ${gpu}: holding down for a second runs 30 tiles along the list (the highlight is on ${held} from ${sel0 + one})`);
+    chk(first + second >= 28, `menu ${gpu}: holding down for a second runs 30 tiles along the list (it ran ${first + second} from ${sel0 + one}: ${first} in the first half second)`);
     const mc = (await h.state());
     chk(mc['ui.cue_draw'][2] > 0 && mc['ui.cue_draw'][2] - mc['ui.cue_press'][2] <= 1, `cue ${gpu}: a menu press shows its pressed state in the frame it is read (${mc['ui.cue_draw'][2] - mc['ui.cue_press'][2]} frames after)`);
     chk(upSel !== held, `menu ${gpu}: up moves the highlight back (${held} -> ${upSel})`, false);
