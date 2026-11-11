@@ -485,7 +485,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
   case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0.9f, 0.9f }, { -0.9f, -0.9f } }; /* two spots, not one twice (two crystals in one place lay into each other) */ build_model(g, L, &LMV_chichen_itza, s, 2); break; }
   case LM_LIBERTY: build_liberty(g, L); break;
-  case LM_RUSHMORE: { static const float s[][2] = { { -5.7f, -1.0f }, { 0.7f, -1.5f }, { 6.0f, -1.5f } }; build_model(g, L, &LMV_m_rushmore, s, 3); break; }
+  case LM_RUSHMORE: { static const float s[][2] = { { -4.6f, -0.9f }, { 0, -0.9f }, { 4.6f, -0.9f } }; build_model(g, L, &LMV_rushmore, s, 3); break; }
   case LM_KREMLIN: { static const float s[][2] = { { 6.0f, 1.6f }, { -6.0f, -1.8f } }; build_model(g, L, &LMV_kremlin, s, 2); break; }
   case LM_TAIPEI: { static const float s[][2] = { { 1.9f, 0 }, { -1.9f, 0 } }; build_model(g, L, &LMV_m_taipei, s, 2); break; }
   case LM_GOLDEN_GATE: { static const float s[][2] = { { 4.6f, 0 }, { -4.6f, 0 } }; build_model(g, L, &LMV_golden_gate, s, 2); break; }

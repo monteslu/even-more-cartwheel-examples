@@ -124,9 +124,12 @@ function procGrid(C) {
   } };
 }
 
+/* a cell of a later part is left out where ANY of its extent across (x and z; its height by its middle: the cell above a part's top must stay, or what stands on it hangs) falls in a cell of an earlier part (not only its middle: two grids that do not line up would overlap at their seam) */
+const touches = (g, x, y, z, cell, course) => { const hx = cell / 2 - 0.002; for (const dx of [-hx, 0, hx]) for (const dy of [0]) for (const dz of [-hx, 0, hx]) if (g.has(x + dx, y + dy, z + dz)) return true; return false; };
+const GRIDS = {}; /* the cells of each part voxelised so far (a model part another part clears itself of) */
 function voxelize(name, C) {
   const P = C.proc ? PROCS[C.proc] : null; /* a landmark shaped by hand (tools/landmark-procs.mjs): no model */
-  const clears = (C.clear || []).map((n) => { if (!CONF[n]) throw new Error(`${name}: clear names no config ${n}`); return procGrid(CONF[n]); });
+  const clears = (C.clear || []).map((n) => { if (!CONF[n]) throw new Error(`${name}: clear names no config ${n}`); if (CONF[n].proc) return procGrid(CONF[n]); const G = GRIDS[n]; if (!G) throw new Error(`${name}: clear names ${n}, a model part that is laid after it: list ${n} first in tools/landmark-models.json`); return { has(x, y, z) { const i = Math.floor((x - G.x0) / G.cell), j = Math.floor(y / G.course), k = Math.floor((z - G.z0) / G.cell); return i >= 0 && j >= 0 && k >= 0 && i < G.nx && j < G.ny && k < G.nz && G.cells[(j * G.nx + i) * G.nz + k] > 0; } }; });
   if (C.proc && !P) throw new Error(`${name}: no proc ${C.proc}`);
   const { V, tris, mtlColour } = P ? { V: [0, 1, 2, 3].map((q) => [(q & 1 ? 1 : -1) * P.ext[0] / 2, q & 2 ? P.ext[1] : 0, (q & 2 ? 1 : -1) * P.ext[2] / 2]).concat([[P.ext[0] / 2, 0, -P.ext[2] / 2], [-P.ext[0] / 2, 0, P.ext[2] / 2]]), tris: [], mtlColour: {} } : loadObj(join(MODELS, C.obj));
   /* yaw, then scale to size, base on the ground, centred */
@@ -171,7 +174,7 @@ function voxelize(name, C) {
       const gx = x0 + (i + 0.5) * cell, gz = z0 + (k + 0.5) * cell; /* the shape turned by yaw: its own coordinates are the grid's turned back */
       const m = P.cell(gx * ca - gz * sa, (j + 0.5) * course, gx * sa + gz * ca);
       if (!m || (C.only && !new RegExp(':(' + C.only + ')$').test(m)) || (C.except && new RegExp(':(' + C.except + ')$').test(m))) continue; /* one part of a hand shape (a crag in big blocks, the building on it in small) */
-      if (clears.some((g) => g.has(gx, (j + 0.5) * course, gz))) continue; /* inside a cell of a part laid before: no seam overlap */
+      if (clears.some((g) => touches(g, gx, (j + 0.5) * course, gz, cell, course))) continue; /* inside a cell of a part laid before: no seam overlap */
       if (!mi.has(m)) mi.set(m, names.length), names.push(m);
       surf[at(i, j, k)] = mi.get(m);
     }
@@ -283,6 +286,7 @@ function voxelize(name, C) {
       }
     }
     if (carved) continue;
+    if (!P && clears.some((g) => touches(g, x, y, z, cell, course))) continue; /* a model part: no cell where an earlier part has one */
     if ((C.ymin != null && y < C.ymin) || (C.ymax != null && y >= C.ymax)) continue; /* one height of a model (its masonry below, its welded dome above) */
     shellCode[c] = v;
     if (C.frame && wall > 0 && depth[c] > wall) v = frameCell(i, j, k) ? code((C.coreMat || C.frame).mat, (C.coreMat || C.frame).paint) : 0; /* the inside is a frame, not a mass */
@@ -323,6 +327,7 @@ function voxelize(name, C) {
     for (let c = 0; c < N; c++) if (cells[c] && !seen[c]) cells[c] = 0, cut++;
     if (cut) console.error(`${name}: ${cut} cells not joined to the ground left out`);
   }
+  GRIDS[name] = { nx, ny, nz, cell, course, x0, z0, cells };
   /* runs */
   const runs = [];
   for (let c = 0; c < N;) {

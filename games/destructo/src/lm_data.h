@@ -57,7 +57,6 @@ extern const lm_vox LMV_brandenburg;
 extern const lm_vox LMV_tokyo_tower;
 extern const lm_vox LMV_atomium;
 extern const lm_vox LMV_petra;
-extern const lm_vox LMV_m_rushmore;
 extern const lm_vox LMV_m_notre_dame;
 extern const lm_vox LMV_m_pantheon;
 extern const lm_vox LMV_m_arc;
@@ -71,4 +70,6 @@ extern const lm_vox LMV_m_taipei;
 extern const lm_vox LMV_m_chrysler;
 extern const lm_vox LMV_m_berlin_tv;
 extern const lm_vox LMV_m_burj_arab;
+extern const lm_vox LMV_m_rushmore;
+extern const lm_vox LMV_rushmore;
 #endif
