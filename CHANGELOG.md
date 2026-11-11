@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0
+
+- **Destructo**: simpler controls and a clear screen. Aim with the left stick or the d-pad, go round the structure with
+  the right stick, South fires, West and East change the ammunition, North toggles the wide view, Start pauses. No
+  triggers or shoulder buttons are read, and there is no charging: each ammunition leaves at its own fixed power (a shot
+  and a heavy ball at full speed, a charge lobbed). Mouse and touch aim by drag and fire by tap.
+- **Destructo**: the play screen shows only a share bar, the shots against par, the crystal count and the ammunition;
+  the level name and par show at the top for three seconds; one hint at a time shows and goes once the control is used;
+  the result card can be skipped at once; the level select is four columns of large tiles with stars or a padlock.
+- Known: the computer player needs more shots than par on Tower Bridge (7 against 5) and Angkor Wat (6 against 3) now
+  that the power is fixed; the pars are being retuned.
+
 ## 0.14.3
 
 - **Destructo**: the level ends the instant the last crystal is down. The results card and the stars show at once
