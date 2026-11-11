@@ -485,20 +485,27 @@ void landmark_build(game *g, const level_def *L) {
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
   case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0.9f, 0.9f }, { -0.9f, -0.9f } }; /* two spots, not one twice (two crystals in one place lay into each other) */ build_model(g, L, &LMV_chichen_itza, s, 2); break; }
   case LM_LIBERTY: build_liberty(g, L); break;
-  case LM_RUSHMORE: { static const float s[][2] = { { -3.3f, -1.1f }, { 0, -1.1f }, { 3.3f, -1.1f } }; build_model(g, L, &LMV_rushmore, s, 3); break; }
+  case LM_RUSHMORE: { static const float s[][2] = { { -5.7f, -1.0f }, { 0.7f, -1.5f }, { 6.0f, -1.5f } }; build_model(g, L, &LMV_m_rushmore, s, 3); break; }
   case LM_KREMLIN: { static const float s[][2] = { { 6.0f, 1.6f }, { -6.0f, -1.8f } }; build_model(g, L, &LMV_kremlin, s, 2); break; }
-  case LM_TAIPEI: { static const float s[][2] = { { 1.4f, 0 }, { -1.4f, 0 } }; build_model(g, L, &LMV_taipei, s, 2); break; }
+  case LM_TAIPEI: { static const float s[][2] = { { 1.9f, 0 }, { -1.9f, 0 } }; build_model(g, L, &LMV_m_taipei, s, 2); break; }
   case LM_GOLDEN_GATE: { static const float s[][2] = { { 4.6f, 0 }, { -4.6f, 0 } }; build_model(g, L, &LMV_golden_gate, s, 2); break; }
   case LM_BROOKLYN: { static const float s[][2] = { { 3.0f, 0 }, { -3.0f, 0 }, { 12.5f, 0 } }; build_model(g, L, &LMV_brooklyn, s, 3); break; }
-  case LM_CHRYSLER: { static const float s[][2] = { { 2.2f, 0 }, { -2.2f, 0 } }; build_model(g, L, &LMV_chrysler, s, 2); break; }
+  case LM_CHRYSLER: { static const float s[][2] = { { 2.2f, 0 }, { -2.2f, 0 } }; build_model(g, L, &LMV_m_chrysler, s, 2); break; }
+  case LM_BERLIN_TV: { static const float s[][2] = { { 1.7f, 0 }, { -1.7f, 0 } }; build_model(g, L, &LMV_m_berlin_tv, s, 2); break; }
+  case LM_BURJ_ARAB: { static const float s[][2] = { { -0.35f, -1.2f }, { 0.9f, 2.0f } }; build_model(g, L, &LMV_m_burj_arab, s, 2); break; }
   case LM_GATEWAY: { static const float s[][2] = { { 6.5f, 0 }, { -6.5f, 0 } }; build_model(g, L, &LMV_gateway, s, 2); break; }
-  case LM_ARC: { static const float s[][2] = { { 3.0f, 0 }, { -3.0f, 0 } }; build_model(g, L, &LMV_arc, s, 2); break; }
+  case LM_ARC: { static const float s[][2] = { { -2.1f, -0.7f }, { 4.1f, 1.7f } }; build_model(g, L, &LMV_m_arc, s, 2); break; }
   case LM_BRANDENBURG: { static const float s[][2] = { { 4.2f, 0 }, { -4.2f, 0 } }; build_model(g, L, &LMV_brandenburg, s, 2); break; }
-  case LM_PANTHEON: { static const float s[][2] = { { 0, -5.1f }, { 5.1f, 0.5f } }; build_model(g, L, &LMV_pantheon, s, 2); break; }
-  case LM_NOTRE_DAME: { static const float s[][2] = { { 3.1f, 0.55f }, { -5.4f, 3.0f } }; build_model(g, L, &LMV_notre_dame, s, 2); break; }
+  case LM_PANTHEON: { static const float s[][2] = { { -2.6f, 1.4f }, { 2.6f, 2.5f } }; build_model(g, L, &LMV_m_pantheon, s, 2); break; }
+  case LM_NOTRE_DAME: { static const float s[][2] = { { -0.2f, 6.7f }, { 4.5f, -3.0f } }; build_model(g, L, &LMV_m_notre_dame, s, 2); break; }
   case LM_TOKYO_TOWER: { static const float s[][2] = { { 0.8f, 0 }, { -0.8f, 0 } }; build_model(g, L, &LMV_tokyo_tower, s, 2); break; }
   case LM_ATOMIUM: { static const float s[][2] = { { 2.2f, 0 }, { -2.5f, 2.2f } }; build_model(g, L, &LMV_atomium, s, 2); break; }
-  case LM_GREAT_WALL: { static const float s[][2] = { { -5.0f, 0 }, { 5.0f, 0 } }; build_model(g, L, &LMV_great_wall, s, 2); break; }
+  case LM_GREAT_WALL: { static const float s[][2] = { { -3.7f, -1.2f }, { 2.4f, 5.0f } }; build_model(g, L, &LMV_m_great_wall, s, 2); break; }
+  case LM_HAGIA_SOPHIA: { static const float s[][2] = { { -1.0f, -3.2f }, { 3.2f, 1.0f } }; build_model(g, L, &LMV_m_hagia, s, 2); break; }
+  case LM_BLUE_MOSQUE: { static const float s[][2] = { { -0.1f, 3.5f }, { 3.7f, -4.0f } }; build_model(g, L, &LMV_m_blue_mosque, s, 2); break; }
+  case LM_MONT_ST_MICHEL: { static const float s[][2] = { { -3.0f, -0.3f }, { -3.0f, 0.8f } }; build_model(g, L, &LMV_m_msm, s, 2); break; }
+  case LM_JAPANESE_CASTLE: { static const float s[][2] = { { 6.5f, 0 }, { -6.5f, 0 } }; build_model(g, L, &LMV_m_himeji, s, 2); break; }
+  case LM_MACHU_PICCHU: { static const float s[][2] = { { 6.0f, 2.0f }, { -6.0f, 0 } }; build_model(g, L, &LMV_m_machu, s, 2); break; }
   case LM_PETRA: { static const float s[][2] = { { 2.6f, 2.4f }, { -2.6f, 2.4f } }; build_model(g, L, &LMV_petra, s, 2); break; }
   default: break;
   }

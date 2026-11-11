@@ -52,21 +52,28 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("The Black Tower", LM_WILLIS, 2, 5, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f, 0.5f),
   LANDMARK("Tower Bridge", LM_TOWER_BRIDGE, 2, 8, 6, 2, 3, 36, "London, United Kingdom", ST_HARBOUR, 0.3f, 0.25f),
   LANDMARK("Mount Rushmore", LM_RUSHMORE, 3, 4, 6, 2, 2, 30, "South Dakota, United States", ST_HIGHLAND, 0.3f, 0.3f),
-  LANDMARK("The Kremlin", LM_KREMLIN, 2, 3, 6, 2, 2, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.25f),
+  LANDMARK_HELD("The Kremlin", LM_KREMLIN, 2, 3, 6, 2, 2, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.25f)
   LANDMARK("Stacked Tower", LM_TAIPEI, 2, 3, 6, 2, 2, 36, "Taipei, Taiwan", ST_CITY, 0.3f, 0.3f),
-  LANDMARK("Golden Span", LM_GOLDEN_GATE, 2, 3, 6, 2, 2, 46, "San Francisco, United States", ST_HARBOUR, 0.3f, 0.35f),
-  LANDMARK("Brooklyn Bridge", LM_BROOKLYN, 3, 4, 6, 2, 2, 46, "New York, United States", ST_HARBOUR, 0.3f, 0.3f),
+  LANDMARK("Golden Span", LM_GOLDEN_GATE, 2, 3, 6, 2, 2, 46, "San Francisco, United States", ST_HARBOUR, 0.06f, 0.35f),
+  LANDMARK_HELD("Brooklyn Bridge", LM_BROOKLYN, 3, 4, 6, 2, 2, 46, "New York, United States", ST_HARBOUR, 0.3f, 0.3f)
   LANDMARK("Crown Tower", LM_CHRYSLER, 2, 3, 6, 2, 1, 34, "New York, United States", ST_CITY, 0.3f, 0.4f),
-  LANDMARK("The Gateway", LM_GATEWAY, 2, 3, 6, 2, 1, 34, "St. Louis, United States", ST_MEADOW, 0.3f, 0.25f),
-  LANDMARK("Arc de Triomphe", LM_ARC, 2, 3, 6, 2, 1, 28, "Paris, France", ST_CITY, 0.3f, 0.3f),
-  LANDMARK("Brandenburg Gate", LM_BRANDENBURG, 2, 3, 6, 2, 1, 30, "Berlin, Germany", ST_CITY, 0.3f, 0.3f),
+  LANDMARK_HELD("The Gateway", LM_GATEWAY, 2, 3, 6, 2, 1, 34, "St. Louis, United States", ST_MEADOW, 0.3f, 0.25f)
+  LANDMARK("Arc de Triomphe", LM_ARC, 2, 3, 6, 2, 1, 28, "Paris, France", ST_CITY, 0.07f, 0.3f),
+  LANDMARK_HELD("Brandenburg Gate", LM_BRANDENBURG, 2, 3, 6, 2, 1, 30, "Berlin, Germany", ST_CITY, 0.3f, 0.3f)
   LANDMARK("Pantheon", LM_PANTHEON, 2, 3, 6, 2, 1, 30, "Rome, Italy", ST_CITY, 0.3f, 0.5f),
-  LANDMARK("Notre-Dame", LM_NOTRE_DAME, 2, 3, 6, 2, 1, 32, "Paris, France", ST_CITY, 0.3f, 0.5f),
-  LANDMARK("Red Tower", LM_TOKYO_TOWER, 2, 3, 6, 2, 1, 34, "Tokyo, Japan", ST_CITY, 0.3f, 0.3f),
-  LANDMARK("The Atoms", LM_ATOMIUM, 2, 3, 6, 2, 1, 30, "Brussels, Belgium", ST_CITY, 0.3f, 0.3f),
-  LANDMARK("Great Wall of China", LM_GREAT_WALL, 2, 3, 6, 2, 1, 44, "Beijing, China", ST_HIGHLAND, 0.3f, 0.2f),
-  LANDMARK("Petra Treasury", LM_PETRA, 2, 3, 6, 2, 1, 26, "Petra, Jordan", ST_DESERT, 0.3f, 0.0f),
-  LANDMARK("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f),
+  LANDMARK("Notre-Dame", LM_NOTRE_DAME, 2, 3, 6, 2, 1, 32, "Paris, France", ST_CITY, 0.3f, -0.45f),
+  LANDMARK_HELD("Red Tower", LM_TOKYO_TOWER, 2, 3, 6, 2, 1, 34, "Tokyo, Japan", ST_CITY, 0.3f, 0.3f)
+  LANDMARK_HELD("The Atoms", LM_ATOMIUM, 2, 3, 6, 2, 1, 30, "Brussels, Belgium", ST_CITY, 0.3f, 0.3f)
+  LANDMARK_HELD("Great Wall of China", LM_GREAT_WALL, 2, 3, 6, 2, 1, 44, "Beijing, China", ST_HIGHLAND, 0.3f, 0.2f)
+  LANDMARK_HELD("Petra Treasury", LM_PETRA, 2, 3, 6, 2, 1, 26, "Petra, Jordan", ST_DESERT, 0.3f, 0.0f)
+  LANDMARK("Hagia Sophia", LM_HAGIA_SOPHIA, 2, 3, 6, 2, 1, 34, "Istanbul, Turkey", ST_CITY, 0.3f, 0.5f),
+  LANDMARK("Blue Mosque", LM_BLUE_MOSQUE, 1, 3, 6, 2, 1, 34, "Istanbul, Turkey", ST_CITY, 0.3f, 0.5f),
+  LANDMARK_HELD("Mont Saint-Michel", LM_MONT_ST_MICHEL, 2, 3, 6, 2, 1, 36, "Normandy, France", ST_HEADLAND, 0.3f, 0.5f)
+  LANDMARK("Japanese Castle", LM_JAPANESE_CASTLE, 2, 3, 6, 2, 1, 32, "Japan", ST_MEADOW, 0.03f, 0.4f),
+  LANDMARK_HELD("Machu Picchu", LM_MACHU_PICCHU, 2, 3, 6, 2, 1, 34, "Cusco Region, Peru", ST_HIGHLAND, 0.3f, 0.4f)
+  LANDMARK("Television Tower", LM_BERLIN_TV, 1, 2, 5, 1, 1, 34, "Berlin, Germany", ST_CITY, 0.3f, 0.3f),
+  LANDMARK("Sail Hotel", LM_BURJ_ARAB, 2, 3, 6, 2, 1, 34, "Dubai, United Arab Emirates", ST_HEADLAND, 0.3f, 1.3f),
+  LANDMARK_HELD("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f)
   /* LANDMARKS_END */
   /* kit structures held out of the level select (NSHOWN levels are shown): the gates still build and check them, and the bench uses Great Keep */
   { "Two Floors", K_TOWER, 47, 3, 2, 3, { 5, 1, 0 }, 30, 1 },

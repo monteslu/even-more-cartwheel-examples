@@ -36,7 +36,8 @@ const run = async (args) => {
   return r.rows;
 };
 const NLEVELS = +/#define NLEVELS (\d+)/.exec(readFileSync(join(ROOT, 'games/destructo/src/game.h'), 'utf8'))[1];
-const every = (k) => Array.from({ length: NLEVELS }, (_, i) => i).filter((i) => i % 2 === k).map(String); /* alternate levels: the landmarks split between the hosts */
+const PARTS = Math.ceil(NLEVELS / 20); /* one check process stops after about 29 levels (the cart's memory): hosts of at most 20 levels */
+const every = (k) => Array.from({ length: NLEVELS }, (_, i) => i).filter((i) => i % PARTS === k).map(String); /* alternate levels: the landmarks split between the hosts */
 const checks = (r) => ({
   floats: r.floating === 0 && r.overlapping === 0,
   rest: r.settle_move_mm <= 600 && r.drift_mm <= 5 && r.broken_settle === 0 && r.targets_moved === 0 && r.awake_end === 0,
@@ -46,7 +47,7 @@ const checks = (r) => ({
 });
 const describe = (r) => `${r.level + 1} ${r.name} (${r.blocks} blocks, ${r.kegs} kegs, ${r.targets} crystals): floating ${r.floating}, overlapping ${r.overlapping}, settled ${r.settle_move_mm.toFixed(0)} mm, then drift ${r.drift_mm.toFixed(2)} mm, awake ${r.awake_end}, broken ${r.broken_settle}; bot ${r.solved ? 'cleared it' : 'did not clear it'} in ${r.shots} shots (par ${r.par}), ${r.broken} broke, ${r.max_awake} awake at most, step worst ${r.step_ms_max} ms; replay ${r.replay === 1 ? 'ended on the live state' : r.replay === 0 ? 'ENDED ELSEWHERE' : 'NOT RUN'} (${r.replay_ticks} ticks); judged ${r.judge_lag} ticks after the last crystal with ${r.judged_awake} awake, ${(r.share_judged * 100).toFixed(0)}% down then ${(r.share_after * 100).toFixed(0)}% 5 s on (mark ${(r.mark * 100).toFixed(0)}%), ${r.stars} stars, ${["", "brought down", "crystals down", "lost"][r.result]}`;
 let bad = 0;
-const all = (await inPairs([() => run(every(0)), () => run(every(1))])).flat().sort((a, b) => a.level - b.level);
+const all = (await inPairs(Array.from({ length: PARTS }, (_, k) => () => run(every(k))))).flat().sort((a, b) => a.level - b.level);
 if (all.length !== NLEVELS) { console.log(`FAIL ${all.length} levels checked, not ${NLEVELS}`); process.exit(1); }
 const kits = {};
 for (const r of all) {

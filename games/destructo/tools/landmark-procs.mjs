@@ -603,33 +603,36 @@ const segD = (x, y, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, t = c
 
 /* ── Mount Rushmore: a granite mountain with a steep face, four heads carved on it, each a mass of its own stone on a
  * bulge of the face (it can break away from the cliff); the crystals lie on the summit behind them ── */
-const MR_H = [[-6.6, 0.15, 1.3], [-2.2, -0.3, 1.3], [2.2, 0.05, 1.3], [6.6, 0.15, 1.34]]; /* x, z offset, size: Washington, Jefferson, Roosevelt, Lincoln */
-const mrFace = (y) => (y < 1.5 ? 2.4 + (1.5 - y) * 0.9 : y < 6.5 ? 2.4 - (y - 1.5) * 0.12 : 1.8 - (y - 6.5) * 0.3);
+const MR_H = [[-6.6, 0.1, 1.38], [-2.2, -0.45, 1.38], [2.2, 0.0, 1.38], [6.6, 0.1, 1.42]]; /* x, z offset, size: Washington, Jefferson, Roosevelt, Lincoln */
+const mrFace = (y, x) => (y < 1.6 ? 2.5 + (1.6 - y) * 0.8 : y < 6.6 ? 2.5 - (y - 1.6) * 0.14 : 1.8 - (y - 6.6) * 0.32) + 0.22 * Math.sin(y * 3.1 + x * 0.6) * (y > 1.6 ? 1 : 0); /* stepped strata along the face */
 function rushmore(x, y, z) {
   const ax = Math.abs(x);
   const n = Math.sin(x * 0.9) * 0.5 + Math.sin(x * 2.3 + 1) * 0.35 + Math.sin(x * 5.1) * 0.15;
-  /* the heads, first: each in the lighter stone of the carved faces */
+  const cy = 6.7, hd = 1.45 * 1.38;
+  /* the heads and their busts, in the pale granite */
   for (const [hx, hz, sc] of MR_H) {
-    const cy = 6.7, cz = mrFace(6.7) + 0.25 + hz, X = x - hx, Y = y - cy, Z = z - cz, jaw = hx > 5.5;
-    const jw = 1 - 0.32 * Math.max(0, -Y) / (1.45 * sc); /* the jaw draws in */
-    if (ell(X / jw, Y, Z, 0, 0, 0, 1.15 * sc, 1.45 * sc, 0.95 * sc)) {
-      const fr = cz + 0.95 * sc * Math.sqrt(Math.max(0, 1 - sq(X / (1.15 * sc)) - sq(Y / (1.45 * sc))));
-      if (Z > fr - 0.5 && Math.abs(X) > 0.3 * sc && Math.abs(X) < 0.82 * sc && Y > 0.05 && Y < 0.38) return null; /* the eye sockets */
-      return 'stone:WHITE_STONE';
+    const cz = mrFace(cy, hx) + 0.3 + hz, X = x - hx, Y = y - cy, Z = z - cz;
+    const jw = 1 - 0.32 * Math.max(0, -Y) / (1.45 * sc), jaw = hx > 5.5;
+    if (ell(X / jw, Y, Z, 0, 0, 0, 1.15 * sc, 1.45 * sc, 1.0 * sc)) {
+      const fr = 1.0 * sc * Math.sqrt(Math.max(0, 1 - sq(X / (1.15 * sc * jw)) - sq(Y / (1.45 * sc))));
+      if (Z > fr - 0.45 && Math.abs(X) > 0.32 * sc && Math.abs(X) < 0.85 * sc && Y > 0.02 && Y < 0.4) return null; /* the eye sockets */
+      if (Z > fr - 0.3 && Y < -0.8 && Y > -1.05 && Math.abs(X) < 0.5 * sc) return null; /* the mouth */
+      return 'stone:MARBLE';
     }
-    if (Math.abs(X) < 0.34 && Y > -0.85 && Y < 0.35 && Z > 0 && Z < 1.5 * sc) return 'stone:WHITE_STONE'; /* the nose */
-    if (Math.abs(X) < 1.0 * sc && Y > 0.38 && Y < 0.72 && Z > 0.1 && Z < 0.98 * sc) return 'stone:WHITE_STONE'; /* the brow */
-    if (ell(X, Y, Z, 0, -1.55 * sc, 0.1, jaw ? 0.62 : 0.5, jaw ? 0.75 : 0.4, 0.5)) return 'stone:WHITE_STONE'; /* the chin (a beard on the last) */
-    if (ell(X, Y, Z, 0, -2.3, -0.1, 1.45, 0.9, 1.25) && Y < -1.3) return 'stone:DARK_STONE'; /* the shoulders the head sits on, of the cliff's own rock */
+    if (Math.abs(X) < 0.36 && Y > -0.9 && Y < 0.35 && Z > 0 && Z < 1.65 * sc) return 'stone:MARBLE'; /* the nose */
+    if (Math.abs(X) < 1.05 * sc && Y > 0.38 && Y < 0.78 && Z > 0.1 && Z < 1.12 * sc) return 'stone:MARBLE'; /* the brow */
+    if (ell(X, Y, Z, 0, -1.6 * sc, 0.1, jaw ? 0.65 : 0.52, jaw ? 0.8 : 0.42, 0.55)) return 'stone:MARBLE'; /* the chin (a beard on the last) */
+    if (Math.abs(X) < 2.1 && Y < -1.55 && Y > -3.4 && Z > -1.2 && Z < 0.9 - 0.3 * (-Y - 1.55) && ell(X, 0, 0, 0, 0, 0, 2.1, 1, 1) && ell(X, Y, Z, 0, -2.5, -0.2, 2.1, 1.1, 1.5)) return 'stone:MARBLE'; /* the shoulders */
   }
-  /* the mountain: a steep face, a talus at the foot, a summit that falls away behind, rough along the top */
-  const top = 10.0 + n * 1.1 - Math.max(0, -z - 1.0) * 1.1;
-  const zb = -2.6;
-  if (ax > 9 - 0.2 * y + 0.9 * Math.sin(y * 1.7 + x) * 0.3 || z < zb || y > top) return null;
-  let fc = mrFace(y);
-  for (const [hx] of MR_H) if (Math.abs(x - hx) < 2.2 && y > 4.4 && y < 8.8) fc -= 0; /* the face behind each head is cut back: the head stands out on its own bulge, its own stone */
+  /* the mountain: strata of rock, a steep face stepping back, a ridge that falls away behind, rough along the top */
+  const top = 10.0 + n * 1.3 + (ax > 6.5 ? -1.0 * (ax - 6.5) * 0.5 : 0) - Math.max(0, -z - 1.0) * 1.1;
+  const zb = -2.7, xs = 9 - 0.22 * y + 0.35 * Math.sin(y * 1.9 + z);
+  if (ax > xs || z < zb || y > top) return null;
+  let fc = mrFace(y, x);
+  for (const [hx] of MR_H) { const d = Math.abs(x - hx); if (d < 2.4 && y > 4.0 && y < 9.2) fc -= 0.4 * Math.min(1, (2.4 - d) * 2) * Math.min(1, (y - 4.0) * 2, (9.2 - y) * 2); } /* the wall the heads are cut from stands back from them */
   if (z > fc) return null;
-  return 'stone:DARK_STONE';
+  const k = Math.floor(y * 1.5 + Math.sin(x * 0.7) * 0.7 + z * 0.3);
+  return ((k % 2) + 2) % 2 === 0 ? 'stone:ROCK' : 'stone:DARK_STONE';
 }
 
 /* ── the Kremlin: the red brick wall with its swallowtail merlons, the corner towers under green tents, the clock gate
