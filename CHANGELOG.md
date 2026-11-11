@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.20.0
+
+- **Destructo**: eight more landmarks, 38 in all: Mount Rushmore (four heads in pale stone on a rock mountain, built of 0.2 m bricks), the Kremlin (the Spasskaya tower with its clock faces and star, green tents, gold onion domes, a bell tower and the swallowtail wall), the Brandenburg Gate (six columns, a flat attic and the horse-drawn chariot), the Colosseum, the Atomium in Brussels, a Japanese five-storey pagoda, the Gateway Arch in St. Louis and the Brooklyn Bridge. Each is named from the frame alone by a judge in both views. The Colosseum no longer has the overlapping blocks that held it back.
+- Held until they read at a glance: the Great Wall, Machu Picchu, Petra, Hoover Dam, Abu Simbel, the Sydney Harbour Bridge, Saint Basil's, Twin Spires, Stonehenge, the Red Tower and Neuschwanstein.
+
 ## 0.19.0
 
 - **Destructo**: the levels are real landmarks. The level select is four tutorial levels (First Stones, Lookout, Garden Wall and Step Shrine), then 30 landmarks ordered by difficulty and region; the invented levels are out of the list. Eleven landmarks are new: Notre-Dame, the Pantheon, the Arc de Triomphe, Hagia Sophia, the Blue Mosque, a Japanese castle, a stacked pagoda-segment tower in Taipei, a skyscraper with a crown in New York, a television tower in Berlin, a sail-shaped hotel in Dubai and a bridge in San Francisco, all built of small bricks from openly licensed models (CREDITS names each model, its author and licence) and chosen by a check in which a judge shown only the frame must name each one. Mount Rushmore, Brooklyn Bridge, the Kremlin, the Brandenburg Gate, the Great Wall, Machu Picchu, Mont Saint-Michel, Neuschwanstein and a few more are built but held until they read at a glance.
