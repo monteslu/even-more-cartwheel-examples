@@ -14,10 +14,12 @@ export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 export const cartPath = (app) => join(ROOT, 'build/cart-wgpu/carts', `${app}.wasc`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// the server: ROMDEV_URL (the pool sets it per lane; one host can run a romdev per GPU), or ROMDEV_PORT, else 127.0.0.1:7331
+const ROMDEV = new URL(process.env.ROMDEV_URL || `http://127.0.0.1:${process.env.ROMDEV_PORT || 7331}`);
 function post(tool, args, session, timeoutMs) {
   const body = JSON.stringify(args || {});
   return new Promise((res, rej) => {
-    const req = httpRequest({ host: '127.0.0.1', port: 7331, path: `/tool/${tool}`, method: 'POST', agent: false,
+    const req = httpRequest({ host: ROMDEV.hostname, port: +ROMDEV.port || 80, path: `/tool/${tool}`, method: 'POST', agent: false,
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'x-romdev-session': session } }, (r) => {
       let data = '';
       r.setEncoding('utf8');

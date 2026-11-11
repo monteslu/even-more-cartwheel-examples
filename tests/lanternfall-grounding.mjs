@@ -211,11 +211,13 @@ function nativeView(view, i, lift = 0) {
 
 // ── romdev: one session per backend on 127.0.0.1:7331, ranged calls (never a request per frame) ──
 let calls = 0;
+// the server: ROMDEV_URL (the pool sets it per lane; one host can run a romdev per GPU), or ROMDEV_PORT, else 127.0.0.1:7331
+const ROMDEV = new URL(process.env.ROMDEV_URL || `http://127.0.0.1:${process.env.ROMDEV_PORT || 7331}`);
 function romdevPost(tool, a, session) {
   calls++;
   const body = JSON.stringify(a);
   return new Promise((okk, failed) => {
-    const req = httpRequest({ host: '127.0.0.1', port: 7331, path: `/tool/${tool}`, method: 'POST', agent: false,
+    const req = httpRequest({ host: ROMDEV.hostname, port: +ROMDEV.port || 80, path: `/tool/${tool}`, method: 'POST', agent: false,
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'x-romdev-session': session, 'x-romdev-agent': 'lanternfall-grounding' } }, (res) => {
       let text = '';
       res.setEncoding('utf8');

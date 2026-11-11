@@ -31,7 +31,8 @@ const frames = +framesArg;
 if (!cart || !(frames >= 1) || !out) { console.error('usage: romdev-shot.mjs <cart.wasc> <frames> <out.png> [--size WxH] [--gl] [--cmd "<request>"]... [KEY=VALUE ...]'); process.exit(2); }
 const m = /^(\d+)x(\d+)$/.exec(size);
 if (!m) { console.error(`--size ${size}: WxH`); process.exit(2); }
-const port = +(process.env.ROMDEV_PORT || 7331);
+// the server: ROMDEV_URL (the pool sets it per lane), or ROMDEV_PORT, else 127.0.0.1:7331
+const ROMDEV = new URL(process.env.ROMDEV_URL || `http://127.0.0.1:${process.env.ROMDEV_PORT || 7331}`);
 const session = `art-shot-${basename(cart, '.wasc')}-${process.pid}`;
 
 function post(tool, a) {
@@ -39,7 +40,7 @@ function post(tool, a) {
   const steps = tool === 'frame' && a.op === 'step' ? a.frames : 0;
   const limit = 300000 + steps * 500;
   return new Promise((ok, fail) => {
-    const req = httpRequest({ host: '127.0.0.1', port, path: `/tool/${tool}`, method: 'POST', agent: false,
+    const req = httpRequest({ host: ROMDEV.hostname, port: +ROMDEV.port || 80, path: `/tool/${tool}`, method: 'POST', agent: false,
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body), 'x-romdev-session': session, 'x-romdev-agent': process.env.CW_ROMDEV_AGENT || 'cartwheel-art-shot' } }, (res) => {
       let text = '';
       res.setEncoding('utf8');
