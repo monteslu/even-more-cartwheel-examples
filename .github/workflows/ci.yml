@@ -55,39 +55,6 @@ jobs:
       # controls are shown with the engine's button prompts (cartwheel/prompt.h), never a maker's button names
       - name: Check prompts
         run: for g in $PROMPT_GAMES; do node deps/cartwheel-engine/tools/check-prompts.mjs games/$g || exit 1; done
-      # towers' maps: every gate reaches the core, pads beside the path in fair shares, every prop grounded, its bake
-      # present and current, and held by two bots in the native soak build; the controls (maps broken on purpose)
-      # must each fail
-      - name: Check towers' maps
-        run: |
-          TARGETS=native scripts/build.sh towers_soak
-          node games/towers/tools/check-maps.mjs --soak build/native/games/towers/towers_soak
-      # skate's board against ramp physics (a naive one-step solver must fail) and its parks: nothing floats, every
-      # line skated by a bot through the real controls; the controls (parks broken on purpose) must each fail; a near
-      # miss at a runnable pace is run out on foot (every miss a fall must fail)
-      - name: Check skate's physics and parks
-        run: |
-          TARGETS=native scripts/build.sh skate_check
-          node tests/skate-physics.mjs
-          node tests/skate-parks.mjs
-          node tests/skate-runout.mjs
-      # pinball's ball and flippers: nothing through a wall or a firing flipper (a naive one-step solver must fail),
-      # and the flipper buttons live until the ball has gone (the rule that killed them at the drain line must fail)
-      - name: Check pinball's physics and flippers
-        run: |
-          TARGETS=native scripts/build.sh pinball_physcheck pinball_flipcheck pinball_flipcheck_oldrule
-          node tests/pinball-physics.mjs
-          node tests/pinball-drain.mjs
-      # lanternfall's world: the shipped world and route are current, the checker proves it completable in ability
-      # order with no soft locks, every pickup reached, every gate holding, nothing floating; the controls (worlds
-      # broken on purpose) must each fail; the movement's feel stays in its bounds and the combat rules hold (each with
-      # its controls)
-      - name: Check lanternfall's world, feel and rules
-        run: |
-          TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check lanternfall_feel lanternfall_rules
-          node tests/lanternfall-world.mjs
-          node tests/lanternfall-feel.mjs
-          node tests/lanternfall-rules.mjs
       # pushes to main and v* tags link the carts as releases ship (ThinLTO, wasm-opt); pull requests
       # link dev carts, the same simulation
       - name: Build the carts (each game, and its self-playing <game>_auto where it has one)
@@ -124,6 +91,77 @@ jobs:
           path: carts/*.wasc
           retention-days: 30
           if-no-files-found: ${{ env.GAMES != '' && 'error' || 'ignore' }}
+
+  checks:
+    name: Check (${{ matrix.name }})
+    # each game's native logic checks run as their own parallel jobs beside the carts job, so the release waits for the
+    # slowest of them (about ten minutes), not for the sum. A tag skips them: a tag releases only a commit whose run on
+    # main is green, these jobs included
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # towers' maps: every gate reaches the core, pads beside the path in fair shares, every prop grounded, its
+          # bake present and current, and held by two bots in the native soak build; the controls must each fail
+          - name: towers maps
+            cmd: |
+              TARGETS=native scripts/build.sh towers_soak
+              node games/towers/tools/check-maps.mjs --soak build/native/games/towers/towers_soak
+          # skate's board against ramp physics (a naive one-step solver must fail) and its parks: nothing floats, every
+          # line skated by a bot through the real controls; a near miss at a runnable pace is run out on foot
+          - name: skate physics and parks
+            cmd: |
+              TARGETS=native scripts/build.sh skate_check
+              node tests/skate-physics.mjs
+              node tests/skate-parks.mjs
+              node tests/skate-runout.mjs
+          # pinball's ball and flippers: nothing through a wall or a firing flipper, the flipper buttons live until the
+          # ball has gone
+          - name: pinball physics and flippers
+            cmd: |
+              TARGETS=native scripts/build.sh pinball_physcheck pinball_flipcheck pinball_flipcheck_oldrule
+              node tests/pinball-physics.mjs
+              node tests/pinball-drain.mjs
+          # lanternfall's world: the shipped world and route are current, completable in ability order with no soft
+          # locks, every pickup reached, every gate holding, nothing floating; the controls must each fail
+          - name: lanternfall world
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
+              node tests/lanternfall-world.mjs
+          # the movement's feel stays in its bounds
+          - name: lanternfall feel
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_feel
+              node tests/lanternfall-feel.mjs
+          # the combat rules hold
+          - name: lanternfall rules
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_rules
+              node tests/lanternfall-rules.mjs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          filter: tree:0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake ninja-build libgles2 libegl1 libegl-mesa0 libgl1-mesa-dri
+      - name: Cache dependencies
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: deps-sdk-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/deps.lock', 'scripts/fetch-deps.sh') }}
+      - name: Fetch the SDKs
+        run: scripts/fetch-deps.sh
+      - name: Check
+        run: ${{ matrix.cmd }}
 
   coplanar:
     name: Depth fighting (${{ matrix.game }})
