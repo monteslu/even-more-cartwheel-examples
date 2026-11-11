@@ -197,7 +197,7 @@ static void prebuild(int level) {
 static void take_next(void) {
   game_free(&G.g);
   memcpy(&G.g, &NXG, sizeof G.g);
-  NXG.w = (cw_world3d){ 0 }, NXG.weld = NULL, NXG.nweld = NXG.weld_cap = 0; /* (the live game owns them now) */
+  game_disown(&NXG); /* (the live game owns the world and the arrays now) */
   loader_release(&NX);
 }
 

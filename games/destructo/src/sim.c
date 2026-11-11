@@ -338,6 +338,14 @@ float g_ld_world_ms, g_ld_build_ms, g_ld_prestress_ms, g_ld_sleep_ms;
 volatile int32_t g_ld_stage; /* how far the build got (a trap in the job names its place) */
 static double ld_now(void) { return (double)cw_profile_now_ns() * 1e-6; }
 
+/* a game whose world and arrays were taken over by a copy of it (the loader's next game made the live one) */
+void game_disown(game *g) {
+  g->w = (cw_world3d){ 0 };
+  g->weld = NULL, g->nweld = g->weld_cap = 0;
+  g->ch = NULL, g->nch = g->ch_cap = 0, g->cfree = NULL, g->ncfree = 0;
+  g->sl_off = g->sl_to = g->bnd_off = g->bnd_to = NULL, g->sl_rect = NULL, g->nsl = 0;
+}
+
 void game_new(game *g, int level, int players, int mode) {
   double ld0 = ld_now();
   g_ld_stage = 1;

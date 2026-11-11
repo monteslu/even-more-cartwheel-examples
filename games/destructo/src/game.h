@@ -264,6 +264,7 @@ typedef struct game {
 extern double (*g_sim_clock)(void); /* seconds; profiling only */
 void game_new(game *g, int level, int players, int mode);
 void game_free(game *g);
+void game_disown(game *g);
 void game_step(game *g, const input *in);
 void game_settle(game *g, int ticks);       /* step with no input (a level settling before play) */
 void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */

@@ -21,6 +21,7 @@
  *
  * Everything here is deterministic: integer hashes, sorted queries, no clocks. */
 #include <math.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,11 @@
 
 extern double (*g_sim_clock)(void);
 double g_ch_ms[6]; /* profiling: set type, carve, resolve, support pass (ms, summed) */
+/* the scratch arrays below are shared by every game in the process, and a level is built on a background job (loader.c) while another
+ * game steps: one lock holds the whole of a build, a step, a push or a break */
+static atomic_flag CH_LOCK = ATOMIC_FLAG_INIT;
+static void ch_lock(void) { while (atomic_flag_test_and_set_explicit(&CH_LOCK, memory_order_acquire)) {} }
+static void ch_unlock(void) { atomic_flag_clear_explicit(&CH_LOCK, memory_order_release); }
 #define CH_MAX (MAXBLK + 4096)
 #define LAYER_BLOCK_BIT 2u
 #define V_MOVE 0.25f      /* m/s: a standing chunk a blow moves less than this stays where it is (the blow still breaks what it lands on) */
@@ -54,9 +60,17 @@ static inline t3_vec3 wcom(cw_body3d b) { b3Pos p = b3Body_GetWorldCenterOfMass(
 /* ── chunks ──────────────────────────────────────────────────────────── */
 
 int chunk_new(game *g, cw_body3d body, bool dyn, bool placed) {
-  if (!g->ch) g->ch = calloc(CH_MAX, sizeof *g->ch), g->cfree = calloc(CH_MAX, sizeof *g->cfree), g->ch_cap = CH_MAX;
-  int c = g->ncfree > 0 ? g->cfree[--g->ncfree] : g->nch < g->ch_cap ? g->nch++ : -1;
-  if (c < 0) return -1;
+  if (g->ncfree == 0 && g->nch == g->ch_cap) { /* grows as the level needs (a game is three at once while a level loads) */
+    int cap = g->ch_cap ? g->ch_cap * 2 : 1024;
+    if (cap > CH_MAX) cap = CH_MAX;
+    if (cap == g->ch_cap) return -1;
+    chunk *nc = realloc(g->ch, (size_t)cap * sizeof *nc);
+    int *nf = realloc(g->cfree, (size_t)cap * sizeof *nf);
+    if (!nc || !nf) return -1;
+    memset(nc + g->ch_cap, 0, (size_t)(cap - g->ch_cap) * sizeof *nc);
+    g->ch = nc, g->cfree = nf, g->ch_cap = cap;
+  }
+  int c = g->ncfree > 0 ? g->cfree[--g->ncfree] : g->nch++;
   chunk *k = &g->ch[c];
   memset(k, 0, sizeof *k);
   k->leader = c, k->anext = -1, k->body = body, k->head = -1, k->alive = 1, k->dyn = dyn, k->placed = placed, k->frac_tick = -100;
@@ -248,7 +262,7 @@ static int cmp_key(const void *a, const void *b) {
 }
 
 /* a dynamic chunk breaks in two along its long side, at a place between a third and two thirds along it (the same on every host) */
-void chunk_fracture(game *g, int c) {
+static void fracture_i(game *g, int c) {
   chunk *k = &g->ch[c];
   if (!k->alive || k->n < 2) return;
   int n = 0;
@@ -314,6 +328,8 @@ static void sec_cut(game *g, int lo, int hi) {
   sec_cut(g, lo, mid);
   sec_cut(g, mid, hi);
 }
+void chunk_fracture(game *g, int c) { ch_lock(); fracture_i(g, c); ch_unlock(); }
+
 /* an assembly let go: every section of it becomes a free chunk of its own, falling together from rest */
 void chunk_release(game *g, int c) {
   chunk *k = &g->ch[c];
@@ -351,7 +367,7 @@ void chunk_release(game *g, int c) {
 
 static int push_list[CH_MAX], npush;
 
-void chunk_impulse(game *g, int blk, t3_vec3 J, t3_vec3 at) {
+static void impulse_i(game *g, int blk, t3_vec3 J, t3_vec3 at) {
   int c = g->b[blk].chunk;
   chunk *k = &g->ch[c];
   if (!k->dyn) c = k->leader, k = &g->ch[c];
@@ -366,7 +382,9 @@ void chunk_impulse(game *g, int blk, t3_vec3 J, t3_vec3 at) {
   k->pj = vadd(k->pj, J), k->pt = vadd(k->pt, vscale(at, m)), k->pm += m;
 }
 
-void chunks_flush(game *g) {
+void chunk_impulse(game *g, int blk, t3_vec3 J, t3_vec3 at) { ch_lock(); impulse_i(g, blk, J, at); ch_unlock(); }
+
+static void flush_i(game *g) {
   for (int s = 0; s < npush; s++) {
     int c = push_list[s];
     chunk *k = &g->ch[c];
@@ -505,15 +523,17 @@ static void crumble(game *g) {
     }
     if (!k->alive || !k->dyn || !k->placed || k->n <= 6 || g->tick - k->rel_tick < 40 || g->tick - k->frac_tick < 12) continue;
     if (!cw_body3d_awake(k->body)) { /* asleep as a lump: wake it broken */
-      chunk_fracture(g, c), nf++;
+      fracture_i(g, c), nf++;
       continue;
     }
     t3_vec3 v = cw_body3d_velocity(k->body);
-    if (v.x * v.x + v.y * v.y + v.z * v.z < 0.8f * 0.8f) chunk_fracture(g, c), nf++;
+    if (v.x * v.x + v.y * v.y + v.z * v.z < 0.8f * 0.8f) fracture_i(g, c), nf++;
   }
 }
 
-void chunks_step(game *g) {
+void chunks_flush(game *g) { ch_lock(); flush_i(g); ch_unlock(); }
+
+static void step_i(game *g) {
   crumble(g);
   if (!g->sup_dirty) return;
   g->sup_dirty = 0;
@@ -557,7 +577,10 @@ static void xz_extent(const block *b, cw_xform3 x, float *ex, float *ez) {
 
 static bool placed_block(const block *k) { return k->alive && k->tag && k->target < 0 && !k->keg; }
 
-void chunks_build(game *g) {
+static void build_i(game *g);
+void chunks_build(game *g) { ch_lock(); build_i(g); ch_unlock(); }
+void chunks_step(game *g);
+static void build_i(game *g) {
   float cell = opt_get("CELL") ? (float)atof(opt_get("CELL")) : (g->L->kind == K_LANDMARK ? 2.0f : 1.0f);
   int nb = g->nb;
   static cw_xform3 X[MAXBLK];
@@ -710,3 +733,5 @@ void chunks_build(game *g) {
   }
   g->sup_dirty = 0;
 }
+
+void chunks_step(game *g) { ch_lock(); step_i(g); ch_unlock(); }
