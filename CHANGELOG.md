@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.14.2
+
+- **Destructo**: the landmarks stand rigid. They had swayed and leaned for seconds as the game began (the welded
+  towers' tops moved a quarter to half a metre) because the engine holds a weld with a soft constraint that sags
+  under the weight above it. Every landmark now starts asleep, in its design pose, and settles by nothing; the six
+  that never fell asleep (Empire State, Tower Bridge and the Statue of Liberty among them) rest at once and cost
+  nothing until hit. The check's settle bound is 2 cm for every landmark, with a control that runs the old soft
+  welds and must fail.
+- Bricks that cling together after a hit and a tower that shatters as it falls are written up and built behind
+  switches that are off for now, because turning them on breaks the par of several levels.
+
 ## 0.14.1
 
 - **Towers**: the cursor's P1 to P4 label no longer covers a deploy button. The pills and the label are laid out from
