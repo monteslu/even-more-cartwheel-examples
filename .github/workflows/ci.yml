@@ -125,10 +125,22 @@ jobs:
               node tests/pinball-drain.mjs
           # lanternfall's world: the shipped world and route are current, completable in ability order with no soft
           # locks, every pickup reached, every gate holding, nothing floating; the controls must each fail
-          - name: lanternfall world
+          - name: lanternfall world (check)
             cmd: |
               TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
-              node tests/lanternfall-world.mjs
+              node tests/lanternfall-world.mjs --part main
+          - name: lanternfall world (controls 1-4)
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
+              node tests/lanternfall-world.mjs --part controls-A
+          - name: lanternfall world (controls 5-7)
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
+              node tests/lanternfall-world.mjs --part controls-B
+          - name: lanternfall world (controls 8-10)
+            cmd: |
+              TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
+              node tests/lanternfall-world.mjs --part controls-C
           # the movement's feel stays in its bounds
           - name: lanternfall feel
             cmd: |

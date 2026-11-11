@@ -12,7 +12,7 @@
 //            the set pieces' rewards taken out (nothing seen before reach), thorns laid beside trapdoor landings (blind
 //            drops), a region's set pieces forgotten, the gates inside a region walled up (no shortcuts), the ledges' chains and
 //            posts taken away (ledges hang on nothing)
-// Run: node tests/lanternfall-world.mjs   (after TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check)
+// Run: node tests/lanternfall-world.mjs [--part main|controls-A|controls-B|controls-C]   (after TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check)
 import { spawnSync } from 'node:child_process';
 import { readFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -26,10 +26,15 @@ const OUT = join(ROOT, 'out/lanternfall-world');
 mkdirSync(OUT, { recursive: true });
 const threads = String(Math.max(1, Math.min(32, availableParallelism())));
 let bad = 0;
+// --part runs one share of the check (CI runs the shares as parallel jobs: the main check and the ten controls are
+// each a full run of the checker, and one 4-core runner needs 28 minutes for all of them); no --part runs everything
+const part = process.argv.includes('--part') ? process.argv[process.argv.indexOf('--part') + 1] : 'all';
+const want = (p) => part === 'all' || part === p;
 const run = (args) => spawnSync(join(BIN, args[0]), args.slice(1), { encoding: 'utf8', maxBuffer: 1 << 26, timeout: 3600000 });
 const same = (a, b) => Buffer.compare(readFileSync(a), readFileSync(b)) === 0;
 
 // current
+if (want('main')) {
 const g = run(['lanternfall_worldgen', join(OUT, 'world.bin')]);
 if (g.status !== 0 || !same(join(OUT, 'world.bin'), join(ASSETS, 'world.bin'))) {
   console.log(`FAIL world.bin is stale: lanternfall_worldgen makes another world (${(g.stdout || '').trim()})`);
@@ -42,6 +47,7 @@ const lines = (c.stdout || '').split('\n').filter((l) => /^(ok|FAIL)|^check|^sta
 if (c.status !== 0) { console.log(`FAIL the check:\n${lines.join('\n')}`); bad++; } else console.log(lines.map((l) => `     ${l}`).join('\n'));
 if (c.status === 0 && !same(join(OUT, 'route.bin'), join(ASSETS, 'route.bin'))) { console.log('FAIL route.bin is stale: the check writes another route'); bad++; }
 else if (c.status === 0) console.log('ok   route.bin is current');
+}
 
 // controls
 const controls = [
@@ -56,7 +62,9 @@ const controls = [
   [9, [], /FAIL shortcuts/, 'the gates inside a region walled up'],
   [10, ['--only', 'grounded'], /FAIL ledges held/, 'every ledge\'s chains and posts taken away'],
 ];
+const SHARE = { 'controls-A': [1, 2, 3, 4], 'controls-B': [5, 6, 7], 'controls-C': [8, 9, 10] };
 for (const [n, extra, why, what] of controls) {
+  if (part !== 'all' && !(SHARE[part] || []).includes(n)) continue;
   const r = run(['lanternfall_check', join(ASSETS, 'world.bin'), '--threads', threads, '--break', String(n), ...extra]);
   if (r.status === 1 && why.test(r.stdout)) console.log(`ok   control fails as it must: ${what} (${(why.exec(r.stdout) || [''])[0]})`);
   else { console.log(`CONTROL PASSED (a failure): ${what}: status ${r.status}`); bad++; }
