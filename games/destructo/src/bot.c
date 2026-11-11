@@ -66,7 +66,7 @@ static bool solve_high(const game *g, t3_vec3 t, float speed, float *yaw, float 
   float dx = t.x - g->muzzle.x, dz = t.z - g->muzzle.z;
   *yaw = cw_atan2(-dx, -dz);
   float d = sqrtf(dx * dx + dz * dz);
-  float lo = 0.8f, hi = 1.12f;
+  float lo = 0.8f, hi = 1.38f;
   if (path_height(g, *yaw, lo, speed, d) < t.y) return false;
   if (path_height(g, *yaw, hi, speed, d) > t.y) return false;
   for (int i = 0; i < 26; i++) {
@@ -167,7 +167,7 @@ static void plan(game *g, bot_state *b) {
   t3_vec3 at = ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home;
   int a = b->attempt[t];
   bool seen = in_view(g, t, at);
-  if (!seen && a >= 1 && !b->orbited[t] && !b->no_orbit && g->mode != MODE_PARTY) { /* hidden from here: roll round to where it shows */
+  if (!seen && (a >= 1 || g->ammo[A_CHARGE] == 0) && !b->orbited[t] && !b->no_orbit && g->mode != MODE_PARTY) { /* hidden from here: roll round to where it shows */
     b->orbited[t] = true;
     float o;
     if (find_view(g, t, at, &o)) {
@@ -188,11 +188,7 @@ static void plan(game *g, bot_state *b) {
   if (a >= 3) aimp.x += ((a / 3) & 1 ? 0.6f : -0.6f) * (float)((a + 1) / 6 + 1) * 0.5f;
   b->want_ammo = pick_ammo(g, ammo);
   const ammo_info *ai = &AMMO[b->want_ammo];
-  if (lob) { /* the speed that lands it at about 57 degrees */
-    float dx = aimp.x - g->muzzle.x, dz = aimp.z - g->muzzle.z, d = sqrtf(dx * dx + dz * dz);
-    float v = sqrtf(GRAV * d / 0.91f) * 1.03f;
-    b->want_power = cw_clampf((v - ai->vmin) / (ai->vmax - ai->vmin), 0, 1);
-  } else b->want_power = 1.0f;
+  b->want_power = 1.0f; /* fixed power: a lob is a high arc, not a slower shot */
   b->lob = lob;
   b->aim_at = aimp;
   b->solved = false;
@@ -213,7 +209,7 @@ static void resolve(game *g, bot_state *b) {
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
   b->want_yaw = cw_clampf(game_yaw_from_world(g, yaw) + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
-  b->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
+  b->want_pitch = cw_clampf(pitch, -0.08f, 1.4f);
   b->solved = true;
   if (opt_get("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
 }
@@ -248,15 +244,11 @@ void bot_input(game *g, bot_state *b, input *in) {
   steer(b->want_yaw - g->yaw, tk, &in->right, &in->left, 0.0012f);
   steer(b->want_pitch - g->pitch, tk, &in->down, &in->up, 0.0012f);
   in->turn_k = in->raise_k = 1;
-  /* the power is set once: the aim is solved for the speed it gives (a touch after that moves the landing) */
-  if (!b->solved && g->power < b->want_power - 0.004f) in->power_up = true;
-  if (!b->solved && g->power > b->want_power + 0.004f) in->power_down = true;
   bool ammo_ok = g->ammo_sel == b->want_ammo;
   if (!ammo_ok && (tk % 6) == 0) in->ammo_next = true;
-  bool power_ok = fabsf(g->power - b->want_power) <= 0.006f;
+  bool power_ok = true;
   if (ammo_ok && power_ok && !b->solved) resolve(g, b);
-  if (b->solved) in->power_up = in->power_down = false; /* this very tick too: the aim is for this speed */
-  bool aimed = b->solved && fabsf(b->want_yaw - g->yaw) <= 0.0012f && fabsf(b->want_pitch - g->pitch) <= 0.0012f && power_ok;
+  bool aimed = b->solved && fabsf(b->want_yaw - g->yaw) <= 0.0012f && fabsf(b->want_pitch - g->pitch) <= 0.0012f;
   if (aimed && ammo_ok && b->wait > 20 && !in->left && !in->right && !in->up && !in->down) {
     in->fire = true;
     b->attempt[b->plan_tgt]++;

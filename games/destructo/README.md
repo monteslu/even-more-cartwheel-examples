@@ -26,14 +26,16 @@ for eight seconds of its turn is away, and any pad can take that turn (the HUD s
 
 | Control | Does |
 |---|---|
-| d-pad or left stick | turn and raise the launcher (a tap moves it a hair, held it speeds up) |
-| right stick, or east held with the d-pad's left and right | move the launcher round the structure on its circle, so any face can be attacked (the aim keeps pointing at the structure) |
-| shoulders (triggers too) | power |
-| north | the ammunition: shot, heavy ball, charge |
-| west, held | the wide view of the structure |
-| south | fire |
+| left stick or d-pad | turn and raise the launcher (a small push is slow and fine, a full push quick) |
+| right stick | move the launcher round the structure on its circle, so any face can be attacked |
+| south | fire, at the ammunition's own fixed power (no charging, no power control) |
+| west / east | the next / the previous ammunition: shot, heavy ball, charge |
+| north | the wide view, on and off |
+| start | pause (the layout is on the pause screen) |
 
-On the result card, north watches the last shot again and any button skips the replay. On the select screen west
+The game reads only the sticks, the d-pad and the face buttons: shoulders and triggers do nothing. With a mouse or a finger: drag to aim, tap to fire, tap an ammunition icon to pick it. Hints for a control show until it has been used once.
+
+On the result card, west watches the last shot again and any button skips the replay. On the select screen north
 turns on free fire: every structure open, ammunition without end, nothing judged.
 
 ### Results and stars

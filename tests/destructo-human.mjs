@@ -13,8 +13,8 @@
 //   skill      par is the reward for skill: a steadier player (a third of the newcomer's aim error) clears within
 //              par (two stars or three) on at least two levels in three, and more often than the newcomer does
 //   goes round where a crystal is hidden from where the launcher stands (its glow blocked, its beacon showing where it
-//              is), the newcomer moves the launcher round the structure to a side it can see it from (East held with the
-//              d-pad, through the game's pad mapping): some plays must do so, and those plays must clear their level as
+//              is), the newcomer moves the launcher round the structure to a side it can see it from (the right stick, through the
+//              game's pad mapping): some plays must do so, and those plays must clear their level as
 //              often as the rest. Control: the player who never goes round (--never-moves) must show no such play
 //   control    the cannon before the fix (--old-damage: the ball breaks only the block it touches and flies on, as in
 //              round 3 and before) must fail the newcomer check

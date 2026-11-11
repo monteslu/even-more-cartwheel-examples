@@ -166,12 +166,7 @@ static void plan(const game *g, human_state *h) {
    * wall, a lob */
   h->lob = h->dry[best] >= 1 && hidden(g, best, c);
   h->want_ammo = want;
-  h->want_power = h->full_power ? 1.0f : g->power;
-  if (h->lob) { /* a lob wants the power well down (the bar a third full or less): set by eye, a few hundredths off */
-    const ammo_info *ai = &AMMO[want];
-    float dx = c.x - g->muzzle.x, dz = c.z - g->muzzle.z, v = sqrtf(GRAV * sqrtf(dx * dx + dz * dz) / 0.91f) * 1.03f;
-    h->want_power = cw_clampf((v - ai->vmin) / (ai->vmax - ai->vmin) + nrand(h) * 0.03f, 0.02f, 1);
-  }
+  h->want_power = g->power; /* fixed */
   h->planned = true, h->still = 0;
 }
 
@@ -188,12 +183,11 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
     return;
   }
   if (h->awaiting) { learn(g, h); h->awaiting = 0; }
-  if (h->moving_round) { /* East held, the d-pad's left or right: held while far, let go a reaction late, tapped near */
+  if (h->moving_round) { /* the right stick, left or right: held while far, let go a reaction late, tapped near */
     float e = wrap_pi(h->want_orbit - g->orbit);
     if (fabsf(e) <= 0.03f) { h->moving_round = false; h->release_o = 0; return; }
-    pad->east = true;
     if (h->release_o > 0) { h->release_o--; return; }
-    if (e > 0) pad->right = true; else pad->left = true;
+    pad->rx_left = e < 0, pad->rx_right = e > 0;
     if (fabsf(e) < 0.15f) h->release_o = h->skill.react;
     return;
   }
@@ -201,21 +195,17 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
   if (!h->planned || h->moving_round) return;
   /* the ammunition on the HUD */
   if (g->ammo_sel != h->want_ammo) {
-    if (h->prev_ammo_press == 0) pad->north = true, h->prev_ammo_press = 8;
+    if (h->prev_ammo_press == 0) pad->west = true, h->prev_ammo_press = 8;
     else h->prev_ammo_press--;
     return;
   }
-  /* the power bar */
-  if (g->power < h->want_power - 0.006f) { pad->rshoulder = true; return; }
-  if (g->power > h->want_power + 0.006f) { pad->lshoulder = true; return; }
   float sp = game_speed(g), yaw, pitch;
   bool ok = h->lob ? lob_up(g, h->aim_point, sp, &yaw, &pitch) || line_up(g, h->aim_point, sp, &yaw, &pitch) : line_up(g, h->aim_point, sp, &yaw, &pitch);
   if (!ok) {
-    if (g->power < 0.999f) { h->want_power = 1; pad->rshoulder = true; return; }
     float dx = h->aim_point.x - g->muzzle.x, dz = h->aim_point.z - g->muzzle.z;
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
-  h->want_yaw = cw_clampf(game_yaw_from_world(g, yaw), -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.15f);
+  h->want_yaw = cw_clampf(game_yaw_from_world(g, yaw), -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.4f);
   /* the hands: held while far off (let go once it looks there, a reaction late), tapped when close */
   float ey = h->want_yaw - seen_yaw, ep = h->want_pitch - seen_pitch, tol = h->skill.tol;
   bool moving = false;
@@ -242,12 +232,11 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
 
 void human_to_input(const pad_buttons *pad, const pad_buttons *last, input *in) {
   memset(in, 0, sizeof *in);
-  in->left = pad->left && !pad->east, in->right = pad->right && !pad->east, in->up = pad->up, in->down = pad->down;
-  in->orbit_left = pad->left && pad->east, in->orbit_right = pad->right && pad->east;
+  in->left = pad->left, in->right = pad->right, in->up = pad->up, in->down = pad->down;
+  in->orbit_left = pad->rx_left, in->orbit_right = pad->rx_right;
   in->orbit_k = in->orbit_left || in->orbit_right ? 1 : 0;
   in->turn_k = in->left || in->right ? 1 : 0;
   in->raise_k = pad->up || pad->down ? 1 : 0;
-  in->power_up = pad->rshoulder, in->power_down = pad->lshoulder;
   in->fire = pad->south && !last->south;
-  in->ammo_next = pad->north && !last->north;
+  in->ammo_next = pad->west && !last->west;
 }

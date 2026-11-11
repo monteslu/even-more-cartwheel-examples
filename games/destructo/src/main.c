@@ -55,6 +55,10 @@ typedef struct save_data {
 } save_data;
 
 enum { PH_SELECT, PH_PLAY, PH_RESULT };
+enum { H_AIM, H_FIRE, H_ORBIT, H_AMMO, H_VIEW, HINTS };
+#define HINT_TICKS 540 /* a hint stays up this long at most */
+#define SEL_COLS 4 /* the level select: columns and rows in view */
+#define SEL_ROWS 4
 static struct {
   game g;
   bot_state bot;
@@ -64,9 +68,15 @@ static struct {
   bool free_fire;    /* the select screen's free fire */
   int last_cur, turn_banner;
   bool result_sound;
-  cw_action aim_l, aim_r, aim_u, aim_d, pow_u, pow_d, fire, ammo, view, orb_l, orb_r, orb;
+  cw_action aim_l, aim_r, aim_u, aim_d, fire, ammo, ammo_p, view, orb_l, orb_r;
+  /* the hints: a control's prompt shows until it has been used once this session (or has had its time), never for good */
+  unsigned used; int hint_t[HINTS];
+  /* the pointer (mouse, or a finger as the mouse): a press that drags aims, one that does not fires or picks an icon */
+  bool ptr_down, ptr_drag; float ptr_x0, ptr_y0, ptr_x, ptr_y;
+  cw_rect ammo_rect[NAMMO];
   cw_node camera;
   bool overview;
+  int view_dbg, ammo_dbg;
   /* debug fields */
   int32_t phase_dbg, level, state, shots, tleft, blocks, awake, broken, frags, booms, stars_dbg, cur, tick;
   int32_t score[MAXP];
@@ -184,7 +194,7 @@ static void begin_level(int level) {
   if (opt_get("OLD_SETTLE")) G.g.old_settle = true;
   if (opt_get("REPLAY_PERTURB")) g_replay_perturb = true;
 #endif
-  G.phase = PH_PLAY, G.phase_t = 0;
+  G.phase = PH_PLAY, G.phase_t = 0, G.overview = false;
   if (!G.free_fire) save()->last_level = level, save()->last_mode = G.mode;
 }
 
@@ -249,15 +259,27 @@ static void cmd_orbit(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"orbit\":%.4f}", G.have_game ? G.g.orbit : 0.0f);
 }
 
+/* behind the pause menu: the controls, once, in one card (the sticks, the d-pad and the face buttons: nothing else is read) */
+static cw_color rgba(float r, float g, float b, float a);
+static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
+  (void)u;
+  if (screen != CW_SHELL_PAUSE) return;
+  float k = cs.y / 1080.0f, x = cs.x * 0.5f, y = cs.y * 0.03f, s = 30 * k, dy = 44 * k;
+  const cw_color c = rgba(1, 0.92f, 0.65f, 1);
+  cw_prompt_text(font, "{aim_left|aim_right|aim_up|aim_down}: aim (left stick or d-pad)", -1, cw_v2(x, y), s, c, CW_ALIGN_CENTER);
+  cw_prompt_text(font, "{orbit_left|orbit_right}: go round the structure (right stick)", -1, cw_v2(x, y + dy), s, c, CW_ALIGN_CENTER);
+  cw_prompt_text(font, "{fire}: fire   {ammo_prev|ammo}: change ammunition   {view}: wide view", -1, cw_v2(x, y + 2 * dy), s, c, CW_ALIGN_CENTER);
+}
+
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
   G.aim_l = cw_action_find("aim_left"), G.aim_r = cw_action_find("aim_right"), G.aim_u = cw_action_find("aim_up"), G.aim_d = cw_action_find("aim_down");
-  G.pow_u = cw_action_find("power_up"), G.pow_d = cw_action_find("power_down"), G.fire = cw_action_find("fire"), G.ammo = cw_action_find("ammo");
+  G.fire = cw_action_find("fire"), G.ammo = cw_action_find("ammo"), G.ammo_p = cw_action_find("ammo_prev");
   G.view = cw_action_find("view");
-  G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right"), G.orb = cw_action_find("orbit");
+  G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right");
   cw_shell_init(&(cw_shell_desc){ .title = "DESTRUCTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
+                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -296,7 +318,10 @@ static void init(void *u) {
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_f32("aim.yaw", &G.yaw);
   cw_debug_f32("aim.pitch", &G.pitch);
-  cw_debug_f32("aim.power", &G.power);
+  cw_debug_f32("aim.power", &G.power); /* fixed: no control changes it */
+  cw_debug_u32("ui.used", &G.used);          /* the controls used so far this session (bits: aim, fire, orbit, ammo, view) */
+  cw_debug_i32("ui.view", &G.view_dbg);      /* the wide view is on */
+  cw_debug_i32("aim.ammo", &G.ammo_dbg); /* the chosen ammunition (0 shot, 1 heavy ball, 2 charge) */
   cw_debug_f32("aim.orbit", &G.orbit); /* where the launcher stands on its circle round the structure (radians from the start) */
   cw_debug_f32("phys.step_ms", &G.step_ms);
   cw_debug_f32("phys.step_max", &G.step_max);   /* the slowest step since the app started (host-dependent) */
@@ -352,7 +377,7 @@ static void seat_watch(void) {
     return;
   }
   bool any = false;
-  cw_action acts[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.pow_u, G.pow_d, G.fire, G.ammo, G.view, G.orb_l, G.orb_r, G.orb };
+  cw_action acts[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.fire, G.ammo, G.ammo_p, G.view, G.orb_l, G.orb_r };
   for (size_t k = 0; k < sizeof acts / sizeof acts[0] && !any; k++) any = cw_action_pressed(G.g.cur, acts[k]);
   seat_idle = any ? 0 : seat_idle + 1;
 }
@@ -373,6 +398,39 @@ static float strength(cw_action a, int seat) {
 }
 static bool ui(const char *name) { return pressed(cw_action_find(name), -1); }
 
+/* a stick's push to a speed: slow for a small push (fine aim), the full speed only at the end of the throw */
+static float curve(float s) { return s <= 0 ? 0 : fmaxf(0.12f, s * s); }
+
+/* the pointer: a mouse, or a finger (the platform gives a touch as the left button). A press that drags aims (the
+ * launcher follows the drag); one that lifts without a drag fires, or picks the ammunition icon it landed on. */
+static void pointer_input(input *in) {
+  const cw_raw_input *raw = cw_input_raw();
+  if (!raw || !raw->mouse_present) return;
+  int w, h;
+  cw_window_size(&w, &h);
+  cw_vec2 cs = cw_r2d_canvas_size();
+  float sx = w > 0 ? cs.x / (float)w : 1, sy = h > 0 ? cs.y / (float)h : 1;
+  float x = raw->mouse_x * sx, y = raw->mouse_y * sy;
+  bool down = (raw->mouse_buttons & 1) != 0;
+  if (down && !G.ptr_down) G.ptr_down = true, G.ptr_drag = false, G.ptr_x0 = G.ptr_x = x, G.ptr_y0 = G.ptr_y = y;
+  else if (down) {
+    if (!G.ptr_drag && hypotf(x - G.ptr_x0, y - G.ptr_y0) > 14 * cs.y / 1080.0f) G.ptr_drag = true;
+    if (G.ptr_drag) in->aim_dx = (x - G.ptr_x) * 0.0016f, in->aim_dy = (y - G.ptr_y) * 0.0016f;
+    G.ptr_x = x, G.ptr_y = y;
+  } else if (G.ptr_down) {
+    G.ptr_down = false;
+    if (!G.ptr_drag) {
+      int pick = 0;
+      for (int a = 0; a < NAMMO; a++) {
+        cw_rect r = G.ammo_rect[a];
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) pick = a + 1;
+      }
+      if (pick) in->ammo_set = pick;
+      else in->fire = true;
+    }
+  }
+}
+
 static void read_input(input *in) {
   memset(in, 0, sizeof *in);
 #ifdef DESTRUCTO_AUTOPILOT
@@ -380,19 +438,26 @@ static void read_input(input *in) {
   G.overview = opt_get("OVERVIEW") != NULL; /* development: the wide view */
 #else
   int s = seat_of_turn();
-  /* the move button held: the turn's left and right roll the launcher round the structure instead (a pad with no right
-   * stick still goes round); the right stick (or its keys) rolls it on its own */
-  bool round = held(G.orb, s);
+  /* the left stick or the d-pad aims, the right stick rolls the launcher round the structure; South fires at the
+   * ammunition's fixed power, West and East step through the ammunition, North toggles the wide view. Nothing reads a
+   * shoulder or a trigger. A small push of a stick is slow (a squared response), a full push is quick. */
   bool l = held(G.aim_l, s), r = held(G.aim_r, s);
-  in->left = l && !round, in->right = r && !round, in->up = held(G.aim_u, s), in->down = held(G.aim_d, s);
-  in->turn_k = round ? 0 : fmaxf(strength(G.aim_l, s), strength(G.aim_r, s));
-  in->orbit_left = held(G.orb_l, s) || (round && l), in->orbit_right = held(G.orb_r, s) || (round && r);
-  in->orbit_k = fmaxf(fmaxf(strength(G.orb_l, s), strength(G.orb_r, s)), round && (l || r) ? fmaxf(strength(G.aim_l, s), strength(G.aim_r, s)) : 0);
-  in->raise_k = fmaxf(strength(G.aim_u, s), strength(G.aim_d, s));
-  in->power_up = held(G.pow_u, s), in->power_down = held(G.pow_d, s);
+  in->left = l, in->right = r, in->up = held(G.aim_u, s), in->down = held(G.aim_d, s);
+  in->turn_k = curve(fmaxf(strength(G.aim_l, s), strength(G.aim_r, s)));
+  in->orbit_left = held(G.orb_l, s), in->orbit_right = held(G.orb_r, s);
+  in->orbit_k = curve(fmaxf(strength(G.orb_l, s), strength(G.orb_r, s)));
+  in->raise_k = curve(fmaxf(strength(G.aim_u, s), strength(G.aim_d, s)));
   in->fire = pressed(G.fire, s);
   in->ammo_next = pressed(G.ammo, s);
-  G.overview = held(G.view, s);
+  in->ammo_prev = pressed(G.ammo_p, s);
+  if (pressed(G.view, s)) G.overview = !G.overview;
+  G.view_dbg = G.overview;
+  pointer_input(in);
+  if (in->left || in->right || in->up || in->down || in->aim_dx != 0 || in->aim_dy != 0) G.used |= 1u << H_AIM;
+  if (in->fire) G.used |= 1u << H_FIRE;
+  if (in->orbit_left || in->orbit_right) G.used |= 1u << H_ORBIT;
+  if (in->ammo_next || in->ammo_prev || in->ammo_set) G.used |= 1u << H_AMMO;
+  if (pressed(G.view, s)) G.used |= 1u << H_VIEW;
 #endif
 }
 
@@ -426,7 +491,7 @@ static void fixed_update(void *u, double dt) {
   switch (G.phase) {
   case PH_SELECT: {
     int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
-    int n = G.sel + dx + dy * 6;
+    int n = G.sel + dx + dy * SEL_COLS;
     if ((dx || dy) && n >= 0 && n <= (G.free_fire ? NLEVELS - 1 : unlocked())) G.sel = n, sound_menu(0), preview_level(G.sel);
     if (pressed(G.ammo, -1) && G.players > 1) G.mode = (G.mode + 1) % 3, sound_menu(0);
     if (G.players < 2 && G.mode == MODE_PARTY) G.mode = MODE_COOP;
@@ -496,7 +561,7 @@ static void fixed_update(void *u, double dt) {
       begin_level(next);
     }
 #else
-    if (G.phase_t > 45) {
+    if (G.phase_t > 6) {
       if (watch && pressed(G.ammo, -1)) {
         sound_menu(1);
         G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
@@ -524,7 +589,7 @@ static void fixed_update(void *u, double dt) {
   if (G.phase == PH_RESULT) G.share = g->judged_share;
   else if (G.phase == PH_PLAY && (g->tick % 10 == 0 || g->state == GS_AIM)) G.share = game_share(g);
   for (int i = 0; i < MAXP; i++) G.score[i] = g->P[i].score;
-  G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.orbit = g->orbit, G.step_ms = g->step_ms;
+  G.ammo_dbg = g->ammo_sel, G.yaw = g->yaw, G.pitch = g->pitch, G.power = g->power, G.orbit = g->orbit, G.step_ms = g->step_ms;
   if (g->step_ms > G.step_max) G.step_max = g->step_ms;
   if (g->awake_now > 500) G.busy_sum += g->step_ms, G.busy_n++, G.step_busy = (float)(G.busy_sum / G.busy_n);
 }
@@ -558,39 +623,62 @@ static void star_row(float x, float y, float s, int n, int of) {
   }
 }
 
+/* a gem: a crystal's mark in the corner, its glow as a soft ring */
+static void gem(float cx, float cy, float r, cw_color c) {
+  cw_vec2 p[6] = { cw_v2(cx, cy - r), cw_v2(cx + r * 0.8f, cy - r * 0.2f), cw_v2(cx + r * 0.5f, cy + r * 0.8f), cw_v2(cx - r * 0.5f, cy + r * 0.8f), cw_v2(cx - r * 0.8f, cy - r * 0.2f), cw_v2(cx, cy - r) };
+  cw_r2d_polygon(p, 5, c);
+}
+
+/* the control prompts, one at a time: the first control not yet used this session, for at most HINT_TICKS, and only
+ * once the aim is open (never during a flight or over the result) */
+static void hud_hint(cw_vec2 cs, float u, int seat) {
+  static const char *TXT[HINTS] = {
+    "{aim_left|aim_right|aim_up|aim_down}: aim",
+    "{fire}: fire",
+    "{orbit_left|orbit_right}: go round the structure",
+    "{ammo_prev|ammo}: change ammunition",
+    "{view}: wide view",
+  };
+  if (opt_on("NO_HINTS") || G.g.state != GS_AIM || G.phase != PH_PLAY) return;
+  for (int k = 0; k < HINTS; k++) {
+    if ((G.used >> k) & 1 || G.hint_t[k] >= HINT_TICKS) continue;
+    if (k > H_FIRE && !((G.used >> H_FIRE) & 1) && G.g.shots == 0 && k != H_AMMO) continue; /* aim, then fire, before the rest */
+    G.hint_t[k]++;
+    float a = fminf(1, fminf(G.hint_t[k] / 30.0f, (HINT_TICKS - G.hint_t[k]) / 30.0f));
+    cw_prompt_text(font, TXT[k], seat, cw_v2(cs.x * 0.5f, cs.y - 190 * u), 30 * u, rgba(1, 0.92f, 0.65f, a), CW_ALIGN_CENTER);
+    return;
+  }
+}
+
+/* the play HUD: the share of the structure down (against its mark) and the shots, the crystals left, and the ammunition
+ * beside the launcher; the level's name and par for three seconds at the start. Nothing over the structure. */
 static void hud_play(cw_vec2 cs, float u) {
   const game *g = &G.g;
   char b[96];
-  /* the level: its name, crystals left, shots against par */
-  float x = 28 * u, y = 24 * u;
-  float pl = g->L->place ? 30 * u : 0; /* a landmark: where it stands, under its name */
-  panel(x, y, 500 * u, 190 * u + pl, u, rgba(1, 0.82f, 0.3f, 0.8f));
-  snprintf(b, sizeof b, "%d  %s", g->level + 1, g->L->name);
-  text(b, x + 20 * u, y + 12 * u, 34 * u, GOLD, CW_ALIGN_LEFT);
-  if (g->L->place) text(g->L->place, x + 22 * u, y + 52 * u, 23 * u, rgba(0.88f, 0.86f, 0.8f, 0.95f), CW_ALIGN_LEFT);
-  y += pl;
-  snprintf(b, sizeof b, "Crystals left: %d of %d", g->tgt_left, g->ntgt);
-  text(b, x + 20 * u, y + 60 * u, 27 * u, PINK, CW_ALIGN_LEFT);
-  if (g->sandbox) snprintf(b, sizeof b, "Free fire   Shots: %d", g->shots);
-  else if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "Steady hands   Shots: %d", g->shots);
-  else snprintf(b, sizeof b, "Shots: %d   Par: %d", g->shots, g->L->par);
-  text(b, x + 20 * u, y + 98 * u, 27 * u, !g->sandbox && g->mode != MODE_PARTY && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_LEFT);
-  /* how much of it is down, against the mark the third star needs */
+  bool plain = g->sandbox || g->mode == MODE_PARTY;
+  /* the share bar: top middle, thin */
   float share = G.share, mark = game_mark(g);
-  snprintf(b, sizeof b, "Down: %d%% of %d%%", (int)(share * 100 + 0.5f), (int)(mark * 100 + 0.5f));
-  text(b, x + 20 * u, y + 136 * u, 27 * u, share >= mark ? GOLD : WHITE, CW_ALIGN_LEFT);
-  float mx = x + 260 * u, mw = 150 * u, my = y + 148 * u;
-  cw_r2d_round_rect(cw_rect_make(mx, my, mw, 10 * u), 5 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
-  cw_r2d_round_rect(cw_rect_make(mx, my, mw * fminf(1, share / mark), 10 * u), 5 * u, 6, share >= mark ? GOLD : rgba(0.9f, 0.75f, 0.5f, 0.9f));
-  if (g->shots == 0 && g->state == GS_AIM) { /* the first look at a level with kegs: what the red ones do */
-    bool kegs = false;
-    for (int i = 0; i < g->nb && !kegs; i++) kegs = g->b[i].alive && g->b[i].keg;
-    if (kegs) text("The red kegs go off when hit, and set off the next", x + 6 * u, y + 204 * u, 23 * u, rgba(1, 0.6f, 0.45f, 1), CW_ALIGN_LEFT);
-    else if (g->ntgt > 0 && G.phase == PH_PLAY) { /* a crystal hidden from where the launcher stands: going round shows it */
-      bool hid = false;
-      for (int t = 0; t < g->ntgt && !hid; t++) hid = !g->tgt[t].down && view_hidden(g, t);
-      if (hid) cw_prompt_text(font, "A crystal is hidden from here: {orbit_left|orbit_right} moves you round to it", -1, cw_v2(x + 6 * u, y + 204 * u), 23 * u, rgba(0.75f, 0.92f, 1, 1), CW_ALIGN_LEFT);
-    }
+  float bw = 520 * u, bx = cs.x * 0.5f - bw * 0.5f, by = 30 * u;
+  cw_r2d_round_rect(cw_rect_make(bx, by, bw, 14 * u), 7 * u, 6, rgba(0.05f, 0.06f, 0.1f, 0.7f));
+  cw_r2d_round_rect(cw_rect_make(bx, by, bw * fminf(1, share / mark), 14 * u), 7 * u, 6, share >= mark ? GOLD : rgba(0.95f, 0.62f, 0.2f, 0.95f));
+  snprintf(b, sizeof b, "%d%%", (int)(share * 100 + 0.5f));
+  text(b, bx + bw + 14 * u, by - 9 * u, 32 * u, share >= mark ? GOLD : WHITE, CW_ALIGN_LEFT);
+  if (!plain) snprintf(b, sizeof b, "Shots %d / %d", g->shots, g->L->par);
+  else snprintf(b, sizeof b, "Shots %d", g->shots);
+  text(b, bx - 14 * u, by - 9 * u, 32 * u, !plain && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_RIGHT);
+  /* the crystals: a gem and the count left, top left */
+  gem(52 * u, 50 * u, 20 * u, PINK);
+  snprintf(b, sizeof b, "%d", g->tgt_left);
+  text(b, 84 * u, 30 * u, 40 * u, PINK, CW_ALIGN_LEFT);
+  /* the level's name and par: three seconds, faded in and out */
+  if (G.phase == PH_PLAY && G.phase_t < 180) {
+    float a = fminf(1, fminf(G.phase_t / 20.0f, (180 - G.phase_t) / 30.0f));
+    snprintf(b, sizeof b, "%d  %s", g->level + 1, g->L->name);
+    text(b, cs.x * 0.5f, 70 * u, 40 * u, rgba(1, 0.82f, 0.3f, a), CW_ALIGN_CENTER);
+    if (g->L->place) text(g->L->place, cs.x * 0.5f, 122 * u, 26 * u, rgba(0.9f, 0.88f, 0.82f, a), CW_ALIGN_CENTER);
+    if (!plain) snprintf(b, sizeof b, "par %d", g->L->par);
+    else snprintf(b, sizeof b, g->sandbox ? "free fire" : "steady hands");
+    text(b, cs.x * 0.5f, (g->L->place ? 158 : 122) * u, 26 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
@@ -604,12 +692,6 @@ static void hud_play(cw_vec2 cs, float u) {
       else snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
       text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
     }
-    text(g->mode == MODE_PARTY ? "PARTY: bring a block down, not a crystal" : g->mode == MODE_VERSUS ? "VERSUS: points" : "CO-OP: shots each", rx + 165 * u, ry + (20 + 46 * g->players) * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
-  } else {
-    int score = g->P[0].score;
-    snprintf(b, sizeof b, "%d", score);
-    text(b, cs.x - 32 * u, 28 * u, 46 * u, WHITE, CW_ALIGN_RIGHT);
-    text("POINTS", cs.x - 32 * u, 84 * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_RIGHT);
   }
   if (G.turn_banner > 0 && g->players > 1) {
     snprintf(b, sizeof b, "Player %d", g->cur + 1);
@@ -618,35 +700,25 @@ static void hud_play(cw_vec2 cs, float u) {
     c.a = a;
     text(b, cs.x * 0.5f, cs.y * 0.18f, 64 * u, c, CW_ALIGN_CENTER);
   }
-  /* the launcher: ammunition, power, and the controls while aiming */
-  float bw = 760 * u, bx = cs.x * 0.5f - bw * 0.5f, by = cs.y - 194 * u;
+  /* the ammunition: three icons low in the corner (a tap picks one), the chosen one lit with its count */
   if (g->state == GS_AIM) {
-    panel(bx, by, bw, 180 * u, u, SEAT[g->cur]);
-    float cw = 200 * u;
+    float cw = 190 * u, ch = 56 * u, gap = 10 * u, x0 = 28 * u, y0 = cs.y - ch - 28 * u;
     for (int a = 0; a < NAMMO; a++) {
-      float cx = bx + 25 * u + a * (cw + 15 * u);
+      float cx = x0 + a * (cw + gap);
       bool sel = a == g->ammo_sel;
-      cw_r2d_round_rect(cw_rect_make(cx, by + 12 * u, cw, 46 * u), 8 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.9f) : rgba(0.15f, 0.16f, 0.22f, 0.85f));
-      if (g->sandbox || g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", AMMO[a].name);
+      G.ammo_rect[a] = cw_rect_make(cx, y0, cw, ch);
+      cw_r2d_round_rect(G.ammo_rect[a], 10 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.92f) : rgba(0.05f, 0.06f, 0.1f, 0.7f));
+      if (plain) snprintf(b, sizeof b, "%s", AMMO[a].name);
       else snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
-      text(b, cx + cw * 0.5f, by + 22 * u, 23 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
+      text(b, cx + cw * 0.5f, y0 + 10 * u, 30 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
     }
-    /* power */
-    float px = bx + 25 * u, py = by + 68 * u, pw = bw - 50 * u;
-    cw_r2d_round_rect(cw_rect_make(px, py, pw, 12 * u), 6 * u, 6, rgba(0.15f, 0.15f, 0.2f, 0.9f));
-    cw_r2d_round_rect(cw_rect_make(px, py, pw * g->power, 12 * u), 6 * u, 6, rgba(1, 0.35f + 0.5f * (1 - g->power), 0.15f, 1));
-    float sz = 21 * u;
     int seat = G.players > 1 && G.mode != MODE_COOP && !seat_away() ? g->cur : -1;
     if (G.players > 1 && G.mode != MODE_COOP && seat_away()) {
       char aw[64];
       snprintf(aw, sizeof aw, "Player %d is away: any pad can take this turn", g->cur + 1);
-      text(aw, cs.x * 0.5f, by - 44 * u, 26 * u, SEAT[g->cur], CW_ALIGN_CENTER);
+      text(aw, cs.x * 0.5f, cs.y * 0.3f, 30 * u, SEAT[g->cur], CW_ALIGN_CENTER);
     }
-    cw_prompt_text(font, "{aim_left|aim_right}: turn   {aim_up|aim_down}: raise   {power_down|power_up}: power", seat, cw_v2(cs.x * 0.5f, by + 88 * u), sz, WHITE, CW_ALIGN_CENTER);
-    cw_prompt_text(font, "{orbit_left|orbit_right} or hold {orbit} with {aim_left|aim_right}: move round the structure", seat, cw_v2(cs.x * 0.5f, by + 116 * u), sz, rgba(0.75f, 0.92f, 1, 1), CW_ALIGN_CENTER);
-    cw_prompt_text(font, "{ammo}: ammunition   {view}: hold for the wide view   {fire}: fire", seat, cw_v2(cs.x * 0.5f, by + 144 * u), sz, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
-  } else if (g->state == GS_SETTLE || g->state == GS_FLIGHT) {
-    text(g->state == GS_FLIGHT ? "" : "Settling...", cs.x * 0.5f, cs.y - 70 * u, 28 * u, rgba(1, 1, 1, 0.7f), CW_ALIGN_CENTER);
+    hud_hint(cs, u, seat);
   }
 }
 
@@ -674,7 +746,7 @@ static void hud_result(cw_vec2 cs, float u) {
         snprintf(b, sizeof b, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
         text(b, cx, y + (100 + 40 * line++) * u, 26 * u, SEAT[p], CW_ALIGN_CENTER);
       }
-    if (G.phase_t > 45) {
+    if (G.phase_t > 6) {
       if (!G.replayed && replay_ready())
         cw_prompt_text(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
       cw_prompt_text(font, "{ui_accept}: next structure   {ui_back}: levels", -1, cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
@@ -686,7 +758,7 @@ static void hud_result(cw_vec2 cs, float u) {
   float ty = y + 160 * u;
   if (won) {
     star_row(cx, y + 118 * u, 60 * u, game_stars(g), 3);
-    snprintf(b, sizeof b, "%d shots, par %d", g->shots, g->L->par);
+    snprintf(b, sizeof b, "%d %s, par %d", g->shots, g->shots == 1 ? "shot" : "shots", g->L->par);
     ty = y + 168 * u;
   } else snprintf(b, sizeof b, "%d of %d crystals still stand", g->tgt_left, g->ntgt);
   text(b, cx, ty, 28 * u, WHITE, CW_ALIGN_CENTER);
@@ -699,7 +771,7 @@ static void hud_result(cw_vec2 cs, float u) {
     snprintf(b, sizeof b, "Player %d has the most points: %d", best + 1, g->P[best].score);
     text(b, cx, ty + 112 * u, 26 * u, SEAT[best], CW_ALIGN_CENTER);
   }
-  if (G.phase_t > 45) {
+  if (G.phase_t > 6) {
     if (!G.replayed && replay_ready())
       cw_prompt_text(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
     cw_prompt_text(font, won ? "{ui_accept}: next level   {ui_back}: levels" : "{ui_accept}: try again   {ui_back}: levels", -1,
@@ -719,24 +791,29 @@ static void hud_replay(cw_vec2 cs, float u) {
 static void hud_select(cw_vec2 cs, float u) {
   float y0 = 40 * u;
   text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
-  float cw = 272 * u, ch = 92 * u, gap = 14 * u;
-  float gx = cs.x * 0.5f - (6 * cw + 5 * gap) * 0.5f, gy = y0 + 80 * u;
+  float cw = 400 * u, ch = 118 * u, gap = 16 * u;
+  float gx = cs.x * 0.5f - (SEL_COLS * cw + (SEL_COLS - 1) * gap) * 0.5f, gy = y0 + 84 * u;
   int open = G.free_fire ? NLEVELS - 1 : unlocked(); /* free fire: every structure */
-  /* five rows in view, scrolled to keep the choice in the middle row where it can be */
-  int rows = (NLEVELS + 5) / 6, first = CW_CLAMP(G.sel / 6 - 2, 0, rows - 5);
+  /* four rows in view, scrolled to keep the choice in view */
+  int rows = (NLEVELS + SEL_COLS - 1) / SEL_COLS, first = CW_CLAMP(G.sel / SEL_COLS - 1, 0, rows - SEL_ROWS);
   if (first > 0) cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f + 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f, gy - 26 * u) }, 3, rgba(1, 0.82f, 0.3f, 0.9f));
-  if (first + 5 < rows) { float by = gy + 5 * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
-  for (int i = first * 6; i < NLEVELS && i < (first + 5) * 6; i++) {
-    float x = gx + (i % 6) * (cw + gap), y = gy + (i / 6 - first) * (ch + gap);
+  if (first + SEL_ROWS < rows) { float by = gy + SEL_ROWS * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
+  for (int i = first * SEL_COLS; i < NLEVELS && i < (first + SEL_ROWS) * SEL_COLS; i++) {
+    float x = gx + (i % SEL_COLS) * (cw + gap), y = gy + (i / SEL_COLS - first) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
-    cw_r2d_round_rect(cw_rect_make(x, y, cw, ch), 10 * u, 6, sel ? rgba(0.95f, 0.6f, 0.2f, 0.92f) : rgba(0.06f, 0.07f, 0.12f, lock ? 0.5f : 0.78f));
+    cw_r2d_round_rect(cw_rect_make(x, y, cw, ch), 12 * u, 6, sel ? rgba(0.95f, 0.6f, 0.2f, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f));
     char b[64];
-    snprintf(b, sizeof b, "%d  %s", i + 1, LEVELS[i].name);
-    text(b, x + 12 * u, y + 10 * u, 21 * u, lock ? rgba(0.6f, 0.6f, 0.65f, 0.7f) : sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE, CW_ALIGN_LEFT);
-    if (!lock) star_row(x + cw * 0.5f, y + ch - 28 * u, 30 * u, save()->stars[i], 3);
-    else text("locked", x + cw * 0.5f, y + ch - 42 * u, 20 * u, rgba(0.6f, 0.6f, 0.65f, 0.7f), CW_ALIGN_CENTER);
+    cw_color ink = sel ? rgba(0.08f, 0.05f, 0.02f, 1) : lock ? rgba(0.78f, 0.78f, 0.82f, 1) : WHITE;
+    snprintf(b, sizeof b, "%d", i + 1);
+    text(b, x + 16 * u, y + 8 * u, 40 * u, sel ? ink : lock ? ink : GOLD, CW_ALIGN_LEFT);
+    text(LEVELS[i].name, x + 16 * u, y + 62 * u, 30 * u, ink, CW_ALIGN_LEFT);
+    if (!lock) star_row(x + cw - 74 * u, y + 32 * u, 38 * u, save()->stars[i], 3);
+    else { /* a padlock: a body and a shackle */
+      cw_r2d_round_rect(cw_rect_make(x + cw - 62 * u, y + 28 * u, 34 * u, 26 * u), 5 * u, 6, ink);
+      cw_r2d_round_rect_lines(cw_rect_make(x + cw - 58 * u, y + 10 * u, 26 * u, 28 * u), 11 * u, 4 * u, 6, ink);
+    }
   }
-  float y = gy + 5 * (ch + gap) + 22 * u;
+  float y = gy + SEL_ROWS * (ch + gap) + 10 * u;
   char b[128];
   if (G.players > 1) {
     snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,
@@ -747,7 +824,7 @@ static void hud_select(cw_vec2 cs, float u) {
   cw_prompt_text(font, G.free_fire ? "{view}: free fire ON (every structure, ammunition without end)" : "{view}: free fire", -1, cw_v2(cs.x * 0.5f, y), 24 * u,
                  G.free_fire ? GOLD : rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
   y += 38 * u;
-  cw_prompt_text(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, cw_v2(cs.x * 0.5f, y), 26 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
+  cw_prompt_text(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, cw_v2(cs.x * 0.5f, y), 30 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
 }
 
 static void hud(void) {

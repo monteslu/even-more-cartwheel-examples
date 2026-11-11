@@ -3,5 +3,15 @@
     "name": "destructo-play",
     "script": "tests/destructo-play.mjs",
     "note": "A person's first level through the controls, on romdev, GL and WebGPU: the same bits on both; the control never fires (tests/destructo-play.mjs). romdev only: no native game runs."
+  },
+  {
+    "name": "destructo-controls",
+    "script": "tests/destructo-controls.mjs",
+    "note": "Shoulders and triggers do nothing (and the old build, run with --control and DESTRUCTO_CART_DIR, reacts to them); the d-pad, North and South do act, at a fixed power."
+  },
+  {
+    "name": "destructo-newcomer",
+    "script": "tests/destructo-newcomer.mjs",
+    "note": "The human-like newcomer clears levels 1 to 3 with all eight seeds, level 1 within par plus 4 (the full sweep is tests/destructo-human.mjs)."
   }
 ]

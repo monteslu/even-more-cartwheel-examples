@@ -3,7 +3,7 @@
 // input set a script entry, the frames between stepped in one range; a shared server can take minutes over a WebGPU
 // range, so run-cart waits long).
 //   play   A person's first level: Play on the title, a pad joins, Start, the first structure chosen with South, the
-//          launcher turned on the d-pad, raised, the power set on a shoulder and fired (600 frames). The shot's flight,
+//          launcher turned on the d-pad, raised and fired (600 frames). The shot's flight,
 //          every block it breaks and the whole collapse (game.hash: the world's hash of every moved body and event)
 //          must be the same bits on GL and WebGPU, with a shot fired. Control: the script that never fires
 //          (destructo-play-control.json) must end on another state.

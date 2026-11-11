@@ -10,7 +10,6 @@
  *   hands     the d-pad held while the launcher is far off and let go late (a reaction delay), then tapped; it fires
  *             once the aim looks right (to a few milliradians, what a person can see) and has been still a moment
  *   ammo      the shot first; once shots at a crystal have twice brought nothing down, the next kind on the HUD
- *   power     left where the level starts it, or pushed to full (half the players do each)
  *   moves     a crystal hidden behind the structure from where it stands (its glow blocked, its beacon still showing
  *             where it is): it rolls the launcher round toward that side until the glow shows, then aims from there
  *
@@ -23,10 +22,10 @@
 
 #include "game.h"
 
-/* the pad as main.c reads it: d-pad, the shoulders, South (fire), North (ammunition), East held (the d-pad's left
- * and right roll the launcher round the structure instead of turning it) */
+/* the pad as main.c reads it: d-pad (or left stick) aims, the right stick rolls the launcher round the structure, South
+ * fires, West picks the next ammunition. No shoulders, no triggers, no power. */
 typedef struct pad_buttons {
-  bool left, right, up, down, rshoulder, lshoulder, south, north, east;
+  bool left, right, up, down, rx_left, rx_right, south, west;
 } pad_buttons;
 
 /* how good the hands are (the gate's newcomer: human_newcomer) */
@@ -68,8 +67,8 @@ typedef struct human_state {
 void human_reset(human_state *h, human_skill s, uint32_t seed);
 /* the pad this tick */
 void human_buttons(const game *g, human_state *h, pad_buttons *pad);
-/* the pad to the launcher's controls: main.c's mapping for a person's pad (d-pad: turn and raise, shoulders: power,
- * South: fire, North: ammunition), presses edge-detected against the last tick's pad */
+/* the pad to the launcher's controls: main.c's mapping for a person's pad (d-pad: turn and raise, right stick: orbit,
+ * South: fire, West: ammunition), presses edge-detected against the last tick's pad */
 void human_to_input(const pad_buttons *pad, const pad_buttons *last, input *in);
 
 #endif

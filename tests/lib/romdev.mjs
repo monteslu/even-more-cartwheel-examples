@@ -11,7 +11,8 @@ import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
-export const cartPath = (app) => join(ROOT, 'build/cart-wgpu/carts', `${app}.wasc`);
+// DESTRUCTO_CART_DIR: another build's carts (a gate's old-build control, a before-and-after sheet)
+export const cartPath = (app) => join(resolve(ROOT, process.env.DESTRUCTO_CART_DIR || 'build/cart-wgpu/carts'), `${app}.wasc`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // the server: ROMDEV_URL (the pool sets it per lane; one host can run a romdev per GPU), or ROMDEV_PORT, else 127.0.0.1:7331

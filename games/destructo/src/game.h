@@ -40,6 +40,7 @@ typedef struct ammo_info {
   float radius, mass, vmin, vmax;
 } ammo_info;
 extern const ammo_info AMMO[NAMMO];
+extern const float AMMO_POWER[NAMMO]; /* the fixed power of each ammunition (0..1 of its speed range) */
 
 typedef struct block {
   cw_body3d body;
@@ -89,7 +90,9 @@ typedef struct input {
   float turn_k, raise_k;             /* analog strength 0..1 of the held direction (1 for a button) */
   bool orbit_left, orbit_right;      /* move the launcher round the structure on its circle */
   float orbit_k;                     /* analog strength of the orbit (1 for a button) */
-  bool power_up, power_down;
+
+  float aim_dx, aim_dy;              /* pointer drag: turn and raise by this many radians this tick */
+  int ammo_set;                      /* pointer tap on an ammunition icon: 1 + the kind (0: none) */
   bool fire, ammo_next, ammo_prev;
 } input;
 

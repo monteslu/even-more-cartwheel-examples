@@ -41,6 +41,10 @@ const ammo_info AMMO[NAMMO] = {
   [A_CHARGE] = { "Charge", 0.26f, 30, 16, 52 },
 };
 
+/* the launcher's power is fixed, by ammunition (no player sets it): a shot and a heavy ball leave at their full speed (the heavy ball is
+ * the slower, heavier one), a charge is lobbed at 23 m/s so that a high arc (up to 79 degrees) lands it on a structure 20 to 54 m off */
+const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] = 0.194f };
+
 #define USER_PROJ ((void *)(intptr_t)(MAXBLK + 7))
 #define WELD_POP_SPEED 4.0f /* m/s: a welded member struck or landing this hard loses its welds */
 #define CHARGE_R 4.6f
@@ -312,7 +316,7 @@ void game_new(game *g, int level, int players, int mode) {
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->ring = g->L->range, g->orbit = g->L->orbit0;
   place_launcher(g);
-  g->yaw = 0, g->pitch = 0.12f, g->power = 0.75f;
+  g->yaw = 0, g->pitch = 0.12f, g->power = 1.0f; /* fixed: no player sets it */
   g->ammo_sel = A_SHOT;
   /* the structure's size (the camera frames it) */
   float ext = 3, top = 2, front = 0;
@@ -387,7 +391,7 @@ void game_set_orbit(game *g, float orbit) {
 }
 float game_speed(const game *g) {
   const ammo_info *a = &AMMO[g->ammo_sel];
-  return a->vmin + (a->vmax - a->vmin) * g->power;
+  return a->vmin + (a->vmax - a->vmin) * AMMO_POWER[g->ammo_sel];
 }
 t3_vec3 game_block_pos(const game *g, int i) { return cw_body3d_transform(g->b[i].body).p; }
 
@@ -629,6 +633,7 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
 }
 
 static void aim(game *g, const input *in) {
+  g->power = AMMO_POWER[g->ammo_sel]; /* (shown, never set by a player) */
   int dt = (in->right ? 1 : 0) - (in->left ? 1 : 0), dr = (in->up ? 1 : 0) - (in->down ? 1 : 0);
   g->hold_turn = dt ? g->hold_turn + 1 : 0;
   g->hold_raise = dr ? g->hold_raise + 1 : 0;
@@ -636,7 +641,10 @@ static void aim(game *g, const input *in) {
   float kt = in->turn_k > 0 ? in->turn_k : 1, kr = in->raise_k > 0 ? in->raise_k : 1;
   float rt = (0.0015f + 0.009f * fminf(1, g->hold_turn / 45.0f)) * kt, rr = (0.0015f + 0.007f * fminf(1, g->hold_raise / 45.0f)) * kr;
   g->yaw = cw_clampf(g->yaw - dt * rt, -0.75f, 0.75f);
-  g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.15f);
+  g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.4f);
+  g->yaw = cw_clampf(g->yaw - in->aim_dx, -0.75f, 0.75f);
+  g->pitch = cw_clampf(g->pitch - in->aim_dy, -0.08f, 1.4f);
+  if (in->ammo_set > 0 && in->ammo_set <= NAMMO && g->ammo[in->ammo_set - 1] > 0) g->ammo_sel = in->ammo_set - 1;
   /* the launcher's place on its circle: held, it rolls faster (a full turn round the structure in about 9 s); the aim
    * keeps its turn and raise, so it still points at the middle from the new place */
   int dorb = (in->orbit_right ? 1 : 0) - (in->orbit_left ? 1 : 0);
@@ -648,8 +656,6 @@ static void aim(game *g, const input *in) {
     if (g->orbit < -3.14159265f) g->orbit += 6.2831853f;
     place_launcher(g);
   }
-  if (in->power_up) g->power = cw_clampf(g->power + 0.008f, 0, 1);
-  if (in->power_down) g->power = cw_clampf(g->power - 0.008f, 0, 1);
   if (in->ammo_next || in->ammo_prev) {
     int d = in->ammo_next ? 1 : NAMMO - 1;
     for (int k = 0; k < NAMMO; k++) {
