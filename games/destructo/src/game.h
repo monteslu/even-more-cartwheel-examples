@@ -120,7 +120,8 @@ typedef struct input {
   bool orbit_left, orbit_right;      /* move the launcher round the structure on its circle */
   float orbit_k;                     /* analog strength of the orbit (1 for a button) */
 
-  float aim_dx, aim_dy;              /* pointer drag: turn and raise by this many radians this tick */
+  float aim_dx, aim_dy;              /* turn and raise by this many radians this tick (a pointer drag, and the sticks and the d-pad: main.c shapes them) */
+  float orbit_dx;                    /* move round the structure by this many radians this tick (positive: to the right) */
   int ammo_set;                      /* pointer tap on an ammunition icon: 1 + the kind (0: none) */
   bool fire, ammo_next, ammo_prev;
 } input;
@@ -203,6 +204,11 @@ typedef struct game {
   t3_vec3 proj_pos, proj_vel, impact;
   /* turns */
   int state, state_t;
+  bool old_feel;     /* tests only (dm set OLD_FEEL 1): the aim shut from the shot's launch to the settle's end, as it was: the feel gate's control */
+  float time_scale;  /* the world's clock after the judgement (the winning blow's slow-motion beat); 0: 1 */
+  bool ready;        /* coop and free fire: the shot has landed (or is spent) and the aim is open again while the rubble settles: the launcher turns, the ammunition changes, South fires */
+  int ready_t;       /* ticks the aim has been open under the rubble */
+  int fire_buf;      /* ticks a South press read during a flight is remembered, to fire the moment the aim opens */
   int players, mode, cur;
   player_state P[MAXP];
   int shots;         /* the team's (coop) or everyone's (versus) shots on this structure */
@@ -359,6 +365,9 @@ typedef struct bot_state {
 } bot_state;
 void bot_reset(bot_state *b);
 void bot_input(game *g, bot_state *b, input *in);
+
+/* the aim is open: the launcher answers the controls (the turn's own, or the next shot's while the last one's rubble settles) */
+static inline bool game_aiming(const game *g) { return g->state == GS_AIM || g->ready; }
 
 static inline uint32_t hash32(uint32_t x) {
   x ^= x >> 16; x *= 0x7feb352du; x ^= x >> 15; x *= 0x846ca68bu; x ^= x >> 16;

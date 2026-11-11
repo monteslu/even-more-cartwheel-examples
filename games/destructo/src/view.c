@@ -1178,8 +1178,13 @@ void view_sync(const game *g, float alpha) {
     if (V.poles->instance_color) V.poles->instance_color->version++;
     if (V.flags->instance_color) V.flags->instance_color->version++;
   }
-  /* the launcher follows the aim */
+  /* the launcher follows the aim; a shot kicks the barrel back and it runs out again, smoothly */
+  static int kick_shots = -1;
+  static float kick;
+  if (kick_shots != g->shots) { if (kick_shots >= 0 && g->shots > kick_shots) kick = 1; kick_shots = g->shots; }
+  kick *= 0.9f;
   if (cw_node_valid(V.yaw)) {
+    cw_node3d_set_position(V.barrel, (t3_vec3){ 0, g->muzzle.y, 0.42f * kick });
     cw_node3d_set_position(V.launcher, (t3_vec3){ g->muzzle.x, 0, g->muzzle.z });
     cw_node3d_set_rotation(V.launcher, (t3_vec3){ 0, g->orbit, 0 });
     cw_node3d_set_rotation(V.yaw, (t3_vec3){ 0, g->yaw, 0 });
@@ -1203,7 +1208,7 @@ void view_sync(const game *g, float alpha) {
    * shows; where it lands behind does not). It used to stop at 42% of the way, short of the structure, and a low wall
    * took shot after shot over its top from a path that seemed to run into it */
   int np = 0;
-  if (g->state == GS_AIM && !g_view_no_path) {
+  if (game_aiming(g) && !g_view_no_path) {
     if (V.front_level != g->level + 1 || V.front_orbit != g->orbit) V.front = game_front(g), V.front_orbit = g->orbit, V.front_level = g->level + 1;
     t3_vec3 out = game_out_dir(g);
     t3_vec3 d = game_aim_dir(g);
@@ -1246,19 +1251,21 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   float so = sinf(g->orbit), co = cosf(g->orbit); /* the launcher's place: out from the middle, and its right */
   float ext = g->extent, top = g->top;
   t3_vec3 mid = { 0, top * 0.42f, 0 };
+  bool aimv = false; /* the camera is in the aim view */
   if (overview) {
     float ox = ext * 1.6f + 10, oz = g->ring * 0.55f; /* to the launcher's right and out toward it */
     eye = (t3_vec3){ ox * co + oz * so, top * 0.9f + 8, -ox * so + oz * co };
     at = mid;
     k = 4;
-  } else if (g->state == GS_AIM) {
-    /* behind the launcher, a little to the right, looking down the aim over the structure */
+  } else if (g->state == GS_AIM || (g->ready && g->ready_t > 24)) {
+    aimv = g->state == GS_AIM || V.last_state == g->state;
+    /* (the aim view is back a little after the shot lands, while the rubble still settles) behind the launcher, a little to the right, looking down the aim over the structure */
     t3_vec3 m = g->muzzle;
     float tall = fmaxf(0, top - 12); /* a tall landmark: the camera rises and looks up its height */
     eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f, m.z - fwd.z * (8.5f + tall * 0.4f) + right.z * 2.6f };
     float pitch_look = cw_clampf(g->pitch, -0.05f, 0.5f);
     at = (t3_vec3){ m.x + fwd.x * g->ring, m.y + top * 0.25f + tall * 0.3f + pitch_look * 8 - 1.0f, m.z + fwd.z * g->ring };
-    k = g->state == V.last_state ? 4 : 2;
+    k = g->state == V.last_state || g->ready ? 4 : 2;
   } else if (g->state == GS_FLIGHT && g->proj_live) {
     cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);
     t3_vec3 v = g->proj_vel;
@@ -1304,7 +1311,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
-  float want_fov = g->state == GS_AIM && !overview ? 32.0f : 50.0f; /* aiming looks long down the field */
+  float want_fov = aimv && !overview ? 32.0f : 50.0f; /* aiming looks long down the field */
   V.fov += (want_fov - V.fov) * t;
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   cw_node_set(camera, "near", cw_val_float(0.2f));

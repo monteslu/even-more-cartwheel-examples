@@ -26,12 +26,14 @@ for eight seconds of its turn is away, and any pad can take that turn (the HUD s
 
 | Control | Does |
 |---|---|
-| left stick or d-pad | turn and raise the launcher (a small push is slow and fine, a full push quick) |
+| left stick or d-pad | turn and raise the launcher (a small push is slow and fine, a full push quick; a tap of the d-pad is a hair of a step, a hold picks up speed) |
 | right stick | move the launcher round the structure on its circle, so any face can be attacked |
 | south | fire, at the ammunition's own fixed power (no charging, no power control) |
 | west / east | the next / the previous ammunition: shot, heavy ball, charge |
 | north | the wide view, on and off |
 | start | pause (the layout is on the pause screen) |
+
+In co-op and free fire the aim opens again the moment the shot has struck, while the rubble is still settling: the launcher turns, the ammunition changes and South fires the next shot at once (a South press while a shot is still in the air is kept and fires the moment the aim opens). On the select screen a held direction repeats, quicker the longer it is held, and the choice wraps round.
 
 The game reads only the sticks, the d-pad and the face buttons: shoulders and triggers do nothing. With a mouse or a finger: drag to aim, tap to fire, tap an ammunition icon to pick it. Hints for a control show until it has been used once.
 

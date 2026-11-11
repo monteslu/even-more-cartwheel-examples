@@ -79,6 +79,11 @@ static struct {
   cw_node camera;
   bool overview;
   int view_dbg, ammo_dbg;
+  int32_t ready_dbg;
+  /* the visible acknowledgement of a press (cue 0: a fire press only remembered, 1: the ammunition, 2: a menu move): the frame the press was read and the frame the cue was first drawn (the feel gate reads the difference: at most one frame) */
+  int32_t cue_press[3], cue_draw[3];
+  int ammo_pop, menu_pop;
+  int32_t beat_ticks; float beat_min, beat_scale;
   /* debug fields */
   int32_t phase_dbg, level, state, shots, tleft, blocks, awake, broken, frags, booms, stars_dbg, cur, tick;
   int32_t score[MAXP];
@@ -136,6 +141,37 @@ static struct {
 } R;
 static uint32_t ticks_run;
 
+/* the feel gate's trace (tests/destructo-feel.mjs): the last 256 play ticks' aim, state and the buttons read, and the
+ * last 256 frames' camera, read back in one call after a scripted span (never a call a frame). Measurement only. */
+#define FEEL_N 256
+static struct {
+  int32_t tick[FEEL_N], state[FEEL_N], ctick[FEEL_N];
+  uint32_t flags[FEEL_N]; /* bit 0 fire read, 1 ammo read, 2 aim held, 3 orbit held, 4 view read */
+  float yaw[FEEL_N], pitch[FEEL_N], orbit[FEEL_N], cx[FEEL_N], cy[FEEL_N], cz[FEEL_N];
+  int32_t shots[FEEL_N];
+  int32_t ammo[FEEL_N];
+  uint32_t now;      /* the flags read this tick */
+  int32_t fire_press_tick, launch_tick, aim_back_tick, ignored, last_state, last_open;
+  int32_t cam_pos;
+  /* frames over 33 ms (render end to render end): when, how long, the CPU the frame took and the tick's parts */
+#define SLOW_N 48
+  int32_t slow_n, slow_tick[SLOW_N], slow_state[SLOW_N];
+  float slow_ms[SLOW_N], slow_work[SLOW_N], slow_tickms[SLOW_N], slow_world[SLOW_N], slow_post[SLOW_N], slow_pre[SLOW_N];
+  float worst_ms;
+  int32_t frames, over33;
+} F;
+static void feel_tick(const game *g) {
+  int k = g->tick % FEEL_N;
+  F.tick[k] = g->tick, F.state[k] = g->state, F.flags[k] = F.now, F.yaw[k] = g->yaw, F.pitch[k] = g->pitch, F.orbit[k] = g->orbit;
+  F.shots[k] = g->shots, F.ammo[k] = g->ammo_sel;
+  if (F.now & 1) F.fire_press_tick = g->tick;
+  if (!game_aiming(g) && (F.now & 3)) F.ignored++; /* a fire or an ammo press read while the aim was shut */
+  if (g->state == GS_FLIGHT && F.last_state == GS_AIM) F.launch_tick = g->tick;
+  if (game_aiming(g) && !F.last_open && F.launch_tick) F.aim_back_tick = g->tick;
+  F.last_open = game_aiming(g);
+  F.last_state = g->state;
+}
+
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 
 static void shell_sound(cw_shell_sound s, void *u) {
@@ -176,6 +212,11 @@ static bool old_load(void) {
 #else
   return false;
 #endif
+}
+/* free fire: ammunition without end, of every kind (a structure's own ammunition is its few shots, a heavy ball or two) */
+static void set_sandbox(void) {
+  G.g.sandbox = G.free_fire;
+  if (G.free_fire) for (int a = 0; a < NAMMO; a++) G.g.ammo[a] = CW_MAX(G.g.ammo[a], 99);
 }
 static int settle_for(int level) { return level_settle_ticks(level_get(level)); }
 
@@ -231,7 +272,7 @@ static void load_level_as(int level, bool settle) {
     t1 = perf_now();
     LD.async = 1;
   }
-  G.g.sandbox = G.free_fire;
+  set_sandbox();
 #ifdef DESTRUCTO_NO_BUDGET
   G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
 #endif
@@ -263,7 +304,7 @@ static void preview_level(int level) {
 static void preview_poll(void) {
   if (old_load() || G.g.level == G.sel || !loader_built(&NX, G.sel, G.players, G.mode)) return;
   take_next();
-  G.g.sandbox = G.free_fire;
+  set_sandbox();
   bot_reset(&G.bot);
   if (G.built) fx_clear(), view_level(&G.g), prime_effects();
   G.last_cur = 0, G.turn_banner = 0, G.result_sound = false, G.share = 0;
@@ -343,6 +384,10 @@ static void restart(void) {
 }
 static void option_changed(const char *name) {
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
+  if (!strcmp(name, "OLD_FEEL")) {
+    cw_action as[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.orb_l, G.orb_r };
+    for (size_t k = 0; k < sizeof as / sizeof as[0]; k++) cw_action_set_deadzone(as[k], opt_on("OLD_FEEL") ? 0.5f : 0.12f);
+  }
   if (!strcmp(name, "QUALITY") && opt_get("QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(opt_get("QUALITY")), 0, CW_QUALITY_COUNT - 1), true);
 }
 
@@ -364,6 +409,12 @@ static bool warmup(void *u) {
 static void cmd_orbit(int argc, const char **argv, cw_reply *r) {
   if (argc > 1 && G.have_game) game_set_orbit(&G.g, (float)atof(argv[1]));
   cw_reply_printf(r, "{\"orbit\":%.4f}", G.have_game ? G.g.orbit : 0.0f);
+}
+
+/* the debug channel: free fire on or off for the level in play (the feel gate's ammunition without end) */
+static void cmd_freefire(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1 && G.have_game) G.free_fire = atoi(argv[1]) != 0, set_sandbox();
+  cw_reply_printf(r, "{\"free_fire\":%d}", G.free_fire);
 }
 
 /* behind the pause menu: the controls, once, in one card (the sticks, the d-pad and the face buttons: nothing else is read) */
@@ -396,6 +447,7 @@ static void init(void *u) {
   opt_init(restart, option_changed);
   cop_set_options(opt_get); /* its switches (COPLANAR_CONTROL, COPLANAR_SEPARATE) are run options too: dm set ... */
   cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
+  cw_debug_command("freefire", "freefire <0|1>: free fire (ammunition without end, nothing judged) for the level in play", cmd_freefire);
   cw_debug_command("orbit", "orbit <radians>: put the launcher (and the camera) at this place on its circle round the structure", cmd_orbit);
   cw_debug_f32("load.world_ms", &LD.world), cw_debug_f32("load.build_ms", &LD.build), cw_debug_f32("load.prestress_ms", &LD.prestress), cw_debug_f32("load.sleep_ms", &LD.sleep);
   cw_debug_f32_array("load.view_parts_ms", g_view_ms, 8);
@@ -403,8 +455,20 @@ static void init(void *u) {
   cw_debug_f32("load.wait_ms", &LD.wait), cw_debug_f32("load.take_ms", &LD.take), cw_debug_f32("load.job_ms", &LD.job), cw_debug_f32("load.frame0_ms", &LD.frame0), cw_debug_f32("load.first_ms", &LD.first); cw_debug_f32("load.ready_ms", &LD.ready);
   cw_debug_i32("load.stage", (int32_t *)&g_ld_stage);
   cw_debug_i32("load.count", &LD.count), cw_debug_i32("load.async", &LD.async);
+  cw_debug_field("feel.ring_tick", F.tick, CW_DBG_I32, FEEL_N), cw_debug_field("feel.ring_state", F.state, CW_DBG_I32, FEEL_N), cw_debug_field("feel.ring_flags", F.flags, CW_DBG_U32, FEEL_N);
+  cw_debug_field("feel.ring_yaw", F.yaw, CW_DBG_F32, FEEL_N), cw_debug_field("feel.ring_pitch", F.pitch, CW_DBG_F32, FEEL_N), cw_debug_field("feel.ring_orbit", F.orbit, CW_DBG_F32, FEEL_N);
+  cw_debug_field("feel.ring_shots", F.shots, CW_DBG_I32, FEEL_N), cw_debug_field("feel.ring_ammo", F.ammo, CW_DBG_I32, FEEL_N);
+  cw_debug_field("feel.cam_tick", F.ctick, CW_DBG_I32, FEEL_N), cw_debug_field("feel.cam_x", F.cx, CW_DBG_F32, FEEL_N), cw_debug_field("feel.cam_y", F.cy, CW_DBG_F32, FEEL_N), cw_debug_field("feel.cam_z", F.cz, CW_DBG_F32, FEEL_N);
+  cw_debug_i32("feel.cam_pos", &F.cam_pos), cw_debug_i32("feel.fire_press_tick", &F.fire_press_tick), cw_debug_i32("feel.launch_tick", &F.launch_tick), cw_debug_i32("feel.aim_back_tick", &F.aim_back_tick), cw_debug_i32("feel.ignored", &F.ignored);
+  cw_debug_i32("feel.slow_n", &F.slow_n), cw_debug_i32("feel.over33", &F.over33), cw_debug_i32("feel.frames", &F.frames), cw_debug_f32("feel.worst_ms", &F.worst_ms);
+  cw_debug_field("feel.slow_tick", F.slow_tick, CW_DBG_I32, SLOW_N), cw_debug_field("feel.slow_state", F.slow_state, CW_DBG_I32, SLOW_N), cw_debug_field("feel.slow_ms", F.slow_ms, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_work", F.slow_work, CW_DBG_F32, SLOW_N);
+  cw_debug_field("feel.slow_tickms", F.slow_tickms, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_world", F.slow_world, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_post", F.slow_post, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_pre", F.slow_pre, CW_DBG_F32, SLOW_N);
+  cw_debug_field("ui.cue_press", G.cue_press, CW_DBG_I32, 3), cw_debug_field("ui.cue_draw", G.cue_draw, CW_DBG_I32, 3);
+  cw_debug_i32("beat.ticks", &G.beat_ticks), cw_debug_f32("beat.min", &G.beat_min), cw_debug_f32("beat.scale", &G.beat_scale); /* the winning blow's slow-motion beat: ticks it ran, the slowest clock, the clock now */
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
+  cw_debug_i32("menu.sel", &G.sel);
+  cw_debug_i32("game.ready", &G.ready_dbg); /* the aim is open under the settling rubble (coop and free fire) */
   cw_debug_i32("game.state", &G.state);
   cw_debug_i32("game.tick", &G.tick);
   cw_debug_i32("game.shots", &G.shots);
@@ -510,9 +574,43 @@ static float strength(cw_action a, int seat) {
   return s;
 }
 static bool ui(const char *name) { return pressed(cw_action_find(name), -1); }
+/* a menu direction: the press, then, held, a repeat after a third of a second that speeds up to every 3 ticks (a long list is
+ * a hold away, not thirty presses) */
+static int nav(const char *name, int slot) {
+  static int t[4];
+  if (!held(cw_action_find(name), -1)) { t[slot] = 0; return 0; }
+  int k = t[slot]++;
+  if (k == 0) return 1;
+  if (k < 20) return 0;
+  int gap = k < 50 ? 6 : 3;
+  return (k - 20) % gap == 0 ? 1 : 0;
+}
 
-/* a stick's push to a speed: slow for a small push (fine aim), the full speed only at the end of the throw */
-static float curve(float s) { return s <= 0 ? 0 : fmaxf(0.12f, s * s); }
+/* a stick's push to a speed: a smooth curve from nothing at the dead zone's edge, fine control near the middle and the full
+ * speed only at the end of the throw (the dead zone itself is the action's, assets/project.cwproj) */
+static float curve(float s) { return s <= 0 ? 0 : powf(fminf(1, s), 1.8f); }
+static float curve_old(float s) { return s <= 0 ? 0 : fmaxf(0.12f, s * s); }
+static bool old_feel(void) { return opt_on("OLD_FEEL"); } /* the feel gate's control: the pad as it was (tests/destructo-feel.mjs) */
+/* the launcher's speed, eased: a held direction picks up speed over a third of a second (a tap is a hair of a step, a hold is
+ * quick), and the speed follows what the stick asks with a short lag both ways (no snap on, no snap off; what a tap
+ * asked is still all moved: the lag only spreads it over a few ticks). The sim sees radians a tick (input.aim_dx). */
+#define AIM_YAW_MAX 0.0205f   /* rad a tick: 1.2 rad/s, the whole span of the launcher's turn in 1.3 s */
+#define AIM_PITCH_MAX 0.0150f
+#define ORBIT_MAX 0.0160f     /* a full turn round the structure in 6.5 s */
+typedef struct drive { int held; float v; } drive;
+static drive d_turn, d_raise, d_orbit;
+static float ease_in(int held, float start) {
+  float t = fminf(1, held / 22.0f);
+  return start + (1 - start) * t * t * (3 - 2 * t);
+}
+/* dir: -1, 0 or 1; k: the push 0..1 past the dead zone; returns this tick's move (rad) */
+static float drive_step(drive *d, int dir, float k, float vmax, float start) {
+  d->held = dir ? d->held + 1 : 0;
+  float target = dir ? dir * vmax * fminf(curve(k), ease_in(d->held, start)) : 0;
+  d->v += (target - d->v) * 0.25f;
+  if (fabsf(d->v) < 1e-6f) d->v = 0;
+  return d->v;
+}
 
 /* the pointer: a mouse, or a finger (the platform gives a touch as the left button). A press that drags aims (the
  * launcher follows the drag); one that lifts without a drag fires, or picks the ammunition icon it landed on. */
@@ -528,7 +626,7 @@ static void pointer_input(input *in) {
   if (down && !G.ptr_down) G.ptr_down = true, G.ptr_drag = false, G.ptr_x0 = G.ptr_x = x, G.ptr_y0 = G.ptr_y = y;
   else if (down) {
     if (!G.ptr_drag && hypotf(x - G.ptr_x0, y - G.ptr_y0) > 14 * cs.y / 1080.0f) G.ptr_drag = true;
-    if (G.ptr_drag) in->aim_dx = (x - G.ptr_x) * 0.0016f, in->aim_dy = (y - G.ptr_y) * 0.0016f;
+    if (G.ptr_drag) in->aim_dx += (x - G.ptr_x) * 0.0016f, in->aim_dy += (y - G.ptr_y) * 0.0016f;
     G.ptr_x = x, G.ptr_y = y;
   } else if (G.ptr_down) {
     G.ptr_down = false;
@@ -554,23 +652,37 @@ static void read_input(input *in) {
   /* the left stick or the d-pad aims, the right stick rolls the launcher round the structure; South fires at the
    * ammunition's fixed power, West and East step through the ammunition, North toggles the wide view. Nothing reads a
    * shoulder or a trigger. A small push of a stick is slow (a squared response), a full push is quick. */
-  bool l = held(G.aim_l, s), r = held(G.aim_r, s);
-  in->left = l, in->right = r, in->up = held(G.aim_u, s), in->down = held(G.aim_d, s);
-  in->turn_k = curve(fmaxf(strength(G.aim_l, s), strength(G.aim_r, s)));
-  in->orbit_left = held(G.orb_l, s), in->orbit_right = held(G.orb_r, s);
-  in->orbit_k = curve(fmaxf(strength(G.orb_l, s), strength(G.orb_r, s)));
-  in->raise_k = curve(fmaxf(strength(G.aim_u, s), strength(G.aim_d, s)));
+  bool l = held(G.aim_l, s), r = held(G.aim_r, s), u_ = held(G.aim_u, s), d_ = held(G.aim_d, s), ol = held(G.orb_l, s), orr = held(G.orb_r, s);
+  /* the sim's own held-key aiming is for the bot; a person's pad goes through the eased drive (aim_dx, aim_dy, orbit_dx) */
+  if (old_feel()) {
+    in->left = l, in->right = r, in->up = u_, in->down = d_;
+    in->turn_k = curve_old(fmaxf(strength(G.aim_l, s), strength(G.aim_r, s)));
+    in->orbit_left = ol, in->orbit_right = orr;
+    in->orbit_k = curve_old(fmaxf(strength(G.orb_l, s), strength(G.orb_r, s)));
+    in->raise_k = curve_old(fmaxf(strength(G.aim_u, s), strength(G.aim_d, s)));
+  } else {
+    int dt_ = (r ? 1 : 0) - (l ? 1 : 0), dr_ = (u_ ? 1 : 0) - (d_ ? 1 : 0), do_ = (orr ? 1 : 0) - (ol ? 1 : 0);
+    float kt = dt_ > 0 ? strength(G.aim_r, s) : strength(G.aim_l, s), kr = dr_ > 0 ? strength(G.aim_u, s) : strength(G.aim_d, s), ko = do_ > 0 ? strength(G.orb_r, s) : strength(G.orb_l, s);
+    in->aim_dx = drive_step(&d_turn, dt_, kt, AIM_YAW_MAX, 0.06f);
+    in->aim_dy = -drive_step(&d_raise, dr_, kr, AIM_PITCH_MAX, 0.06f);
+    in->orbit_dx = drive_step(&d_orbit, do_, ko, ORBIT_MAX, 0.2f);
+  }
   in->fire = pressed(G.fire, s);
   in->ammo_next = pressed(G.ammo, s);
   in->ammo_prev = pressed(G.ammo_p, s);
   if (pressed(G.view, s)) G.overview = !G.overview;
   G.view_dbg = G.overview;
   pointer_input(in);
-  if (in->left || in->right || in->up || in->down || in->aim_dx != 0 || in->aim_dy != 0) G.used |= 1u << H_AIM;
+  if (l || r || u_ || d_ || fabsf(in->aim_dx) > 1e-4f || fabsf(in->aim_dy) > 1e-4f) G.used |= 1u << H_AIM;
   if (in->fire) G.used |= 1u << H_FIRE;
-  if (in->orbit_left || in->orbit_right) G.used |= 1u << H_ORBIT;
+  if (ol || orr) G.used |= 1u << H_ORBIT;
   if (in->ammo_next || in->ammo_prev || in->ammo_set) G.used |= 1u << H_AMMO;
   if (pressed(G.view, s)) G.used |= 1u << H_VIEW;
+  if (!old_feel()) {
+    if (in->fire && !game_aiming(&G.g) && G.g.state == GS_FLIGHT) G.cue_press[0] = (int32_t)R.frame + 1, G.cue_draw[0] = 0; /* remembered, not fired: the cue says so */
+    if (in->ammo_next || in->ammo_prev || in->ammo_set) G.ammo_pop = 8, G.cue_press[1] = (int32_t)R.frame + 1, G.cue_draw[1] = 0;
+  }
+  F.now = (in->fire ? 1u : 0) | (in->ammo_next || in->ammo_prev || in->ammo_set ? 2u : 0) | (l || r || u_ || d_ ? 4u : 0) | (ol || orr ? 8u : 0) | (pressed(G.view, s) ? 16u : 0);
 #endif
 }
 
@@ -578,6 +690,14 @@ static int unlocked(void) {
   int best = -1;
   for (int i = 0; i < NLEVELS; i++) if (save()->stars[i]) best = i;
   return CW_MIN(NLEVELS - 1, best + 3);
+}
+
+/* the clock's dip: in over 6 ticks, 12 at a third, out over 6 */
+static float beat_scale(int t) {
+  float k = fminf(fminf(1, t / 6.0f), fminf(1, (24 - t) / 6.0f));
+  if (k < 0) k = 0;
+  k = k * k * (3 - 2 * k);
+  return 1 - 0.65f * k;
 }
 
 static void level_done(void) {
@@ -608,12 +728,18 @@ static void fixed_update(void *u, double dt) {
     LD.ready = (float)(perf_now() - t_accept);
   }
   G.phase_t++;
+  if (G.ammo_pop > 0) G.ammo_pop--;
+  if (G.menu_pop > 0) G.menu_pop--;
   switch (G.phase) {
   case PH_SELECT: {
     preview_poll();
-    int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
+    int dx = old_feel() ? ui("ui_right") - ui("ui_left") : nav("ui_right", 0) - nav("ui_left", 1), dy = old_feel() ? ui("ui_down") - ui("ui_up") : nav("ui_down", 2) - nav("ui_up", 3);
+    int top = G.free_fire ? NLEVELS - 1 : unlocked(), count = top + 1;
     int n = G.sel + dx + dy * SEL_COLS;
-    if ((dx || dy) && n >= 0 && n <= (G.free_fire ? NLEVELS - 1 : unlocked())) G.sel = n, sound_menu(0), preview_level(G.sel);
+    if (dx || dy) { /* the choice wraps round the open structures (a hold runs along them: nav) */
+      n = old_feel() ? (n >= 0 && n < count ? n : G.sel) : ((n % count) + count) % count;
+      if (n != G.sel) { G.sel = n, sound_menu(0), preview_level(G.sel); if (!old_feel()) G.menu_pop = 7, G.cue_press[2] = (int32_t)R.frame + 1, G.cue_draw[2] = 0; }
+    }
     if (pressed(G.ammo, -1) && G.players > 1) G.mode = (G.mode + 1) % 3, sound_menu(0);
     if (G.players < 2 && G.mode == MODE_PARTY) G.mode = MODE_COOP;
     if (pressed(G.view, -1)) {
@@ -643,9 +769,11 @@ static void fixed_update(void *u, double dt) {
 #endif
     input in;
     seat_watch();
+    G.g.old_feel = old_feel();
     read_input(&in);
     replay_log(&G.g, &in);
     game_step(&G.g, &in);
+    feel_tick(&G.g);
     replay_after_step(&G.g);
     /* the replay's shadow catches up while the live world is quiet (aiming, or a settled field) */
     replay_follow(&G.g, G.g.awake_now < 150 ? 3.0 : 0.0);
@@ -679,6 +807,11 @@ static void fixed_update(void *u, double dt) {
     }
     /* the world goes on settling behind the card; the replay's shadow gets to the last shot's start */
     input none = { 0 };
+    /* the winning blow: the world runs at a third for a beat (0.4 s), eased in and out, input never held (the card's keys work throughout) */
+    if (G.phase_t == 1) G.beat_ticks = 0, G.beat_min = 0;
+    G.g.time_scale = G.g.state == GS_WON && !old_feel() && G.phase_t < 24 ? beat_scale(G.phase_t) : 0;
+    if (G.g.time_scale > 0 && G.g.time_scale < 0.99f) { G.beat_ticks++; if (G.beat_min == 0 || G.g.time_scale < G.beat_min) G.beat_min = G.g.time_scale; }
+    G.beat_scale = G.g.time_scale > 0 ? G.g.time_scale : 1;
     game_step(&G.g, &none);
     fx_events(&G.g, G.g.cur);
     sound_events(&G.g, cw_node3d_global_position(G.camera));
@@ -716,7 +849,7 @@ static void fixed_update(void *u, double dt) {
   const game *g = &G.g;
   G.phase_dbg = G.phase, G.level = g->level, G.state = g->state, G.tick = g->tick, G.shots = g->shots, G.tleft = g->tgt_left;
   G.blocks = g->nalive, G.awake = game_awake(g), G.broken = g->broken, G.frags = g->fragments, G.booms = g->booms, G.stars_dbg = game_stars(g);
-  G.cur = g->cur, G.hash = g->hash;
+  G.cur = g->cur, G.hash = g->hash, G.ready_dbg = g->ready;
   G.judge_lag = g->judge_tick && g->win_tick ? g->judge_tick - g->win_tick : 0;
   G.result = game_result(g), G.judged_awake = g->judged_awake;
   if (G.phase == PH_RESULT) G.share = g->judged_share;
@@ -833,14 +966,26 @@ static void hud_play(cw_vec2 cs, float u) {
     c.a = a;
     text(b, cs.x * 0.5f, cs.y * 0.18f, 64 * u, c, CW_ALIGN_CENTER);
   }
+  /* a press that is only remembered (South in the air): at once a ring and "FIRE QUEUED" over the cannon's end of the screen */
+  if (g->fire_buf > 0 && !old_feel()) {
+    float pulse = 0.5f + 0.5f * sinf((float)G.phase_t * 0.35f);
+    cw_color qc = rgba(1, 0.85f, 0.35f, 0.75f + 0.25f * pulse);
+    text("FIRE QUEUED", cs.x * 0.5f, cs.y - 150 * u, 34 * u, qc, CW_ALIGN_CENTER);
+    cw_r2d_round_rect_lines(cw_rect_make(cs.x * 0.5f - 130 * u, cs.y - 160 * u, 260 * u, 58 * u), 14 * u, 3 * u, 6, qc);
+    if (!G.cue_draw[0]) G.cue_draw[0] = (int32_t)R.frame + 1;
+  }
   /* the ammunition: three icons low in the corner (a tap picks one), the chosen one lit with its count */
-  if (g->state == GS_AIM) {
+  if (game_aiming(g)) {
     float cw = 190 * u, ch = 56 * u, gap = 10 * u, x0 = 28 * u, y0 = cs.y - ch - 28 * u;
     for (int a = 0; a < NAMMO; a++) {
       float cx = x0 + a * (cw + gap);
       bool sel = a == g->ammo_sel;
       G.ammo_rect[a] = cw_rect_make(cx, y0, cw, ch);
-      cw_r2d_round_rect(G.ammo_rect[a], 10 * u, 6, sel ? rgba(0.95f, 0.62f, 0.2f, 0.92f) : rgba(0.05f, 0.06f, 0.1f, 0.7f));
+      float pop = sel ? G.ammo_pop / 8.0f : 0; /* a pressed state: the chosen one swells a little and brightens, and settles */
+      cw_rect rr = G.ammo_rect[a];
+      rr.x -= pop * 7 * u, rr.y -= pop * 7 * u, rr.w += pop * 14 * u, rr.h += pop * 14 * u;
+      cw_r2d_round_rect(rr, 10 * u, 6, sel ? rgba(0.95f + 0.05f * pop, 0.62f + 0.3f * pop, 0.2f + 0.5f * pop, 0.92f) : rgba(0.05f, 0.06f, 0.1f, 0.7f));
+      if (sel && G.ammo_pop > 0 && !G.cue_draw[1]) G.cue_draw[1] = (int32_t)R.frame + 1;
       if (plain) snprintf(b, sizeof b, "%s", AMMO[a].name);
       else snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
       text(b, cx + cw * 0.5f, y0 + 10 * u, 30 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
@@ -935,7 +1080,9 @@ static void hud_select(cw_vec2 cs, float u) {
   for (int i = first * SEL_COLS; i < NLEVELS && i < (first + SEL_ROWS) * SEL_COLS; i++) {
     float x = gx + (i % SEL_COLS) * (cw + gap), y = gy + (i / SEL_COLS - first) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
-    cw_r2d_round_rect(cw_rect_make(x, y, cw, ch), 12 * u, 6, sel ? rgba(0.95f, 0.6f, 0.2f, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f));
+    float mp = sel ? G.menu_pop / 7.0f : 0; /* a pressed state: the chosen tile swells and lights, then settles */
+    if (sel && G.menu_pop > 0 && !G.cue_draw[2]) G.cue_draw[2] = (int32_t)R.frame + 1;
+    cw_r2d_round_rect(cw_rect_make(x - mp * 6 * u, y - mp * 6 * u, cw + mp * 12 * u, ch + mp * 12 * u), 12 * u, 6, sel ? rgba(0.95f + 0.05f * mp, 0.6f + 0.3f * mp, 0.2f + 0.5f * mp, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f));
     char b[64];
     cw_color ink = sel ? rgba(0.08f, 0.05f, 0.02f, 1) : lock ? rgba(0.78f, 0.78f, 0.82f, 1) : WHITE;
     snprintf(b, sizeof b, "%d", i + 1);
@@ -994,6 +1141,11 @@ static void render(void *u, double alpha) {
     } else {
       view_sync(&G.g, a);
       view_camera(&G.g, G.camera, (float)w / (float)h, dt, G.overview || G.phase == PH_SELECT, a);
+      if (G.phase == PH_PLAY) {
+        t3_vec3 e = cw_node3d_global_position(G.camera);
+        int k = F.cam_pos++ % FEEL_N;
+        F.ctick[k] = G.g.tick, F.cx[k] = e.x, F.cy[k] = e.y, F.cz[k] = e.z;
+      }
     }
     fx_update(dt);
     G.instances = view_get_stats().instances;
@@ -1036,7 +1188,21 @@ static void render(void *u, double alpha) {
   }
   cw_shell_draw();
   {
+    double last_ = P.last_end;
     double w_ = perf_frame_end();
+    if (playing && last_ > 0) {
+      float gap = (float)(P.last_end - last_);
+      F.frames++;
+      if ((float)w_ > F.worst_ms) F.worst_ms = (float)w_; /* the CPU a frame took (the gap between frames also holds the debug host's own waits) */
+      if (w_ > 16.0) F.over33++;
+      if (w_ > 6.0) {
+        if (F.slow_n < SLOW_N) {
+          int k = F.slow_n++;
+          F.slow_tick[k] = G.g.tick, F.slow_state[k] = G.phase * 10 + G.g.state, F.slow_ms[k] = gap, F.slow_work[k] = (float)w_;
+          F.slow_tickms[k] = G.g.tick_ms, F.slow_world[k] = G.g.world_ms, F.slow_post[k] = G.g.post_ms, F.slow_pre[k] = G.g.pre_ms;
+        }
+      }
+    }
     R.win_work += w_;
     if (LD.pending == 2) LD.frame0 = (float)w_, LD.pending = 1; /* the frame that made the level, then the next */
     else if (LD.pending == 1) LD.first = (float)w_, LD.pending = 0;

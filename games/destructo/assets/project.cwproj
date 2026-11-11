@@ -5,10 +5,10 @@ main_scene = scenes/main.cwscene
 app_id = org.cartwheel.destructo
 ; the whole game is the sticks, the d-pad and the face buttons (no shoulders, no triggers)
 ; aiming: the d-pad or the left stick turns and raises the launcher
-input.aim_left = key:left, key:a, pad:left, axis:lx-@0.25
-input.aim_right = key:right, key:d, pad:right, axis:lx+@0.25
-input.aim_up = key:up, key:w, pad:up, axis:ly-@0.25
-input.aim_down = key:down, key:s, pad:down, axis:ly+@0.25
+input.aim_left = key:left, key:a, pad:left, axis:lx-@0.12, deadzone:0.12
+input.aim_right = key:right, key:d, pad:right, axis:lx+@0.12, deadzone:0.12
+input.aim_up = key:up, key:w, pad:up, axis:ly-@0.12, deadzone:0.12
+input.aim_down = key:down, key:s, pad:down, axis:ly+@0.12, deadzone:0.12
 input.fire = key:space, key:enter, pad:south
 ; the ammunition: West the next, East the one before (power is fixed per ammunition: no power control)
 input.ammo = key:tab, key:f, pad:west
@@ -16,8 +16,8 @@ input.ammo_prev = key:r, pad:east
 ; North: the wide view, on and off
 input.view = key:v, pad:north
 ; moving round the structure: the right stick (or Z / C)
-input.orbit_left = key:z, axis:rx-@0.3
-input.orbit_right = key:c, axis:rx+@0.3
+input.orbit_left = key:z, axis:rx-@0.12, deadzone:0.12
+input.orbit_right = key:c, axis:rx+@0.12, deadzone:0.12
 render.width = 1280
 render.height = 720
 render.msaa = 1

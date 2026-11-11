@@ -749,6 +749,12 @@ static void aim(game *g, const input *in) {
   g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.5f);
   g->yaw = cw_clampf(g->yaw - in->aim_dx, -0.75f, 0.75f);
   g->pitch = cw_clampf(g->pitch - in->aim_dy, -0.08f, 1.5f);
+  if (in->orbit_dx != 0) {
+    g->orbit += in->orbit_dx;
+    if (g->orbit > 3.14159265f) g->orbit -= 6.2831853f;
+    if (g->orbit < -3.14159265f) g->orbit += 6.2831853f;
+    place_launcher(g);
+  }
   if (in->ammo_set > 0 && in->ammo_set <= NAMMO && g->ammo[in->ammo_set - 1] > 0) g->ammo_sel = in->ammo_set - 1;
   /* the launcher's place on its circle: held, it rolls faster (a full turn round the structure in about 9 s); the aim
    * keeps its turn and raise, so it still points at the middle from the new place */
@@ -856,13 +862,23 @@ void game_step(game *g, const input *in) {
   double t_start = sim_clock();
   g->nev = 0;
   g->tick++, g->state_t++;
-  if (g->state == GS_AIM) {
+  /* coop and free fire: a press is never lost to the rubble. Once the shot has landed the aim is open again while the world
+   * settles (the launcher turns, the ammunition changes, South fires the next shot at once); a press while the shot is
+   * still in the air is remembered for a second and a half and fires the moment the aim opens */
+  g->ready = !g->old_feel && (g->mode == MODE_COOP || g->sandbox) && ((g->state == GS_SETTLE) || (g->state == GS_FLIGHT && (!g->proj_live || g->proj_hit_tick >= 0 || g->proj_burst)));
+  g->ready_t = g->ready ? g->ready_t + 1 : 0;
+  if (g->state == GS_AIM || g->ready) {
     aim(g, in);
-    if (in->fire && g->ammo[g->ammo_sel] > 0) game_fire(g);
-  }
+    if ((in->fire || g->fire_buf > 0) && g->ammo[g->ammo_sel] > 0) {
+      if (g->proj_live) proj_end(g); /* the last ball is spent */
+      game_fire(g);
+      g->fire_buf = 0;
+    }
+  } else if (!g->old_feel && g->state == GS_FLIGHT && in->fire) g->fire_buf = 90;
+  if (g->fire_buf > 0 && g->state != GS_AIM && !g->ready) g->fire_buf--;
   t3_vec3 pv = g->proj_live ? cw_body3d_velocity(g->proj) : v3(0, 0, 0);
   double t_pre = sim_clock();
-  cw_world3d_step(g->w, TICK);
+  cw_world3d_step(g->w, TICK * (g->time_scale > 0 ? g->time_scale : 1.0f));
   double t_world = sim_clock();
   cw_phys_stats st = cw_world3d_stats(g->w);
   g->step_ms = st.step_ms;

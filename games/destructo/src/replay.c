@@ -17,6 +17,7 @@ static struct {
   int nlog, at;           /* entries logged; the next one the shadow takes */
   bool overflow, have;
   int fire_tick;          /* the tick the last shot was fired on (0: none yet) */
+  int shots;              /* the live game's shots so far */
   int judged_tick;        /* the tick the live game was judged on (0: not yet) */
   uint32_t judged_hash;
   int last_state;
@@ -54,7 +55,7 @@ void replay_reset(int level, int players, int mode, bool no_budget, int settle_t
   R.r.no_budget = no_budget;
   R.settle_left = settle_ticks;
   R.nlog = R.at = 0, R.overflow = false, R.have = true;
-  R.fire_tick = R.judged_tick = 0, R.judged_hash = 0;
+  R.fire_tick = R.judged_tick = 0, R.judged_hash = 0, R.shots = 0;
   R.last_state = GS_AIM, R.running = false, R.sub = 0, R.match = -1, R.hash = 0, R.start_gap = 0;
 }
 
@@ -64,7 +65,7 @@ void replay_reset_async(int level, int players, int mode, bool no_budget, int se
   R.pending = true, R.no_budget = no_budget, R.settle_left = 0;
   R.want_level = level, R.want_players = players, R.want_mode = mode;
   R.nlog = R.at = 0, R.overflow = false, R.have = true;
-  R.fire_tick = R.judged_tick = 0, R.judged_hash = 0;
+  R.fire_tick = R.judged_tick = 0, R.judged_hash = 0, R.shots = 0;
   R.last_state = GS_AIM, R.running = false, R.sub = 0, R.match = -1, R.hash = 0, R.start_gap = 0;
   loader_request(&SH, level, players, mode, settle_ticks);
 }
@@ -77,7 +78,7 @@ void replay_log(const game *live, const input *in) {
 }
 
 void replay_after_step(const game *live) {
-  if (live->state == GS_FLIGHT && R.last_state == GS_AIM) R.fire_tick = live->tick;
+  if (live->shots != R.shots) R.shots = live->shots, R.fire_tick = live->tick;
   if (game_over(live) && !R.judged_tick) {
     shadow_ok(true);
     R.judged_tick = live->tick, R.judged_hash = game_state_hash(live);
