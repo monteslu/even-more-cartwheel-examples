@@ -42,6 +42,7 @@ const ammo_info AMMO[NAMMO] = {
 };
 
 #define USER_PROJ ((void *)(intptr_t)(MAXBLK + 7))
+#define WELD_POP_SPEED 4.0f /* m/s: a welded member struck or landing this hard loses its welds */
 #define CHARGE_R 4.6f
 #define CHARGE_IMPULSE 5200.0f
 #define CHARGE_ENERGY 260000.0f
@@ -280,9 +281,10 @@ void game_new(game *g, int level, int players, int mode) {
   g->L = level_get(level);
   g->players = players < 1 ? 1 : players > MAXP ? MAXP : players;
   g->mode = mode;
+  g->old_welds = opt_on("OLD_WELDS");
   cw_world3d_def wd = cw_world3d_default_def();
   wd.gravity = v3(0, -GRAV, 0);
-  wd.substeps = 4;
+  wd.substeps = opt_get("SUBSTEPS") ? atoi(opt_get("SUBSTEPS")) : 4;
   wd.hit_speed = 1.2f;
   wd.restitution_threshold = 2.0f;
   wd.layers[LAYER_GROUND] = "ground", wd.layers[LAYER_BLOCK] = "block", wd.layers[LAYER_PROJ] = "shot";
@@ -304,6 +306,7 @@ void game_new(game *g, int level, int players, int mode) {
   cw_shape3d_box(ground, &sd, v3(250, 1, 250), cw_xform3_identity());
   g->rng = g->L->seed;
   level_build(g, g->L);
+  game_prestress(g);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->ring = g->L->range, g->orbit = g->L->orbit0;
@@ -321,6 +324,7 @@ void game_new(game *g, int level, int players, int mode) {
     if (p.y + g->b[i].half.y > top) top = p.y + g->b[i].half.y;
   }
   g->extent = ext, g->top = top, g->front = front;
+  if (g->L->kind == K_LANDMARK && !g->old_welds && !(opt_get("SLEEP0") && !opt_on("SLEEP0"))) game_sleep_all(g);
   g->state = GS_AIM;
 }
 
@@ -577,6 +581,12 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
     float mb = cw_body3d_valid(h->body_b) ? cw_body3d_mass(h->body_b) : 0;
     float mu = ma > 0 && mb > 0 ? ma * mb / (ma + mb) : ma > 0 ? ma : mb;
     float en = 0.5f * mu * h->speed * h->speed;
+    if (h->speed >= WELD_POP_SPEED && !g->old_welds && opt_on("POP")) { /* off by default (dm set POP 1): the Statue of Liberty and the Moai level then cost more than par shots */ /* a hard landing or strike: the welds of what is hit let go (steel snaps at its joints, a landing chunk comes apart) */
+      int hops = 1 + (int)((h->speed - WELD_POP_SPEED) * 0.5f);
+      if (hops > 5) hops = 5;
+      if (ia >= 0) game_pop_welds(g, ia, hops);
+      if (ib >= 0) game_pop_welds(g, ib, hops);
+    }
     if (pa || pb) {
       if (g->proj_hit_tick < 0) g->proj_hit_tick = g->tick, g->impact = h->point;
       if (g->proj_kind == A_CHARGE && g->charge_armed && g->proj_ticks > 2) {
@@ -836,3 +846,19 @@ void game_step(game *g, const input *in) {
   g->tick_ms = (float)((t_end - t_start) * 1000), g->world_ms = (float)((t_world - t_pre) * 1000);
   g->pre_ms = (float)((t_pre - t_start) * 1000), g->post_ms = (float)((t_end - t_world) * 1000);
 }
+
+/* a structure at rest starts asleep: contacts are made with gravity off for two steps (islands form), then every body is put to sleep, so nothing drifts before a hit */
+void game_sleep_all(game *g) {
+  static cw_xform3 D[MAXBLK];
+  for (int i = 0; i < g->nb; i++) D[i] = g->b[i].alive ? cw_body3d_transform(g->b[i].body) : (cw_xform3){ { 0, 0, 0 }, { 0, 0, 0, 1 } };
+  for (int t = 0; t < 2; t++) cw_world3d_step(g->w, TICK); /* contacts are made and the islands form */
+  for (int i = 0; i < g->nb; i++) {
+    if (!g->b[i].alive) continue;
+    b3BodyId rb = cw_body3d_raw(g->b[i].body);
+    cw_body3d_set_transform(g->b[i].body, D[i]);
+    cw_body3d_set_velocity(g->b[i].body, v3(0, 0, 0)), cw_body3d_set_angular_velocity(g->b[i].body, v3(0, 0, 0));
+    if (b3Body_IsAwake(rb)) b3Body_SetAwake(rb, false);
+  }
+}
+
+void game_charge_at(game *g, t3_vec3 at) { detonate(g, at); }

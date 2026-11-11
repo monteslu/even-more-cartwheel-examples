@@ -32,6 +32,8 @@
 #include "cartwheel/jobs.h"
 #include "game.h"
 #include "replay.h"
+#include "opts.h"
+#include "box3d/box3d.h"
 
 static game G;
 
@@ -279,6 +281,7 @@ static void resting(game *g, bool *sup) {
  * under it; and one put in the air as built), island (two blocks welded to each other and to nothing, put there the
  * same way: welds alone hold nothing up), solve (the bot aiming 150 milliradians off) */
 static void landmark_check(int level, const char *control) {
+  if (control && !strcmp(control, "oldwelds")) opt_set("OLD_WELDS", "1"); /* the control: the welds as they were */
   bool c_float = control && !strcmp(control, "float"), c_solve = control && !strcmp(control, "solve"), c_island = control && !strcmp(control, "island");
   game_new(&G, level, 1, MODE_COOP);
   if (c_float) game_add_block(&G, M_STONE, (t3_vec3){ 0.3f, G.top + 2.0f, 0.2f }, (t3_vec3){ 0.3f, 0.15f, 0.15f }, 0);
@@ -314,6 +317,18 @@ static void landmark_check(int level, const char *control) {
   t3_vec3 moved_from = moved_i >= 0 ? p0[moved_i] : (t3_vec3){ 0, 0, 0 }, moved_half = moved_i >= 0 ? G.b[moved_i].half : (t3_vec3){ 0, 0, 0 };
   int moved_mat = moved_i >= 0 ? G.b[moved_i].mat : -1;
   int blocks = G.nalive;
+  /* a hit wakes the whole structure: wake it now and let it settle again; nothing may have moved more than 20 mm from where it was built */
+  float woken = 0;
+  if (!c_float && !c_island) {
+    for (int i = 0; i < G.nb; i++) if (G.b[i].alive) b3Body_SetAwake(cw_body3d_raw(G.b[i].body), true);
+    game_settle(&G, level_settle_ticks(G.L));
+    for (int i = 0; i < G.nb; i++) {
+      if (!G.b[i].alive || i >= MAXBLK || (p0[i].x == 0 && p0[i].y == 0 && p0[i].z == 0)) continue;
+      t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
+      float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z));
+      if (d > woken) woken = d;
+    }
+  }
   /* the bot from the start */
   game_new(&G, level, 1, MODE_COOP);
   game_settle(&G, level_settle_ticks(G.L));
@@ -328,9 +343,153 @@ static void landmark_check(int level, const char *control) {
     game_step(&G, &in);
     ticks++;
   }
-  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"welded\":%s,\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
-         level, G.L->name, control ? control : "", G.nweld > 0 ? "true" : "false", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
+  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"welded\":%s,\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"woken_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
+         level, G.L->name, control ? control : "", G.nweld > 0 ? "true" : "false", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, woken * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
   fflush(stdout);
+}
+
+
+/* --rigid [--opt NAME=VALUE]... [--charge] [level ...]: how rigid a level stands and how it comes apart.
+ *   settle   each placed block's move over the level's settle, from where it was built (max and how many past 20 mm)
+ *   charge   (with --charge) a charge at the foot of the structure, then at 0.5 1 2 4 6 8 s: blocks alive, the largest
+ *            clump (blocks joined by an unbroken weld, or touching and moving together), clumps over 6 blocks, the
+ *            share of blocks in a clump of 2 or more, welds left, awake bodies; and for the first 1.5 s the biggest
+ *            move of a block outside the blast (4.6 m + 0.3) that still has every weld it was built with: that move
+ *            is the structure giving before the blast reaches it (0 when it is rigid) */
+static bool getenv_series(void) { return opt_on("SERIES"); }
+static t3_quat qm(t3_quat a, t3_quat b) { return (t3_quat){ a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z }; }
+static t3_vec3 qr(t3_quat q, t3_vec3 v) { t3_vec3 u = { q.x, q.y, q.z }, c = { u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x }, t = { 2 * c.x, 2 * c.y, 2 * c.z }, c2 = { u.y * t.z - u.z * t.y, u.z * t.x - u.x * t.z, u.x * t.y - u.y * t.x }; return (t3_vec3){ v.x + q.w * t.x + c2.x, v.y + q.w * t.y + c2.y, v.z + q.w * t.z + c2.z }; }
+static int uf[MAXBLK];
+static int ufind(int a) { while (uf[a] != a) a = uf[a] = uf[uf[a]]; return a; }
+static void uunion(int a, int b) { a = ufind(a), b = ufind(b); if (a != b) uf[a] = b; }
+static void clumps(game *g, int *largest, int *over6, float *attached, int *nalive, int *welds_left) {
+  static int cnt[MAXBLK];
+  for (int i = 0; i < g->nb; i++) uf[i] = i, cnt[i] = 0;
+  int wl = 0;
+  for (int w = 0; w < g->nweld; w++) {
+    int a = g->weld[w].a, b = g->weld[w].b;
+    if (!cw_joint3d_valid(g->weld[w].j)) continue;
+    wl++;
+    if (g->b[a].alive && g->b[b].alive) uunion(a, b);
+  }
+  for (int i = 0; i < g->nb; i++) {
+    if (!g->b[i].alive) continue;
+    t3_vec3 vi = cw_body3d_velocity(g->b[i].body);
+    float si = sqrtf(vi.x * vi.x + vi.y * vi.y + vi.z * vi.z);
+    if (si < 0.5f) continue;
+    cw_contact3d c[16];
+    int n = cw_body3d_contacts(g->b[i].body, c, 16);
+    for (int k = 0; k < n; k++) {
+      int j = block_of(g, c[k].other);
+      if (j < 0 || !g->b[j].alive) continue;
+      t3_vec3 vj = cw_body3d_velocity(g->b[j].body);
+      float sj = sqrtf(vj.x * vj.x + vj.y * vj.y + vj.z * vj.z), dv = sqrtf((vi.x - vj.x) * (vi.x - vj.x) + (vi.y - vj.y) * (vi.y - vj.y) + (vi.z - vj.z) * (vi.z - vj.z));
+      if (sj >= 0.5f && dv < 0.3f) uunion(i, j);
+    }
+  }
+  int na = 0;
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive) cnt[ufind(i)]++, na++;
+  int big = 0, o6 = 0, att = 0;
+  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && ufind(i) == i) { if (cnt[i] > big) big = cnt[i]; if (cnt[i] > 6) o6++; if (cnt[i] >= 2) att += cnt[i]; }
+  *largest = big, *over6 = o6, *attached = na ? (float)att / na : 0, *nalive = na, *welds_left = wl;
+}
+static void rigid_check(int level, bool charge) {
+  game_new(&G, level, 1, MODE_COOP);
+  static t3_vec3 p0[MAXBLK];
+  static uint8_t welds0[MAXBLK];
+  memset(welds0, 0, sizeof welds0);
+  for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 };
+  for (int w = 0; w < G.nweld; w++) welds0[G.weld[w].a]++, welds0[G.weld[w].b]++;
+  int nw0 = G.nweld, blocks0 = G.nalive;
+  if (opt_on("WAKE")) for (int i = 0; i < G.nb; i++) if (G.b[i].alive) b3Body_SetAwake(cw_body3d_raw(G.b[i].body), true); /* a hit wakes the whole structure: measure what it does awake */
+  {
+    int stt = G.state;
+    G.state = GS_SETTLE;
+    for (int t = 1; t <= level_settle_ticks(G.L); t++) {
+      cw_world3d_step(G.w, TICK);
+      if (t % 30 == 0 && getenv_series()) {
+        double sb = 0, st2 = 0, sa = 0, mm = 0; int nb2 = 0, nt = 0, na2 = 0;
+        for (int i = 0; i < G.nb; i++) {
+          if (!G.b[i].alive) continue;
+          t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
+          float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z));
+          sa += d, na2++; if (d > mm) mm = d;
+          if (p0[i].y < 1.0f) sb += d, nb2++;
+          if (p0[i].y > G.top * 0.8f) st2 += d, nt++;
+        }
+        printf("{\"level\":%d,\"phase\":\"series\",\"tick\":%d,\"max_mm\":%.1f,\"mean_mm\":%.1f,\"base_mm\":%.1f,\"top_mm\":%.1f,\"awake\":%d}\n", level, t, mm * 1000, na2 ? sa / na2 * 1000 : 0, nb2 ? sb / nb2 * 1000 : 0, nt ? st2 / nt * 1000 : 0, game_awake(&G));
+      }
+    }
+    G.state = stt;
+    game_settle_finish(&G);
+  }
+  float mx = 0, mean = 0; int over20 = 0, worst = -1, n = 0;
+  for (int i = 0; i < G.nb; i++) {
+    if (!G.b[i].alive) continue;
+    t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
+    float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z));
+    mean += d, n++;
+    if (d > 0.02f) over20++;
+    if (d > mx) mx = d, worst = i;
+  }
+  printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"settle\",\"blocks\":%d,\"welds\":%d,\"settle_max_mm\":%.1f,\"settle_mean_mm\":%.2f,\"over20mm\":%d,\"worst_y\":%.2f,\"worst_mat\":%d,\"awake\":%d,\"height\":%.2f}\n",
+         level, G.L->name, blocks0, nw0, mx * 1000, n ? mean / n * 1000 : 0, over20, worst >= 0 ? p0[worst].y : 0, worst >= 0 ? G.b[worst].mat : -1, game_awake(&G), G.top);
+  fflush(stdout);
+  if (!charge) return;
+  static t3_vec3 q0[MAXBLK];
+  static t3_quat r0[MAXBLK];
+  static float dist[MAXBLK];
+  float cx = 0, cz = 0; int cn = 0;
+  for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].home.y < 1.5f) cx += G.b[i].home.x, cz += G.b[i].home.z, cn++;
+  t3_vec3 at = { cn ? cx / cn : 0, 0.5f, cn ? cz / cn : 0 };
+  int base_n = 0;
+  static uint8_t id0[MAXBLK];
+  for (int i = 0; i < G.nb; i++) { q0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).p : (t3_vec3){ 0, 0, 0 }; r0[i] = G.b[i].alive ? cw_body3d_transform(G.b[i].body).q : (t3_quat){ 0, 0, 0, 1 }; dist[i] = sqrtf((q0[i].x - at.x) * (q0[i].x - at.x) + (q0[i].y - at.y) * (q0[i].y - at.y) + (q0[i].z - at.z) * (q0[i].z - at.z)); id0[i] = G.b[i].alive; if (G.b[i].alive) base_n++; }
+  G.state = GS_SETTLE;
+  game_charge_at(&G, at);
+  input none = { 0 };
+  float rig = 0; int rig_i = -1, rig_over50 = 0; static bool rig_seen[MAXBLK];
+  memset(rig_seen, 0, sizeof rig_seen);
+  double ms_sum = 0, ms_max = 0; int ms_n = 0;
+  const int snaps[6] = { 30, 60, 120, 240, 360, 480 };
+  int si = 0;
+  for (int t = 1; t <= 480; t++) {
+    game_step(&G, &none);
+    ms_sum += G.tick_ms, ms_n++; if (G.tick_ms > ms_max) ms_max = G.tick_ms;
+    static uint8_t vwc[MAXBLK];
+    if (t <= 30) {
+      memset(vwc, 0, sizeof vwc);
+      for (int k = 0; k < G.nweld; k++) if (cw_joint3d_valid(G.weld[k].j)) vwc[G.weld[k].a]++, vwc[G.weld[k].b]++;
+    }
+    if (t <= 30) { /* the structure giving: each member against its piece's anchor (the lowest member of the piece outside the blast), as that piece's turn and move would put it */
+      static int anc[MAXBLK];
+      for (int i = 0; i < G.nb; i++) uf[i] = i, anc[i] = -1;
+      for (int k = 0; k < G.nweld; k++) if (cw_joint3d_valid(G.weld[k].j) && G.b[G.weld[k].a].alive && G.b[G.weld[k].b].alive) uunion(G.weld[k].a, G.weld[k].b);
+      for (int i = 0; i < G.nb; i++) if (id0[i] && G.b[i].alive && !G.b[i].gen && dist[i] >= 4.9f && vwc[i] > 0) { int r = ufind(i); if (anc[r] < 0 || q0[i].y < q0[anc[r]].y) anc[r] = i; }
+      for (int i = 0; i < G.nb; i++) {
+        if (!id0[i] || !G.b[i].alive || dist[i] < 4.9f || G.b[i].gen || vwc[i] == 0) continue;
+        int a = anc[ufind(i)];
+        if (a < 0 || a == i) continue;
+        cw_xform3 xa = cw_body3d_transform(G.b[a].body), xi = cw_body3d_transform(G.b[i].body);
+        t3_quat Ra = qm(xa.q, (t3_quat){ -r0[a].x, -r0[a].y, -r0[a].z, r0[a].w });
+        t3_vec3 rel0 = { q0[i].x - q0[a].x, q0[i].y - q0[a].y, q0[i].z - q0[a].z }, e = qr(Ra, rel0);
+        float dx = (xi.p.x - xa.p.x) - e.x, dy = (xi.p.y - xa.p.y) - e.y, dz = (xi.p.z - xa.p.z) - e.z, d = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (d > rig) rig = d, rig_i = i;
+        if (d > 0.05f && !rig_seen[i]) rig_seen[i] = true, rig_over50++;
+      }
+    }
+    if (si < 6 && t == snaps[si]) {
+      int big, o6, na, wl; float att;
+      clumps(&G, &big, &o6, &att, &na, &wl);
+      static float ds[MAXBLK]; int nd = 0;
+      for (int i = 0; i < G.nb; i++) if (G.b[i].alive) { t3_vec3 p = cw_body3d_transform(G.b[i].body).p; ds[nd++] = sqrtf((p.x - at.x) * (p.x - at.x) + (p.z - at.z) * (p.z - at.z)); }
+      for (int a = 1; a < nd; a++) { float v = ds[a]; int b = a - 1; while (b >= 0 && ds[b] > v) ds[b + 1] = ds[b], b--; ds[b + 1] = v; }
+      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"charge\",\"t\":%.1f,\"alive\":%d,\"of\":%d,\"largest\":%d,\"over6\":%d,\"attached\":%.3f,\"welds\":%d,\"welds0\":%d,\"awake\":%d,\"spread90\":%.2f,\"height\":%.2f,\"rigid_mm\":%.1f,\"rigid_over50mm\":%d,\"rigid_y\":%.2f,\"tick_ms_mean\":%.2f,\"tick_ms_max\":%.2f}\n",
+             level, G.L->name, t / 60.0f, na, base_n, big, o6, att, wl, nw0, game_awake(&G), nd ? ds[(int)(nd * 0.9f)] : 0, G.top, rig * 1000, rig_over50, rig_i >= 0 ? q0[rig_i].y : 0, ms_n ? ms_sum / ms_n : 0, ms_max);
+      fflush(stdout);
+      si++;
+    }
+  }
 }
 
 /* kegs: two powder kegs in level 1's yard, gap metres apart; the first is set off; how many blasts follow */
@@ -350,6 +509,21 @@ static void kegs(float gap) {
 
 int main(int argc, char **argv) {
   cw_jobs_init(-1);
+  for (int a = 1; a + 1 < argc;) { /* --opt NAME=VALUE anywhere: a run option (opts.h), then dropped from the arguments */
+    if (!strcmp(argv[a], "--opt")) { char *eq = strchr(argv[a + 1], '='); if (eq) { *eq = 0; opt_set(argv[a + 1], eq + 1); } for (int b = a; b + 2 <= argc; b++) argv[b] = argv[b + 2]; argc -= 2; } else a++;
+  }
+  if (argc > 1 && !strcmp(argv[1], "--rigid")) {
+    bool charge = false; int nl = 0;
+    for (int a = 2; a < argc; a++) {
+      if (!strcmp(argv[a], "--charge")) charge = true;
+      else if (!strcmp(argv[a], "--opt") && a + 1 < argc) { char *eq = strchr(argv[++a], '='); if (eq) { *eq = 0; opt_set(argv[a], eq + 1); } }
+      else nl++;
+    }
+    for (int a = 2; a < argc; a++) if (argv[a][0] >= '0' && argv[a][0] <= '9') rigid_check(atoi(argv[a]), charge);
+    if (nl == 0) for (int l = 0; l < NLEVELS; l++) if (LEVELS[l].kind == K_LANDMARK) rigid_check(l, charge);
+    game_free(&G);
+    return 0;
+  }
   if (argc > 1 && !strcmp(argv[1], "--kegs")) { /* the chain, and its control (too far apart to set each other off) */
     kegs(1.6f), kegs(8.0f);
     game_free(&G);
@@ -357,11 +531,13 @@ int main(int argc, char **argv) {
   }
   if (argc > 1 && !strcmp(argv[1], "--landmarks")) {
     const char *c = argc > 3 && !strcmp(argv[2], "--control") ? argv[3] : NULL;
-    for (int l = 0; l < NLEVELS; l++) {
-      if (LEVELS[l].kind != K_LANDMARK) continue;
-      landmark_check(l, c);
-      if (c) break; /* a control: the first landmark */
-    }
+    if (c && !strcmp(c, "oldwelds")) landmark_check(1, c); /* the control: the Needle with the welds as they were */
+    else
+      for (int l = 0; l < NLEVELS; l++) {
+        if (LEVELS[l].kind != K_LANDMARK) continue;
+        landmark_check(l, c);
+        if (c) break; /* a control: the first landmark */
+      }
     game_free(&G);
     return 0;
   }

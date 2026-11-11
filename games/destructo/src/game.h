@@ -142,7 +142,7 @@ typedef struct game {
   const level_def *L;
   int level;
   block b[MAXBLK];
-  struct weld_pair { uint16_t a, b; cw_joint3d j; } *weld; /* every weld laid between two placed blocks (landmarks.c), for the level checks: a welded member stands on what it is welded to */
+  struct weld_pair { uint16_t a, b; cw_joint3d j; cw_xform3 fa, fb; int next_a, next_b; } *weld; int wh[MAXBLK]; /* wh[i]: the first weld of block i (index + 1), chained by next_a / next_b */ /* every weld laid between two placed blocks (landmarks.c), for the level checks: a welded member stands on what it is welded to */
   int nweld, weld_cap;
   int nb, nalive, free_head;
   int free_list[MAXBLK];
@@ -202,6 +202,7 @@ typedef struct game {
   float judged_share;
   bool sandbox;      /* free fire: ammunition without end, the level never judged (the select screen's choice) */
   bool old_damage;   /* tests only: the cannon before the fix (no strike burst): the human-like gate's control (tools/humancheck.c) */
+  bool old_welds;    /* tests only: the welds as they were (soft, 2 MN, no prestress, awake from the start): the rigid and clump gates' control (dm set OLD_WELDS 1) */
   bool proj_burst;   /* the shot in flight has struck the structure (its burst is spent) */
   bool old_rules;    /* tests only: the rules before the fix (the level judged 1.5 s after its last crystal fell, stars by shots alone): the result check's control */
   float extent;      /* the structure's radius (camera) */
@@ -225,6 +226,10 @@ void game_step(game *g, const input *in);
 void game_settle(game *g, int ticks);       /* step with no input (a level settling before play) */
 void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */
 int game_awake(const game *g);
+void game_sleep_all(game *g); /* put every body to sleep at where it is (a structure at rest from the first frame) */
+void game_prestress(game *g); /* the welds hold the structure at its design pose under its own weight (landmarks.c) */
+void game_pop_welds(game *g, int i, int hops); /* every weld of block i, and of the blocks welded to it hops deep, lets go (a hard landing: the members come apart at their joints) */
+void game_charge_at(game *g, t3_vec3 at); /* a charge goes off at this point (the checks) */
 t3_vec3 game_aim_dir(const game *g);
 float game_world_yaw(const game *g);       /* the aim's yaw in the world: the launcher's place on its circle plus its turn */
 t3_vec3 game_out_dir(const game *g);       /* from the structure's middle out to the launcher, on the ground (unit) */
