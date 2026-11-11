@@ -1079,19 +1079,17 @@ function hoover(x, y, z) {
   if (ax > inner + 0.2 && z > -3.6 && z < 5.0 && y < 11.5 - 0.15 * Math.max(0, ax - 7) + 0.3 * Math.sin(z * 1.2 + x * 0.8) - Math.max(0, z - 2.5) * 0.9 - Math.max(0, -z - 2.2) * 0.8) return y > 6 ? 'stone:SAND_STONE' : 'stone:ROSE_STONE';
   /* the dam: the arc bulges upstream (toward -z), the face downstream stepped */
   if (y < H && ax <= inner + 0.4) {
-    const zc = 0.05 * x * x - 1.2, t = 0.7 + (H - y) * 0.26, step = Math.round(t * 3) / 3;
+    const zc = 0.08 * x * x - 1.2, t = 0.7 + (H - y) * 0.26, step = Math.round(t * 3) / 3;
     if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
   }
-  /* the intake towers: round, rising out of the water in front of the walls (here at the dam's ends, upstream) and their tops */
-  for (const sx of [-1, 1]) for (const tx of [1.0, 2.3]) {
-    const cx = sx * (inner + 0.4 - tx * 0.0 + 0.2 - 0.0) - sx * (tx - 1.0) * 0.0, cz = -1.2 + 0.05 * cx * cx - 0.9 - (tx - 1.0) * 0.5;
-    const rr = Math.hypot(x - sx * (3.6 + 0.4 * 6 - tx * 0.9), z - cz);
-    if (rr < 0.52 && y > 2.2 && y < 6.8) return 'stone:TRIM_CREAM';
-    if (rr < 0.6 && y >= 6.8 && y < 7.1) return 'stone:CONCRETE';
-    if (rr < 0.46 && y >= 7.1 && y < 7.5 + 0.4 * (0.46 - rr) * 2) return 'stone:GOLD';
+  /* the intake towers: two each side, rising from the crest, round, with their domes (they stand in the lake in front of the canyon wall) */
+  for (const sx of [-1, 1]) for (const tx of [4.5, 6.0]) {
+    const cx = sx * tx, cz = 0.08 * cx * cx - 1.2 + 0.3, rr = Math.hypot(x - cx, z - cz);
+    if (rr < 0.6 && y >= H - 0.2 && y < H + 3.0) return y > H + 2.4 && y < H + 2.7 ? 'stone:TRIM_CREAM' : 'stone:LIMESTONE';
+    if (y >= H + 3.0 && y < H + 3.9 && rr < 0.62 * Math.sqrt(Math.max(0, 1 - sq((y - H - 3.0) / 0.9)))) return 'stone:GOLD';
   }
   /* the powerhouse at the foot downstream: a long low hall of two wings */
-  if (z > 1.6 && z < 3.6 && ax < 3.2 && y < 1.3 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
+  if (z > 1.6 + 0.08 * x * x * 0.2 && z < 4.0 && ax < 4.4 && y < 1.5 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
   return null;
 }
 
@@ -1184,7 +1182,7 @@ export default {
   great_wall: { ext: [32, 9.0, 11.5], cell: greatWall },
   petra: { ext: [15, 11.5, 6.4], cell: petra },
   machu: { ext: [18, 11, 12.4], cell: machu },
-  hoover: { ext: [18, 12, 9.2], cell: hoover },
+  hoover: { ext: [18, 13.2, 9.2], cell: hoover },
   abu_simbel: { ext: [14, 9.2, 6.8], cell: abuSimbel },
-  sydney_bridge: { ext: [32, 6.0, 4.4], cell: sydneyBridge },
+  sydney_bridge: { ext: [32, 9.2, 4.4], cell: sydneyBridge },
 };

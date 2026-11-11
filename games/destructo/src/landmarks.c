@@ -505,7 +505,10 @@ void landmark_build(game *g, const level_def *L) {
   case LM_BLUE_MOSQUE: { static const float s[][2] = { { -0.1f, 3.5f }, { 3.7f, -4.0f } }; build_model(g, L, &LMV_m_blue_mosque, s, 2); break; }
   case LM_MONT_ST_MICHEL: { static const float s[][2] = { { -3.0f, -0.3f }, { -3.0f, 0.8f } }; build_model(g, L, &LMV_m_msm, s, 2); break; }
   case LM_JAPANESE_CASTLE: { static const float s[][2] = { { 6.5f, 0 }, { -6.5f, 0 } }; build_model(g, L, &LMV_m_himeji, s, 2); break; }
-  case LM_MACHU_PICCHU: { static const float s[][2] = { { 6.0f, 2.0f }, { -6.0f, 0 } }; build_model(g, L, &LMV_m_machu, s, 2); break; }
+  case LM_MACHU_PICCHU: { static const float s[][2] = { { 1.0f, 3.8f }, { 4.8f, 5.0f } }; build_model(g, L, &LMV_machu, s, 2); break; }
+  case LM_HOOVER: { static const float s[][2] = { { 0.0f, -1.0f }, { 2.4f, -0.7f } }; build_model(g, L, &LMV_hoover, s, 2); break; }
+  case LM_ABU_SIMBEL: { static const float s[][2] = { { 0.0f, -2.0f }, { 3.5f, -2.0f } }; build_model(g, L, &LMV_abu_simbel, s, 2); break; }
+  case LM_SYDNEY_BRIDGE: { static const float s[][2] = { { 6.0f, 0 }, { -6.0f, 0 } }; build_model(g, L, &LMV_sydney_bridge, s, 2); break; }
   case LM_PETRA: { static const float s[][2] = { { 3.2f, 3.0f }, { -3.2f, 3.0f } }; build_model(g, L, &LMV_petra, s, 2); break; }
   default: break;
   }
