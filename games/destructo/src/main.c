@@ -35,6 +35,7 @@
 #include "cartwheel/ui.h"
 #include "fx.h"
 #include "game.h"
+#include "loader.h"
 #include "opts.h"
 #include "replay.h"
 #include "sound.h"
@@ -62,6 +63,7 @@ enum { H_AIM, H_FIRE, H_ORBIT, H_AMMO, H_VIEW, HINTS };
 static struct {
   game g;
   bot_state bot;
+  int loading; /* a level asked for (index + 1) that is still being built: the card or menu stays up meanwhile */
   bool in_match, built, have_game;
   int phase, phase_t;
   int sel, players, mode;
@@ -155,37 +157,142 @@ static void prime_effects(void) {
 #endif
 }
 
+/* the last level load, ms (dm state: load.*): world, build, prestress and sleep are game_new's parts (on the background
+ * job: the slot's build_ms is the whole job), wait is the main thread blocked on the job, take the move into the
+ * live game, view the render's side, prime the effects, total the main thread's time from the ask to a playable level */
+static struct { float world, build, prestress, sleep, settle, view, prime, replay, total, wait, take, job, frame0, first, ready; int32_t count, async, pending; } LD;
+extern float g_ld_world_ms, g_ld_build_ms, g_ld_prestress_ms, g_ld_sleep_ms;
+extern volatile int32_t g_ld_stage;
+extern float g_view_ms[8];
+
+/* the next level, and the replay's shadow, are built on a background job (loader.c) while the result card shows (or the
+ * level is played): the load is then a move, and the render's side. The old path (dm set OLD_LOAD 1, the load gate's
+ * control) builds both on this thread, settles them, and scans the field for coplanar faces as before. */
+static game NXG;
+static load_slot NX = { .g = &NXG };
+static bool old_load(void) {
+#ifdef DESTRUCTO_AUTOPILOT
+  return opt_on("OLD_LOAD");
+#else
+  return false;
+#endif
+}
+static int settle_for(int level) { return level_settle_ticks(level_get(level)); }
+
+/* the level after this one: the next when it was brought down, this one again otherwise */
+static int level_after(const game *g, bool won) {
+  int next = won ? g->level + 1 : g->level;
+#ifdef DESTRUCTO_AUTOPILOT
+  if (won) next = next % NLEVELS;
+  if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = g->level;
+#else
+  if (won) next = CW_MIN(next, NLEVELS - 1);
+#endif
+  return next;
+}
+static void prebuild(int level) {
+  if (!old_load()) loader_request(&NX, level, G.players, G.mode, settle_for(level));
+}
+/* NX's game becomes the live game (the old live world goes) */
+static void take_next(void) {
+  game_free(&G.g);
+  memcpy(&G.g, &NXG, sizeof G.g);
+  NXG.w = (cw_world3d){ 0 }, NXG.weld = NULL, NXG.nweld = NXG.weld_cap = 0; /* (the live game owns them now) */
+  loader_release(&NX);
+}
+
+/* reuse: the live game is this level built and never stepped (a preview the player chose from) */
 static void load_level_as(int level, bool settle) {
-  game_new(&G.g, level, G.players, G.mode);
+  double t0 = perf_now();
+  double t1 = t0, t2;
+  memset(&LD.world, 0, sizeof LD.world * 14); /* (ready is kept: the whole wait, set by the caller) */
+  LD.pending = 2;
+  LD.count++;
+  bool reuse = !old_load() && G.have_game && G.g.level == level && G.g.tick == 0 && G.g.players == G.players && G.g.mode == G.mode && !G.g.proj_live && settle;
+  if (old_load()) {
+    loader_idle_wait();
+    game_new(&G.g, level, G.players, G.mode);
+    LD.world = g_ld_world_ms, LD.build = g_ld_build_ms, LD.prestress = g_ld_prestress_ms, LD.sleep = g_ld_sleep_ms;
+    t1 = perf_now();
+    if (settle) game_settle(&G.g, settle_for(level));
+    LD.async = 0;
+  } else if (!reuse) {
+    int want = settle_for(level);
+    loader_request(&NX, level, G.players, G.mode, want);
+    loader_wait(&NX);
+    if (!loader_built(&NX, level, G.players, G.mode)) { /* (a build for another level came out: this one is made now) */
+      loader_request(&NX, level, G.players, G.mode, want);
+      loader_wait(&NX);
+    }
+    t1 = perf_now();
+    LD.wait = (float)(t1 - t0), LD.job = NX.ms;
+    take_next();
+    LD.take = (float)(perf_now() - t1);
+    t1 = perf_now();
+    LD.async = 1;
+  }
   G.g.sandbox = G.free_fire;
 #ifdef DESTRUCTO_NO_BUDGET
   G.g.no_budget = true; /* the hitch gate's control: every break and the whole blast in one tick */
 #endif
-#ifdef DESTRUCTO_AUTOPILOT
-  if (opt_get("FREEZE")) settle = false;
-#endif
-  if (settle) game_settle(&G.g, level_settle_ticks(G.g.L));
+  t2 = perf_now();
+  LD.settle = (float)(t2 - t1);
 #ifdef DESTRUCTO_AUTOPILOT
   if (opt_get("ORBIT")) G.g.orbit = (float)atof(opt_get("ORBIT")), G.g.ring = G.g.L->range, G.g.muzzle = (t3_vec3){ G.g.ring * sinf(G.g.orbit), 1.7f, G.g.ring * cosf(G.g.orbit) }; /* development: looking from round the circle */
-#endif /* the level settles before play (levelcheck holds it still from here); a preview behind the menu is never stepped */
+#endif
   G.have_game = true;
   bot_reset(&G.bot);
-  if (G.built) fx_clear(), view_level(&G.g), prime_effects();
+  if (G.built && !reuse) {
+    fx_clear(), view_level(&G.g);
+    double t3 = perf_now();
+    prime_effects();
+    LD.view = (float)(t3 - t2), LD.prime = (float)(perf_now() - t3);
+  }
   G.last_cur = 0, G.turn_banner = 0;
   G.result_sound = false;
   G.share = 0;
+  LD.total = (float)(perf_now() - t0);
 }
 static void load_level(int level) { load_level_as(level, true); }
-static void preview_level(int level) { load_level_as(level, false); }
+/* behind the menu: the chosen level is built in the background and shown when it is ready (the first one is waited for) */
+static void preview_level(int level) {
+  if (!G.have_game || old_load()) { load_level_as(level, false); return; }
+  prebuild(level);
+}
+/* once a frame in the menu: the level asked for is built, and becomes the one behind the choice */
+static void preview_poll(void) {
+  if (old_load() || G.g.level == G.sel || !loader_built(&NX, G.sel, G.players, G.mode)) return;
+  take_next();
+  G.g.sandbox = G.free_fire;
+  bot_reset(&G.bot);
+  if (G.built) fx_clear(), view_level(&G.g), prime_effects();
+  G.last_cur = 0, G.turn_banner = 0, G.result_sound = false, G.share = 0;
+}
 
-static void begin_level(int level) {
+/* the level asked for: begun once it is built (loader.c), the frames go on meanwhile */
+static double t_accept;
+static void begin_level_now(int level);
+static void request_level(int level) {
+  if (G.loading) return;
+  t_accept = perf_now();
+  if (old_load()) { begin_level_now(level); LD.ready = (float)(perf_now() - t_accept); return; }
+  prebuild(level);
+  G.loading = level + 1;
+}
+
+static void begin_level_now(int level) {
   G.sel = level;
   load_level(level);
+  double tr = perf_now();
+  bool nb =
 #ifdef DESTRUCTO_NO_BUDGET
-  replay_reset(level, G.players, G.mode, true, level_settle_ticks(level_get(level)));
+    true;
 #else
-  replay_reset(level, G.players, G.mode, false, level_settle_ticks(level_get(level)));
+    false;
 #endif
+  if (old_load()) replay_reset(level, G.players, G.mode, nb, settle_for(level));
+  else replay_reset_async(level, G.players, G.mode, nb, settle_for(level));
+  LD.replay = (float)(perf_now() - tr);
   G.replayed = false;
 #ifdef DESTRUCTO_AUTOPILOT
   /* tests/destructo-result.mjs's controls (native: carts read no environment): the result rules before the fix, and
@@ -212,7 +319,7 @@ static void start(int players, void *u) {
 #ifdef DESTRUCTO_AUTOPILOT
   if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
   G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
-  begin_level(start_level());
+  begin_level_now(start_level());
 #else
   G.phase = PH_SELECT, G.phase_t = 0;
   G.mode = CW_CLAMP(save()->last_mode, 0, 2);
@@ -232,7 +339,7 @@ static void restart(void) {
   if (!G.in_match) return;
   if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
   G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
-  begin_level(start_level());
+  begin_level_now(start_level());
 }
 static void option_changed(const char *name) {
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
@@ -290,6 +397,12 @@ static void init(void *u) {
   cop_set_options(opt_get); /* its switches (COPLANAR_CONTROL, COPLANAR_SEPARATE) are run options too: dm set ... */
   cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cw_debug_command("orbit", "orbit <radians>: put the launcher (and the camera) at this place on its circle round the structure", cmd_orbit);
+  cw_debug_f32("load.world_ms", &LD.world), cw_debug_f32("load.build_ms", &LD.build), cw_debug_f32("load.prestress_ms", &LD.prestress), cw_debug_f32("load.sleep_ms", &LD.sleep);
+  cw_debug_f32_array("load.view_parts_ms", g_view_ms, 8);
+  cw_debug_f32("load.settle_ms", &LD.settle), cw_debug_f32("load.view_ms", &LD.view), cw_debug_f32("load.prime_ms", &LD.prime), cw_debug_f32("load.replay_ms", &LD.replay), cw_debug_f32("load.total_ms", &LD.total);
+  cw_debug_f32("load.wait_ms", &LD.wait), cw_debug_f32("load.take_ms", &LD.take), cw_debug_f32("load.job_ms", &LD.job), cw_debug_f32("load.frame0_ms", &LD.frame0), cw_debug_f32("load.first_ms", &LD.first); cw_debug_f32("load.ready_ms", &LD.ready);
+  cw_debug_i32("load.stage", (int32_t *)&g_ld_stage);
+  cw_debug_i32("load.count", &LD.count), cw_debug_i32("load.async", &LD.async);
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
   cw_debug_i32("game.state", &G.state);
@@ -483,13 +596,21 @@ static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
   ticks_run++;
   perf_tick();
+  loader_pump();
   sound_tick(ticks_run);
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
+  if (G.loading && loader_built(&NX, G.loading - 1, G.players, G.mode)) {
+    int lv = G.loading - 1;
+    G.loading = 0;
+    begin_level_now(lv);
+    LD.ready = (float)(perf_now() - t_accept);
+  }
   G.phase_t++;
   switch (G.phase) {
   case PH_SELECT: {
+    preview_poll();
     int dx = ui("ui_right") - ui("ui_left"), dy = ui("ui_down") - ui("ui_up");
     int n = G.sel + dx + dy * SEL_COLS;
     if ((dx || dy) && n >= 0 && n <= (G.free_fire ? NLEVELS - 1 : unlocked())) G.sel = n, sound_menu(0), preview_level(G.sel);
@@ -500,7 +621,7 @@ static void fixed_update(void *u, double dt) {
       if (!G.free_fire && G.sel > unlocked()) G.sel = unlocked();
       preview_level(G.sel);
     }
-    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), begin_level(G.sel);
+    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), request_level(G.sel);
     G.players = CW_MAX(1, cw_shell_players());
     break;
   }
@@ -525,6 +646,7 @@ static void fixed_update(void *u, double dt) {
       level_done();
       G.last_result = game_result(&G.g), G.last_awake = G.g.judged_awake, G.results++;
       G.phase = PH_RESULT, G.phase_t = 0;
+      prebuild(level_after(&G.g, G.g.state == GS_WON)); /* the next level is built while the card shows */
       sound_result(G.g.state == GS_WON);
     }
     break;
@@ -554,21 +676,21 @@ static void fixed_update(void *u, double dt) {
     bool watch = !G.replayed && replay_ready();
 #ifdef DESTRUCTO_AUTOPILOT
     if (watch && G.phase_t > 60) watch = false, G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
-    if (G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
+    if (!G.loading && G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
       int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
       if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = G.g.level;
       level_done();
-      begin_level(next);
+      request_level(next);
     }
 #else
-    if (G.phase_t > 6) {
+    if (G.phase_t > 6 && !G.loading) {
       if (watch && pressed(G.ammo, -1)) {
         sound_menu(1);
         G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
       } else if (ui("ui_accept") || pressed(G.fire, -1)) {
         sound_menu(1);
         level_done();
-        begin_level(won ? CW_MIN(G.g.level + 1, NLEVELS - 1) : G.g.level);
+        request_level(won ? CW_MIN(G.g.level + 1, NLEVELS - 1) : G.g.level);
       } else if (ui("ui_back")) {
         sound_menu(2);
         level_done();
@@ -734,6 +856,7 @@ static void hud_result(cw_vec2 cs, float u) {
   float x = cs.x - (w + 28 * u) * k, y = cs.y * 0.5f - h * 0.5f, cx = x + w * 0.5f;
   cw_color head = res == RES_BROUGHT_DOWN || res == RES_PARTY ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
   panel(x, y, w, h, u, head);
+  if (G.loading) text("Building the next level", cx, y + h - 46 * u, 24 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
   if (res == RES_PARTY) { /* steady hands: who stayed in, and how the others went out */
     char b[96];
     int win = g->party_winner;
@@ -901,7 +1024,12 @@ static void render(void *u, double alpha) {
     }
   }
   cw_shell_draw();
-  R.win_work += perf_frame_end();
+  {
+    double w_ = perf_frame_end();
+    R.win_work += w_;
+    if (LD.pending == 2) LD.frame0 = (float)w_, LD.pending = 1; /* the frame that made the level, then the next */
+    else if (LD.pending == 1) LD.first = (float)w_, LD.pending = 0;
+  }
 }
 
 cw_app_desc cw_main(int argc, char **argv) {

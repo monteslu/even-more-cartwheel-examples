@@ -8,7 +8,7 @@
 #                         humancheck, physcheck and the soak, each started over the debug channel (check run <tool> ...)
 #   destructo_physcheck, destructo_levelcheck, destructo_humancheck, destructo_soak: the same tools as native programs
 #                         (built for development; the gates run the cart)
-set(DM_SIM src/sim.c src/levels.c src/landmarks.c src/lm_data.c src/bot.c src/replay.c src/opts.c)
+set(DM_SIM src/loader.c src/sim.c src/levels.c src/landmarks.c src/lm_data.c src/bot.c src/replay.c src/opts.c)
 set(DM_SRC src/main.c src/view.c src/trees.c src/fx.c src/sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${DM_SIM})
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/destructo.txt)
 cw_add_app(destructo SOURCES ${DM_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

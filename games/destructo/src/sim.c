@@ -13,6 +13,7 @@
  * Charges push every block within their radius (an impulse falling off with the square of the distance) and harm
  * it the same way. */
 #include <math.h>
+#include <stdatomic.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -273,13 +274,26 @@ static void break_queued(game *g) {
 
 /* ── the world ───────────────────────────────────────────────────────── */
 
+/* worlds are made and destroyed one at a time: a level is built on a background job (loader.c) while the main thread may
+ * free another world, and Box3D keeps its worlds in one table */
+static atomic_flag WORLD_LOCK = ATOMIC_FLAG_INIT;
+static void world_lock(void) { while (atomic_flag_test_and_set_explicit(&WORLD_LOCK, memory_order_acquire)) {} }
+static void world_unlock(void) { atomic_flag_clear_explicit(&WORLD_LOCK, memory_order_release); }
+
 void game_free(game *g) {
-  if (cw_world3d_valid(g->w)) cw_world3d_destroy(g->w);
+  if (cw_world3d_valid(g->w)) world_lock(), cw_world3d_destroy(g->w), world_unlock();
   g->w = (cw_world3d){ 0 };
   free(g->weld), g->weld = NULL, g->nweld = g->weld_cap = 0;
 }
 
+/* load timing (profiling only, host-dependent, never fed back): ms of the last game_new's parts */
+float g_ld_world_ms, g_ld_build_ms, g_ld_prestress_ms, g_ld_sleep_ms;
+volatile int32_t g_ld_stage; /* how far the build got (a trap in the job names its place) */
+static double ld_now(void) { return (double)cw_profile_now_ns() * 1e-6; }
+
 void game_new(game *g, int level, int players, int mode) {
+  double ld0 = ld_now();
+  g_ld_stage = 1;
   game_free(g);
   memset(g, 0, sizeof *g);
   g->level = level;
@@ -298,7 +312,9 @@ void game_new(game *g, int level, int players, int mode) {
    * (Great Keep's collapse on romdev, load about 13: a step 6.2 to 7.1 ms on 24, 4.0 to 4.2 on 12). The same bits on any
    * count. dm set WORKERS n measures another */
   wd.workers = opt_get("WORKERS") ? atoi(opt_get("WORKERS")) : 12;
+  world_lock();
   g->w = cw_world3d_create(&wd);
+  world_unlock();
   /* the ground: a slab under the whole field */
   cw_body3d_def bd = cw_body3d_default_def();
   bd.type = CW_BODY_STATIC;
@@ -310,8 +326,15 @@ void game_new(game *g, int level, int players, int mode) {
   sd.hit_events = false;
   cw_shape3d_box(ground, &sd, v3(250, 1, 250), cw_xform3_identity());
   g->rng = g->L->seed;
+  double ld1 = ld_now();
+  g_ld_stage = 2;
   level_build(g, g->L);
+  double ld2 = ld_now();
+  g_ld_stage = 3;
   game_prestress(g);
+  double ld3 = ld_now();
+  g_ld_stage = 4;
+  g_ld_world_ms = (float)(ld1 - ld0), g_ld_build_ms = (float)(ld2 - ld1), g_ld_prestress_ms = (float)(ld3 - ld2);
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->ring = g->L->range, g->orbit = g->L->orbit0;
@@ -330,6 +353,8 @@ void game_new(game *g, int level, int players, int mode) {
   }
   g->extent = ext, g->top = top, g->front = front;
   if (g->L->kind == K_LANDMARK && !g->old_welds && !(opt_get("SLEEP0") && !opt_on("SLEEP0"))) game_sleep_all(g);
+  g_ld_sleep_ms = (float)(ld_now() - ld3);
+  g_ld_stage = 5;
   g->state = GS_AIM;
 }
 

@@ -18,6 +18,7 @@
 
 #include "cartwheel/core.h"
 #include "cartwheel/math.h"
+#include "cartwheel/profile.h"
 #include "cartwheel/render3d.h"
 #include "../../common/coplanar.h"
 #include "opts.h"
@@ -680,7 +681,52 @@ static t3_geometry *ground_grid(const setting *S, const game *g, float x0, float
   return geo;
 }
 
+/* No two grass cards share a plane (what the coplanar scan used to move apart, at a second a level): a tuft whose card lies
+ * in the plane of one already set (the same direction within 20 mrad, the same offset within 2 cm) is turned a little,
+ * until it clears. The planes seen are kept in a hash of their direction and offset bins. */
+static void grass_apart(grass_tuft *t, int n) {
+  enum { SLOTS = 1 << 16 };
+  static int32_t key[SLOTS][2];
+  static uint8_t used[SLOTS];
+  memset(used, 0, sizeof used);
+  const float PI_ = 3.14159265f;
+  for (int i = 0; i < n; i++)
+    for (int tries = 0; tries < 24; tries++) {
+      bool clash = false;
+      int32_t kk[2][2];
+      for (int c = 0; c < 2 && !clash; c++) {
+        float a = t[i].yaw + c * PI_ * 0.5f, th = fmodf(a, PI_);
+        if (th < 0) th += PI_;
+        float s = -t[i].x * sinf(a) + t[i].z * cosf(a);
+        kk[c][0] = (int32_t)floorf(th / 0.02f), kk[c][1] = (int32_t)floorf(s / 0.02f);
+        for (int dx = -1; dx <= 1 && !clash; dx++)
+          for (int dy = -1; dy <= 1 && !clash; dy++) {
+            uint32_t h = ((uint32_t)(kk[c][0] + dx) * 73856093u ^ (uint32_t)(kk[c][1] + dy) * 19349663u) & (SLOTS - 1);
+            for (int p = 0; p < 8 && used[(h + (uint32_t)p) & (SLOTS - 1)]; p++) {
+              int q = (int)((h + (uint32_t)p) & (SLOTS - 1));
+              if (key[q][0] == kk[c][0] + dx && key[q][1] == kk[c][1] + dy) { clash = true; break; }
+            }
+          }
+      }
+      if (!clash || tries == 23) {
+        for (int c = 0; c < 2; c++) {
+          uint32_t h = ((uint32_t)kk[c][0] * 73856093u ^ (uint32_t)kk[c][1] * 19349663u) & (SLOTS - 1);
+          for (int p = 0; p < 8; p++) {
+            int q = (int)((h + (uint32_t)p) & (SLOTS - 1));
+            if (!used[q]) { used[q] = 1, key[q][0] = kk[c][0], key[q][1] = kk[c][1]; break; }
+          }
+        }
+        break;
+      }
+      t[i].yaw += 0.07f;
+    }
+}
+
+float g_view_ms[8]; /* the last view_level's parts, ms: sky and fog, ground, sea and river, backdrop, grass, trees, coplanar separation (profiling only) */
+static double vl_t;
+#define VL_MARK(i) do { double n_ = (double)cw_profile_now_ns() * 1e-6; g_view_ms[i] = (float)(n_ - vl_t); vl_t = n_; } while (0)
 void view_level(const game *g) {
+  vl_t = (double)cw_profile_now_ns() * 1e-6;
   trees_clear();
   if (cw_node_valid(V.field)) cw_node_free(V.field);
   V.field = cw_node_new("Node3D", "Field");
@@ -719,6 +765,7 @@ void view_level(const game *g) {
     cw_node_set(f, "sky_distance", cw_val_float(0));
     cw_node_set(f, "max_opacity", cw_val_float(0.55f));
   }
+  VL_MARK(0);
   /* the ground, and the yard and track worn into it */
   bool sea = S->backdrop == BD_SEA, harbour = S->backdrop == BD_HARBOUR;
   V.cliff = -(g->ring + 10); /* the headland reaches past the launcher's circle */
@@ -744,6 +791,7 @@ void view_level(const game *g) {
       }
     }
   }
+  VL_MARK(1);
   if (sea || harbour) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon (the harbour: all round, at the quay's foot) */
     if (sea) {
       t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
@@ -777,6 +825,7 @@ void view_level(const game *g) {
     flat("River", 4.0f, 600, (t3_vec3){ 4.8f, 0.05f, 0 }, wm);
     flat("Bank", 7.0f, 600, (t3_vec3){ 4.8f, 0.04f, 0 }, ground_mat(S->yard, 2, 120, 3, 0.9f));
   }
+  VL_MARK(2);
   /* the backdrop */
   {
     t3_material *m = std_mat(1, 1, 1, 0.92f, 0);
@@ -794,15 +843,20 @@ void view_level(const game *g) {
       wt->wrap_s = wt->wrap_t = T3_REPEAT;
       t3_material_set_map(cm, wt);
       t3_release(wt);
+      cw_node sky = cw_node_new("Node3D", "Skyline");
+      cw_node_add_child(V.field, sky);
       for (int p = 0; p < 6; p++) {
         t3_retain(cm);
-        piece(V.field, "Skyline", city_geo(S, g->L->seed + (uint32_t)p * 7919u, p, 6), cm, false);
+        piece(sky, "Skyline", city_geo(S, g->L->seed + (uint32_t)p * 7919u, p, 6), cm, false);
       }
+      /* the towers overlap and share roof and wall planes: they alone are layered apart (a few thousand faces, not the field's hundred thousand) */
+      cop_separate(cw_node3d_object(sky), 0.005f, NULL);
       t3_release(cm);
       if (!harbour) piece(V.field, "Backdrop", backdrop_geo(&SETTINGS[ST_MEADOW], g->L->seed), m, false); /* low hills under the towers */
       else t3_release(m);
     } else piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
   }
+  VL_MARK(3);
   /* grass on green ground: tufts in the field round the yard, thick near it and thinning out to 45 m, off the yard,
    * the track and the river; the setting's green, lighter and drier in patches */
   if (S->ground[1] > S->ground[0] * 1.25f && S->ground[1] > S->ground[2] * 2 && !opt_get("NO_GRASS")) {
@@ -828,8 +882,10 @@ void view_level(const game *g) {
       t->w = 0.35f + 0.25f * hashf((uint32_t)i * 71u), t->h = (0.14f + 0.14f * hashf((uint32_t)i * 53u)) * (0.75f + 0.5f * clump);
       t->c = (t3_color){ (base.r + dry * 0.12f) * v, (base.g + dry * 0.05f) * v, base.b * v };
     }
+    grass_apart(tufts, n);
     grass_build(V.field, tufts, n);
   }
+  VL_MARK(4);
   /* trees: the setting's two species, in groves, outside the field of fire */
   if (S->ntrees > 0 && !opt_get("NO_TREES")) {
     static tree_spot spots[TREES_MAX];
@@ -861,12 +917,17 @@ void view_level(const game *g) {
     }
     trees_build(V.field, spots, n);
   }
-  { /* the field's faces laid flush on others (tufts of grass whose blades share a plane) apart: no surface fights another
-     * for the depth test (games/common/coplanar.h); the blocks are drawn apart by layer (block_layers) */
+  VL_MARK(5);
+  /* (the field's faces laid flush on others, scanned and layered apart with cop_separate (games/common/coplanar.h), found 0 to 8 vertices to move
+   * in a field of 100,000 faces and cost 0.2 to 2.5 s a level: the field is made so that none lie flush, and tests/destructo-coplanar.mjs scans every
+   * level for pairs. dm set OLD_LOAD 1 (the load gate's control) scans as before.) */
+  if (opt_on("OLD_LOAD")) {
     int left = 0, moved = cop_separate(cw_node3d_object(V.field), 0.005f, &left);
     cw_info("destructo: level %d: %d vertices moved off shared planes in the field in %.0f ms, %d pairs left", g->level, moved, cop_last_ms, left);
   }
+  VL_MARK(6);
   build_launcher(g);
+  VL_MARK(7);
   memset(V.lay_born, 0, sizeof V.lay_born);
   V.built_level = g->level;
   V.cam_init = false;

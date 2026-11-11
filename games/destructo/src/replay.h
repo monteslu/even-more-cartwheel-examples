@@ -13,6 +13,8 @@
 
 /* a new level: the shadow is made as the live game was (call after the live game's own game_new and settle) */
 void replay_reset(int level, int players, int mode, bool no_budget, int settle_ticks);
+/* the same with the shadow built on a background job (loader.h): the level starts at once */
+void replay_reset_async(int level, int players, int mode, bool no_budget, int settle_ticks);
 /* before every live game_step in play: the input that step takes */
 void replay_log(const game *live, const input *in);
 /* after every live game_step in play */

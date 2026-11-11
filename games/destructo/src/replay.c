@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "cartwheel/profile.h"
+#include "loader.h"
 #include "replay.h"
 
 #define LOG_MAX 24576 /* ticks with something held: about 7 minutes of steady aiming; past it the level has no replay */
@@ -25,19 +26,47 @@ static struct {
   uint32_t hash;
   int start_gap;          /* how far the shadow had to go when the level was judged (progress) */
   int settle_left;        /* the shadow's settle before play, stepped in replay_follow's budget (not all at load) */
+  bool pending, no_budget; /* the shadow is being built on the background job (loader.c) */
+  int want_level, want_players, want_mode;
 } R;
 
 bool g_replay_perturb;
+static load_slot SH;
+
+/* the shadow built on the job is the shadow (block: wait for it) */
+static bool shadow_ok(bool block) {
+  if (!R.pending) return true;
+  SH.g = &R.r;
+  if (block) loader_wait(&SH);
+  else loader_pump();
+  if (!loader_built(&SH, R.want_level, R.want_players, R.want_mode)) return false;
+  R.pending = false;
+  R.r.no_budget = R.no_budget;
+  loader_release(&SH);
+  return true;
+}
 
 static double now_ms(void) { return (double)cw_profile_now_ns() * 1e-6; }
 
 void replay_reset(int level, int players, int mode, bool no_budget, int settle_ticks) {
+  R.pending = false;
   game_new(&R.r, level, players, mode);
   R.r.no_budget = no_budget;
   R.settle_left = settle_ticks;
   R.nlog = R.at = 0, R.overflow = false, R.have = true;
   R.fire_tick = R.judged_tick = 0, R.judged_hash = 0;
   R.last_state = GS_AIM, R.running = false, R.sub = 0, R.match = -1, R.hash = 0, R.start_gap = 0;
+}
+
+/* the same, the shadow made on a background job (settled there too): the live game goes on at once */
+void replay_reset_async(int level, int players, int mode, bool no_budget, int settle_ticks) {
+  SH.g = &R.r;
+  R.pending = true, R.no_budget = no_budget, R.settle_left = 0;
+  R.want_level = level, R.want_players = players, R.want_mode = mode;
+  R.nlog = R.at = 0, R.overflow = false, R.have = true;
+  R.fire_tick = R.judged_tick = 0, R.judged_hash = 0;
+  R.last_state = GS_AIM, R.running = false, R.sub = 0, R.match = -1, R.hash = 0, R.start_gap = 0;
+  loader_request(&SH, level, players, mode, settle_ticks);
 }
 
 void replay_log(const game *live, const input *in) {
@@ -50,6 +79,7 @@ void replay_log(const game *live, const input *in) {
 void replay_after_step(const game *live) {
   if (live->state == GS_FLIGHT && R.last_state == GS_AIM) R.fire_tick = live->tick;
   if (game_over(live) && !R.judged_tick) {
+    shadow_ok(true);
     R.judged_tick = live->tick, R.judged_hash = game_state_hash(live);
     R.start_gap = R.fire_tick - 1 - R.r.tick + R.settle_left;
   }
@@ -80,12 +110,13 @@ static int target(const game *live) {
 
 void replay_follow(const game *live, double budget_ms) {
   if (!R.have || R.running || live->sandbox) return;
+  if (!shadow_ok(false)) return;
   double t0 = now_ms();
   int to = target(live);
   while ((R.settle_left > 0 || R.r.tick < to) && now_ms() - t0 < budget_ms) shadow_step();
 }
 
-bool replay_ready(void) { return R.have && !R.overflow && R.judged_tick > 0 && R.fire_tick > 0 && R.settle_left == 0 && R.r.tick == R.fire_tick - 1; }
+bool replay_ready(void) { return R.have && !R.pending && !R.overflow && R.judged_tick > 0 && R.fire_tick > 0 && R.settle_left == 0 && R.r.tick == R.fire_tick - 1; }
 
 void replay_skip(void) {
   if (!R.running) return;
@@ -93,6 +124,7 @@ void replay_skip(void) {
 }
 
 float replay_progress(void) {
+  if (R.pending) return 0;
   if (replay_ready()) return 1;
   if (!R.judged_tick || R.start_gap <= 0) return 0;
   return 1 - (float)(R.fire_tick - 1 - R.r.tick + R.settle_left) / (float)R.start_gap;
