@@ -41,7 +41,10 @@ static void ch_unlock(void) { atomic_flag_clear_explicit(&CH_LOCK, memory_order_
 #define CH_MAX (MAXBLK + 4096)
 #define LAYER_BLOCK_BIT 2u
 #define V_MOVE 0.25f      /* m/s: a standing chunk a blow moves less than this stays where it is (the blow still breaks what it lands on) */
-#define SECTION 150       /* members: a lattice let go breaks into sections of at most this many at once */
+#define SECTION 150       /* members: a section of the old release (OLD_RELEASE): a lattice let go as separate sections */
+/* A bonded structure is ONE static body (one compound of all its blocks), so when its footing goes it is released as one rigid body and gravity gives it its own torque: it goes over as a unit and
+ * breaks (chunk_fracture) where it lands. OLD_RELEASE=1 (the control) cuts it into sections of SECTION blocks at build and leans them over, the old release path. */
+static int section_size(void) { return opt_on("OLD_RELEASE") ? SECTION : 1000000; }
 #define TOUCH 0.012f      /* m: blocks this close are touching */
 
 static inline t3_vec3 v3(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
@@ -310,7 +313,7 @@ static int fracture_i(game *g, int c) {
  * for its piece once (a shape moves between bodies by being made again, which costs: so no member moves twice) */
 static int leaf_of[MAXBLK], sec_n;
 static void sec_cut(game *g, int lo, int hi) {
-  if (hi - lo <= SECTION) { for (int s = lo; s < hi; s++) leaf_of[mem_[s]] = sec_n; sec_n++; return; }
+  if (hi - lo <= section_size()) { for (int s = lo; s < hi; s++) leaf_of[mem_[s]] = sec_n; sec_n++; return; }
   t3_vec3 mn = v3(1e9f, 1e9f, 1e9f), mx = v3(-1e9f, -1e9f, -1e9f);
   for (int s = lo; s < hi; s++) {
     t3_vec3 p = g->b[mem_[s]].local.p;
@@ -499,13 +502,17 @@ static void release_lean(game *g, int c) {
   float d = chunk_inside(g, c);
   float req = k->d0 >= 0 ? (k->frac > 0 ? k->frac : stand_frac()) * k->d0 : k->d0 - 0.03f;
   float tx = k->com.x - g_cent[0], tz = k->com.z - g_cent[1], ex = g_edge[0], ez = g_edge[1];
-  bool unstable = d < req && g_cent[0] < 1e8f;
+  bool unstable = (d < req || (k->frac > 0 && k->d0 > 0 && d < 0.9f * k->d0)) && g_cent[0] < 1e8f; /* (a slender frame that has lost a tenth of its footing fails too) */
   int ni = 0;
   float lo = 1e9f, hi = -1e9f;
   for (int cc = c; cc >= 0; cc = g->ch[cc].anext) { rel_ids[ni++] = cc; for (int i = g->ch[cc].head; i >= 0; i = g->b[i].cnext) { float y = g->b[i].wxf.p.y; if (y < lo) lo = y; if (y > hi) hi = y; } }
   chunk_release(g, c);
   float tl = sqrtf(tx * tx + tz * tz);
   if (!unstable || tl < 0.02f) return;
+  if (!opt_on("OLD_RELEASE")) { /* the footing that is left fails from the damage on (a progressive collapse: the foot is overloaded and goes where it is weakest first), so the whole goes over toward the side the damage is on */
+    for (int q = 0; q < ni; q++) { chunk *kq = &g->ch[rel_ids[q]]; kq->fail_o[0] = ex, kq->fail_o[1] = ez, kq->fail_d[0] = -tx / tl, kq->fail_d[1] = -tz / tl, kq->fail_t0 = g->tick, kq->fail_until = g->tick + 90; }
+    return;
+  }
   for (int q = 0; q < ni; q++) {
     cw_body3d bd = g->ch[rel_ids[q]].body;
     t3_vec3 om = v3(tz / tl * 0.32f, 0, -tx / tl * 0.32f), r = vsub(wcom(bd), v3(ex, 0, ez)), vv = cw_body3d_velocity(bd), av = cw_body3d_angular_velocity(bd);
@@ -585,6 +592,20 @@ void chunks_flush(game *g) { ch_lock(); flush_i(g); ch_unlock(); }
 
 static void step_i(game *g) {
   if (opt_on("NO_SUPPORT")) return;
+  for (int c = 0; c < g->nch; c++) { /* the footing failing, a front of 3 m/s into what is left of it */
+    chunk *k = &g->ch[c];
+    if (!k->alive || !k->dyn || k->fail_until <= g->tick) continue;
+    float reach = 3.0f * (float)(g->tick - k->fail_t0) * TICK;
+    static int hit[96];
+    int nh = 0;
+    for (int i = k->head; i >= 0 && nh < 96; i = g->b[i].cnext) {
+      cw_xform3 x = game_block_xform(g, i);
+      if (x.p.y - g->b[i].half.y > 0.8f) continue;
+      float pr = (x.p.x - k->fail_o[0]) * k->fail_d[0] + (x.p.z - k->fail_o[1]) * k->fail_d[1];
+      if (pr <= reach) hit[nh++] = i;
+    }
+    for (int q = 0; q < nh; q++) game_hit_block(g, hit[q], 1e9f);
+  }
   for (int c = 0; c < g->nch; c++) { /* the lean of what lost its footing */
     chunk *k = &g->ch[c];
     if (!k->alive || !k->dyn || k->lean_until <= g->tick) continue;
@@ -801,7 +822,7 @@ static void build_i(game *g) {
     int n = 0;
     for (int q = 0; q < cnt_[r]; q++) mem_[n++] = byroot_[off_[r] + q];
     sec_n = 0;
-    if (n > SECTION) sec_cut(g, 0, n); else { for (int s = 0; s < n; s++) leaf_of[mem_[s]] = 0; sec_n = 1; }
+    if (n > section_size()) sec_cut(g, 0, n); else { for (int s = 0; s < n; s++) leaf_of[mem_[s]] = 0; sec_n = 1; }
     int head = -1, tail = -1;
     for (int leaf = 0; leaf < sec_n; leaf++) {
       int f = -1;

@@ -3,8 +3,9 @@
 // (what a few good shots do). Checked every tick of every run:
 //   floating   no standing assembly is left without a load path to the ground for more than 6 ticks (the layer a tick that judges a collapse), no loose chunk lies asleep in the air for more than 6 ticks
 //   falls      with the lower half gone, over 60% of the blocks have moved over 1 m or are gone at 4 s
-//   toppling   Iron Lady shot at a leg: the top third's lateral drift over its drop at 2 s is at least 0.4 (a tower going over, not sinking into itself)
-// Control, must fail: OLD_SLEEP=1 (the rule that put the whole contact group to sleep, towers hung in the air).
+//   toppling   the footing's half out (HALFOUT: the base to 1.5 m on one side) of Iron Lady, the Needle, the Black Tower, the Empire and Pisa: the structure goes over as ONE rigid body (the biggest
+//              piece 1 s on is at least 35% of its blocks), and at 2 s the top third has drifted sideways over 0.5 m and is tipped over 15 degrees on average, its sideways drift at least 0.3 of its drop (going over, not sinking into itself)
+// Controls, must fail: OLD_SLEEP=1 (the rule that put the whole contact group to sleep, towers hung in the air), OLD_RELEASE=1 (the structure let go as sections of 150 blocks, not one rigid body).
 // Run: node tests/destructo-realshot.mjs [--gpu gl|webgpu]
 import { runCheck, inPairs, gpusArg } from './lib/romdev.mjs';
 
@@ -16,7 +17,10 @@ for (const gpu of gpusArg()) {
   const jobs = [0, 1, 2].map((a) => () => run(['--opt', `AMMO=${a}`, '--realshot', ...all]));
   jobs.push(() => run(['--opt', 'LOWHALF=1', '--realshot', ...all]));
   jobs.push(() => run(['--opt', 'LOWHALF=1', '--opt', 'OLD_SLEEP=1', '--realshot', L.black, L.iron, L.empire]));
-  const [shot, heavy, charge, low, oldsleep] = await inPairs(jobs);
+  jobs.push(() => run(['--opt', 'HALFOUT=1', '--realshot', L.iron, L.needle, L.black, L.empire, L.pisa]));
+  jobs.push(() => run(['--opt', 'HALFOUT=1', '--opt', 'OLD_RELEASE=1', '--realshot', L.iron, L.black]));
+  jobs.push(() => run(['--opt', 'AMMO=1', '--opt', 'SHOTS=3', '--realshot', L.liberty, L.redeemer, L.taj]));
+  const [shot, heavy, charge, low, oldsleep, half, oldrel, prog] = await inPairs(jobs);
   const last = (rows, lv) => rows.filter((r) => r.phase === 'realshot' && r.level === lv).pop();
   const at = (rows, lv, t) => rows.filter((r) => r.phase === 'realshot' && r.level === lv && Math.abs(r.t - t) < 0.01).pop();
   for (const [name, rows] of [['shot', shot], ['heavy ball', heavy], ['charge', charge], ['lower half out', low]]) {
@@ -31,9 +35,27 @@ for (const gpu of gpusArg()) {
       if (why.length) { bad++; console.log(`FAIL ${line}: ${why.join('; ')}`); } else console.log(`ok   ${line}`);
     }
   }
-  const t2 = at(shot, L.iron, 2);
-  const ratio = t2.top_lateral / Math.max(0.1, t2.top_drop);
-  if (ratio < 0.4) { bad++; console.log(`FAIL ${gpu} Iron Lady shot at a leg: lateral ${t2.top_lateral} over drop ${t2.top_drop} at 2 s: ${ratio.toFixed(2)} (a tower sinking into itself)`); } else console.log(`ok   ${gpu} Iron Lady shot at a leg tips: lateral over drop ${ratio.toFixed(2)} at 2 s`);
+  for (const lv of [L.iron, L.needle, L.black, L.empire, L.pisa]) {
+    const a1 = at(half, lv, 1), a2 = at(half, lv, 2), placed = a1.placed;
+    const ratio = a2.top_lateral / Math.max(0.5, a2.top_drop);
+    const why = [];
+    if (a1.largest < 0.35 * placed) why.push(`the biggest piece at 1 s is ${a1.largest} of ${placed} blocks (not one rigid body)`);
+    if (a2.top_lateral < 0.5) why.push(`the top drifted only ${a2.top_lateral} m sideways`);
+    if (a2.top_rot < 15) why.push(`the top is tipped only ${a2.top_rot} degrees`);
+    if (ratio < 0.3) why.push(`sideways over drop ${ratio.toFixed(2)}`);
+    const line = `${gpu} ${a2.name}, footing's half out: one body of ${a1.largest} at 1 s, top ${a2.top_lateral} m sideways and tipped ${a2.top_rot} degrees at 2 s`;
+    if (why.length) { bad++; console.log(`FAIL ${line}: ${why.join('; ')}`); } else console.log(`ok   ${line}`);
+  }
+  for (const lv of [L.liberty, L.redeemer, L.taj]) { /* three heavy balls at the base, one after another */
+    const r = last(prog, lv);
+    const why = [];
+    if (r.floating_ticks > 6) why.push(`${r.floating_ticks} ticks floating`);
+    if (r.asleep_ticks > 6) why.push(`${r.asleep_ticks} ticks asleep in the air`);
+    const line = `${gpu} ${r.name}, three heavy balls at the base: floating ${r.floating_ticks} ticks, asleep in the air ${r.asleep_ticks} ticks, ${(r.moved * 100).toFixed(0)}% moved`;
+    if (why.length) { bad++; console.log(`FAIL ${line}: ${why.join('; ')}`); } else console.log(`ok   ${line}`);
+  }
+  const orb = at(oldrel, L.iron, 1);
+  if (orb.largest >= 0.35 * orb.placed) { bad++; console.log(`CONTROL PASSED (a failure): ${gpu} the old release left a body of ${orb.largest}`); } else console.log(`ok   control (the old release, sections of 150) fails the one-rigid-body check as it must: biggest piece ${orb.largest} of ${orb.placed}`);
   const worst = Math.max(...[L.black, L.iron, L.empire].map((lv) => last(oldsleep, lv).asleep_ticks + last(oldsleep, lv).floating_ticks));
   if (worst <= 6) { bad++; console.log(`CONTROL PASSED (a failure): ${gpu} the old sleeping rule left ${worst} ticks of anything floating`); } else console.log(`ok   control (the old sleeping rule) fails the floating check as it must: ${worst} ticks`);
 }

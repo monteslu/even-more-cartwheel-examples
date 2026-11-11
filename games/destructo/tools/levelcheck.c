@@ -497,13 +497,18 @@ static void realshot_check(int level, int ammo) {
   for (int i = 0; i < G.nb; i++) if (was[i] && p0[i].y > top0 * 0.66f) cx0 += p0[i].x, cy0 += p0[i].y, cz0 += p0[i].z, cn0++;
   if (cn0) cx0 /= cn0, cy0 /= cn0, cz0 /= cn0;
   int pick = game_aim_shot(&G, ammo, 0);
+  if (opt_on("HALFOUT")) { /* the footing's half out (the base to 1.5 m on one side): the structure over it is held by nothing on that side */
+    opt_set("LEG_HALF", "1");
+    game_legout(&G, false);
+    pick = 0;
+  }
   if (opt_on("LOWHALF")) { /* the whole lower half of the structure destroyed at once, what the player does with a few good shots (the statue's torso must fall) */
     for (int i = 0; i < G.nb; i++) if (was[i] && G.b[i].alive && G.b[i].home.y < top0 * 0.5f) game_hit_block(&G, i, 1e9f);
     pick = 0;
   }
   if (pick < 0) { printf("{\"level\":%d,\"phase\":\"realshot\",\"error\":\"no block to aim at\"}\n", level); return; }
   t3_vec3 tg = G.b[pick].home;
-  if (!opt_on("LOWHALF")) game_fire(&G);
+  if (!opt_on("LOWHALF") && !opt_on("HALFOUT")) game_fire(&G);
   G.sandbox = true;
   input none = { 0 };
   int worst_unsup = 0, hit_tick = -1, worst_float = chunks_floating(&G), float_ticks = 0, worst_fdyn = 0, fdyn_ticks = 0;
@@ -521,26 +526,29 @@ static void realshot_check(int level, int ammo) {
     if (u > worst_unsup) worst_unsup = u;
     { int fd = chunks_floating_dyn(&G); if (fd > worst_fdyn) worst_fdyn = fd; if (fd > 0 && t > 5) fdyn_ticks++; }
     { int fl = chunks_floating(&G); if (fl > worst_float) worst_float = fl; if (fl > 0) float_ticks++; }
-    if ((si < 8 && t == snaps[si]) || t == nsteps) {
+    int relsnap = hit_tick > 0 ? (t == hit_tick + 60 ? 1 : t == hit_tick + 120 ? 2 : 0) : 0;
+    bool atsnap = si < 8 && t == snaps[si];
+    if (atsnap || t == nsteps || relsnap) {
       int moved = 0, gone = 0, alive_n = 0;
-      float cx = 0, cy = 0, cz = 0; int cn = 0;
+      float cx = 0, cy = 0, cz = 0, rot = 0; int cn = 0;
       for (int i = 0; i < G.nb; i++) {
         if (!was[i]) continue;
         if (!G.b[i].alive || G.b[i].gen) { moved++, gone++; continue; }
         alive_n++;
         t3_vec3 p = game_block_xform(&G, i).p;
         if (sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)) > 1.0f) moved++;
-        if (p0[i].y > top0 * 0.66f) cx += p.x, cy += p.y, cz += p.z, cn++;
+        if (p0[i].y > top0 * 0.66f) { cx += p.x, cy += p.y, cz += p.z, cn++; cw_xform3 xx = game_block_xform(&G, i); float upy = 1 - 2 * (xx.q.x * xx.q.x + xx.q.z * xx.q.z); rot += acosf(fmaxf(-1.0f, fminf(1.0f, upy))) * 57.2958f; }
       }
       if (cn) cx /= cn, cy /= cn, cz /= cn;
       float lat = sqrtf((cx - cx0) * (cx - cx0) + (cz - cz0) * (cz - cz0)), drop = cy0 - cy;
+      float top_rot = cn ? rot / (float)cn : 0;
       float tilt = cn ? atan2f(sqrtf(cx * cx + cz * cz), fmaxf(0.01f, cy)) * 57.2958f : 0;
       int o6, sn;
       int big = chunks_largest(&G, &o6, &sn);
-      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"realshot\",\"ammo\":%d,\"target\":[%.2f,%.2f,%.2f],\"hit_tick\":%d,\"t\":%.2f,\"placed\":%d,\"gone\":%d,\"moved\":%.3f,\"released\":%d,\"standing\":%d,\"largest\":%d,\"worst_unsupported\":%d,\"worst_floating\":%d,\"floating_ticks\":%d,\"asleep_in_air\":%d,\"asleep_ticks\":%d,\"top_lateral\":%.2f,\"top_drop\":%.2f,\"top_tilt\":%.1f,\"awake\":%d,\"top_height\":%.2f}\n",
-             level, G.L->name, ammo, tg.x, tg.y, tg.z, hit_tick, t / 60.0f, total, gone, total ? (float)moved / (float)total : 0, G.released, sn, big, worst_unsup, worst_float, float_ticks, worst_fdyn, fdyn_ticks, lat, drop, tilt, game_awake(&G), top0);
+      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"realshot\",\"ammo\":%d,\"target\":[%.2f,%.2f,%.2f],\"hit_tick\":%d,\"t\":%.2f,\"placed\":%d,\"gone\":%d,\"moved\":%.3f,\"released\":%d,\"standing\":%d,\"largest\":%d,\"worst_unsupported\":%d,\"worst_floating\":%d,\"floating_ticks\":%d,\"asleep_in_air\":%d,\"asleep_ticks\":%d,\"top_lateral\":%.2f,\"top_drop\":%.2f,\"top_tilt\":%.1f,\"top_rot\":%.1f,\"rel\":%d,\"awake\":%d,\"top_height\":%.2f}\n",
+             level, G.L->name, ammo, tg.x, tg.y, tg.z, hit_tick, t / 60.0f, total, gone, total ? (float)moved / (float)total : 0, G.released, sn, big, worst_unsup, worst_float, float_ticks, worst_fdyn, fdyn_ticks, lat, drop, tilt, top_rot, relsnap, game_awake(&G), top0);
       fflush(stdout);
-      si++;
+      if (atsnap) si++;
     }
   }
   chunks_unsupported(&G);

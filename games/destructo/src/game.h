@@ -74,6 +74,7 @@ typedef struct chunk {
   uint8_t alive, dyn;
   uint8_t dirty;      /* lost a member: its pieces and its support are looked at again */
   uint8_t placed;     /* the level's own (bonded), not rubble */
+  float fail_o[2], fail_d[2]; int fail_t0, fail_until; /* progressive failure of the footing: a front that runs from the damage into what is left of the foot (m/s), breaking the blocks it reaches */
   float lean[2]; int lean_until; /* a frame that lost its footing keeps going over: a sideways pull (m/s^2) toward where it leans, growing with height, for a second and a half */
   int rel_tick;       /* the tick it was let go */
   int frac_tick;      /* the tick it last split (a piece splits again only after a few ticks) */
