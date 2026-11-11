@@ -2,10 +2,10 @@
 
 Bring famous buildings of the world down. The level select opens on four small tutorial structures (a tower, a tall
 tower, a garden wall and a stepped shrine that teach the shot, the heavy ball, the lob and the charge), then the
-real landmarks, by difficulty and world region: thirty-one of them, from every continent and age. Among them: the
+real landmarks, by difficulty and world region: thirty of them, from every continent and age. Among them: the
 Great Sphinx, the Needle of Seattle, the Iron Lady of Paris, the Black Tower of Chicago, the Empire and the Crown
 Tower of New York, the Harbour Sails of Sydney, the Pyramids of Giza, the Taj Mahal, the Parthenon, Pisa, Tower
-Bridge, Angkor Wat, Chichen Itza, the Statue of Liberty, the Redeemer of Rio, Mount Rushmore, Notre-Dame, the Pantheon,
+Bridge, Angkor Wat, Chichen Itza, the Statue of Liberty, the Redeemer of Rio, Notre-Dame, the Pantheon,
 the Arc de Triomphe, Hagia Sophia, the Blue Mosque, the Stacked Tower of Taipei, the Golden Span of San Francisco, the
 Television Tower of Berlin, the Sail Hotel of Dubai and a castle of Japan. Each is scaled to the field with its
 proportions kept and built of thousands of small bricks of stone, steel, glass and brick that break the way their
