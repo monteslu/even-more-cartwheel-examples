@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.19.0
+
+- **Destructo**: the levels are real landmarks. The level select is four tutorial levels (First Stones, Lookout, Garden Wall and Step Shrine), then 30 landmarks ordered by difficulty and region; the invented levels are out of the list. Eleven landmarks are new: Notre-Dame, the Pantheon, the Arc de Triomphe, Hagia Sophia, the Blue Mosque, a Japanese castle, a stacked pagoda-segment tower in Taipei, a skyscraper with a crown in New York, a television tower in Berlin, a sail-shaped hotel in Dubai and a bridge in San Francisco, all built of small bricks from openly licensed models (CREDITS names each model, its author and licence) and chosen by a check in which a judge shown only the frame must name each one. Mount Rushmore, Brooklyn Bridge, the Kremlin, the Brandenburg Gate, the Great Wall, Machu Picchu, Mont Saint-Michel, Neuschwanstein and a few more are built but held until they read at a glance.
+
 ## 0.18.0
 
 - **Destructo**: a structure that loses its footing now falls over as one solid piece. Before, a tower shot in the foot mostly sank into itself and crumbled in place. A bonded structure is now one rigid body: when its supports go it is released as one body and gravity topples it, then it breaks into slabs and rubble where it lands. With half of the Eiffel Tower's footing out, two seconds later it has gone sideways 9.4 m and tipped 61 degrees; the Black Tower tips 44 degrees, the Empire 45, Pisa 19.
