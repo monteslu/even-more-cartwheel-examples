@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.3
+
+- **Destructo**: the level ends the instant the last crystal is down. The results card and the stars show at once
+  (before, a level was judged up to 7 seconds after the last crystal fell, with "Settling..." on screen), and the
+  rubble keeps falling behind the card. The share the card shows keeps growing while rubble falls (up to 8 seconds), so
+  the stars stay fair.
+
 ## 0.14.2
 
 - **Destructo**: the landmarks stand rigid. They had swayed and leaned for seconds as the game began (the welded
