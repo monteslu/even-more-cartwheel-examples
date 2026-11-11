@@ -8,12 +8,29 @@
 #include "cartwheel/profile.h"
 
 void cw__mem_sync(void); /* the engine's: this thread sees memory another thread grew (src/core/mem.c) */
+#if CW_CART
+extern int cw__jobs_stall_ms; /* the engine's watchdog on a job that finishes no chunk for this long (30 s) */
+#endif
+
+static cw_job *JOB;
+
+/* a level build is one long chunk (seconds, a minute on a loaded machine), not a stuck one: the wait gives it ten minutes */
+static void wait_job(void) {
+#if CW_CART
+  int old = cw__jobs_stall_ms;
+  cw__jobs_stall_ms = 600000;
+  cw_job_wait(JOB);
+  cw__jobs_stall_ms = old;
+#else
+  cw_job_wait(JOB);
+#endif
+}
 
 enum { S_EMPTY, S_QUEUED, S_BUILDING, S_BUILT };
 #define NSLOT 4
 static load_slot *SL[NSLOT]; /* every slot that has asked, earliest first */
 static int nsl;
-static cw_job *JOB;
+
 static load_slot *RUNNING;
 static bool SYNC;
 
@@ -32,7 +49,7 @@ static void reg(load_slot *s) {
 }
 
 static void collect(void) {
-  cw_job_wait(JOB);
+  wait_job();
   cw__mem_sync();
   JOB = NULL;
   load_slot *s = RUNNING;
@@ -96,7 +113,7 @@ bool loader_built(load_slot *s, int level, int players, int mode) {
 bool loader_wait(load_slot *s) {
   while (s->state != S_BUILT && s->state != S_EMPTY) {
     if (JOB) {
-      cw_job_wait(JOB);
+      wait_job();
       collect();
     } else loader_pump();
   }
@@ -107,7 +124,7 @@ void loader_release(load_slot *s) { s->state = S_EMPTY, s->want = 0; }
 
 void loader_idle_wait(void) {
   while (JOB || RUNNING) {
-    cw_job_wait(JOB);
+    wait_job();
     collect();
   }
   /* (queued builds start again at the next pump) */

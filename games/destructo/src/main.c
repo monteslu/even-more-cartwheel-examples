@@ -621,7 +621,7 @@ static void fixed_update(void *u, double dt) {
       if (!G.free_fire && G.sel > unlocked()) G.sel = unlocked();
       preview_level(G.sel);
     }
-    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), request_level(G.sel);
+    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), begin_level_now(G.sel); /* (waits for the preview's build when it is not done: the same frame the level begins on every host) */
     G.players = CW_MAX(1, cw_shell_players());
     break;
   }
