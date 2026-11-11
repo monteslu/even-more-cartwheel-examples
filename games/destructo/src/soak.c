@@ -94,13 +94,13 @@ int main(int argc, char **argv) {
       if (dt > step_worst) step_worst = dt;
       t++, lt++;
       if (inject && t == 3600) {
-        for (int i = 0; i < G.nb; i++) if (G.b[i].alive) { cw_body3d_set_transform(G.b[i].body, (cw_xform3){ { NAN, 1, 0 }, { 0, 0, 0, 1 } }); break; }
+        for (int i = 0; i < G.nb; i++) if (G.b[i].alive) { cw_body3d_set_transform(G.ch[G.b[i].chunk].body, (cw_xform3){ { NAN, 1, 0 }, { 0, 0, 0, 1 } }); break; }
       }
       int alive = 0;
       for (int i = 0; i < G.nb; i++) {
         if (!G.b[i].alive) continue;
         alive++;
-        t3_vec3 p = cw_body3d_transform(G.b[i].body).p;
+        t3_vec3 p = game_block_xform(&G, i).p;
         if (!(p.x == p.x && p.y == p.y && p.z == p.z) || fabsf(p.x) > 400 || fabsf(p.z) > 400 || p.y > 300) {
           printf("FAIL level %d tick %d: block %d at %f %f %f\n", G.level, lt, i, p.x, p.y, p.z);
           fails++;

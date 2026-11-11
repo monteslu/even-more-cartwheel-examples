@@ -74,7 +74,7 @@ static bool line_up(const game *g, t3_vec3 t, float speed, float *yaw, float *pi
 static bool lob_up(const game *g, t3_vec3 t, float speed, float *yaw, float *pitch) {
   float dx = t.x - g->muzzle.x, dz = t.z - g->muzzle.z;
   *yaw = cw_atan2(-dx, -dz);
-  float d = sqrtf(dx * dx + dz * dz), lo = 0.8f, hi = 1.12f;
+  float d = sqrtf(dx * dx + dz * dz), lo = 0.8f, hi = 1.5f;
   if (path_height(g, *yaw, lo, speed, d) < t.y || path_height(g, *yaw, hi, speed, d) > t.y) return false;
   for (int i = 0; i < 24; i++) {
     float m = (lo + hi) * 0.5f;
@@ -86,7 +86,7 @@ static bool lob_up(const game *g, t3_vec3 t, float speed, float *yaw, float *pit
 
 static t3_vec3 crystal_seen(const game *g, int t) {
   const target_state *ts = &g->tgt[t];
-  return ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home;
+  return ts->blk >= 0 && g->b[ts->blk].alive ? game_block_xform(g, ts->blk).p : ts->home;
 }
 
 static void across_up(const game *g, t3_vec3 c, t3_vec3 *across, t3_vec3 *fwd) {
@@ -125,7 +125,7 @@ static bool hidden_from(const game *g, float orbit, int t, t3_vec3 c) {
   cw_ray_hit3d hit;
   if (!cw_world3d_raycast(g->w, eye, (t3_vec3){ c.x - eye.x, c.y - eye.y, c.z - eye.z }, &f, &hit)) return false;
   int i = g->tgt[t].blk;
-  return !(i >= 0 && g->b[i].alive && hit.body.id == g->b[i].body.id);
+  return !(i >= 0 && g->b[i].alive && game_block_of_shape(hit.shape) == i);
 }
 static bool hidden(const game *g, int t, t3_vec3 c) { return hidden_from(g, g->orbit, t, c); }
 
@@ -205,7 +205,7 @@ void human_buttons(const game *g, human_state *h, pad_buttons *pad) {
     float dx = h->aim_point.x - g->muzzle.x, dz = h->aim_point.z - g->muzzle.z;
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
-  h->want_yaw = cw_clampf(game_yaw_from_world(g, yaw), -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.4f);
+  h->want_yaw = cw_clampf(game_yaw_from_world(g, yaw), -0.75f, 0.75f), h->want_pitch = cw_clampf(pitch, -0.08f, 1.5f);
   /* the hands: held while far off (let go once it looks there, a reaction late), tapped when close */
   float ey = h->want_yaw - seen_yaw, ep = h->want_pitch - seen_pitch, tol = h->skill.tol;
   bool moving = false;

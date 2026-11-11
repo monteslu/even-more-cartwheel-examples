@@ -20,7 +20,7 @@
 
 #define RATE 44100
 enum { S_LAUNCH, S_WOOD, S_STONE, S_GLASS, S_STEEL, S_THUD, S_THUD_SMALL, S_BOOM, S_CHIME, S_WIN, S_LOSE, S_MENU, S_SELECT, S_BACK,
-       S_TICK, S_WIND, S_BIRD, S_TURN, S_COUNT };
+       S_TICK, S_WIND, S_BIRD, S_TURN, S_GROAN, S_COUNT };
 
 static cw_sound snd[S_COUNT];
 static cw_voice wind;
@@ -144,6 +144,19 @@ void sound_init(void) {
   snd[S_THUD] = thump(0.35f, 70, 0.9f, 0.08f, 14, 0.8f);
   snd[S_THUD_SMALL] = thump(0.18f, 140, 0.8f, 0.2f, 26, 0.5f);
   snd[S_BOOM] = blast(3.0f, 45, 1.0f);
+  { /* the groan of steel taking a load it cannot: a low sweep with a slow shudder and a rasp of noise */
+    int n = (int)(1.6f * RATE);
+    double ph = 0;
+    float lp = 0;
+    for (int i = 0; i < n; i++) {
+      float t = (float)i / RATE, f = 95 - 38 * t / 1.6f + 6 * sinf(t * 23);
+      ph += 2 * 3.14159265358979 * f / RATE;
+      lp += (nz() - lp) * 0.04f;
+      float a = fminf(1, t * 8) * fminf(1, (1.6f - t) * 3);
+      pcm[i] = ((float)sin(ph) * 0.55f + (float)sin(ph * 2.01) * 0.25f + lp * 1.4f) * a * (0.65f + 0.35f * sinf(t * 31)) * 0.9f;
+    }
+    snd[S_GROAN] = make(n);
+  }
   { static const float a[] = { 1318.5f, 1760, 2093 }; snd[S_CHIME] = notes(a, 3, 0.07f, 4, 0.1f, 0.3f); }
   { static const float a[] = { 523.25f, 659.25f, 783.99f, 1046.5f, 783.99f, 1046.5f, 1318.5f }; snd[S_WIN] = notes(a, 7, 0.11f, 2.5f, 0.35f, 0.32f); }
   { static const float a[] = { 392, 349.23f, 311.13f, 261.63f }; snd[S_LOSE] = notes(a, 4, 0.2f, 2.5f, 0.4f, 0.3f); }
@@ -175,6 +188,8 @@ void sound_init(void) {
   }
 }
 
+typedef struct pend_boom { int at; float vol, pan; } pend_boom;
+static pend_boom PEND[6]; /* booms waiting for the sound to cross the field */
 static float master = 1;
 static void play(int s, float vol, float pitch, float pan) {
   cw_audio_play(snd[s], &(cw_play_desc){ .bus = cw_shell_sfx_bus(), .volume = vol * master, .pitch = pitch > 0 ? pitch : 1, .pan = pan });
@@ -195,6 +210,7 @@ void sound_result(bool won) { play(won ? S_WIN : S_LOSE, 0.8f, 1, 0); }
 
 void sound_events(const game *g, t3_vec3 cam) {
   int per[S_COUNT] = { 0 };
+  for (int q = 0; q < 6; q++) if (PEND[q].at && g->tick >= PEND[q].at) play(S_BOOM, PEND[q].vol, 1, PEND[q].pan), PEND[q].at = 0;
   static const int limit[S_COUNT] = { [S_WOOD] = 2, [S_STONE] = 2, [S_GLASS] = 2, [S_STEEL] = 2, [S_THUD] = 3, [S_THUD_SMALL] = 3 };
   for (int k = 0; k < g->nev; k++) {
     const sim_event *e = &g->ev[k];
@@ -205,7 +221,20 @@ void sound_events(const game *g, t3_vec3 cam) {
     float v = vol;
     switch (e->kind) {
     case EV_LAUNCH: s = S_LAUNCH, v = 0.9f; break;
-    case EV_BOOM: s = S_BOOM, v = fminf(1, vol * 2.2f); break;
+    case EV_BOOM: { /* the flash comes first, the sound after it has crossed the field (a hundred metres a second here) */
+      float dx = e->p.x - cam.x, dy = e->p.y - cam.y, dz = e->p.z - cam.z;
+      int wait = 6 + (int)(sqrtf(dx * dx + dy * dy + dz * dz) * 0.6f);
+      for (int q = 0; q < 6; q++) if (PEND[q].at == 0) { PEND[q] = (pend_boom){ g->tick + wait, fminf(1, vol * 2.2f), pan }; break; }
+      break;
+    }
+    case EV_CRACK: /* a chunk lets go: stone cracks, steel groans, by how heavy it is */
+      if (e->mat == M_STEEL || e->mat == M_WOOD) { play(S_GROAN, fminf(1, vol * (0.5f + (float)e->a / 40000.0f)), 0.85f + 0.3f * hashf((uint32_t)g->tick), pan); }
+      else s = S_STONE, v = fminf(1, vol * (0.5f + (float)e->a / 60000.0f));
+      break;
+    case EV_CRUMBLE: /* it landed and broke: a thud as heavy as the blow, and what broke */
+      play(S_THUD, fminf(1, vol * (0.3f + (float)e->a / 400000.0f)), 0.8f + 0.2f * hashf((uint32_t)g->tick + 5u), pan);
+      s = e->mat == M_STEEL ? S_STEEL : e->mat == M_WOOD ? S_WOOD : S_STONE, v = fminf(1, vol * (0.3f + (float)e->a / 300000.0f));
+      break;
     case EV_TARGET: play(S_CHIME, 0.8f, 1 + 0.12f * (float)(g->ntgt - g->tgt_left), pan); break;
     case EV_BREAK: s = e->mat == M_WOOD ? S_WOOD : e->mat == M_STEEL ? S_STEEL : S_STONE; v = vol * fminf(1, 0.4f + e->size); break;
     case EV_SHATTER: s = S_GLASS; v = vol * 0.8f; break;

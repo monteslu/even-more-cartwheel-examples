@@ -43,7 +43,10 @@ extern const ammo_info AMMO[NAMMO];
 extern const float AMMO_POWER[NAMMO]; /* the fixed power of each ammunition (0..1 of its speed range) */
 
 typedef struct block {
-  cw_body3d body;
+  int chunk, cnext, cprev; /* the chunk it belongs to (one body), and its place in that chunk's list of members */
+  cw_shape3d shape;
+  cw_xform3 local;   /* its pose in its chunk's body frame */
+  cw_xform3 wxf;     /* its world pose while its chunk stands (static): a standing block never moves */
   t3_vec3 half;
   float hp;          /* J left before it breaks */
   float vol;
@@ -58,6 +61,30 @@ typedef struct block {
   uint16_t blasted;  /* the charge (game.booms) that last pushed it */
   uint8_t keg;       /* a powder keg: when it breaks it goes off like a smaller charge (and may set off the next) */
 } block;
+
+/* A chunk is one rigid body of several blocks (a compound of box shapes): a landmark's welded lattice section, a
+ * course of masonry bonded by its mortar, a loose brick or a piece of rubble (a chunk of one). The level builds its
+ * chunks static: a static chunk is perfectly rigid, costs the physics nothing and is held up by the SUPPORT GRAPH
+ * (chunks.c), not by joints. A chunk becomes dynamic when it loses its support, or a blow moves it; a dynamic chunk
+ * falls as one solid piece and breaks into smaller pieces where it lands (chunk_fracture). */
+typedef struct chunk {
+  cw_body3d body;
+  int leader, anext;  /* the assembly it is bonded into (its leader: the first chunk, which carries the judgement), and the next chunk in it */
+  int head, n;        /* members (linked by block.cnext), live ones */
+  uint8_t alive, dyn;
+  uint8_t dirty;      /* lost a member: its pieces and its support are looked at again */
+  uint8_t placed;     /* the level's own (bonded), not rubble */
+  int rel_tick;       /* the tick it was let go */
+  int frac_tick;      /* the tick it last split (a piece splits again only after a few ticks) */
+  int stamp;          /* the support epoch it last changed in */
+  int seen;           /* the support epoch it was last judged in */
+  float mass;         /* kg of its live members (static chunks) */
+  t3_vec3 com;        /* their centre (static chunks) */
+  float d0;           /* how far inside its support the centre stood as built (m, negative: outside) */
+  t3_vec3 pj, pt;     /* pending impulse, and the points it was given at weighted by its size (chunk_impulse), applied by chunks_flush */
+  float pm;           /* the sum of those sizes */
+  int pq;             /* in the push list */
+} chunk;
 
 typedef struct target_state {
   int blk;           /* block index, -1 when broken */
@@ -76,7 +103,8 @@ enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, 
 typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; } banner;
 
 /* events for the view and the sound (render only; the simulation never reads them back) */
-enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH, EV_STRIKE /* a ball crushing into the structure (its burst) */ };
+enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH, EV_STRIKE /* a ball crushing into the structure (its burst) */,
+       EV_CRACK /* a chunk let go (its support gone): a: its mass in kg, size: its height */, EV_CRUMBLE /* a chunk landed hard and broke: a: the energy in joules */ };
 typedef struct sim_event {
   uint8_t kind, mat;
   t3_vec3 p, n;
@@ -142,10 +170,17 @@ typedef struct player_state {
 typedef struct game {
   cw_world3d w;
   cw_body3d ground;
+  chunk *ch; int nch, ch_cap;       /* every chunk (a dead one's slot is reused) */
+  int *cfree; int ncfree;
+  /* the support graph (chunks.c): each placed block's links to what it rests on (another block, or the ground: -1) */
+  int *sl_off, *sl_to; float *sl_rect; int nsl; /* CSR by block: sl_to[k] the block below, sl_rect[4k..] the touching footprint x0 z0 x1 z1 */
+  int *bnd_off, *bnd_to;            /* the bonds (mortar and welds): the placed blocks that stay one piece */
+  int epoch, sup_dirty, crumble_i;
+  int released, fractured;          /* stats: chunks let go, chunks broken on impact */
   const level_def *L;
   int level;
   block b[MAXBLK];
-  struct weld_pair { uint16_t a, b; cw_joint3d j; cw_xform3 fa, fb; int next_a, next_b; } *weld; int wh[MAXBLK]; /* wh[i]: the first weld of block i (index + 1), chained by next_a / next_b */ /* every weld laid between two placed blocks (landmarks.c), for the level checks: a welded member stands on what it is welded to */
+  struct weld_pair { uint16_t a, b; } *weld; /* every bond laid between two placed blocks (landmarks.c: a steel lattice's members, no joint: the pair stays one chunk) */
   int nweld, weld_cap;
   int nb, nalive, free_head;
   int free_list[MAXBLK];
@@ -174,6 +209,7 @@ typedef struct game {
   int party_winner;  /* party: the seat still in at the end, -1 none */
   int tick;
   int awake_now;
+  t3_vec3 hot_c; float hot_r; int hot_n; /* where the collapse is: the middle of the chunks in motion, and how far they are spread (the camera follows it) */
   /* the fracture queue: blocks out of strength break a few dozen a tick (a charge breaks hundreds at once: making
    * them all in one tick is a dropped frame) */
   int bq[MAXBLK];
@@ -233,8 +269,8 @@ void game_settle(game *g, int ticks);       /* step with no input (a level settl
 void game_settle_finish(game *g);           /* game_settle's end: where everything rests is home (a settle stepped by hand) */
 int game_awake(const game *g);
 void game_sleep_all(game *g); /* put every body to sleep at where it is (a structure at rest from the first frame) */
-void game_prestress(game *g); /* the welds hold the structure at its design pose under its own weight (landmarks.c) */
-void game_pop_welds(game *g, int i, int hops); /* every weld of block i, and of the blocks welded to it hops deep, lets go (a hard landing: the members come apart at their joints) */
+void game_ev(game *g, int kind, int mat, t3_vec3 p, t3_vec3 n, float size, float speed, int a); /* an event for the view and the sound (chunks.c) */
+int game_legout(game *g, bool charge); /* a foot of the structure broken (or a charge at its middle): the checks and the look sheets */
 void game_charge_at(game *g, t3_vec3 at); /* a charge goes off at this point (the checks) */
 t3_vec3 game_aim_dir(const game *g);
 float game_world_yaw(const game *g);       /* the aim's yaw in the world: the launcher's place on its circle plus its turn */
@@ -249,6 +285,23 @@ void game_set_orbit(game *g, float orbit);
 /* a weld between two placed blocks (a landmark's members; the checks' welded island), recorded in game.weld */
 void game_weld(game *g, int i, int j); /* put the launcher at this place on its circle (the level's opening view, the debug command) */
 t3_vec3 game_block_pos(const game *g, int i);
+cw_xform3 game_block_xform(const game *g, int i);                 /* a block's pose in the world (its chunk's body and its place in it) */
+cw_xform3 game_block_interp(const game *g, int i, float alpha);   /* ... as drawn, between the last two ticks */
+t3_vec3 game_block_vel(const game *g, int i);                     /* the velocity of the block's middle */
+int game_block_of_shape(cw_shape3d s);                            /* the block a shape belongs to, -1 none */
+cw_shape3d block_shape(game *g, int i, cw_body3d body, cw_xform3 local); /* a box shape for block i on a body */
+/* chunks.c */
+int chunk_new(game *g, cw_body3d body, bool dyn, bool placed);
+void chunk_add_member(game *g, int c, int i);
+void chunk_remove_member(game *g, int i);   /* leaves the chunk (its body goes with its last member); the block's own shape goes too */
+void chunks_build(game *g);                 /* after the level is laid: placed blocks into static chunks, the support graph */
+void chunks_step(game *g);                  /* each tick: pieces cut apart, support judged, unsupported chunks let go */
+void chunk_impulse(game *g, int blk, t3_vec3 J, t3_vec3 at); /* a push at a block (applied by chunks_flush: a chunk too heavy to move stays) */
+void chunks_flush(game *g);
+float chunk_inside_now(game *g, int c); /* how far inside its support the chunk's centre stands (checks) */
+void chunk_fracture(game *g, int c);        /* a dynamic chunk breaks in two along its long side */
+void chunk_release(game *g, int c);         /* static to dynamic (the pre-split of a big one) */
+int chunks_largest(const game *g, int *over6, int *standing); /* the biggest dynamic chunk's members, chunks of more than 6 members, standing chunks (checks) */
 bool game_over(const game *g);
 uint32_t game_state_hash(const game *g); /* the blocks' poses and the counters, apart from the world they live in (replays) */
 int game_stars(const game *g);

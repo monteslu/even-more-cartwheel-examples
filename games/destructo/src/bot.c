@@ -66,7 +66,7 @@ static bool solve_high(const game *g, t3_vec3 t, float speed, float *yaw, float 
   float dx = t.x - g->muzzle.x, dz = t.z - g->muzzle.z;
   *yaw = cw_atan2(-dx, -dz);
   float d = sqrtf(dx * dx + dz * dz);
-  float lo = 0.8f, hi = 1.38f;
+  float lo = 0.8f, hi = 1.5f;
   if (path_height(g, *yaw, lo, speed, d) < t.y) return false;
   if (path_height(g, *yaw, hi, speed, d) > t.y) return false;
   for (int i = 0; i < 26; i++) {
@@ -87,7 +87,7 @@ static bool in_view_from(const game *g, t3_vec3 m, int t, t3_vec3 at) {
   cw_ray_hit3d h;
   if (cw_world3d_shapecast(g->w, &q, d, NULL, &h, 1) == 0) return true;
   int i = g->tgt[t].blk;
-  return i >= 0 && g->b[i].alive && h.body.id == g->b[i].body.id;
+  return i >= 0 && g->b[i].alive && game_block_of_shape(h.shape) == i;
 }
 static bool in_view(const game *g, int t, t3_vec3 at) { return in_view_from(g, g->muzzle, t, at); }
 
@@ -121,7 +121,7 @@ static void plan(game *g, bot_state *b) {
       for (int i = 0; i < g->nb; i++) {
         const block *k = &g->b[i];
         if (!k->alive || !k->tag || k->target >= 0 || k->down || k->keg) continue;
-        t3_vec3 p = cw_body3d_transform(k->body).p;
+        t3_vec3 p = game_block_xform(g, (int)(k - g->b)).p;
         float near = 1e9f;
         for (int c = 0; c < g->ntgt; c++) {
           if (g->tgt[c].down || g->tgt[c].blk < 0) continue;
@@ -138,7 +138,7 @@ static void plan(game *g, bot_state *b) {
     b->plan_tgt = 0;
     b->want_ammo = pick_ammo(g, A_HEAVY);
     b->want_power = 1.0f, b->lob = false;
-    b->aim_at = cw_body3d_transform(g->b[pick].body).p;
+    b->aim_at = game_block_xform(g, pick).p;
     b->solved = false;
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
     b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)), b->want_pitch = 0.1f;
@@ -154,7 +154,7 @@ static void plan(game *g, bot_state *b) {
     b->plan_tgt = 0;
     b->want_ammo = pick_ammo(g, g->shots % NAMMO);
     b->want_power = 1.0f, b->lob = false;
-    b->aim_at = cw_body3d_transform(g->b[pick].body).p;
+    b->aim_at = game_block_xform(g, pick).p;
     b->solved = false;
     float dx = b->aim_at.x - g->muzzle.x, dz = b->aim_at.z - g->muzzle.z;
     b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)), b->want_pitch = 0.1f;
@@ -164,7 +164,7 @@ static void plan(game *g, bot_state *b) {
   if (t < 0) return;
   b->plan_tgt = t;
   target_state *ts = &g->tgt[t];
-  t3_vec3 at = ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home;
+  t3_vec3 at = ts->blk >= 0 && g->b[ts->blk].alive ? game_block_xform(g, ts->blk).p : ts->home;
   int a = b->attempt[t];
   bool seen = in_view(g, t, at);
   if (!seen && (a >= 1 || g->ammo[A_CHARGE] == 0) && !b->orbited[t] && !b->no_orbit && g->mode != MODE_PARTY) { /* hidden from here: roll round to where it shows */
@@ -182,7 +182,7 @@ static void plan(game *g, bot_state *b) {
   t3_vec3 aimp = at;
   switch (a % 3) {
   case 0: if (seen) ammo = A_SHOT; else lob = true, ammo = g->ammo[A_CHARGE] > 0 ? A_CHARGE : A_SHOT; break;
-  case 1: ammo = seen ? A_CHARGE : A_HEAVY; break;               /* hidden: breach what is in front of it */
+  case 1: ammo = seen ? A_HEAVY : A_CHARGE; break;               /* hidden: a charge lobbed over what is in front of it (a mortar: the charge's one speed is slow) */
   default: ammo = seen ? A_HEAVY : A_CHARGE; if (seen) aimp.y = fmaxf(0.5f, at.y * 0.5f); break;
   }
   if (a >= 3) aimp.x += ((a / 3) & 1 ? 0.6f : -0.6f) * (float)((a + 1) / 6 + 1) * 0.5f;
@@ -194,7 +194,7 @@ static void plan(game *g, bot_state *b) {
   b->solved = false;
   float dx = aimp.x - g->muzzle.x, dz = aimp.z - g->muzzle.z;
   b->want_yaw = game_yaw_from_world(g, cw_atan2(-dx, -dz)) + (float)b->yaw_jitter_control * 0.001f;
-  b->want_pitch = lob ? 0.95f : 0.1f;
+  b->want_pitch = lob ? 1.1f : 0.1f;
   b->planned = true;
   b->wait = 0;
 }
@@ -209,7 +209,7 @@ static void resolve(game *g, bot_state *b) {
     yaw = cw_atan2(-dx, -dz), pitch = 0.6f;
   }
   b->want_yaw = cw_clampf(game_yaw_from_world(g, yaw) + (float)b->yaw_jitter_control * 0.001f, -0.75f, 0.75f);
-  b->want_pitch = cw_clampf(pitch, -0.08f, 1.4f);
+  b->want_pitch = cw_clampf(pitch, -0.08f, 1.5f);
   b->solved = true;
   if (opt_get("BOT_DEBUG")) fprintf(stderr, "resolve: lob %d ok %d speed %.3f power %.4f aim %.2f %.2f %.2f pitch %.4f h_at_target %.3f\n", b->lob, ok, sp, g->power, b->aim_at.x, b->aim_at.y, b->aim_at.z, pitch, path_height(g, yaw, pitch, sp, sqrtf((b->aim_at.x - g->muzzle.x) * (b->aim_at.x - g->muzzle.x) + (b->aim_at.z - g->muzzle.z) * (b->aim_at.z - g->muzzle.z))));
 }

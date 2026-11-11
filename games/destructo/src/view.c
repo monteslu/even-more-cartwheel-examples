@@ -954,8 +954,9 @@ static bool getenv_layers_off(void) { /* COPLANAR_SEPARATE=0: the blocks drawn a
   return opt_get("COPLANAR_SEPARATE") && !strcmp(opt_get("COPLANAR_SEPARATE"), "0");
 }
 /* a block's world box and, for each world axis, the block's own axis that lies along it */
-static void block_box(const block *k, float lo[3], float hi[3], uint8_t own[3]) {
-  cw_xform3 x = cw_body3d_transform(k->body);
+static void block_box(const game *g, int bi, float lo[3], float hi[3], uint8_t own[3]) {
+  const block *k = &g->b[bi];
+  cw_xform3 x = game_block_xform(g, bi);
   t3_mat4 r;
   t3_mat4_compose(&r, (t3_vec3){ 0, 0, 0 }, x.q, (t3_vec3){ 1, 1, 1 });
   const float h[3] = { k->half.x, k->half.y, k->half.z }, c[3] = { x.p.x, x.p.y, x.p.z };
@@ -975,7 +976,7 @@ static void color_blocks(const game *g) {
   float glo[3] = { 1e9f, 1e9f, 1e9f }, ghi[3] = { -1e9f, -1e9f, -1e9f };
   for (int i = 0; i < g->nb; i++)
     if (g->b[i].alive && !g->b[i].gen) {
-      block_box(&g->b[i], lo[i], hi[i], own[i]);
+      block_box(g, i, lo[i], hi[i], own[i]);
       for (int a = 0; a < 3; a++) glo[a] = fminf(glo[a], lo[i][a]), ghi[a] = fmaxf(ghi[a], hi[i][a]);
     }
   /* only blocks whose boxes come within LAY_TOUCH of each other can need apart (touching across the other two axes,
@@ -1071,7 +1072,7 @@ void view_sync(const game *g, float alpha) {
     bool curtain = m == M_GLASS && (k->paint == P_DARK_GLASS || k->paint == P_BLUE_GLASS) && ncurt < MAXBLK / 2;
     t3_instanced_mesh *im = roofing ? V.roof : curtain ? V.curtain : V.blk[m];
     int s = roofing ? nroof++ : curtain ? ncurt++ : cnt[m]++;
-    cw_xform3 x = cw_body3d_interpolated(k->body, alpha);
+    cw_xform3 x = game_block_interp(g, i, alpha);
     t3_mat4 mx;
     const float proud = m == M_TARGET || getenv_layers_off() ? 0 : 2.0f * LAY_STEP; /* a layer (both ends) */
     t3_vec3 sc = { k->half.x * 2 + proud * V.lay[i][0], k->half.y * 2 + proud * V.lay[i][1], k->half.z * 2 + proud * V.lay[i][2] };
@@ -1125,7 +1126,7 @@ void view_sync(const game *g, float alpha) {
   for (int t = 0; t < MAXTGT; t++) {
     bool on = t < g->ntgt && !g->tgt[t].down && g->tgt[t].blk >= 0;
     if (on) {
-      cw_xform3 x = cw_body3d_interpolated(g->b[g->tgt[t].blk].body, alpha);
+      cw_xform3 x = game_block_interp(g, g->tgt[t].blk, alpha);
       cw_node3d_set_position(V.crystal_light[t], (t3_vec3){ x.p.x, x.p.y + 0.6f, x.p.z });
       float pulse = 0.85f + 0.15f * sinf((float)g->tick * 0.08f + t);
       cw_node_set(V.crystal_light[t], "energy", cw_val_float(9 * pulse));
@@ -1138,7 +1139,7 @@ void view_sync(const game *g, float alpha) {
     int nb = 0;
     for (int t = 0; t < g->ntgt && t < MAXTGT; t++) {
       if (g->tgt[t].down || g->tgt[t].blk < 0) continue;
-      cw_xform3 x = cw_body3d_interpolated(g->b[g->tgt[t].blk].body, alpha);
+      cw_xform3 x = game_block_interp(g, g->tgt[t].blk, alpha);
       float pulse = 1 + 0.08f * sinf((float)g->tick * 0.05f + t * 1.7f);
       t3_mat4 mx;
       t3_mat4_compose(&mx, (t3_vec3){ x.p.x, x.p.y + 0.3f, x.p.z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ pulse * V.beam_w, 18, pulse * V.beam_w });
@@ -1154,7 +1155,7 @@ void view_sync(const game *g, float alpha) {
       const banner *bn = &g->ban[i];
       const block *k = &g->b[bn->blk];
       if (!k->alive) continue;
-      cw_xform3 x = cw_body3d_interpolated(k->body, alpha);
+      cw_xform3 x = game_block_interp(g, bn->blk, alpha);
       t3_vec3 foot = t3_vec3_apply_quat(bn->local, x.q);
       foot = (t3_vec3){ x.p.x + foot.x, x.p.y + foot.y, x.p.z + foot.z };
       t3_mat4 pm, fm;
@@ -1283,9 +1284,13 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
     c = lerp3(c, mid, 0.5f);
     float r = ext * 1.7f + 9;
+    if (g->hot_n > 0) { /* follow the collapse: the middle of what is in motion, far enough back for all of it */
+      c = g->hot_c;
+      r = fmaxf(ext * 1.1f + 7, g->hot_r * 2.2f + 8);
+    }
     float a = g->orbit + 0.75f + (float)g->state_t * 0.0012f; /* off to the side of where the shot came from */
-    eye = (t3_vec3){ c.x + sinf(a) * r, top * 0.55f + 4.5f, c.z + cosf(a) * r };
-    at = (t3_vec3){ c.x, fmaxf(1.5f, c.y * 0.7f), c.z };
+    eye = (t3_vec3){ c.x + sinf(a) * r, fmaxf(3.0f, c.y * 0.8f + r * 0.28f), c.z + cosf(a) * r };
+    at = (t3_vec3){ c.x, fmaxf(1.5f, c.y * 0.8f), c.z };
     k = 1.8f;
   }
   V.wind += dt;
@@ -1371,13 +1376,13 @@ bool view_screen(t3_vec3 p, float *u, float *v) {
 
 bool view_hidden(const game *g, int t) {
   if (t < 0 || t >= g->ntgt || g->tgt[t].blk < 0) return false;
-  t3_vec3 c = cw_body3d_transform(g->b[g->tgt[t].blk].body).p;
+  t3_vec3 c = game_block_xform(g, g->tgt[t].blk).p;
   float so = sinf(g->orbit), co = cosf(g->orbit);
   t3_vec3 eye = { g->muzzle.x + so * 8.5f + co * 2.6f, g->muzzle.y + 3.6f, g->muzzle.z + co * 8.5f - so * 2.6f };
   cw_phys_filter f = cw_phys_filter_layers(1u << 1);
   cw_ray_hit3d hit;
   if (!cw_world3d_raycast(g->w, eye, (t3_vec3){ c.x - eye.x, c.y - eye.y, c.z - eye.z }, &f, &hit)) return false;
-  return hit.body.id != g->b[g->tgt[t].blk].body.id;
+  return game_block_of_shape(hit.shape) != g->tgt[t].blk;
 }
 
 view_stats view_get_stats(void) { return V.st; }

@@ -629,6 +629,16 @@ static void fixed_update(void *u, double dt) {
 #ifdef DESTRUCTO_AUTOPILOT
     if (opt_get("FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
     if (opt_on("HOLD")) break;    /* tests/destructo-coplanar.mjs: the level settled as for play, then held (no shot fired) */
+    if (opt_get("SCENE")) { /* the look sheets: a foot of the structure broken (dm set SCENE legout) or a charge at its middle (boom), no shot; the world steps, the view draws it */
+      input none = { 0 };
+      G.overview = !opt_get("SCENE_CAM"); /* the wide view unless SCENE_CAM is set (the game's own collapse camera) */
+      if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
+      G.g.state = GS_SETTLE;
+      game_step(&G.g, &none);
+      fx_events(&G.g, G.g.cur);
+      sound_events(&G.g, cw_node3d_global_position(G.camera));
+      break;
+    }
 #endif
     input in;
     seat_watch();

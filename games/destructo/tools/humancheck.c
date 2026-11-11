@@ -84,7 +84,7 @@ static void shot(int level, int ammo) {
   G.old_damage = old_damage;
 #endif
   game_settle(&G, level_settle_ticks(G.L));
-  static cw_body3d body[MAXBLK];
+  static int body[MAXBLK];
   static t3_vec3 at[MAXBLK];
   static float vol[MAXBLK], lim[MAXBLK];
   int placed = 0;
@@ -95,8 +95,8 @@ static void shot(int level, int ammo) {
   for (int i = 0; i < G.nb; i++) {
     block *k = &G.b[i];
     if (!k->alive || !k->tag || k->target >= 0) continue;
-    t3_vec3 p = cw_body3d_transform(k->body).p;
-    body[placed] = k->body, at[placed] = p, vol[placed] = k->vol, lim[placed] = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
+    t3_vec3 p = game_block_xform(&G, i).p;
+    body[placed] = i, at[placed] = p, vol[placed] = k->vol, lim[placed] = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
     vol_all += k->vol, placed++;
     if (KEG(k) || fabsf(p.x) > 1.5f || p.y < 0.5f || p.y > fmaxf(1.0f, G.top * 0.5f)) continue;
     float d = (G.muzzle.z - p.z) + fabsf(p.x) * 0.5f + fabsf(p.y - G.top * 0.33f) * 0.5f;
@@ -135,15 +135,15 @@ static void shot(int level, int ammo) {
   int moved = 0, gone = 0;
   float vol_down = 0;
   for (int i = 0; i < placed; i++) {
-    bool down = !cw_body3d_valid(body[i]);
+    bool down = !(G.b[body[i]].alive && !G.b[body[i]].gen);
     gone += down;
     float dd = 0;
     if (!down) {
-      t3_vec3 p = cw_body3d_transform(body[i]).p;
+      t3_vec3 p = game_block_xform(&G, body[i]).p;
       dd = sqrtf((p.x - at[i].x) * (p.x - at[i].x) + (p.y - at[i].y) * (p.y - at[i].y) + (p.z - at[i].z) * (p.z - at[i].z));
       down = dd > lim[i];
     }
-    moved += !cw_body3d_valid(body[i]) || dd > 0.1f;
+    moved += !(G.b[body[i]].alive && !G.b[body[i]].gen) || dd > 0.1f;
     if (down) vol_down += vol[i];
   }
   printf("{\"level\":%d,\"name\":\"%s\",\"ammo\":\"%s\",\"speed\":%.1f,\"ke_kj\":%.1f,\"momentum\":%.0f,\"first_hit_kj\":%.1f,\"max_hit_kj\":%.1f,\"broken\":%d,\"placed\":%d,\"gone\":%d,\"moved\":%d,"

@@ -36,15 +36,19 @@ const material_info MATS[M_COUNT] = {
   [M_STEEL] = { "steel", 2600, 0.5f, 0.05f, 900000, 6000, 2, 20 }, /* girders: an I-section fills a third of its box */
   [M_TARGET] = { "crystal", 900, 0.5f, 0.1f, 6000, 60, 0, 0 },
 };
+/* Each ammunition fires at one fixed muzzle speed (no charging, no power): its energy is what it is. A shot is a 50 kg
+ * iron ball at 62 m/s (96 kJ), a heavy ball 210 kg at 40 m/s (168 kJ: slower, heavier, it crushes more and toppled
+ * towers), a charge a 30 kg bomb at 28 m/s (12 kJ of flight: a mortar, lobbed over a wall; it goes off where it
+ * lands for 260 kJ falling off with the square of the distance, CHARGE_ENERGY). */
 const ammo_info AMMO[NAMMO] = {
-  [A_SHOT] = { "Shot", 0.22f, 50, 18, 62 },
-  [A_HEAVY] = { "Heavy ball", 0.36f, 210, 14, 40 },
-  [A_CHARGE] = { "Charge", 0.26f, 30, 16, 52 },
+  [A_SHOT] = { "Shot", 0.22f, 50, 62, 62 },
+  [A_HEAVY] = { "Heavy ball", 0.36f, 210, 40, 40 },
+  [A_CHARGE] = { "Charge", 0.26f, 30, 28, 28 },
 };
 
 /* the launcher's power is fixed, by ammunition (no player sets it): a shot and a heavy ball leave at their full speed (the heavy ball is
  * the slower, heavier one), a charge is lobbed at 23 m/s so that a high arc (up to 79 degrees) lands it on a structure 20 to 54 m off */
-const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] = 0.194f };
+const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] = 1.0f } /* (each ammunition has its one speed, AMMO.vmax) */;
 
 #define USER_PROJ ((void *)(intptr_t)(MAXBLK + 7))
 #define WELD_POP_SPEED 4.0f /* m/s: a welded member struck or landing this hard loses its welds */
@@ -54,6 +58,8 @@ const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] 
 #define KEG_R 3.4f        /* a keg's blast: radius, ... */
 #define KEG_K 0.7f        /* ... and strength against a charge's */
 #define KEG_DELAY 7       /* ticks between the blasts of a chain */
+#define FRAC_SPEED 1.6f  /* m/s: a chunk landing this hard breaks in two */
+#define FRAC_COOL 5      /* ticks before a piece breaks again */
 #define LAYER_GROUND 0
 #define LAYER_BLOCK 1
 #define LAYER_PROJ 2
@@ -62,6 +68,8 @@ static void ev_push(game *g, int kind, int mat, t3_vec3 p, t3_vec3 n, float size
   if (g->nev >= MAXEV) return;
   g->ev[g->nev++] = (sim_event){ (uint8_t)kind, (uint8_t)mat, p, n, size, speed, a };
 }
+
+void game_ev(game *g, int kind, int mat, t3_vec3 p, t3_vec3 n, float size, float speed, int a) { ev_push(g, kind, mat, p, n, size, speed, a); }
 
 static inline t3_vec3 v3(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
 static inline t3_vec3 vadd(t3_vec3 a, t3_vec3 b) { return v3(a.x + b.x, a.y + b.y, a.z + b.z); }
@@ -92,38 +100,73 @@ static int alloc_block(game *g) {
   return -1;
 }
 
-static int block_of(cw_body3d b) {
-  if (!cw_body3d_valid(b)) return -1;
-  intptr_t u = (intptr_t)cw_body3d_user(b);
+/* the block a body belongs to when it is a chunk of one (the shot has its own user mark) */
+int game_block_of_shape(cw_shape3d s) {
+  if (!cw_shape3d_valid(s)) return -1;
+  intptr_t u = (intptr_t)cw_shape3d_user(s);
   if (u <= 0 || u > MAXBLK) return -1;
   return (int)u - 1;
 }
+
+cw_shape3d block_shape(game *g, int i, cw_body3d body, cw_xform3 local) {
+  block *k = &g->b[i];
+  cw_shape3d_def sd = cw_shape3d_default_def();
+  const material_info *m = &MATS[k->mat];
+  sd.density = m->density;
+  sd.material.friction = m->friction, sd.material.restitution = m->restitution;
+  sd.material.user_material = (uint64_t)k->mat;
+  sd.layer = LAYER_BLOCK;
+  sd.hit_events = true;
+  sd.contact_events = false;
+  sd.user = (void *)(intptr_t)(i + 1);
+  return cw_shape3d_box(body, &sd, k->half, local);
+}
+
+static inline cw_xform3 xmul(cw_xform3 a, cw_xform3 b) {
+  t3_quat p = a.q, q = b.q;
+  return (cw_xform3){ vadd(a.p, qrot(a.q, b.p)), (t3_quat){ p.w * q.x + p.x * q.w + p.y * q.z - p.z * q.y, p.w * q.y - p.x * q.z + p.y * q.w + p.z * q.x, p.w * q.z + p.x * q.y - p.y * q.x + p.z * q.w, p.w * q.w - p.x * q.x - p.y * q.y - p.z * q.z } };
+}
+cw_xform3 game_block_xform(const game *g, int i) {
+  const block *k = &g->b[i];
+  const chunk *c = &g->ch[k->chunk];
+  if (!c->dyn) return k->wxf;
+  return xmul(cw_body3d_transform(c->body), k->local);
+}
+cw_xform3 game_block_interp(const game *g, int i, float alpha) {
+  const block *k = &g->b[i];
+  const chunk *c = &g->ch[k->chunk];
+  if (!c->dyn) return k->wxf;
+  return xmul(cw_body3d_interpolated(c->body, alpha), k->local);
+}
+t3_vec3 game_block_vel(const game *g, int i) {
+  const chunk *c = &g->ch[g->b[i].chunk];
+  if (!c->dyn) return v3(0, 0, 0);
+  t3_vec3 p = game_block_xform(g, i).p;
+  b3Vec3 v = b3Body_GetWorldPointVelocity(cw_body3d_raw(c->body), (b3Pos){ p.x, p.y, p.z });
+  return v3(v.x, v.y, v.z);
+}
+t3_vec3 game_block_pos(const game *g, int i) { return game_block_xform(g, i).p; }
 
 static int make_block(game *g, int mat, t3_vec3 c, t3_vec3 half, t3_quat q, t3_vec3 v, t3_vec3 w, int gen, int paint) {
   int i = alloc_block(g);
   if (i < 0) return -1;
   block *k = &g->b[i];
   memset(k, 0, sizeof *k);
+  const material_info *m = &MATS[mat];
+  k->half = half, k->mat = (uint8_t)mat;
   cw_body3d_def bd = cw_body3d_default_def();
   bd.position = c, bd.rotation = q, bd.linear_velocity = v, bd.angular_velocity = w;
   bd.angular_damping = gen ? 0.4f : 0.05f, bd.linear_damping = gen ? 0.05f : 0.0f;
-  bd.user = (void *)(intptr_t)(i + 1);
   bd.interpolate = true;
-  k->body = cw_body3d_create(g->w, &bd);
-  cw_shape3d_def sd = cw_shape3d_default_def();
-  const material_info *m = &MATS[mat];
-  sd.density = m->density;
-  sd.material.friction = m->friction, sd.material.restitution = m->restitution;
-  sd.material.user_material = (uint64_t)mat;
-  sd.layer = LAYER_BLOCK;
-  sd.hit_events = true;
-  sd.contact_events = false;
-  cw_shape3d_box(k->body, &sd, half, cw_xform3_identity());
-  if (gen) b3Body_SetSleepThreshold(cw_body3d_raw(k->body), 0.12f); /* rubble sleeps sooner (Box3D: 0.05 m/s): a pile still awake keeps its whole island stepping */
-  k->half = half;
+  cw_body3d body = cw_body3d_create(g->w, &bd);
+  if (gen) b3Body_SetSleepThreshold(cw_body3d_raw(body), 0.12f); /* rubble sleeps sooner (Box3D: 0.05 m/s): a pile still awake keeps its whole island stepping */
+  k->shape = block_shape(g, i, body, cw_xform3_identity());
+  k->chunk = chunk_new(g, body, true, false);
+  k->local = cw_xform3_identity();
+  chunk_add_member(g, k->chunk, i);
   k->vol = 8 * half.x * half.y * half.z;
   k->hp = m->toughness * k->vol * (gen ? 0.75f : 1.0f);
-  k->mat = (uint8_t)mat, k->gen = (uint8_t)gen, k->alive = 1, k->target = -1;
+  k->gen = (uint8_t)gen, k->alive = 1, k->target = -1;
   k->tint = (uint8_t)(hash32((uint32_t)i * 2654435761u + g->L->seed) & 0xff);
   k->born = g->tick;
   k->home = c;
@@ -178,7 +221,7 @@ static void target_down(game *g, int t) {
   if (g->tgt_left == 0) g->win_tick = g->tick;
   g->P[g->cur].targets++;
   g->P[g->cur].score += 1000;
-  ev_push(g, EV_TARGET, M_TARGET, ts->blk >= 0 && g->b[ts->blk].alive ? cw_body3d_transform(g->b[ts->blk].body).p : ts->home, v3(0, 1, 0), 0.5f, 0, t);
+  ev_push(g, EV_TARGET, M_TARGET, ts->blk >= 0 && g->b[ts->blk].alive ? game_block_xform(g, ts->blk).p : ts->home, v3(0, 1, 0), 0.5f, 0, t);
 }
 
 static void kill_block(game *g, int i) {
@@ -190,7 +233,7 @@ static void kill_block(game *g, int i) {
   }
   if (k->tag && !k->down) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); if (k->target < 0) g->down_count++; }
   if (k->tag == 1 && k->target < 0) g->vol_gone += k->vol;
-  cw_body3d_destroy(k->body);
+  chunk_remove_member(g, i);
   k->alive = 0;
   g->nalive--;
   g->free_list[g->nfree++] = i;
@@ -200,8 +243,8 @@ static void kill_block(game *g, int i) {
 static void break_block(game *g, int i, t3_vec3 dir) {
   block *k = &g->b[i];
   if (!k->alive) return;
-  cw_xform3 x = cw_body3d_transform(k->body);
-  t3_vec3 v = cw_body3d_velocity(k->body), w = cw_body3d_angular_velocity(k->body);
+  cw_xform3 x = game_block_xform(g, i);
+  t3_vec3 v = game_block_vel(g, i), w = g->ch[k->chunk].dyn ? cw_body3d_angular_velocity(g->ch[k->chunk].body) : v3(0, 0, 0);
   t3_vec3 h = k->half;
   int mat = k->mat, gen = k->gen, paint = k->paint;
   float big = fmaxf(h.x, fmaxf(h.y, h.z));
@@ -284,6 +327,10 @@ void game_free(game *g) {
   if (cw_world3d_valid(g->w)) world_lock(), cw_world3d_destroy(g->w), world_unlock();
   g->w = (cw_world3d){ 0 };
   free(g->weld), g->weld = NULL, g->nweld = g->weld_cap = 0;
+  free(g->ch), g->ch = NULL, g->nch = g->ch_cap = 0;
+  free(g->cfree), g->cfree = NULL, g->ncfree = 0;
+  free(g->sl_off), free(g->sl_to), free(g->sl_rect), free(g->bnd_off), free(g->bnd_to);
+  g->sl_off = g->sl_to = g->bnd_off = g->bnd_to = NULL, g->sl_rect = NULL, g->nsl = 0;
 }
 
 /* load timing (profiling only, host-dependent, never fed back): ms of the last game_new's parts */
@@ -331,10 +378,10 @@ void game_new(game *g, int level, int players, int mode) {
   level_build(g, g->L);
   double ld2 = ld_now();
   g_ld_stage = 3;
-  game_prestress(g);
+  if (!opt_on("NO_CHUNKS")) chunks_build(g); /* NO_CHUNKS (tests): the blocks stay loose bodies, the checks' control */
   double ld3 = ld_now();
   g_ld_stage = 4;
-  g_ld_world_ms = (float)(ld1 - ld0), g_ld_build_ms = (float)(ld2 - ld1), g_ld_prestress_ms = (float)(ld3 - ld2);
+  g_ld_world_ms = (float)(ld1 - ld0), g_ld_build_ms = (float)(ld2 - ld1), g_ld_prestress_ms = (float)(ld3 - ld2); /* (the chunks' build) */
   for (int a = 0; a < NAMMO; a++) g->ammo[a] = g->L->ammo[a];
   for (int i = 0; i < g->nb; i++) if (g->b[i].alive && g->b[i].tag == 1 && g->b[i].target < 0) g->vol_total += g->b[i].vol;
   g->ring = g->L->range, g->orbit = g->L->orbit0;
@@ -352,7 +399,7 @@ void game_new(game *g, int level, int players, int mode) {
     if (p.y + g->b[i].half.y > top) top = p.y + g->b[i].half.y;
   }
   g->extent = ext, g->top = top, g->front = front;
-  if (g->L->kind == K_LANDMARK && !g->old_welds && !(opt_get("SLEEP0") && !opt_on("SLEEP0"))) game_sleep_all(g);
+  game_sleep_all(g); /* what is dynamic (the crystals, the kegs) lies still from the first frame; the chunks stand */
   g_ld_sleep_ms = (float)(ld_now() - ld3);
   g_ld_stage = 5;
   g->state = GS_AIM;
@@ -395,7 +442,7 @@ void game_settle(game *g, int ticks) {
 void game_settle_finish(game *g) {
   /* where everything rests now is home */
   for (int i = 0; i < g->nb; i++)
-    if (g->b[i].alive) g->b[i].home = cw_body3d_transform(g->b[i].body).p;
+    if (g->b[i].alive) g->b[i].home = game_block_xform(g, i).p;
   for (int t = 0; t < g->ntgt; t++) if (g->tgt[t].blk >= 0) g->tgt[t].home = g->b[g->tgt[t].blk].home;
   g->nev = 0;
 }
@@ -415,10 +462,9 @@ void game_set_orbit(game *g, float orbit) {
   place_launcher(g);
 }
 float game_speed(const game *g) {
-  const ammo_info *a = &AMMO[g->ammo_sel];
-  return a->vmin + (a->vmax - a->vmin) * AMMO_POWER[g->ammo_sel];
+  if (g->ammo_sel == A_CHARGE && opt_get("CHARGE_V")) return (float)atof(opt_get("CHARGE_V")); /* tests */
+  return AMMO[g->ammo_sel].vmax;
 }
-t3_vec3 game_block_pos(const game *g, int i) { return cw_body3d_transform(g->b[i].body).p; }
 
 void game_fire(game *g) {
   int a = g->ammo_sel;
@@ -473,9 +519,9 @@ static void blast_shell(game *g, int shell) {
   static t3_vec3 dirs[1024];
   int m = 0;
   for (int s = 0; s < n; s++) {
-    int i = block_of(cw_shape3d_body(hit[s]));
+    int i = game_block_of_shape(hit[s]);
     if (i < 0 || !g->b[i].alive) continue;
-    t3_vec3 p = cw_body3d_transform(g->b[i].body).p;
+    t3_vec3 p = game_block_xform(g, i).p;
     t3_vec3 d = vsub(p, at);
     d.y += 0.6f; /* blasts lift */
     float l = vlen(d);
@@ -486,12 +532,13 @@ static void blast_shell(game *g, int shell) {
     if (k <= 0) continue;
     k *= k * K;
     t3_vec3 dn = vscale(d, 1.0f / (l + 1e-4f));
-    float mass = cw_body3d_mass(g->b[i].body);
+    float mass = MATS[g->b[i].mat].density * g->b[i].vol;
     float imp = CHARGE_IMPULSE * k;
     if (imp > mass * 22) imp = mass * 22;
-    cw_body3d_apply_impulse(g->b[i].body, vscale(dn, imp), NULL);
+    chunk_impulse(g, i, vscale(dn, imp), p);
     idx[m] = i, kk[m] = k, dirs[m] = dn, m++;
   }
+  chunks_flush(g);
   for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s], false);
 }
 
@@ -575,19 +622,20 @@ static bool strike_burst(game *g, t3_vec3 at, t3_vec3 v, int mat_at) {
   cw_phys_filter f = cw_phys_filter_layers(1u << LAYER_BLOCK);
   int n = cw_world3d_overlap(g->w, &q, &f, hit, 1024), k = 0;
   for (int s = 0; s < n; s++) { /* pushes first (pieces of what breaks fly with them), then the harm, in the overlap's order */
-    int i = block_of(cw_shape3d_body(hit[s]));
+    int i = game_block_of_shape(hit[s]);
     if (i < 0 || !g->b[i].alive) continue;
-    t3_vec3 p = cw_body3d_transform(g->b[i].body).p, r = vsub(p, at);
+    t3_vec3 p = game_block_xform(g, i).p, r = vsub(p, at);
     float d = vlen(r), w = 1 - d / bi->drive_r;
     if (w <= 0) continue;
     t3_vec3 out = vscale(r, 1.0f / (d + 1e-4f));
     t3_vec3 dir = vadd(dn, vadd(vscale(out, 0.35f), v3(0, 0.15f, 0)));
     dir = vscale(dir, 1.0f / (vlen(dir) + 1e-6f));
-    float mass = cw_body3d_mass(g->b[i].body), imp = mom * bi->drive_k * w * w;
+    float mass = MATS[g->b[i].mat].density * g->b[i].vol, imp = mom * bi->drive_k * w * w;
     if (imp > mass * bi->drive_v) imp = mass * bi->drive_v;
-    cw_body3d_apply_impulse(g->b[i].body, vscale(dir, imp), NULL);
+    chunk_impulse(g, i, vscale(dir, imp), p);
     idx[k] = i, dist[k] = d, dirs[k] = dir, k++;
   }
+  chunks_flush(g);
   for (int s = 0; s < k; s++)
     if (dist[s] < bi->crush_r) harm(g, idx[s], ke * bi->crush_k * (1 - dist[s] / bi->crush_r), dirs[s], false);
   if (g->proj_live) cw_body3d_set_velocity(g->proj, vscale(v, BURST_KEEP));
@@ -601,21 +649,37 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
   const cw_phys_event3d *ev = cw_world3d_events(g->w, &n);
   bool proj_broke = false;
   float proj_used = 0;
+  int fq[64], nfq = 0;
+  float fqe[64];
+  t3_vec3 fqp[64];
   for (int e = 0; e < n; e++) {
     const cw_phys_event3d *h = &ev[e];
     if (h->type != CW_PHYS_HIT) continue;
     g->hits++;
     bool pa = g->proj_live && h->body_a.id == g->proj.id, pb = g->proj_live && h->body_b.id == g->proj.id;
-    int ia = block_of(h->body_a), ib = block_of(h->body_b);
-    float ma = cw_body3d_valid(h->body_a) ? cw_body3d_mass(h->body_a) : 0;
-    float mb = cw_body3d_valid(h->body_b) ? cw_body3d_mass(h->body_b) : 0;
+    int ia = game_block_of_shape(h->shape_a), ib = game_block_of_shape(h->shape_b);
+    bool da = ia >= 0 && g->ch[g->b[ia].chunk].dyn, db = ib >= 0 && g->ch[g->b[ib].chunk].dyn;
+    /* the energy of a blow is the reduced mass of the two blocks that meet (a standing block, like the ground, does not give) */
+    float ma = pa ? cw_body3d_mass(h->body_a) : da ? MATS[g->b[ia].mat].density * g->b[ia].vol : 0;
+    float mb = pb ? cw_body3d_mass(h->body_b) : db ? MATS[g->b[ib].mat].density * g->b[ib].vol : 0;
     float mu = ma > 0 && mb > 0 ? ma * mb / (ma + mb) : ma > 0 ? ma : mb;
     float en = 0.5f * mu * h->speed * h->speed;
-    if (h->speed >= WELD_POP_SPEED && !g->old_welds && opt_on("POP")) { /* off by default (dm set POP 1): the Statue of Liberty and the Moai level then cost more than par shots */ /* a hard landing or strike: the welds of what is hit let go (steel snaps at its joints, a landing chunk comes apart) */
-      int hops = 1 + (int)((h->speed - WELD_POP_SPEED) * 0.5f);
-      if (hops > 5) hops = 5;
-      if (ia >= 0) game_pop_welds(g, ia, hops);
-      if (ib >= 0) game_pop_welds(g, ib, hops);
+    /* a whole chunk landing on a standing one gives it the momentum it lost, and breaks where it lands */
+    if (!pa && !pb && (da || db) && ia >= 0 && ib >= 0) {
+      int ca = g->b[ia].chunk, cb = g->b[ib].chunk;
+      if (da != db) { /* one falls on one that stands: the standing chunk is pushed (and goes if that moves it), by the reduced mass of the two chunks */
+        int cd = da ? ca : cb, cs = da ? cb : ca, bs = da ? ib : ia;
+        float md = cw_body3d_mass(g->ch[cd].body), ms = g->ch[g->ch[cs].leader].mass;
+        float mc = md * ms / (md + ms + 1e-6f);
+        chunk_impulse(g, bs, vscale(h->normal, (da ? 1.0f : -1.0f) * mc * h->speed), h->point);
+      }
+      if (h->speed >= FRAC_SPEED) {
+        if (da && g->ch[ca].n > 1 && g->tick - g->ch[ca].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[ca].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = ca;
+        if (db && g->ch[cb].n > 1 && g->tick - g->ch[cb].frac_tick > FRAC_COOL && nfq < 64) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[cb].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = cb;
+      }
+    } else if ((da || db) && h->speed >= FRAC_SPEED && nfq < 64) { /* ... onto the ground, or struck by the shot */
+      int c = da ? g->b[ia].chunk : g->b[ib].chunk;
+      if (g->ch[c].n > 1 && g->tick - g->ch[c].frac_tick > FRAC_COOL) fqe[nfq] = 0.5f * cw_body3d_mass(g->ch[c].body) * h->speed * h->speed, fqp[nfq] = h->point, fq[nfq++] = c;
     }
     if (pa || pb) {
       if (g->proj_hit_tick < 0) g->proj_hit_tick = g->tick, g->impact = h->point;
@@ -646,6 +710,13 @@ static void read_hits(game *g, t3_vec3 proj_v_before) {
       if (pb && was && !g->b[ia].alive) proj_broke = true, proj_used += MATS[g->b[ia].mat].toughness * g->b[ia].vol;
     }
   }
+  chunks_flush(g);
+  for (int q = 0; q < nfq; q++) /* a chunk that landed hard breaks (once however many of its blocks met the ground) */
+    if (g->ch[fq[q]].alive && g->ch[fq[q]].dyn && g->ch[fq[q]].n > 1 && g->tick - g->ch[fq[q]].frac_tick > FRAC_COOL) {
+      int mat = g->b[g->ch[fq[q]].head].mat;
+      chunk_fracture(g, fq[q]);
+      if (fqe[q] > 3000) ev_push(g, EV_CRUMBLE, mat, fqp[q], v3(0, 1, 0), 0, 0, (int)fminf(fqe[q], 2e9f));
+    }
   /* a shot that broke what it hit keeps the speed the break did not use */
   if (proj_broke && g->proj_live) {
     float m = AMMO[g->proj_kind].mass, v2 = vdot(proj_v_before, proj_v_before);
@@ -666,9 +737,9 @@ static void aim(game *g, const input *in) {
   float kt = in->turn_k > 0 ? in->turn_k : 1, kr = in->raise_k > 0 ? in->raise_k : 1;
   float rt = (0.0015f + 0.009f * fminf(1, g->hold_turn / 45.0f)) * kt, rr = (0.0015f + 0.007f * fminf(1, g->hold_raise / 45.0f)) * kr;
   g->yaw = cw_clampf(g->yaw - dt * rt, -0.75f, 0.75f);
-  g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.4f);
+  g->pitch = cw_clampf(g->pitch + dr * rr, -0.08f, 1.5f);
   g->yaw = cw_clampf(g->yaw - in->aim_dx, -0.75f, 0.75f);
-  g->pitch = cw_clampf(g->pitch - in->aim_dy, -0.08f, 1.4f);
+  g->pitch = cw_clampf(g->pitch - in->aim_dy, -0.08f, 1.5f);
   if (in->ammo_set > 0 && in->ammo_set <= NAMMO && g->ammo[in->ammo_set - 1] > 0) g->ammo_sel = in->ammo_set - 1;
   /* the launcher's place on its circle: held, it rolls faster (a full turn round the structure in about 9 s); the aim
    * keeps its turn and raise, so it still points at the middle from the new place */
@@ -706,7 +777,7 @@ static void tally(game *g) {
   for (int i = 0; i < g->nb; i++) {
     block *k = &g->b[i];
     if (!k->alive || !k->tag || k->down || k->target >= 0) continue;
-    t3_vec3 p = cw_body3d_transform(k->body).p;
+    t3_vec3 p = game_block_xform(g, i).p;
     float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
     if (vlen(vsub(p, k->home)) > lim) { k->down = true; g->P[g->cur].score += (int)(k->vol * MATS[k->mat].points * 10 + 1); g->down_count++; }
   }
@@ -720,7 +791,7 @@ uint32_t game_state_hash(const game *g) {
     const block *k = &g->b[i];
     h = hash32(h ^ (uint32_t)k->alive ^ ((uint32_t)k->mat << 8) ^ ((uint32_t)k->gen << 16));
     if (!k->alive) continue;
-    cw_xform3 x = cw_body3d_transform(k->body);
+    cw_xform3 x = game_block_xform(g, i);
     float f[7] = { x.p.x, x.p.y, x.p.z, x.q.x, x.q.y, x.q.z, x.q.w };
     uint32_t u[7];
     memcpy(u, f, sizeof u);
@@ -735,7 +806,7 @@ bool game_over(const game *g) { return g->state == GS_WON || g->state == GS_LOST
 
 /* a placed block standing away from home: more than its own size, and at least 0.6 m (the tally's rule) */
 static bool block_moved(const game *g, const block *k) {
-  t3_vec3 p = cw_body3d_transform(k->body).p;
+  t3_vec3 p = game_block_xform(g, (int)(k - g->b)).p;
   float lim = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
   return vlen(vsub(p, k->home)) > lim;
 }
@@ -804,6 +875,7 @@ void game_step(game *g, const input *in) {
   kegs_go(g);
   int broke0 = g->broken;
   break_queued(g);
+  chunks_step(g);
   g->breaks_tick = g->broken - broke0;
   /* the shot */
   if (g->proj_live) {
@@ -825,12 +897,12 @@ void game_step(game *g, const input *in) {
   /* blocks that left the field */
   if (g->tick % 30 == 0)
     for (int i = 0; i < g->nb; i++)
-      if (g->b[i].alive && cw_body3d_transform(g->b[i].body).p.y < -8) kill_block(g, i);
+      if (g->b[i].alive && game_block_xform(g, i).p.y < -8) kill_block(g, i);
   /* targets: broken (above), knocked off their place, or fallen */
   for (int t = 0; t < g->ntgt; t++) {
     target_state *ts = &g->tgt[t];
     if (ts->down || ts->blk < 0) continue;
-    t3_vec3 p = cw_body3d_transform(g->b[ts->blk].body).p;
+    t3_vec3 p = game_block_xform(g, ts->blk).p;
     if (vlen(vsub(p, ts->home)) > 0.9f || p.y < ts->home.y - 0.5f) target_down(g, t);
   }
   /* turns */
@@ -880,6 +952,29 @@ void game_step(game *g, const input *in) {
     g->rating_quiet = aw <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->rating_quiet + 1 : 0;
     if (g->rating_quiet > SETTLE_QUIET || ++g->rating_t > 480) g->rating_t = 0;
   }
+  /* where the collapse is (the camera follows): the middle of the chunks in motion, and their spread */
+  if (g->tick % 3 == 0) {
+    t3_vec3 s = v3(0, 0, 0);
+    int n = 0;
+    for (int c = 0; c < g->nch; c++) {
+      const chunk *k = &g->ch[c];
+      if (!k->alive || !k->dyn || !cw_body3d_awake(k->body)) continue;
+      if (k->n < 2 && g->awake_now > 40) continue; /* with a heap of rubble moving, its pieces and bigger */
+      s = vadd(s, game_block_xform(g, k->head).p), n++;
+    }
+    if (n > 0) {
+      t3_vec3 m = vscale(s, 1.0f / (float)n);
+      float r = 0;
+      for (int c = 0; c < g->nch; c++) {
+        const chunk *k = &g->ch[c];
+        if (!k->alive || !k->dyn || !cw_body3d_awake(k->body) || (k->n < 2 && g->awake_now > 40)) continue;
+        t3_vec3 p = game_block_xform(g, k->head).p;
+        float d = vlen(vsub(p, m));
+        if (d > r) r = d;
+      }
+      g->hot_c = m, g->hot_r = r, g->hot_n = n;
+    } else g->hot_n = 0;
+  }
   /* the state hash: the world's (every moved transform and event) with the game's own counters */
   uint32_t h = st.hash;
   h = hash32(h ^ (uint32_t)g->tgt_left * 0x9e3779b9u);
@@ -894,15 +989,48 @@ void game_step(game *g, const input *in) {
 /* a structure at rest starts asleep: contacts are made with gravity off for two steps (islands form), then every body is put to sleep, so nothing drifts before a hit */
 void game_sleep_all(game *g) {
   static cw_xform3 D[MAXBLK];
-  for (int i = 0; i < g->nb; i++) D[i] = g->b[i].alive ? cw_body3d_transform(g->b[i].body) : (cw_xform3){ { 0, 0, 0 }, { 0, 0, 0, 1 } };
+  for (int c = 0; c < g->nch; c++) D[c] = g->ch[c].alive && g->ch[c].dyn ? cw_body3d_transform(g->ch[c].body) : (cw_xform3){ { 0, 0, 0 }, { 0, 0, 0, 1 } };
   for (int t = 0; t < 2; t++) cw_world3d_step(g->w, TICK); /* contacts are made and the islands form */
-  for (int i = 0; i < g->nb; i++) {
-    if (!g->b[i].alive) continue;
-    b3BodyId rb = cw_body3d_raw(g->b[i].body);
-    cw_body3d_set_transform(g->b[i].body, D[i]);
-    cw_body3d_set_velocity(g->b[i].body, v3(0, 0, 0)), cw_body3d_set_angular_velocity(g->b[i].body, v3(0, 0, 0));
+  for (int c = 0; c < g->nch; c++) {
+    if (!g->ch[c].alive || !g->ch[c].dyn) continue;
+    b3BodyId rb = cw_body3d_raw(g->ch[c].body);
+    cw_body3d_set_transform(g->ch[c].body, D[c]);
+    cw_body3d_set_velocity(g->ch[c].body, v3(0, 0, 0)), cw_body3d_set_angular_velocity(g->ch[c].body, v3(0, 0, 0));
     if (b3Body_IsAwake(rb)) b3Body_SetAwake(rb, false);
   }
+  g->nev = 0;
 }
 
 void game_charge_at(game *g, t3_vec3 at) { detonate(g, at); }
+
+/* a leg of the structure taken out (the checks, and the look sheets: dm set SCENE legout): the placed blocks of a third of its footprint round the foot
+ * furthest from its middle, up to 2.2 m, break; with charge, a charge at the foot of the middle instead.
+ * Returns the blocks broken. */
+int game_legout(game *g, bool charge) {
+  float cx = 0, cz = 0;
+  int cn = 0, foot = -1, n = 0;
+  float fd = -1;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (k->alive && k->tag == 1 && k->target < 0 && k->home.y < 1.0f) cx += k->home.x, cz += k->home.z, cn++;
+  }
+  if (cn) cx /= (float)cn, cz /= (float)cn;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y >= 1.0f) continue;
+    float d = (k->home.x - cx) * (k->home.x - cx) + (k->home.z - cz) * (k->home.z - cz);
+    if (d > fd) fd = d, foot = i;
+  }
+  t3_vec3 at = foot >= 0 ? g->b[foot].home : v3(cx, 0.5f, cz);
+  if (charge) { detonate(g, v3(at.x * 0.9f + cx * 0.1f, 0.5f, at.z * 0.9f + cz * 0.1f)); return 0; } /* at the foot, on the face */
+  /* a leg: the third of the footprint (a wedge of 120 degrees) round the foot furthest out, from 0.35 of its reach outward, up to 2.2 m */
+  float R = sqrtf(fd), fx = at.x - cx, fz = at.z - cz;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y > 2.2f) continue;
+    float px = k->home.x - cx, pz = k->home.z - cz, r = sqrtf(px * px + pz * pz);
+    if (r < 0.35f * R || (px * fx + pz * fz) < 0.5f * r * R) continue;
+    harm(g, i, 1e9f, v3(0, 1, 0), true), n++;
+  }
+  return n;
+}

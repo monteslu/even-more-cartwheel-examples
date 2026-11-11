@@ -321,6 +321,23 @@ void fx_events(const game *g, int shooter) {
       if (e->mat == M_STEEL) cw_particles_burst(FX.sparks, e->p, e->n), FX.st.sparks++;
       rumble(shooter, 0.85f, 0.5f, 300);
       break;
+    case EV_CRACK: { /* a chunk lets go: dust at its foot, a low pad rumble by its weight */
+      float w = fminf(1, (float)e->a / 80000.0f);
+      if (budget(6, 2)) cw_particles_burst(e->mat == M_WOOD ? FX.dust_warm : FX.dust_pale, e->p, up), FX.st.dust++;
+      if (e->a > 20000 && budget(7, 1)) cw_particles_burst(FX.dust_big, e->p, up), FX.st.dust++;
+      rumble(shooter, 0.25f + 0.55f * w, 0.1f + 0.2f * w, 200 + (int)(300 * w));
+      break;
+    }
+    case EV_CRUMBLE: { /* it landed and broke: dust and chips where it hit, a pad kick by the blow's energy */
+      float w = fminf(1, (float)e->a / 500000.0f);
+      if (budget(8, 2)) cw_particles_burst(e->mat == M_WOOD ? FX.dust_warm : FX.dust_pale, e->p, up), FX.st.dust++;
+      if (e->a > 60000 && budget(9, 1)) cw_particles_burst(FX.dust_big, e->p, up), FX.st.dust++;
+      if (e->mat < M_COUNT && cw_node_valid(FX.chips[e->mat]) && budget(10, 2)) cw_particles_burst(FX.chips[e->mat], e->p, up), FX.st.chips++;
+      if (e->mat == M_STEEL && budget(11, 2)) cw_particles_burst(FX.sparks, e->p, up), FX.st.sparks++;
+      if (e->a > 3000) ground_mark(e->p, 1.2f + 1.8f * w, e->mat);
+      rumble(shooter, 0.2f + 0.7f * w, 0.1f + 0.3f * w, 150 + (int)(250 * w));
+      break;
+    }
     case EV_BOOM: {
       cw_node b = FX.boom[FX.nboom++ % BOOMS];
       cw_node3d_set_position(b, e->p);
@@ -361,6 +378,9 @@ void fx_events(const game *g, int shooter) {
     }
   }
   if (FX.plume_wait > 0) FX.plume_wait--;
+  /* a trail of dust behind what is falling: a puff where the collapse is, every few ticks while it is in motion */
+  if (g->hot_n > 3 && g->tick % 9 == 0 && budget(12, 1) && g->hot_c.y > 0.8f)
+    cw_particles_burst(FX.dust_pale, g->hot_c, (t3_vec3){ 0, 1, 0 }), FX.st.dust++;
 }
 
 /* every frame: the flash lights die away; the strongest rumble of the frame goes to the pad */

@@ -8,7 +8,7 @@
 //               pose to the bit, the counters and the scores)
 //   Frames of each level's replay and of its result card are left in out/result/ for review.
 // The level and the controls are set over the debug channel (dm set ..., dm restart: games/destructo/src/opts.h).
-// Controls, each must fail its check: the old wait (dm set OLD_SETTLE 1: judged only once the world is still) on Stone Giant, and a replay whose last shot is nudged 3 milliradians (dm set REPLAY_PERTURB 1).
+// Controls, each must fail its check: the old wait (OLD_SETTLE 1: judged only once the world is still, with NO_CHUNKS 1: the level as loose blocks, still falling) on Citadel, and a replay whose last shot is nudged 3 milliradians (dm set REPLAY_PERTURB 1).
 // Run: node tests/destructo-result.mjs [--gpu gl|webgpu]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -25,7 +25,7 @@ async function run(gpu, level, name, opts = {}) {
     /* a frame of the replay's slow motion and one of the card, for review */
     await h.step((name.startsWith('stone') ? 1000 : 1150) - h.frame);
     await h.shot(join(OUT, `${name}-replay-${gpu}.png`));
-    await h.step(1500 - h.frame);
+    await h.step(2600 - h.frame); /* (the bot needs more shots on Stone Giant now) */
     await h.shot(join(OUT, `${name}-${gpu}.png`));
     const d = await h.state();
     return { status: 0, phase: d['game.phase'], result: d['result.last'], awake: d['result.awake'], lag: d['game.judge_lag'], count: d['result.count'], match: d['replay.match'], ticks: d['replay.ticks'], level: d['game.level'] };
@@ -44,7 +44,7 @@ for (const gpu of gpusArg()) {
   const [a, b, c1, c2] = await inPairs([
     () => run(gpu, 'Stone Giant', 'stone-giant'),
     () => run(gpu, 'First Stones', 'first-stones'),
-    () => run(gpu, 'Stone Giant', 'control-early', { OLD_SETTLE: 1 }),
+    () => run(gpu, 'Citadel', 'control-early', { OLD_SETTLE: 1, NO_CHUNKS: 1 }),
     () => run(gpu, 'First Stones', 'control-replay', { REPLAY_PERTURB: 1 }),
   ]);
   say(judged(a) && replayed(a), `${gpu} stone-giant: ${show(a)}`);

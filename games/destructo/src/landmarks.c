@@ -199,178 +199,34 @@ static uint16_t sh_vox(float x, float y, float z) {
 }
 static uint16_t sh_vox_core(float x, float y, float z) { return vx_at(x, y, z) == 255 ? VX->pal[0] : 0; }
 static uint16_t sh_vox_core2(float x, float y, float z) { return vx_at(x, y, z) == 254 ? VX->pal[0] : 0; }
-/* steel lattice: each brick from..to welded to the others of from..to it touches (a weld breaks under a load past
- * WELD_FORCE or WELD_TORQUE, and goes with either brick when it breaks), so a frame of members stands as one */
-#define WELD_FORCE 2.0e6f
-#define WELD_TORQUE 5.0e5f
-#define WELD_SLEEP 0.15f /* m/s */
+/* steel lattice: each brick from..to is bonded to the others of from..to it touches: the bonded members are one rigid
+ * chunk (chunks.c), held up by the support graph and by nothing else (no joint: a joint is a soft constraint). */
 static void weld_blocks(game *g, int from, int to) {
   cw_phys_filter f = cw_phys_filter_layers(2u);
   for (int i = from; i < to; i++) {
     const block *a = &g->b[i];
     if (!a->alive) continue;
-    b3BodyId rb = cw_body3d_raw(a->body); /* a welded frame hums a few centimetres a second for ever (the solver's give between members): damped and still enough */
-    b3Body_SetSleepThreshold(rb, opt_get("WELD_SLEEP") ? (float)atof(opt_get("WELD_SLEEP")) : WELD_SLEEP), b3Body_SetLinearDamping(rb, opt_get("WELD_LDAMP") ? (float)atof(opt_get("WELD_LDAMP")) : 0.4f), b3Body_SetAngularDamping(rb, opt_get("WELD_ADAMP") ? (float)atof(opt_get("WELD_ADAMP")) : 1.0f);
-    cw_xform3 xa = cw_body3d_transform(a->body);
+    cw_xform3 xa = game_block_xform(g, i);
     cw_qshape3d q = cw_qshape3d_box(xa.p, v3(a->half.x + 0.012f, a->half.y + 0.006f, a->half.z + 0.012f), xa.q);
     cw_shape3d hit[64];
     int n = cw_world3d_overlap(g->w, &q, &f, hit, 64);
     for (int h = 0; h < n; h++) {
-      cw_body3d bb = cw_shape3d_body(hit[h]);
-      intptr_t u = (intptr_t)cw_body3d_user(bb);
-      int j = (int)u - 1;
+      int j = game_block_of_shape(hit[h]);
       if (j <= i || j >= to || !g->b[j].alive) continue;
       game_weld(g, i, j);
     }
   }
 }
 
-/* quaternion and pose helpers for the prestress (x y z w) */
-typedef t3_quat Q4;
-static Q4 q_mul(Q4 a, Q4 b) {
-  Q4 r = { a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x, a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z };
-  float n = 1.0f / sqrtf(r.x * r.x + r.y * r.y + r.z * r.z + r.w * r.w);
-  r.x *= n, r.y *= n, r.z *= n, r.w *= n;
-  return r;
-}
-static Q4 q_conj(Q4 a) { return (Q4){ -a.x, -a.y, -a.z, a.w }; }
-static t3_vec3 q_rot(Q4 q, t3_vec3 v) {
-  t3_vec3 u = { q.x, q.y, q.z };
-  t3_vec3 c1 = { u.y * v.z - u.z * v.y, u.z * v.x - u.x * v.z, u.x * v.y - u.y * v.x };
-  t3_vec3 t = { 2 * c1.x, 2 * c1.y, 2 * c1.z };
-  t3_vec3 c2 = { u.y * t.z - u.z * t.y, u.z * t.x - u.x * t.z, u.x * t.y - u.y * t.x };
-  return (t3_vec3){ v.x + q.w * t.x + c2.x, v.y + q.w * t.y + c2.y, v.z + q.w * t.z + c2.z };
-}
-static cw_xform3 x_mul(cw_xform3 a, cw_xform3 b) {
-  t3_vec3 r = q_rot(a.q, b.p);
-  return (cw_xform3){ { a.p.x + r.x, a.p.y + r.y, a.p.z + r.z }, q_mul(a.q, b.q) };
-}
-static cw_xform3 x_inv(cw_xform3 a) {
-  Q4 c = q_conj(a.q);
-  t3_vec3 r = q_rot(c, a.p);
-  return (cw_xform3){ { -r.x, -r.y, -r.z }, c };
-}
-
-/* a weld between blocks i and j with these joint frames (frame_a, frame_b), recorded in game.weld */
-/* what a weld holds: twice its load standing, plus K times the lighter member's weight (K by material: steel 60, stone and
- * wood 30, glass 10): a charge or a shot (1 to 6 kN on a member of a few hundred kg) snaps it, the weight of what is above
- * never does. F0 < 0: the old 2 MN and 500 kN m (the control) */
-static cw_joint3d weld_make(game *g, int i, int j, cw_xform3 fa, cw_xform3 fb, float F0, float T0) {
-  cw_joint3d_def d = cw_joint3d_default_def(CW_JOINT_WELD);
-  d.a = g->b[i].body, d.b = g->b[j].body;
-  d.frame_a = fa, d.frame_b = fb;
-  d.break_force = WELD_FORCE, d.break_torque = WELD_TORQUE;
-  if (F0 >= 0 && opt_on("BRITTLE")) { /* off by default: with these a charge or a shot anywhere near a foot shatters it, and the levels clear in one shot whatever the aim (the par and the aim control fail) */
-    const block *ba = &g->b[i], *bb = &g->b[j];
-    const block *lt = cw_body3d_mass(ba->body) < cw_body3d_mass(bb->body) ? ba : bb;
-    float k = lt->mat == M_STEEL ? 60.0f : lt->mat == M_GLASS ? 10.0f : 30.0f, w = k * cw_body3d_mass(lt->body) * GRAV, h = fmaxf(lt->half.x, fmaxf(lt->half.y, lt->half.z));
-    d.break_force = 2 * F0 + w, d.break_torque = 2 * T0 + 0.5f * w * h;
-  }
-  cw_joint3d jt = cw_joint3d_create(g->w, &d);
-  if (opt_get("WELD_HZ") || opt_get("WELD_ZETA")) b3Joint_SetConstraintTuning(cw_joint3d_raw(jt), opt_get("WELD_HZ") ? (float)atof(opt_get("WELD_HZ")) : 60.0f, opt_get("WELD_ZETA") ? (float)atof(opt_get("WELD_ZETA")) : 2.0f);
-  return jt;
-}
-
+/* a bond between blocks i and j (their members stay one chunk), recorded in game.weld */
 void game_weld(game *g, int i, int j) {
-  const block *a = &g->b[i], *b = &g->b[j];
-  cw_xform3 xa = cw_body3d_transform(a->body), xb = cw_body3d_transform(b->body);
-  cw_joint3d_def d = cw_joint3d_default_def(CW_JOINT_WELD);
-  d.a = a->body, d.b = b->body;
-  cw_joint3d_def_anchor(&d, v3((xa.p.x + xb.p.x) * 0.5f, (xa.p.y + xb.p.y) * 0.5f, (xa.p.z + xb.p.z) * 0.5f), v3(0, 0, 1));
-  cw_joint3d jt = weld_make(g, i, j, d.frame_a, d.frame_b, -1, -1);
   if (g->nweld == g->weld_cap) {
     g->weld_cap = g->weld_cap ? g->weld_cap * 2 : 4096;
     g->weld = realloc(g->weld, (size_t)g->weld_cap * sizeof *g->weld);
   }
-  g->weld[g->nweld] = (struct weld_pair){ (uint16_t)i, (uint16_t)j, jt, d.frame_a, d.frame_b, g->wh[i], g->wh[j] };
-  g->nweld++;
-  g->wh[i] = g->wh[j] = g->nweld;
+  g->weld[g->nweld++] = (struct weld_pair){ (uint16_t)i, (uint16_t)j };
 }
 
-/* every weld of block i lets go, and those of the blocks welded to it, hops deep (a hard landing breaks the joints round where it lands: the harder, the wider) */
-void game_pop_welds(game *g, int i, int hops) {
-  static int seen[MAXBLK], stamp;
-  static int queue[MAXBLK], depth[MAXBLK];
-  if (++stamp == 0x7fffffff) memset(seen, 0, sizeof seen), stamp = 1;
-  int qh = 0, qt = 0;
-  queue[qt] = i, depth[qt++] = 0, seen[i] = stamp;
-  while (qh < qt) {
-    int b = queue[qh], d = depth[qh++];
-    for (int k = g->wh[b]; k > 0;) {
-      struct weld_pair *wp = &g->weld[k - 1];
-      int nx = wp->a == b ? wp->next_a : wp->next_b, o = wp->a == b ? wp->b : wp->a;
-      if (cw_joint3d_valid(wp->j)) {
-        if (d < hops && seen[o] != stamp && qt < MAXBLK) seen[o] = stamp, queue[qt] = o, depth[qt++] = d + 1;
-        cw_joint3d_destroy(wp->j);
-      }
-      k = nx;
-    }
-  }
-}
-
-/* The weld is rigid by definition and the solver is soft: held up by its welds a tall frame gives (a soft constraint
- * is a spring, and a chain of tens of them under the weight above sags a few hundredths to half a metre, then sways).
- * So the welds are prestressed: the level is let settle under heavy damping until it is still (the pose S the soft
- * welds hold it in), the error each joint has there is measured, and the joints are made again with their frames moved
- * by that error, the blocks put back where the level placed them (D). A joint's zero is now offset so that at D it
- * pushes with the force that holds D up: the structure stands at its design pose and nothing gives. */
-#define PRESTRESS_MAX_TICKS 500
-void game_prestress(game *g) {
-  if (g->nweld == 0 || g->old_welds || (opt_get("PRESTRESS") && !opt_on("PRESTRESS"))) return;
-  b3WorldId w = cw_world3d_raw(g->w);
-  static cw_xform3 D[MAXBLK];
-  static uint8_t welded[MAXBLK];
-  memset(welded, 0, sizeof welded);
-  for (int i = 0; i < g->nb; i++) D[i] = g->b[i].alive ? cw_body3d_transform(g->b[i].body) : cw_xform3_identity();
-  for (int k = 0; k < g->nweld; k++) welded[g->weld[k].a] = welded[g->weld[k].b] = 1;
-  b3World_EnableSleeping(w, false);
-  float psd = opt_get("PS_DAMP") ? (float)atof(opt_get("PS_DAMP")) : 10.0f, psv = opt_get("PS_VEL") ? (float)atof(opt_get("PS_VEL")) : 0.0002f;
-  int pst = opt_get("PS_TICKS") ? atoi(opt_get("PS_TICKS")) : PRESTRESS_MAX_TICKS, used = 0;
-  for (int i = 0; i < g->nb; i++) if (g->b[i].alive && welded[i]) b3Body_SetLinearDamping(cw_body3d_raw(g->b[i].body), psd), b3Body_SetAngularDamping(cw_body3d_raw(g->b[i].body), psd);
-  for (int t = 1; t <= pst; t++) {
-    cw_world3d_step(g->w, TICK);
-    used = t;
-    if (t % 30 == 0 && t >= 120) { /* still: nothing welded moves faster than 2 mm/s */
-      float vmax = 0;
-      for (int i = 0; i < g->nb; i++) {
-        if (!g->b[i].alive || !welded[i]) continue;
-        t3_vec3 v = cw_body3d_velocity(g->b[i].body);
-        float s = v.x * v.x + v.y * v.y + v.z * v.z;
-        if (s > vmax) vmax = s;
-      }
-      if (vmax < psv * psv) break;
-    }
-  }
-  /* the error each joint has at S, in a's frame: E = (S_a fa)^-1 (S_b fb); the new frame_b puts that error at D */
-  static cw_xform3 nfb[65536];
-  int nk = g->nweld < 65536 ? g->nweld : 65536;
-  for (int k = 0; k < nk; k++) {
-    struct weld_pair *wp = &g->weld[k];
-    cw_xform3 Sa = cw_body3d_transform(g->b[wp->a].body), Sb = cw_body3d_transform(g->b[wp->b].body);
-    cw_xform3 Wa = x_mul(Sa, wp->fa), Wb = x_mul(Sb, wp->fb);
-    cw_xform3 E = x_mul(x_inv(Wa), Wb);
-    nfb[k] = x_mul(x_inv(D[wp->b]), x_mul(x_mul(D[wp->a], wp->fa), E));
-  }
-  static float nF[65536], nT[65536];
-  for (int k = 0; k < nk; k++) {
-    b3Vec3 f = b3Joint_GetConstraintForce(cw_joint3d_raw(g->weld[k].j)), t = b3Joint_GetConstraintTorque(cw_joint3d_raw(g->weld[k].j));
-    nF[k] = sqrtf(f.x * f.x + f.y * f.y + f.z * f.z), nT[k] = sqrtf(t.x * t.x + t.y * t.y + t.z * t.z);
-  }
-  for (int k = 0; k < nk; k++) cw_joint3d_destroy(g->weld[k].j);
-  for (int i = 0; i < g->nb; i++) {
-    if (!g->b[i].alive) continue;
-    cw_body3d_set_transform(g->b[i].body, D[i]);
-    cw_body3d_set_velocity(g->b[i].body, v3(0, 0, 0)), cw_body3d_set_angular_velocity(g->b[i].body, v3(0, 0, 0));
-    if (welded[i]) b3Body_SetLinearDamping(cw_body3d_raw(g->b[i].body), opt_get("WELD_LDAMP") ? (float)atof(opt_get("WELD_LDAMP")) : 0.4f), b3Body_SetAngularDamping(cw_body3d_raw(g->b[i].body), opt_get("WELD_ADAMP") ? (float)atof(opt_get("WELD_ADAMP")) : 1.0f);
-  }
-  for (int k = 0; k < nk; k++) {
-    struct weld_pair *wp = &g->weld[k];
-    wp->fb = nfb[k];
-    wp->j = weld_make(g, wp->a, wp->b, wp->fa, wp->fb, nF[k], nT[k]);
-  }
-  if (opt_on("PS_LOG")) fprintf(stderr, "prestress: %d ticks\n", used);
-  b3World_EnableSleeping(w, true);
-}
 /* the blocks laid since `from` turned yaw about the vertical through (cx, cz): a landmark set on the field at the
  * angle its default view wants (the grid stays square to the model, so its walls are clean and its members long) */
 static void turn_blocks(game *g, int from, float cx, float cz, float yaw) {
@@ -382,11 +238,11 @@ static void turn_blocks(game *g, int from, float cx, float cz, float yaw) {
   for (int i = from; i < g->nb; i++) {
     block *b = &g->b[i];
     if (!b->alive) continue;
-    cw_xform3 x = cw_body3d_transform(b->body);
+    cw_xform3 x = game_block_xform(g, i);
     float px = x.p.x - cx, pz = x.p.z - cz;
     x.p.x = cx + px * c + pz * s, x.p.z = cz - px * s + pz * c;
     x.q = (t3_quat){ 0, hs, 0, hc };
-    cw_body3d_set_transform(b->body, x);
+    cw_body3d_set_transform(g->ch[b->chunk].body, x);
     b->home = x.p;
   }
 }
