@@ -29,7 +29,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Great Sphinx", LM_SPHINX, 1, 2, 4, 0, 0, 22, "Giza, Egypt", ST_DESERT, 0.1f, 0.3f),
   LANDMARK("The Needle", LM_SPACE_NEEDLE, 1, 2, 4, 1, 0, 28, "Seattle, United States", ST_CITY, 0.4f, 0.0f),
   LANDMARK("Iron Lady", LM_EIFFEL, 2, 2, 5, 1, 1, 32, "Paris, France", ST_CITY, 0.35f, 0.35f),
-  LANDMARK("The Black Tower", LM_WILLIS, 2, 3, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.11f, 0.5f),
+  LANDMARK("The Black Tower", LM_WILLIS, 2, 5, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f, 0.5f),
   LANDMARK("The Empire", LM_EMPIRE_STATE, 2, 2, 5, 1, 1, 32, "New York, United States", ST_CITY, 0.17f, 0.45f),
   LANDMARK("Harbour Sails", LM_OPERA_HOUSE, 2, 2, 5, 1, 1, 27, "Sydney, Australia", ST_HARBOUR, 0.07f, -0.15f),
   LANDMARK("Pyramids of Giza", LM_GIZA, 3, 3, 6, 2, 1, 38, "Giza, Egypt", ST_DESERT, 0.01f, 0.3f) /* the core of each pyramid is not counted (only its skin of bricks): an eighth of the skin */,

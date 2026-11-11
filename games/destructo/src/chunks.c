@@ -534,6 +534,7 @@ static void crumble(game *g) {
 void chunks_flush(game *g) { ch_lock(); flush_i(g); ch_unlock(); }
 
 static void step_i(game *g) {
+  if (opt_on("NO_SUPPORT")) return; /* (the look sheets of a section: nothing judged, nothing falls) */
   crumble(g);
   if (!g->sup_dirty) return;
   g->sup_dirty = 0;

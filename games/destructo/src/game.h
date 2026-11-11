@@ -271,6 +271,7 @@ void game_settle_finish(game *g);           /* game_settle's end: where everythi
 int game_awake(const game *g);
 void game_sleep_all(game *g); /* put every body to sleep at where it is (a structure at rest from the first frame) */
 void game_ev(game *g, int kind, int mat, t3_vec3 p, t3_vec3 n, float size, float speed, int a); /* an event for the view and the sound (chunks.c) */
+int game_cutaway(game *g); /* the near half of the structure cut away (the look sheets) */
 int game_legout(game *g, bool charge); /* a foot of the structure broken (or a charge at its middle): the checks and the look sheets */
 void game_charge_at(game *g, t3_vec3 at); /* a charge goes off at this point (the checks) */
 t3_vec3 game_aim_dir(const game *g);

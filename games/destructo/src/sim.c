@@ -1011,6 +1011,18 @@ void game_sleep_all(game *g) {
 
 void game_charge_at(game *g, t3_vec3 at) { detonate(g, at); }
 
+/* the near half of the structure cut away (the look sheets: dm set SCENE cut): a section through it, to see what is inside */
+int game_cutaway(game *g) {
+  t3_vec3 u = game_out_dir(g);
+  int n = 0;
+  for (int i = 0; i < g->nb; i++) {
+    const block *k = &g->b[i];
+    if (!k->alive || k->tag == 0 || k->target >= 0 || k->keg) continue;
+    if (k->home.x * u.x + k->home.z * u.z > 0.05f) kill_block(g, i), n++;
+  }
+  return n;
+}
+
 /* a leg of the structure taken out (the checks, and the look sheets: dm set SCENE legout): the placed blocks of a third of its footprint round the foot
  * furthest from its middle, up to 2.2 m, break; with charge, a charge at the foot of the middle instead.
  * Returns the blocks broken. */
@@ -1035,9 +1047,9 @@ int game_legout(game *g, bool charge) {
   float R = sqrtf(fd), fx = at.x - cx, fz = at.z - cz;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
-    if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y > 2.2f) continue;
+    if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y - k->half.y > 1.5f) continue; /* (what stands on the ground: a tall welded member reaches down to it) */
     float px = k->home.x - cx, pz = k->home.z - cz, r = sqrtf(px * px + pz * pz);
-    if (r < 0.35f * R || (px * fx + pz * fz) < 0.5f * r * R) continue;
+    if (r < 0.35f * R || (px * fx + pz * fz) < (opt_on("LEG_HALF") ? 0.0f : 0.5f) * r * R) continue; /* (LEG_HALF: the whole half of the footprint, a core-out test: what stands on it must come down) */
     harm(g, i, 1e9f, v3(0, 1, 0), true), n++;
   }
   return n;

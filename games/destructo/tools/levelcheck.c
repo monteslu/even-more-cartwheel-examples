@@ -373,6 +373,11 @@ static int npc;
 static void legout_check(int level, bool charge) {
   game_new(&G, level, 1, MODE_COOP);
   bool loose = opt_on("LOOSE");
+  if (opt_on("SOLIDCORE")) { /* the control: a solid mass in the middle, the way the buildings used to be (a block 0.9 of the footprint's width, up to 0.8 of the height) */
+    float mx = 0, mz = 0, hy = G.top; int n = 0;
+    for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].home.y < 1.0f) mx = fmaxf(mx, fabsf(G.b[i].home.x)), mz = fmaxf(mz, fabsf(G.b[i].home.z)), n++;
+    game_add_block(&G, M_STONE, (t3_vec3){ 0, hy * 0.4f, 0 }, (t3_vec3){ fmaxf(0.5f, mx * 0.6f), hy * 0.4f, fmaxf(0.5f, mz * 0.6f) }, 0); (void)n;
+  }
   static t3_vec3 p0[MAXBLK];
   int total = 0;
   for (int i = 0; i < G.nb; i++) { p0[i] = G.b[i].alive ? game_block_xform(&G, i).p : (t3_vec3){ 0, 0, 0 }; if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0) total++; }
@@ -383,7 +388,9 @@ static void legout_check(int level, bool charge) {
   for (int i = 0; i < G.nb; i++) if (G.b[i].alive) { t3_vec3 p = game_block_xform(&G, i).p; float d = sqrtf((p.x - p0[i].x) * (p.x - p0[i].x) + (p.y - p0[i].y) * (p.y - p0[i].y) + (p.z - p0[i].z) * (p.z - p0[i].z)); if (d > mx) mx = d; }
   int st_n, o6;
   int big0 = chunks_largest(&G, &o6, &st_n);
-  printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"standing\",\"blocks\":%d,\"placed\":%d,\"move_mm\":%.2f,\"chunks_standing\":%d,\"awake\":%d,\"height\":%.2f}\n", level, G.L->name, G.nalive, total, mx * 1000, st_n, game_awake(&G), G.top);
+  float vol_all = 0, vol_mass = 0;
+  for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag && G.b[i].target < 0) { float md = fminf(G.b[i].half.x, fminf(G.b[i].half.y, G.b[i].half.z)) * 2; vol_all += G.b[i].vol; if (md > 0.45f) vol_mass += G.b[i].vol; }
+  printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"standing\",\"mass_frac\":%.3f,\"blocks\":%d,\"placed\":%d,\"move_mm\":%.2f,\"chunks_standing\":%d,\"awake\":%d,\"height\":%.2f}\n", level, G.L->name, vol_all > 0 ? vol_mass / vol_all : 0, G.nalive, total, mx * 1000, st_n, game_awake(&G), G.top);
   fflush(stdout);
   (void)big0;
   if (opt_on("FEET")) { printf("{\"level\":%d,\"feet\":[", level); int nf = 0; for (int i = 0; i < G.nb; i++) if (G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0 && p0[i].y < 0.8f) printf("%s[%.2f,%.2f,%.2f,%.2f,%.2f]", nf++ ? "," : "", p0[i].x, p0[i].z, G.b[i].half.x, G.b[i].half.z, p0[i].y); printf("],\"chunks\":%d,\"com\":[", st_n); for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && !G.ch[c].dyn) printf("[%.2f,%.2f,%.2f,%d,%.2f]", G.ch[c].com.x, G.ch[c].com.y, G.ch[c].com.z, G.ch[c].n, G.ch[c].d0); printf("]}\n"); }

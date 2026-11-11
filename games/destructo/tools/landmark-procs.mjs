@@ -130,7 +130,7 @@ function needle(x, y, z) {
   }
   if (Y >= 163) return Y < 184 && r < (Y < 168 ? 2.6 : 1.0) ? 'steel:WHITE_PAINT' : null; /* the spire */
   /* the lift shaft: dark, solid (it carries the saucer, and a stack of short welded members would sag) */
-  if (Math.abs(X) < 3.2 && Math.abs(Z) < 3.2) return 'steel:BRONZE';
+  if (Math.abs(X) < 3.2 && Math.abs(Z) < 3.2) return Math.abs(X) > 2.0 || Math.abs(Z) > 2.0 || Math.floor(Y) % 22 === 0 ? 'steel:BRONZE' : null; /* a hollow shaft with a landing every so often */
   /* the legs: radius of the pair's middle from the axis, and the spread between its two columns */
   const rl = Y < 60 ? 4 + 15 * Math.pow(1 - Y / 60, 1.5) : 4 + 9.5 * sq((Y - 60) / 87);
   const spread = Y < 60 ? 1.8 + 4.5 * Math.pow(1 - Y / 60, 1.3) : 1.8 + 2.5 * ((Y - 60) / 87);
@@ -419,7 +419,7 @@ function cnTower(x, y, z) {
   if (Y >= 452) { const t = (Y - 452) / 101; return t < 1 && r < 3.6 * (1 - t) + 0.9 ? (Math.floor(Y / 14) & 1 ? 'steel:WHITE_PAINT' : 'steel:SILVER') : null; } /* the antenna */
   /* the shaft: hexagonal, a little narrower going up */
   const core = 7.5 - 1.5 * Math.min(1, Y / 440);
-  if (hexR(X, Z) < core) return 'stone:CONCRETE';
+  if (hexR(X, Z) < core) return hexR(X, Z) > core - 3.2 || Math.floor(Y) % 38 < 3 ? 'stone:CONCRETE' : null; /* the shaft: a wall and a landing every so often, hollow */
   /* the three wings: wide at the foot, merging into the shaft at the pod */
   if (Y < 330) {
     const reach = 7 + 26 * Math.pow(1 - Y / 330, 1.6), half = 3.2 + 1.5 * (1 - Y / 330);

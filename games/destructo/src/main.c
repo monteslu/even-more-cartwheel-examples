@@ -632,7 +632,8 @@ static void fixed_update(void *u, double dt) {
     if (opt_get("SCENE")) { /* the look sheets: a foot of the structure broken (dm set SCENE legout) or a charge at its middle (boom), no shot; the world steps, the view draws it */
       input none = { 0 };
       G.overview = !opt_get("SCENE_CAM"); /* the wide view unless SCENE_CAM is set (the game's own collapse camera) */
-      if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
+      if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "cut")) opt_set("NO_SUPPORT", "1"), game_cutaway(&G.g);
+      else if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
       G.g.state = GS_SETTLE;
       game_step(&G.g, &none);
       fx_events(&G.g, G.g.cur);

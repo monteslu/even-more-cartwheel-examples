@@ -240,6 +240,31 @@ function voxelize(name, C) {
   const mcode = names.map((m) => { if (P) { const [mt, pt] = m.split(':'); return code(mt, pt); } const r = rule(m); return code(r.mat, paintOf(r, m)); });
   const cells = new Uint8Array(N), shellCode = new Uint8Array(N), done = new Uint8Array(N);
   const wall = C.wall || 0;
+  /* a frame inside: a tall building is its outer wall, a floor slab every storey, a thin hollow shaft in the middle and a few columns,
+   * not a solid mass. frame: { floor: m between slabs, col: m between columns, shaft: share of the plan's width the shaft takes } */
+  let ib = null;
+  if (C.frame) {
+    ib = { i0: 1e9, i1: -1, k0: 1e9, k1: -1 };
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
+      const c = at(i, j, k);
+      if (solid[c] >= 0 && depth[c] > wall) { ib.i0 = Math.min(ib.i0, i), ib.i1 = Math.max(ib.i1, i), ib.k0 = Math.min(ib.k0, k), ib.k1 = Math.max(ib.k1, k); }
+    }
+  }
+  const frameCell = (i, j, k) => {
+    const F = C.frame, fe = Math.max(2, Math.round(F.floor / course)), ce = Math.max(2, Math.round(F.col / cell));
+    if (j > 0 && j % fe === 0) { /* a floor slab, with the shaft left open */
+      const sw = Math.max(2, Math.round((ib.i1 - ib.i0 + 1) * F.shaft)), sd = Math.max(2, Math.round((ib.k1 - ib.k0 + 1) * F.shaft));
+      const si0 = Math.round((ib.i0 + ib.i1) / 2 - sw / 2), sk0 = Math.round((ib.k0 + ib.k1) / 2 - sd / 2);
+      if (i > si0 && i < si0 + sw - 1 && k > sk0 && k < sk0 + sd - 1) return 0;
+      return 1;
+    }
+    const sw = Math.max(2, Math.round((ib.i1 - ib.i0 + 1) * F.shaft)), sd = Math.max(2, Math.round((ib.k1 - ib.k0 + 1) * F.shaft));
+    const si0 = Math.round((ib.i0 + ib.i1) / 2 - sw / 2), sk0 = Math.round((ib.k0 + ib.k1) / 2 - sd / 2);
+    const inRect = i >= si0 && i < si0 + sw && k >= sk0 && k < sk0 + sd, inner = i > si0 && i < si0 + sw - 1 && k > sk0 && k < sk0 + sd - 1;
+    if (inRect && !inner) return 1; /* the shaft's thin wall */
+    if ((i - ib.i0) % ce === 0 && (k - ib.k0) % ce === 0 && !inRect) return 1; /* a column */
+    return 0;
+  };
   for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
     const c = at(i, j, k);
     if (solid[c] < 0) continue;
@@ -260,7 +285,8 @@ function voxelize(name, C) {
     if (carved) continue;
     if ((C.ymin != null && y < C.ymin) || (C.ymax != null && y >= C.ymax)) continue; /* one height of a model (its masonry below, its welded dome above) */
     shellCode[c] = v;
-    if (C.weld && C.coreMat && wall > 0 && depth[c] > wall) v = code(C.coreMat.mat, C.coreMat.paint); /* a welded tower's inside: one material, so its members run the whole height (stiff), its skin banded */
+    if (C.frame && wall > 0 && depth[c] > wall) v = frameCell(i, j, k) ? code((C.coreMat || C.frame).mat, (C.coreMat || C.frame).paint) : 0; /* the inside is a frame, not a mass */
+    else if (C.weld && C.coreMat && wall > 0 && depth[c] > wall) v = code(C.coreMat.mat, C.coreMat.paint); /* a welded tower's inside: one material, so its members run the whole height (stiff), its skin banded */
     else if (wall > 0 && depth[c] > wall) v = 255; /* inside: the core, or nothing */
     cells[c] = v;
   }
