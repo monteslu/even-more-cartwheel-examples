@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.1
+
+- **Destructo**: the tall landmarks are no longer a thin shell over a solid core. A tower is a perimeter wall, a floor
+  slab every 3.6 m, a hollow shaft and columns; the Needle and the CN Tower have hollow tubes with landings; the
+  pyramids' cores are made of normal bricks. When the footing goes a tower tips about the edge of what is left and
+  pancakes into rubble within about three seconds; four seconds after half of the footing is broken, 83 to 99 percent
+  of the blocks have moved more than a metre or are gone on every tall landmark (the Great Clock, Angkor Wat and the CN
+  Tower included, which stood on their cores before). A tilting tower froze mid-fall because sleeping one piece of
+  rubble put its whole connected group to sleep; it now sleeps only when fewer than 120 bodies are awake.
+- Build: the native logic checks run as parallel jobs beside the carts job, and a tag skips them, so a release takes
+  about a third of the time.
+
 ## 0.16.0
 
 - **Destructo**: buildings no longer flop. Structures are rigid chunks held up by what is under them, with no weld
