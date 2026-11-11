@@ -243,10 +243,10 @@ static int settle_for(int level) { return level_settle_ticks(level_get(level)); 
 static int level_after(const game *g, bool won) {
   int next = won ? g->level + 1 : g->level;
 #ifdef DESTRUCTO_AUTOPILOT
-  if (won) next = next % NLEVELS;
+  if (won) next = next % NSHOWN;
   if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = g->level;
 #else
-  if (won) next = CW_MIN(next, NLEVELS - 1);
+  if (won) next = CW_MIN(next, NSHOWN - 1);
 #endif
   return next;
 }
@@ -399,7 +399,7 @@ static void start(int players, void *u) {
   G.phase = PH_SELECT, G.phase_t = 0;
   G.mode = CW_CLAMP(save()->last_mode, 0, 2);
   int last = save()->last_level;
-  G.sel = last >= 0 && last < NLEVELS ? last : 0;
+  G.sel = last >= 0 && last < NSHOWN ? last : 0;
   preview_level(G.sel); /* the level behind the choice */
 #endif
 }
@@ -749,8 +749,8 @@ static void read_input(input *in) {
 
 static int unlocked(void) {
   int best = -1;
-  for (int i = 0; i < NLEVELS; i++) if (save()->stars[i]) best = i;
-  return CW_MIN(NLEVELS - 1, best + 3);
+  for (int i = 0; i < NSHOWN; i++) if (save()->stars[i]) best = i;
+  return CW_MIN(NSHOWN - 1, best + 3);
 }
 
 /* the clock's dip: in over 6 ticks, 12 at a third, out over 6 */
@@ -820,7 +820,7 @@ static void fixed_update(void *u, double dt) {
   case PH_SELECT: {
     preview_poll();
     int dx = old_feel() ? ui("ui_right") - ui("ui_left") : nav("ui_right", 0) - nav("ui_left", 1), dy = old_feel() ? ui("ui_down") - ui("ui_up") : nav("ui_down", 2) - nav("ui_up", 3);
-    int top = G.free_fire ? NLEVELS - 1 : unlocked(), count = top + 1;
+    int top = G.free_fire ? NSHOWN - 1 : unlocked(), count = top + 1;
     int n = G.sel + dx + dy * SEL_COLS;
     if (dx || dy) { /* the choice wraps round the open structures (a hold runs along them: nav) */
       n = old_feel() ? (n >= 0 && n < count ? n : G.sel) : ((n % count) + count) % count;
@@ -915,7 +915,7 @@ static void fixed_update(void *u, double dt) {
 #ifdef DESTRUCTO_AUTOPILOT
     if (watch && G.phase_t > 60) watch = false, G.replayed = true, G.replay_cut = true, G.replay_ticks = 0, fx_clear(), replay_start();
     if (!G.loading && G.phase_t > 60 * 4 && (G.replayed || G.phase_t > 60 * 12)) {
-      int next = won ? (G.g.level + 1) % NLEVELS : G.g.level;
+      int next = won ? (G.g.level + 1) % NSHOWN : G.g.level;
       if (DESTRUCTO_BENCH || opt_get("LEVEL") || opt_get("LEVEL_NAME")) next = G.g.level;
       level_done();
       request_level(next);
@@ -928,7 +928,7 @@ static void fixed_update(void *u, double dt) {
       } else if (ui("ui_accept") || pressed(G.fire, -1)) {
         sound_menu(1);
         level_done();
-        request_level(won ? CW_MIN(G.g.level + 1, NLEVELS - 1) : G.g.level);
+        request_level(won ? CW_MIN(G.g.level + 1, NSHOWN - 1) : G.g.level);
       } else if (ui("ui_back")) {
         sound_menu(2);
         level_done();
@@ -1165,12 +1165,12 @@ static void hud_select(cw_vec2 cs, float u) {
   text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
   float cw = 400 * u, ch = 118 * u, gap = 16 * u;
   float gx = cs.x * 0.5f - (SEL_COLS * cw + (SEL_COLS - 1) * gap) * 0.5f, gy = y0 + 84 * u;
-  int open = G.free_fire ? NLEVELS - 1 : unlocked(); /* free fire: every structure */
+  int open = G.free_fire ? NSHOWN - 1 : unlocked(); /* free fire: every structure */
   /* four rows in view, scrolled to keep the choice in view */
-  int rows = (NLEVELS + SEL_COLS - 1) / SEL_COLS, first = CW_CLAMP(G.sel / SEL_COLS - 1, 0, rows - SEL_ROWS);
+  int rows = (NSHOWN + SEL_COLS - 1) / SEL_COLS, first = CW_CLAMP(G.sel / SEL_COLS - 1, 0, rows - SEL_ROWS);
   if (first > 0) cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f + 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f, gy - 26 * u) }, 3, rgba(1, 0.82f, 0.3f, 0.9f));
   if (first + SEL_ROWS < rows) { float by = gy + SEL_ROWS * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
-  for (int i = first * SEL_COLS; i < NLEVELS && i < (first + SEL_ROWS) * SEL_COLS; i++) {
+  for (int i = first * SEL_COLS; i < NSHOWN && i < (first + SEL_ROWS) * SEL_COLS; i++) {
     float x = gx + (i % SEL_COLS) * (cw + gap), y = gy + (i / SEL_COLS - first) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
     float mp = sel ? G.menu_pop / 7.0f : 0; /* a pressed state: the chosen tile swells and lights, then settles */
