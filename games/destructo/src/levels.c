@@ -51,21 +51,21 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("The Spire", LM_BURJ_KHALIFA, 2, 3, 6, 2, 2, 40, "Dubai, United Arab Emirates", ST_DESERT, 0.27f, 0.3f),
   LANDMARK("The Black Tower", LM_WILLIS, 2, 5, 5, 2, 1, 32, "Chicago, United States", ST_CITY, 0.35f, 0.5f),
   LANDMARK("Tower Bridge", LM_TOWER_BRIDGE, 2, 8, 6, 2, 3, 36, "London, United Kingdom", ST_HARBOUR, 0.3f, 0.25f),
-  LANDMARK_HELD("Mount Rushmore", LM_RUSHMORE, 3, 4, 6, 2, 2, 19, "South Dakota, United States", ST_HIGHLAND, 0.1f, 0.3f)
-  LANDMARK_HELD("The Kremlin", LM_KREMLIN, 2, 3, 6, 2, 2, 28, "Moscow, Russia", ST_SNOW, 0.3f, 0.25f)
+  LANDMARK("Mount Rushmore", LM_RUSHMORE, 3, 4, 6, 2, 2, 24, "South Dakota, United States", ST_HIGHLAND, 0.1f, -0.4f),
+  LANDMARK("The Kremlin", LM_KREMLIN, 2, 3, 6, 2, 2, 27, "Moscow, Russia", ST_SNOW, 0.04f, 0.25f),
   LANDMARK("Stacked Tower", LM_TAIPEI, 2, 3, 6, 2, 2, 36, "Taipei, Taiwan", ST_CITY, 0.3f, 0.3f),
   LANDMARK("Golden Span", LM_GOLDEN_GATE, 2, 3, 6, 2, 2, 46, "San Francisco, United States", ST_HARBOUR, 0.06f, 0.35f),
   LANDMARK("Brooklyn Bridge", LM_BROOKLYN, 3, 4, 6, 2, 2, 38, "New York, United States", ST_HARBOUR, 0.08f, 0.9f),
   LANDMARK("Crown Tower", LM_CHRYSLER, 2, 3, 6, 2, 1, 34, "New York, United States", ST_CITY, 0.3f, 0.4f),
   LANDMARK("The Gateway", LM_GATEWAY, 2, 3, 6, 2, 1, 33, "St. Louis, United States", ST_MEADOW, 0.002f, 0.2f),
   LANDMARK("Arc de Triomphe", LM_ARC, 2, 3, 6, 2, 1, 28, "Paris, France", ST_CITY, 0.07f, 0.3f),
-  LANDMARK_HELD("Brandenburg Gate", LM_BRANDENBURG, 2, 3, 6, 2, 1, 27, "Berlin, Germany", ST_CITY, 0.3f, 0.2f)
+  LANDMARK("Brandenburg Gate", LM_BRANDENBURG, 2, 3, 6, 2, 1, 27, "Berlin, Germany", ST_CITY, 0.3f, -0.5f),
   LANDMARK("Pantheon", LM_PANTHEON, 2, 3, 6, 2, 1, 30, "Rome, Italy", ST_CITY, 0.12f, 0.5f),
   LANDMARK("Notre-Dame", LM_NOTRE_DAME, 2, 3, 6, 2, 1, 32, "Paris, France", ST_CITY, 0.3f, -0.45f),
   LANDMARK_HELD("Red Tower", LM_TOKYO_TOWER, 2, 3, 6, 2, 1, 34, "Tokyo, Japan", ST_CITY, 0.3f, 0.3f)
   LANDMARK("The Atoms", LM_ATOMIUM, 2, 3, 6, 2, 1, 29, "Brussels, Belgium", ST_CITY, 0.002f, 0.3f),
-  LANDMARK_HELD("Great Wall of China", LM_GREAT_WALL, 2, 3, 6, 2, 1, 31, "Beijing, China", ST_HIGHLAND, 0.3f, 0.2f)
-  LANDMARK_HELD("Petra Treasury", LM_PETRA, 2, 3, 6, 2, 1, 25, "Petra, Jordan", ST_DESERT, 0.3f, 0.0f)
+  LANDMARK_HELD("Great Wall of China", LM_GREAT_WALL, 2, 3, 6, 2, 1, 34, "Beijing, China", ST_HIGHLAND, 0.3f, 0.2f)
+  LANDMARK_HELD("Petra Treasury", LM_PETRA, 2, 3, 6, 2, 1, 26, "Petra, Jordan", ST_DESERT, 0.3f, 0.2f)
   LANDMARK("Hagia Sophia", LM_HAGIA_SOPHIA, 2, 3, 6, 2, 1, 34, "Istanbul, Turkey", ST_CITY, 0.12f, 0.5f),
   LANDMARK("Blue Mosque", LM_BLUE_MOSQUE, 1, 3, 6, 2, 1, 34, "Istanbul, Turkey", ST_CITY, 0.06f, 0.5f),
   LANDMARK_HELD("Mont Saint-Michel", LM_MONT_ST_MICHEL, 2, 3, 6, 2, 1, 21, "Normandy, France", ST_HEADLAND, 0.3f, 0.5f)

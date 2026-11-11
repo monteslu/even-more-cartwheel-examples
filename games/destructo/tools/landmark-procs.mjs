@@ -637,42 +637,56 @@ function rushmore(x, y, z) {
 
 /* ── the Kremlin: the red brick wall with its swallowtail merlons, the corner towers under green tents, the clock gate
  * tower with its stepped crown and gold star, the white bell tower, the cathedral's five gold domes ── */
-function krTower(x, y, z, cx, cz, hw, h1, h2, h3, spire, roof) {
+/* the Spasskaya clock tower: a square shaft in red brick, a stage with the clock faces, an open arcade, the tall green tent and the gold star */
+function spasskaya(x, y, z, cx, cz) {
   const X = Math.abs(x - cx), Z = Math.abs(z - cz);
-  if (y < h1) return X < hw && Z < hw ? 'stone:RED_BRICK' : null;
-  if (y < h2) { const w = hw * 0.72; return X < w && Z < w ? (y > h1 + 0.4 && y < h1 + 1.1 && X < w * 0.5 && Z < w * 0.5 ? 'stone:TRIM_CREAM' : 'stone:RED_BRICK') : (X < hw && Z < hw && y < h1 + 0.22 ? 'stone:RED_BRICK' : null); }
-  if (y < h3) { const t = (y - h2) / (h3 - h2), w = hw * 0.8 * (1 - t); return Math.max(X, Z) < w || X + Z < w * 1.35 && X < w && Z < w ? 'stone:' + roof : null; }
-  return y < h3 + spire && X < 0.07 && Z < 0.07 ? 'stone:GOLD' : null;
+  if (y < 4.6) return X < 0.95 && Z < 0.95 ? (y > 3.6 && y < 4.0 && Z > 0.6 && X < 0.55 ? 'stone:TRIM_CREAM' : 'stone:RED_BRICK') : null;
+  if (y < 5.4) return X < 0.78 && Z < 0.78 ? 'stone:RED_BRICK' : (X < 1.0 && Z < 1.0 && y < 4.8 ? 'stone:RED_BRICK' : null);
+  if (y < 6.9) { /* the clock stage: the dial on every face, a white disc with a dark rim */
+    if (X >= 0.82 || Z >= 0.82) return null;
+    const dial = Z > 0.55 ? Math.hypot(x - cx, y - 6.1) : X > 0.55 ? Math.hypot(z - cz, y - 6.1) : 9;
+    return dial < 0.5 ? (dial > 0.4 ? 'stone:DARK_STONE' : 'stone:WHITE_PAINT') : 'stone:RED_BRICK';
+  }
+  if (y < 7.6) { const col = (X > 0.5 && X < 0.8 && Z > 0.5 && Z < 0.8) || (X < 0.85 && Z < 0.85 && y > 7.4); return col ? 'stone:TRIM_CREAM' : null; } /* the arcade: four posts and a ring */
+  if (y < 10.6) { const t = (y - 7.6) / 3.0, w = 0.85 * (1 - 0.92 * t); return X < w && Z < w ? 'stone:ROOF_COPPER' : null; } /* the green tent */
+  if (y < 10.9) return X < 0.12 && Z < 0.12 ? 'stone:GOLD' : null;
+  /* the star: a gold cross of two bars and its diagonals, in the plane of the wall */
+  const dx = x - cx, dy = y - 11.5;
+  if (Math.abs(z - cz) < 0.08 && y >= 10.9 && y < 12.1 && (Math.abs(dx) < 0.1 || Math.abs(dy) < 0.1 || Math.abs(Math.abs(dx) - Math.abs(dy)) < 0.09) && Math.hypot(dx, dy) < 0.6) return 'stone:GOLD';
+  return null;
 }
 function kremlin(x, y, z) {
   const ax = Math.abs(x), az = Math.abs(z);
-  /* the wall: one brick thick, the front (z > 0) toward the square */
+  /* the wall: one brick thick, the front (z > 0) toward the square, swallowtail merlons */
   const onWall = (Math.abs(ax - 8.85) < 0.15 && az < 5.0) || (Math.abs(az - 4.85) < 0.15 && ax < 9.0);
-  if (onWall && y < 2.1) return 'stone:RED_BRICK';
-  if (onWall && y < 2.4) return Math.floor((ax > 8 ? z : x) / 0.3 + 100) % 2 ? 'stone:RED_BRICK' : null; /* the merlons */
-  /* the towers: the four corners, round and under tents; the two on the front wall; the gate tower */
+  if (onWall && y < 1.9) return 'stone:RED_BRICK';
+  if (onWall && y < 2.3) return Math.floor((ax > 8 ? z : x) / 0.3 + 100) % 2 ? 'stone:RED_BRICK' : null;
+  /* corner towers: round, under green tents */
   for (const [cx, cz] of [[-8.85, -4.85], [8.85, -4.85], [-8.85, 4.85], [8.85, 4.85]]) {
     const r = Math.hypot(x - cx, z - cz);
-    if (y < 3.0 && r < 0.75) return 'stone:RED_BRICK';
-    if (y >= 3.0 && y < 3.4 && r < 0.9) return 'stone:RED_BRICK';
-    if (y >= 3.4 && y < 5.2 && r < 0.9 * (1 - (y - 3.4) / 1.8)) return 'stone:ROOF_COPPER';
+    if (y < 2.9 && r < 0.75) return 'stone:RED_BRICK';
+    if (y >= 2.9 && y < 3.3 && r < 0.9) return 'stone:RED_BRICK';
+    if (y >= 3.3 && y < 5.4 && r < 0.9 * (1 - (y - 3.3) / 2.1)) return 'stone:ROOF_COPPER';
   }
-  const gate = krTower(x, y, z, 3.0, 4.85, 0.75, 3.6, 5.6, 8.6, 1.4, 'ROOF_COPPER');
-  if (gate && y < 8.6) return gate;
-  if (gate) return gate;
-  const nik = krTower(x, y, z, -4.6, 4.85, 0.6, 3.0, 4.2, 6.2, 0.9, 'ROOF_COPPER');
-  if (nik) return nik;
-  /* inside: the bell tower, the cathedral and its domes, the palace along the back */
-  if (Math.abs(x - 3.4) < 0.7 && Math.abs(z + 1.6) < 0.7 && y < 6.3) return y > 4.6 && y < 5.5 && (Math.abs(x - 3.4) < 0.35 || Math.abs(z + 1.6) < 0.35) ? 'glass:DARK_GLASS' : 'stone:PLASTER';
-  if (y >= 6.3 && y < 7.5 && ell(x, y, z, 3.4, 6.3, -1.6, 0.62, 1.2, 0.62)) return 'stone:GOLD';
-  if (y >= 7.5 && y < 8.0 && Math.hypot(x - 3.4, z + 1.6) < 0.08) return 'stone:GOLD';
-  if (Math.abs(x + 1.4) < 2.0 && Math.abs(z + 0.4) < 2.3 && y < 2.9) return y > 1.2 && y < 2.2 && (Math.abs(Math.abs(x + 1.4) - 2.0) < 0.1 || Math.abs(Math.abs(z + 0.4) - 2.3) < 0.1) ? 'stone:TRIM_CREAM' : 'stone:PLASTER';
-  for (const [dx, dz, r, dr] of [[-1.4, -0.4, 0.62, 0.45], [-2.7, -1.5, 0.42, 0.3], [-0.1, -1.5, 0.42, 0.3], [-2.7, 0.7, 0.42, 0.3], [-0.1, 0.7, 0.42, 0.3]]) {
-    const rr = Math.hypot(x - 1.4 * 0 - dx, z - dz);
-    if (y >= 2.9 && y < 3.5 && rr < dr) return 'stone:PLASTER';
-    if (y >= 3.5 && ell(x, y, z, dx, 3.5, dz, r, r * 1.35, r)) return 'stone:GOLD';
+  const sp = spasskaya(x, y, z, 3.0, 4.85); if (sp) return sp;
+  const ni = spasskaya(x, y * 1.5, z, -4.6, 4.85); if (ni && y < 8.6) return ni; /* the Nikolskaya: the same tower, lower */
+  /* the Ivan the Great bell tower: white tiers, the gold dome */
+  const bx = Math.abs(x - 4.8), bz = Math.abs(z + 1.8);
+  if (y < 4.2 && bx < 0.85 && bz < 0.85) return 'stone:PLASTER';
+  if (y >= 4.2 && y < 6.2 && bx < 0.65 && bz < 0.65) return (bx > 0.3 && bz > 0.3) ? 'glass:DARK_GLASS' : 'stone:PLASTER';
+  if (y >= 6.2 && y < 7.4 && bx < 0.55 && bz < 0.55) return 'stone:PLASTER';
+  if (ell(x, y, z, 4.8, 7.4, -1.8, 0.62, 1.1, 0.62) && y >= 7.4) return 'stone:GOLD';
+  if (y >= 8.4 && y < 9.2 && bx < 0.06 && bz < 0.06) return 'stone:GOLD';
+  /* the Assumption cathedral: white, five gold onion domes on drums */
+  if (Math.abs(x + 1.2) < 2.3 && Math.abs(z + 0.6) < 2.1 && y < 3.2) return y > 1.2 && y < 2.4 && (Math.abs(Math.abs(x + 1.2) - 2.3) < 0.1 || Math.abs(Math.abs(z + 0.6) - 2.1) < 0.1) ? 'stone:TRIM_CREAM' : 'stone:PLASTER';
+  for (const [dx, dz, r] of [[-1.2, -0.6, 0.8], [-2.8, -1.8, 0.55], [0.4, -1.8, 0.55], [-2.8, 0.6, 0.55], [0.4, 0.6, 0.55]]) {
+    const rr = Math.hypot(x - dx, z - dz);
+    if (y >= 3.2 && y < 3.9 && rr < r * 0.72) return 'stone:PLASTER';
+    if (y >= 3.9 && ell(x, y, z, dx, 3.9 + r * 0.85, dz, r, r * 1.5, r)) return 'stone:GOLD';
+    if (y >= 3.9 + r * 2.2 && y < 3.9 + r * 2.9 && rr < 0.05) return 'stone:GOLD';
   }
-  if (z < -3.2 && z > -4.6 && ax < 7.5 && y < 2.2) return y > 0.9 && y < 1.5 && Math.floor(x / 0.5) % 2 ? 'glass:DARK_GLASS' : 'stone:TRIM_CREAM';
+  /* the palace along the back */
+  if (z < -3.2 && z > -4.6 && ax < 7.5 && y < 2.4) return y > 0.9 && y < 1.6 && Math.floor(x / 0.5) % 2 ? 'glass:DARK_GLASS' : 'stone:TRIM_CREAM';
   return null;
 }
 
@@ -819,36 +833,30 @@ function arc(x, y, z) {
   return 'stone:LIMESTONE';
 }
 
-/* ── the Brandenburg Gate: twelve Doric columns in two rows, the five passages, the architrave, the attic, the chariot with its four horses ── */
+/* ── the Brandenburg Gate: a broad flat-topped gate: six Doric columns in each of two rows, five passages, the architrave and frieze, the high attic, and on it the chariot with four horses abreast and the goddess ── */
 function brandenburg(x, y, z) {
-  const ax = Math.abs(x), az = Math.abs(z), S = 'stone:SAND_STONE';
-  if (ax < 6.7 && az < 1.45 && y < 0.5) return S; /* the base */
-  /* the wings: two lower halls, each three columns */
-  if (ax >= 6.7 && ax < 8.8 && az < 1.2) {
-    if (y < 0.5) return S;
-    if (y < 2.9) { const cxm = Math.round((ax - 7.1) / 0.8) * 0.8 + 7.1; return (Math.hypot(ax - cxm, az - 0.95) < 0.17 && az > 0.5) || (az < 0.35) ? S : null; }
-    if (y < 3.5) return S;
-    return y < 3.9 && az < 0.9 ? S : null;
-  }
-  if (ax >= 6.7 || az >= 1.5) return null;
-  if (y < 3.7) {
-    /* the columns, two rows: centres every 1.2 across, 0.4 thick */
-    const cx = Math.round((ax - 0.6) / 1.2) * 1.2 + 0.6;
-    if (cx > 6.0) return null;
-    for (const zc of [0.95, -0.95]) if (Math.hypot(ax - cx, az - Math.abs(zc)) < (0.18 + (y > 3.4 ? 0.07 : 0))) return S;
-    /* the cross walls between the rows at the columns' places */
-    if (az < 0.78 && y > 0.5 && Math.abs(ax - cx) < 0.08 && cx < 5.5) return S;
+  const ax = Math.abs(x), az = Math.abs(z), S = 'stone:SAND_STONE', G = 'stone:VERDIGRIS';
+  if (ax < 6.4 && az < 1.6 && y < 0.5) return S; /* the steps */
+  if (y < 4.7) {
+    if (ax > 6.2 || az > 1.5) return null;
+    const cx = Math.round((x + 5) / 2) * 2 - 5; /* the six columns: x = -5, -3, -1, 1, 3, 5 */
+    if (Math.abs(cx) <= 5.01) for (const zc of [1.05, -1.05]) if (Math.hypot(x - cx, z - zc) < (y > 4.35 ? 0.5 : 0.42 - 0.04 * (y / 4.7)) && y >= 0.5) return S;
+    /* the walls between the rows, at the columns, part the five passages */
+    if (az < 1.05 && Math.abs(x - cx) < 0.16 && Math.abs(cx) <= 5.01 && y >= 0.5) return S;
     return null;
   }
-  if (y < 4.6) return ax < 6.4 && az < 1.3 ? (y > 4.2 && ax % 0.7 < 0.35 ? 'stone:TRIM_CREAM' : S) : null; /* the architrave and the frieze */
-  if (y < 5.3) return ax < 6.5 && az < 1.4 ? S : null; /* the attic */
-  /* the chariot: its platform, four horses abreast, the car, the goddess */
-  if (y < 5.55) return ax < 2.2 && az < 0.6 ? S : null;
-  if (y < 6.5) {
-    for (const hx of [-1.35, -0.45, 0.45, 1.35]) if (Math.abs(x - hx) < 0.17 && z > -0.1 - (6.5 - y) * 0 && az < 0.5 && (y < 6.3 || z > 0.1)) return 'stone:VERDIGRIS';
-    if (ax < 0.6 && z < -0.15 && z > -0.55 && y < 6.1) return 'stone:VERDIGRIS';
+  if (y < 5.45) return ax < 6.25 && az < 1.5 ? (y > 5.05 && Math.floor((x + 100) / 0.5) % 2 ? 'stone:TRIM_CREAM' : S) : null; /* the architrave and the triglyph frieze */
+  if (y < 5.75) return ax < 6.4 && az < 1.6 ? S : null; /* the cornice */
+  if (y < 6.8) return ax < 5.6 && az < 1.3 ? (y > 6.0 && y < 6.6 && ax < 5.0 && Math.floor((x + 100) / 1.7) % 2 && az > 0.9 ? 'stone:TRIM_CREAM' : S) : null; /* the attic */
+  if (y < 7.05) return ax < 2.6 && az < 0.9 ? S : null; /* the chariot's platform */
+  /* the quadriga: four horses abreast, the car behind, the goddess standing in it */
+  for (const hx of [-1.5, -0.5, 0.5, 1.5]) {
+    if (Math.abs(x - hx) < 0.26 && z > -0.1 && z < 0.9 && y < 8.0) return G; /* a horse's body */
+    if (Math.abs(x - hx) < 0.26 && z > 0.35 && z < 0.9 && y >= 8.0 && y < 8.6) return G; /* its neck and head, raised */
   }
-  if (y >= 6.1 && y < 7.1 && ax < 0.1 && z < -0.15 && z > -0.5) return 'stone:VERDIGRIS';
+  if (ax < 1.4 && z < -0.15 && z > -1.0 && y < 7.9) return G; /* the car */
+  if (ax < 0.18 && z < -0.3 && z > -0.8 && y < 9.4) return G; /* the goddess */
+  if (ax < 0.9 && y > 9.0 && y < 9.3 && Math.hypot(ax, 0) < 0.9 && z < -0.3 && z > -0.8) return G; /* her wreath and staff */
   return null;
 }
 
@@ -980,24 +988,28 @@ function atomium(x, y, z) {
   return null;
 }
 
-/* ── the Great Wall: a wall winding along a ridge of rock, climbing three peaks, its parapet crenellated, a watchtower on each peak ── */
-const GW_PK = [[-10.5, 2.6], [-1.0, 3.3], [8.5, 2.3]];
-const gwH = (x) => 0.7 + GW_PK.reduce((m, [px, ph]) => m + (ph - 0.7) * Math.exp(-sq((x - px) / 3.4)), 0);
-const gwZ = (x) => 0.8 * Math.sin(x * 0.3 + 0.4);
+/* ── the Great Wall: a wall winding along a steep ridge of rock, climbing four peaks, its parapet crenellated, a watchtower with arched windows on each peak ── */
+const GW_PK = [[-11, 2.4], [-3, 3.8], [5, 2.8], [12.5, 4.0]];
+const gwH = (x) => 0.8 + GW_PK.reduce((m, [px, ph]) => Math.max(m, (ph - 0.8) * Math.exp(-sq((x - px) / 5.2))), 0);
+const gwZ = (x) => 2.0 * Math.sin(x * 0.23 + 0.5);
 function greatWall(x, y, z) {
   if (Math.abs(x) > 15.6) return null;
   const H = gwH(x), dz = z - gwZ(x), az = Math.abs(dz);
-  /* the ridge: a mound of rock under the wall */
-  const w = 2.0 * Math.max(0, 1 - y / (H + 0.2)) + 0.55;
-  if (y < H && az < w) return 'stone:ROCK';
-  /* the wall on it: a walk between parapets, merlons along the outer edge */
-  if (az < 0.55 && y >= H && y < H + 1.5) return 'stone:LIMESTONE';
-  if (az < 0.55 && y >= H + 1.5 && y < H + 2.0 && (az > 0.3 || false) && Math.floor((x + 100) / 0.4) % 2) return 'stone:LIMESTONE';
+  const w = 1.0 * Math.max(0, 1 - y / (H + 0.2)) + 0.62; /* the ridge: a steep rib of rock, the wall's own battered foot */
+  if (y < H - 0.3 && az < w) return 'stone:ROCK';
+  if (az < 0.62 && y >= H - 0.3 && y < H + 1.5) return 'stone:LIMESTONE'; /* the wall: a walk between parapets */
+  if (az < 0.6 && y >= H + 1.5 && y < H + 2.0 && Math.floor((x + 100) / 0.36) % 2) return 'stone:LIMESTONE'; /* the merlons */
   for (const [px, ph] of GW_PK) {
     const X = Math.abs(x - px), Z = Math.abs(z - gwZ(px));
-    if (X < 1.05 && Z < 1.05 && y >= ph && y < ph + 2.4) return y > ph + 1.2 && y < ph + 1.8 && (X < 0.3 || Z < 0.3) && (X > 0.8 || Z > 0.8) ? null : 'stone:LIMESTONE';
-    if (X < 1.2 && Z < 1.2 && y >= ph + 2.4 && y < ph + 2.7) return 'stone:SAND_STONE';
-    if (X < 1.25 && Z < 1.25 && y >= ph + 2.7 && y < ph + 3.2 && Math.floor((x - px + z + 100) / 0.4) % 2) return 'stone:LIMESTONE';
+    if (X < 1.15 && Z < 1.15 && y >= ph && y < ph + 2.7) { /* the watchtower: arched windows on the four faces */
+      const wall = X > 0.9 || Z > 0.9;
+      if (!wall) return null;
+      const win = ((X > 0.9 && Z < 0.3) || (Z > 0.9 && X < 0.3)) && y > ph + 1.1 && y < ph + 2.0 && (y < ph + 1.7 || (X > 0.9 ? Z : X) < 0.18);
+      return win ? 'glass:DARK_GLASS' : 'stone:LIMESTONE';
+    }
+    if (X < 1.3 && Z < 1.3 && y >= ph + 2.7 && y < ph + 3.0) return 'stone:SAND_STONE'; /* the cornice */
+    if (X < 1.3 && Z < 1.3 && y >= ph + 3.0 && y < ph + 3.5 && Math.floor((x - px + z + 100) / 0.4) % 2) return 'stone:LIMESTONE'; /* the battlements */
+    if (X < 1.0 && Z < 1.0 && y >= ph && y < ph + 0.1) return 'stone:LIMESTONE';
   }
   return null;
 }
@@ -1006,6 +1018,7 @@ function greatWall(x, y, z) {
 function petra(x, y, z) {
   const ax = Math.abs(x), R = 'stone:ROSE_STONE';
   const fr = 3.2 - (y > 6 ? (y - 6) * 0.35 : 0);
+  if (ax >= 5.0 && ax < 6.2 && z > -2.2 && z < 3.4 && y < 8.4 + Math.sin(z * 1.3 + x) * 0.5 - (ax - 5) * 0.4) return 'stone:SAND_STONE'; /* the gorge's walls, darker rock, standing out in front of the carved cliff */
   if (z < -2.2 || ax > 5.0 || y > 9.6 + Math.sin(x * 1.7) * 0.25) return null;
   if (z > 0.8 + (y < 1.2 ? 1.0 - y * 0.8 : 0)) { /* standing out from the cliff: the columns, the tholos */ }
   if (z > 1.2) return null;
@@ -1038,6 +1051,107 @@ function petra(x, y, z) {
   return null;
 }
 
+/* ── Machu Picchu: the saddle between the sharp peak behind (Huayna Picchu) and the long ridge, its farming terraces rising in steps to the back, the stone huts with their thatch roofs ── */
+function machu(x, y, z) {
+  /* the peak */
+  const r = Math.hypot(x + 4.2, z + 3.6), hp = 10.5 * Math.pow(Math.max(0, 1 - r / 5.4), 0.85) + 0.25 * Math.sin(x * 3 + z * 2);
+  const strata = Math.floor(y * 1.7 + Math.sin(x * 0.8 + z) * 0.6) % 2 ? 'stone:DARK_STONE' : 'stone:ROCK';
+  if (y < hp) return strata;
+  /* the ridge on the right, falling away along x */
+  if (x > 2.5 && z < -0.3 && z > -6.2) { const hr = 6.4 - 0.45 * (x - 2.5) - 0.9 * Math.max(0, z + 3.4) * 0.5 + 0.3 * Math.sin(x * 2.1); if (y < hr && y < 6.4 - Math.abs(z + 3.4) * 0.35) return strata; }
+  /* the terraces across the saddle: each a step up toward the back, green on top, stone-faced */
+  if (x > -2.2 && x < 7.6 && z > -0.6 && z < 6.6) {
+    const k = Math.floor((6.6 - z) / 0.95), ty = 0.5 + 0.5 * k;
+    if (y < ty) return y > ty - 0.18 ? 'stone:VERDIGRIS' : 'stone:LIMESTONE';
+    /* the huts: a stone box and a thatched gable, on some terraces */
+    for (const [hx, hk] of [[0.4, 2], [2.4, 3], [4.6, 2], [6.2, 4], [1.2, 4]]) {
+      const hz = 6.6 - (hk + 0.5) * 0.95, hty = 0.5 + 0.5 * hk;
+      if (Math.abs(x - hx) < 0.55 && Math.abs(z - hz) < 0.36) { if (y < hty + 0.55) return 'stone:LIMESTONE'; const t = (y - hty - 0.55) / 0.4; if (t < 1 && Math.abs(z - hz) < 0.4 * (1 - t)) return 'stone:TIMBER'; }
+    }
+  }
+  return null;
+}
+
+/* ── the Hoover Dam: a curved concrete arch dam across a canyon, stepping out toward its foot, the two pairs of intake towers on the canyon walls, the powerhouse below ── */
+function hoover(x, y, z) {
+  const ax = Math.abs(x), H = 9.0;
+  const inner = 3.6 + 0.4 * y; /* the canyon: its walls close in toward the floor */
+  if (ax > inner + 0.2 && z > -3.6 && z < 5.0 && y < 11.5 - 0.15 * Math.max(0, ax - 7) + 0.3 * Math.sin(z * 1.2 + x * 0.8) - Math.max(0, z - 2.5) * 0.9 - Math.max(0, -z - 2.2) * 0.8) return y > 6 ? 'stone:SAND_STONE' : 'stone:ROSE_STONE';
+  /* the dam: the arc bulges upstream (toward -z), the face downstream stepped */
+  if (y < H && ax <= inner + 0.4) {
+    const zc = 0.05 * x * x - 1.2, t = 0.7 + (H - y) * 0.26, step = Math.round(t * 3) / 3;
+    if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
+  }
+  /* the intake towers: round, rising out of the water in front of the walls (here at the dam's ends, upstream) and their tops */
+  for (const sx of [-1, 1]) for (const tx of [1.0, 2.3]) {
+    const cx = sx * (inner + 0.4 - tx * 0.0 + 0.2 - 0.0) - sx * (tx - 1.0) * 0.0, cz = -1.2 + 0.05 * cx * cx - 0.9 - (tx - 1.0) * 0.5;
+    const rr = Math.hypot(x - sx * (3.6 + 0.4 * 6 - tx * 0.9), z - cz);
+    if (rr < 0.52 && y > 2.2 && y < 6.8) return 'stone:TRIM_CREAM';
+    if (rr < 0.6 && y >= 6.8 && y < 7.1) return 'stone:CONCRETE';
+    if (rr < 0.46 && y >= 7.1 && y < 7.5 + 0.4 * (0.46 - rr) * 2) return 'stone:GOLD';
+  }
+  /* the powerhouse at the foot downstream: a long low hall of two wings */
+  if (z > 1.6 && z < 3.6 && ax < 3.2 && y < 1.3 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
+  return null;
+}
+
+/* ── Abu Simbel's Great Temple: the rock-cut façade, battered, four seated colossi two each side of the doorway, the frieze of baboons under the cornice, the cliff above ── */
+function abuSimbel(x, y, z) {
+  const ax = Math.abs(x), R = 'stone:LIMESTONE', C = 'stone:ROSE_STONE'; /* the colossi in pale stone, the cliff in rose */
+  for (const cx of [-4.0, -1.5, 1.5, 4.0]) {
+    const X = x - cx, Z = z - 0.9;
+    if (Math.abs(X) < 0.95 && y < 1.4 && z > 0.2 && z < 2.7) return R; /* the throne */
+    if (Math.abs(X) < 0.6 && y >= 1.4 && y < 3.3 && z > 0.3 && z < 2.0) return R; /* the body */
+    if (Math.abs(X) < 0.85 && y >= 2.6 && y < 3.3 && z > 0.3 && z < 1.5) return R; /* the shoulders */
+    if (Math.abs(X) < 0.34 && y >= 3.3 && y < 4.2 && z > 0.5 && z < 1.4) { /* the head: the nose stands out */
+      if (Math.abs(X) < 0.1 && y > 3.55 && y < 3.9 && z > 1.4) return R; return R; }
+    if (Math.abs(X) < 0.34 && y >= 3.55 && y < 3.9 && z >= 1.4 && z < 1.65 && Math.abs(X) < 0.1) return R; /* the nose */
+    if (Math.abs(X) < 0.56 && y >= 3.3 && y < 4.5 && z > 0.45 && z < 1.35 && Math.abs(X) > 0.32 && y < 4.0) return R; /* the headdress's lappets */
+    if (Math.abs(X) < 0.5 && y >= 4.2 && y < 4.6 && z > 0.5 && z < 1.3) return R;
+  }
+  /* the façade between and above them, battered, the doorway at the middle */
+  if (z < 0.3 && ax < 6.2 - 0.0 && z > -4.0) {
+    const top = 8.8 - ax * 0.12 + 0.3 * Math.sin(x * 1.9);
+    if (y > top) return null;
+    if (ax < 0.55 && y < 1.9 && z > -1.6) return null; /* the door, cut into the rock */
+    if (y >= 5.9 && y < 6.4 && z > -0.2) return 'stone:TRIM_CREAM'; /* the cornice */
+    if (y >= 5.2 && y < 5.9 && Math.floor((x + 100) / 0.42) % 2 && z > -0.1) return 'stone:LIMESTONE'; /* the baboons */
+    return C;
+  }
+  if (z >= 0.3 && z < 0.8 && ax < 5.6 && y < 5.9 && y > 4.9) return R; /* the frieze's footing */
+  return null;
+}
+
+/* ── the Sydney Harbour Bridge: the steel through-arch, its upper and lower chords closing to the springs, the web of posts and the deck hung from it, the four stone pylons ── */
+function sydneyBridge(x, y, z) {
+  const ax = Math.abs(x), az = Math.abs(z), A = 'steel:SILVER';
+  const u = ax < 11.6 ? 8.0 * (1 - sq(ax / 11.6)) + 0.6 : null; /* the arch's top line */
+  if (u !== null) {
+    const th = 0.45 + 0.7 * (1 - sq(ax / 11.6)), l = u - th;
+    if (Math.abs(az - 1.1) < 0.14 && y <= u && y >= l) { /* the two arch ribs, 2.2 apart, each a chord pair */
+      if (y > u - 0.18 || y < l + 0.18) return A;
+      if (Math.floor((x + 100) / 0.8) % 2 === 0 || Math.abs(((x + 100) % 1.6) - 0.8) < 0.12) return A; /* the web */
+    }
+    if (az < 1.1 && Math.abs(y - (u - 0.1)) < 0.1 && Math.floor((x + 100) / 1.3) % 2 === 0) return A; /* the cross bracing at the top */
+    /* the hangers from the arch's lower chord to the deck */
+    if (Math.abs(az - 1.1) < 0.1 && l > 3.3 && y > 3.3 && y < l && Math.abs(((ax + 100) % 1.15) - 0.57) < 0.1) return A;
+    if (ax < 11.6 && Math.abs(az - 1.1) < 0.1 && l < 3.3 && y < 3.0 && y > 0.8) return null;
+  }
+  /* the deck, hung at 3.3 m, running onto the approaches */
+  if (ax < 14.0 && az < 1.45 && y > 3.0 && y < 3.35) return 'steel:DARK_STONE';
+  if (ax < 14.0 && az < 1.45 && y >= 3.35 && y < 3.5 && az > 1.3) return A; /* the rails */
+  /* the approach spans: trestles under the deck from the pylons out to the ends */
+  if (ax > 11.6 && ax < 14.0 && az < 1.45 && y < 3.0 && (az > 1.2 || Math.floor((ax + 100) / 0.9) % 2)) return A;
+  /* the four pylons: granite towers at the arch's feet, with their caps */
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+    const px = sx * 12.4, pz = sz * 1.15, X = Math.abs(x - px), Z = Math.abs(z - pz);
+    if (X < 0.75 && Z < 0.6 && y < 4.7) return y > 4.3 ? 'stone:TRIM_CREAM' : 'stone:SAND_STONE';
+    if (X < 0.6 && Z < 0.5 && y >= 4.7 && y < 5.4) return 'stone:SAND_STONE';
+    if (X < 0.7 && Z < 0.6 && y >= 5.4 && y < 5.6) return 'stone:TRIM_CREAM';
+  }
+  return null;
+}
+
 export default {
   parthenon: { ext: [72 * PA_S, 20 * PA_S, 34 * PA_S], cell: parthenon },
   colosseum: { ext: [2 * CO_A * CO_S, 48 * CO_S, 2 * CO_B * CO_S], cell: colosseum },
@@ -1055,18 +1169,22 @@ export default {
   sphinx: { ext: [(SPH_X1 - SPH_X0) * SPH_S, 21.4 * SPH_S, 2 * SPH_Z * SPH_S], cell: sphinx },
   eiffel: { ext: [126 * EI_S, 324 * EI_S, 126 * EI_S], cell: eiffel },
   rushmore: { ext: [20, 11.6, 8], cell: rushmore },
-  kremlin: { ext: [20, 9, 11], cell: kremlin },
+  kremlin: { ext: [20, 12.4, 11], cell: kremlin },
   taipei: { ext: [3.8, 17, 3.8], cell: taipei },
   golden_gate: { ext: [36, 8, 3.2], cell: goldenGate },
   brooklyn: { ext: [36, 7.2, 3.2], cell: brooklyn },
   chrysler: { ext: [3.2, 17, 3.2], cell: chrysler },
   gateway: { ext: [20, 19.6, 2.4], cell: gateway },
   arc: { ext: [11, 10, 5], cell: arc },
-  brandenburg: { ext: [17.6, 7.2, 3.2], cell: brandenburg },
+  brandenburg: { ext: [13, 9.6, 3.4], cell: brandenburg },
   pantheon: { ext: [9, 7.5, 12], cell: pantheon },
   notre_dame: { ext: [9, 13.4, 14], cell: notreDame },
   tokyo_tower: { ext: [5.6, 18.4, 5.6], cell: tokyoTower },
   atomium: { ext: [9, 12, 9], cell: atomium },
-  great_wall: { ext: [32, 7.5, 6.0], cell: greatWall },
-  petra: { ext: [10, 10, 4], cell: petra },
+  great_wall: { ext: [32, 9.0, 11.5], cell: greatWall },
+  petra: { ext: [15, 11.5, 6.4], cell: petra },
+  machu: { ext: [18, 11, 12.4], cell: machu },
+  hoover: { ext: [18, 12, 9.2], cell: hoover },
+  abu_simbel: { ext: [14, 9.2, 6.8], cell: abuSimbel },
+  sydney_bridge: { ext: [32, 6.0, 4.4], cell: sydneyBridge },
 };
