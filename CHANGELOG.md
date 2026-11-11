@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.0
+
+- **Destructo**: buildings no longer flop. Structures are rigid chunks held up by what is under them, with no weld
+  joints, which had made everything above a broken leg hang together as one soft jointed chain. A chunk that loses its
+  support falls as a solid piece and breaks apart where it lands hard: knock out one leg of the Eiffel Tower and the
+  top tips over rigid, breaks into sections and shatters into a heap (the largest piece four seconds later is a few
+  blocks, nothing rebounds). Each shot leaves at its own fixed power: a shot at 62 m/s, a heavy ball at 40, a charge
+  lobbed at 28. A stone crack or a steel groan sounds when a chunk lets go, a thud, chips, dust and pad rumble follow
+  when it lands, the charge's boom is delayed by distance, and the camera follows the collapse. The pars and marks were
+  retuned for the fixed power.
+- Known: the cores of the landmarks are still solid blocks inside their walls, which is why a tower's middle is too
+  rigid and why some landmarks do not fall to a leg-out; real floors, columns and hollow cores are next.
+
 ## 0.15.1
 
 - **Destructo**: the next level is ready the moment you accept it (50 to 130 ms; the Empire took over 15 seconds, Iron Lady over 5). It builds in the background while the results card shows, and the level-select preview builds in the background too; if you accept before it is done, the card says "Building the next level". The replay's second world builds in the background. The depth-fighting scan of the whole field is gone (the grass shares no planes), which was most of the load time. A level with nothing built ahead of it, such as the first after the title, still waits for its build.
