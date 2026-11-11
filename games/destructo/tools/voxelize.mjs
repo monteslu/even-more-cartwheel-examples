@@ -36,6 +36,7 @@
  *              "default" for the rest
  *   bands      [{ "y0", "y1" (game metres), "mat", "paint" }]: cells in a height band take this instead
  *   ymin, ymax only the cells between these heights (game metres): a model made in two parts
+ *   clearY     true: a cell is also left out where its height overlaps an earlier part's (parts whose courses are whole multiples of each other)
  *   clear      [names]: the other parts of this landmark laid before it (their configs here): a cell is left out where
  *              it falls inside one of their cells, so the two parts never overlap at their seam (a part sampled on a
  *              coarser grid reaches past where the shape says it ends; two bodies laid into each other burst apart)
@@ -125,7 +126,7 @@ function procGrid(C) {
 }
 
 /* a cell of a later part is left out where ANY of its extent across (x and z; its height by its middle: the cell above a part's top must stay, or what stands on it hangs) falls in a cell of an earlier part (not only its middle: two grids that do not line up would overlap at their seam) */
-const touches = (g, x, y, z, cell, course) => { const hx = cell / 2 - 0.002; for (const dx of [-hx, 0, hx]) for (const dy of [0]) for (const dz of [-hx, 0, hx]) if (g.has(x + dx, y + dy, z + dz)) return true; return false; };
+const touches = (g, x, y, z, cell, course, full) => { const hx = cell / 2 - 0.002, hy = course / 2 - 0.002; for (const dx of [-hx, 0, hx]) for (const dy of (full ? [-hy, 0, hy] : [0])) for (const dz of [-hx, 0, hx]) if (g.has(x + dx, y + dy, z + dz)) return true; return false; };
 const GRIDS = {}; /* the cells of each part voxelised so far (a model part another part clears itself of) */
 function voxelize(name, C) {
   const P = C.proc ? PROCS[C.proc] : null; /* a landmark shaped by hand (tools/landmark-procs.mjs): no model */
@@ -174,7 +175,7 @@ function voxelize(name, C) {
       const gx = x0 + (i + 0.5) * cell, gz = z0 + (k + 0.5) * cell; /* the shape turned by yaw: its own coordinates are the grid's turned back */
       const m = P.cell(gx * ca - gz * sa, (j + 0.5) * course, gx * sa + gz * ca);
       if (!m || (C.only && !new RegExp(':(' + C.only + ')$').test(m)) || (C.except && new RegExp(':(' + C.except + ')$').test(m))) continue; /* one part of a hand shape (a crag in big blocks, the building on it in small) */
-      if (clears.some((g) => touches(g, gx, (j + 0.5) * course, gz, cell, course))) continue; /* inside a cell of a part laid before: no seam overlap */
+      if (clears.some((g) => touches(g, gx, (j + 0.5) * course, gz, cell, course, C.clearY))) continue; /* inside a cell of a part laid before: no seam overlap */
       if (!mi.has(m)) mi.set(m, names.length), names.push(m);
       surf[at(i, j, k)] = mi.get(m);
     }
@@ -286,7 +287,7 @@ function voxelize(name, C) {
       }
     }
     if (carved) continue;
-    if (!P && clears.some((g) => touches(g, x, y, z, cell, course))) continue; /* a model part: no cell where an earlier part has one */
+    if (!P && clears.some((g) => touches(g, x, y, z, cell, course, C.clearY))) continue; /* a model part: no cell where an earlier part has one */
     if ((C.ymin != null && y < C.ymin) || (C.ymax != null && y >= C.ymax)) continue; /* one height of a model (its masonry below, its welded dome above) */
     shellCode[c] = v;
     if (C.frame && wall > 0 && depth[c] > wall) v = frameCell(i, j, k) ? code((C.coreMat || C.frame).mat, (C.coreMat || C.frame).paint) : 0; /* the inside is a frame, not a mass */

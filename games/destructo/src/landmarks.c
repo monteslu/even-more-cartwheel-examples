@@ -352,7 +352,7 @@ static void build_stonehenge(game *g, const level_def *L) {
   for (int i = 0; i < 30; i++) {
     if (!lintel[i] || !stands[i] || !stands[(i + 1) % 30]) continue;
     float a = (i + 0.5f) * step, r = SH_R * cw_cos(step * 0.5f);
-    blk_yaw(g, M_STONE, P_SARSEN, cw_sin(a) * r, H + 0.002f, cw_cos(a) * r, SH_R * cw_sin(step * 0.5f) - 0.01f, 0.2f, 0.27f, a + 1.5707963f);
+    blk_yaw(g, M_STONE, P_SARSEN, cw_sin(a) * r, H, cw_cos(a) * r, SH_R * cw_sin(step * 0.5f) - 0.01f, 0.2f, 0.19f, a);
   }
   /* the bluestone circle, small and many gone */
   for (int i = 0; i < 40; i++) {
@@ -375,7 +375,7 @@ static void build_stonehenge(game *g, const level_def *L) {
       blk_yaw(g, M_STONE, P_SARSEN, x, 0, z, 0.45f, lo * 0.5f, 0.31f, a);
       blk_yaw(g, M_STONE, P_SARSEN, x, lo, z, 0.4f, (h - lo) * 0.5f, 0.29f, a);
     }
-    if (st == 2) blk_yaw(g, M_STONE, P_SARSEN, cx, h + 0.002f, cz, 1.1f, 0.22f, 0.3f, a);
+    if (st == 2) blk_yaw(g, M_STONE, P_SARSEN, cx, h, cz, 1.1f, 0.22f, 0.25f, a);
     if (st == 0) blk_yaw(g, M_STONE, P_SARSEN, cx + tx * 1.4f, 0, cz + tz * 1.4f - 0.6f, 1.15f, 0.22f, 0.32f, a + 1.0f); /* the great lintel, fallen */
   }
   /* the altar stone, flat in the middle */
@@ -485,7 +485,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
   case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0.9f, 0.9f }, { -0.9f, -0.9f } }; /* two spots, not one twice (two crystals in one place lay into each other) */ build_model(g, L, &LMV_chichen_itza, s, 2); break; }
   case LM_LIBERTY: build_liberty(g, L); break;
-  case LM_RUSHMORE: { static const float s[][2] = { { -5.6f, -0.5f }, { 0.7f, -0.6f }, { 6.0f, -0.6f } }; build_model(g, L, &LMV_m_rushmore, s, 3); break; }
+  case LM_RUSHMORE: { static const float s[][2] = { { 3.2f, 1.8f }, { 5.7f, 2.4f }, { 4.6f, 0.4f } }; build_model(g, L, &LMV_m_rushmore, s, 3); break; }
   case LM_KREMLIN: { static const float s[][2] = { { 6.0f, 1.6f }, { -6.0f, -1.8f } }; build_model(g, L, &LMV_kremlin, s, 2); break; }
   case LM_TAIPEI: { static const float s[][2] = { { 1.9f, 0 }, { -1.9f, 0 } }; build_model(g, L, &LMV_m_taipei, s, 2); break; }
   case LM_GOLDEN_GATE: { static const float s[][2] = { { 4.6f, 0 }, { -4.6f, 0 } }; build_model(g, L, &LMV_golden_gate, s, 2); break; }
@@ -498,7 +498,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_BRANDENBURG: { static const float s[][2] = { { 4.2f, 0 }, { -4.2f, 0 } }; build_model(g, L, &LMV_brandenburg, s, 2); break; }
   case LM_PANTHEON: { static const float s[][2] = { { -2.6f, 1.4f }, { 2.6f, 2.5f } }; build_model(g, L, &LMV_m_pantheon, s, 2); break; }
   case LM_NOTRE_DAME: { static const float s[][2] = { { -0.2f, 6.7f }, { 4.5f, -3.0f } }; build_model(g, L, &LMV_m_notre_dame, s, 2); break; }
-  case LM_TOKYO_TOWER: { static const float s[][2] = { { 0.8f, 0 }, { -0.8f, 0 } }; build_model(g, L, &LMV_tokyo_tower, s, 2); break; }
+  case LM_TOKYO_TOWER: { static const float s[][2] = { { 0, 0 } }; build_model(g, L, &LMV_tokyo_tower, s, 1); break; }
   case LM_ATOMIUM: { static const float s[][2] = { { 2.2f, 0 }, { -2.5f, 2.2f } }; build_model(g, L, &LMV_atomium, s, 2); break; }
   case LM_GREAT_WALL: { static const float s[][2] = { { -3.8f, -1.2f }, { 4.5f, 0.0f } }; build_model(g, L, &LMV_great_wall, s, 2); break; }
   case LM_HAGIA_SOPHIA: { static const float s[][2] = { { -1.0f, -3.2f }, { 3.2f, 1.0f } }; build_model(g, L, &LMV_m_hagia, s, 2); break; }

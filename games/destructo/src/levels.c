@@ -62,7 +62,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Brandenburg Gate", LM_BRANDENBURG, 2, 3, 6, 2, 1, 27, "Berlin, Germany", ST_CITY, 0.3f, -0.5f),
   LANDMARK("Pantheon", LM_PANTHEON, 2, 3, 6, 2, 1, 30, "Rome, Italy", ST_CITY, 0.12f, 0.5f),
   LANDMARK("Notre-Dame", LM_NOTRE_DAME, 2, 3, 6, 2, 1, 32, "Paris, France", ST_CITY, 0.3f, -0.45f),
-  LANDMARK_HELD("Red Tower", LM_TOKYO_TOWER, 2, 3, 6, 2, 1, 34, "Tokyo, Japan", ST_CITY, 0.3f, 0.3f)
+  LANDMARK("Red Tower", LM_TOKYO_TOWER, 1, 3, 6, 2, 1, 34, "Tokyo, Japan", ST_CITY, 0.3f, 0.3f),
   LANDMARK("The Atoms", LM_ATOMIUM, 2, 3, 6, 2, 1, 29, "Brussels, Belgium", ST_CITY, 0.002f, 0.3f),
   LANDMARK_HELD("Great Wall of China", LM_GREAT_WALL, 2, 3, 6, 2, 1, 34, "Beijing, China", ST_HIGHLAND, 0.3f, 0.2f)
   LANDMARK_HELD("Petra Treasury", LM_PETRA, 2, 3, 6, 2, 1, 26, "Petra, Jordan", ST_DESERT, 0.3f, 0.2f)
@@ -75,8 +75,8 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Sail Hotel", LM_BURJ_ARAB, 2, 3, 6, 2, 1, 34, "Dubai, United Arab Emirates", ST_HEADLAND, 0.3f, 1.3f),
   LANDMARK_HELD("Neuschwanstein Castle", LM_NEUSCHWANSTEIN, 3, 3, 6, 2, 2, 34, "Bavaria, Germany", ST_HIGHLAND, 0.15f, 0.2f)
   LANDMARK("Colosseum", LM_COLOSSEUM, 2, 3, 6, 2, 1, 36, "Rome, Italy", ST_CITY, 0.3f, 0.4f),
-  LANDMARK_HELD("Stonehenge", LM_STONEHENGE, 2, 3, 6, 2, 0, 28, "Wiltshire, United Kingdom", ST_MEADOW, 0.3f, 0.3f)
-  LANDMARK_HELD("Saint Basil's Cathedral", LM_ST_BASILS, 3, 3, 6, 2, 1, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.4f)
+  LANDMARK("Stonehenge", LM_STONEHENGE, 2, 3, 6, 2, 0, 28, "Wiltshire, United Kingdom", ST_MEADOW, 0.02f, 0.3f),
+  LANDMARK("Saint Basil's Cathedral", LM_ST_BASILS, 3, 3, 6, 2, 1, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.4f),
   LANDMARK_HELD("Twin Spires", LM_PETRONAS, 2, 3, 6, 2, 2, 40, "Kuala Lumpur, Malaysia", ST_CITY, 0.35f, 0.25f)
   LANDMARK("Five-Storey Pagoda", LM_PAGODA, 1, 2, 5, 1, 0, 22, "Kyoto, Japan", ST_MEADOW, 0.35f, 0.4f),
   LANDMARK_HELD("Hoover Dam", LM_HOOVER, 2, 3, 6, 2, 1, 34, "Nevada, United States", ST_DESERT, 0.05f, 0.3f)

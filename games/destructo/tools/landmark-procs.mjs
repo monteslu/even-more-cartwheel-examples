@@ -1150,6 +1150,82 @@ function sydneyBridge(x, y, z) {
   return null;
 }
 
+/* ── Borobudur: five square terraces of dark volcanic stone with their balustrades, three round terraces carrying rings of bell stupas, the great stupa on top ── */
+function borobudur(x, y, z) {
+  const ax = Math.abs(x), az = Math.abs(z), r = Math.hypot(x, z), D = 'stone:DARK_STONE', L = 'stone:LIMESTONE';
+  const HW = [8.6, 7.4, 6.2, 5.0, 3.8];
+  for (let k = 0; k < 5; k++) {
+    const y0 = k * 0.9, hw = HW[k];
+    if (y >= y0 && y < y0 + 0.9 && Math.max(ax, az) < hw) {
+      /* the stairs on the four sides, cut into each terrace's front */
+      if (Math.min(ax, az) < 0.55 && y > y0 + 0.2 && Math.max(ax, az) > hw - 0.9) return k % 2 ? D : 'stone:ROCK';
+      return Math.max(ax, az) > hw - 0.32 && y > y0 + 0.55 ? L : D;
+    }
+  }
+  if (y >= 4.5 && y < 6.0) { const k = Math.min(2, Math.floor((y - 4.5) / 0.5)), R = [3.7, 3.0, 2.3][k]; if (r < R) return D; }
+  /* the rings of small bell stupas on the three round terraces */
+  const rings = [[4.5, 3.2, 16], [5.0, 2.55, 12], [5.5, 1.9, 8]];
+  for (const [y0, R, n] of rings) {
+    const a = Math.round(Math.atan2(z, x) / (6.2832 / n)) * (6.2832 / n), sx = Math.cos(a) * R, sz = Math.sin(a) * R, rr = Math.hypot(x - sx, z - sz);
+    if (y >= y0 + 0.5 && y < y0 + 1.15 && rr < 0.34 * Math.sqrt(Math.max(0, 1 - sq((y - y0 - 0.5) / 0.7))) + 0.05 * (y < y0 + 0.9 ? 1 : 0)) return L;
+  }
+  /* the great stupa and its spire */
+  if (y >= 6.0 && y < 8.4) { const t = (y - 6.0) / 2.4, rr = 1.35 * Math.sqrt(Math.max(0, 1 - sq(t * 0.9))); if (r < rr) return L; }
+  if (y >= 8.4 && y < 9.4 && r < 0.2 * (1.2 - (y - 8.4))) return L;
+  return null;
+}
+
+/* ── the Shwedagon Pagoda: the golden bell stupa on its broad terraces, the rings and the lotus, the banana-bud spire, the umbrella and the vane, the small stupas about it ── */
+function shwedagon(x, y, z) {
+  const r = Math.hypot(x, z), G = 'stone:GOLD', ax = Math.abs(x), az = Math.abs(z);
+  if (y < 0.7) return Math.max(ax, az) < 4.7 ? 'stone:WHITE_PAINT' : null;
+  /* the small stupas: the four corners and the middle of each side */
+  for (const [sx, sz, s] of [[3.7, 3.7, 1], [-3.7, 3.7, 1], [3.7, -3.7, 1], [-3.7, -3.7, 1], [0, 4.0, 0.7], [0, -4.0, 0.7], [4.0, 0, 0.7], [-4.0, 0, 0.7]]) {
+    const rr = Math.hypot(x - sx, z - sz);
+    if (y >= 0.7 && y < 0.7 + 2.4 * s) { const t = (y - 0.7) / (2.4 * s), w = (0.62 * (1 - 0.55 * t) + (t < 0.15 ? 0.15 : 0)) * s; if (rr < w) return G; }
+  }
+  let R = 0;
+  if (y < 1.3) R = 3.5; else if (y < 2.6) R = 3.1 - 0.5 * (y - 1.3) / 1.3; else if (y < 3.4) R = 2.7 - 0.3 * (y - 2.6) / 0.8;
+  else if (y < 8.2) { const t = (y - 3.4) / 4.8; R = 2.4 * Math.sqrt(Math.max(0, 1 - sq(t * 1.0))) + 0.35 + 0.15 * t; } /* the great bell */
+  else if (y < 9.4) R = 0.5 + 0.12 * Math.cos((y - 8.2) * 10); /* the rings */
+  else if (y < 11.4) R = 0.58 * (1 - (y - 9.4) / 2.1) + 0.05; /* the banana bud */
+  else if (y < 11.8) R = 0.05;
+  else if (y < 13.4) R = 0.9 * (1 - (y - 11.8) / 1.6) * (0.6 + 0.4 * Math.abs(Math.cos((y - 11.8) * 5))) + 0.04; /* the umbrella: stacked rings tapering to the vane */
+  return R > 0 && r < R ? G : null;
+}
+
+/* ── the Temple of Heaven: three round marble terraces, the round hall of red columns and gold bands, three tiers of blue conical roofs, the gold finial ── */
+function templeHeaven(x, y, z) {
+  const r = Math.hypot(x, z);
+  for (let k = 0; k < 3; k++) if (y >= k * 0.7 && y < k * 0.7 + 0.7 && r < 5.8 - k * 0.8) return y > k * 0.7 + 0.5 && r > 5.8 - k * 0.8 - 0.3 ? 'stone:MARBLE' : 'stone:WHITE_STONE';
+  if (y >= 2.1 && y < 4.7 && r < 2.5 && r > 1.5) return Math.abs(((Math.atan2(z, x) + 6.2832) % 0.5236) - 0.26) < 0.17 ? 'stone:RED_BRICK' : (y > 3.7 && y < 4.0 ? 'stone:GOLD' : 'glass:DARK_GLASS'); /* the hall's wall of red columns */
+  const tiers = [[4.7, 6.2, 3.8, 2.3], [6.2, 7.6, 3.1, 1.7], [7.6, 8.9, 2.4, 0.5]];
+  for (const [y0, y1, r0, r1] of tiers) if (y >= y0 && y < y1) { const t = (y - y0) / (y1 - y0), R = r0 + (r1 - r0) * t; if (r < R && r > R - 0.38) return 'glass:BLUE_GLASS'; if (y < y0 + 0.2 && r < r0 && r > r0 - 0.6) return 'stone:RED_BRICK'; }
+  if (y >= 8.9 && y < 9.9 && Math.hypot(r, y - 9.4) < 0.55) return 'stone:GOLD';
+  return null;
+}
+
+/* ── the Sagrada Familia: the long nave, the four tall towers of the Passion front pierced and ribbed, the great central tower behind, each tower ending in a pinnacle ── */
+function sagrada(x, y, z) {
+  const ax = Math.abs(x), S = 'stone:SAND_STONE';
+  /* the nave: a long block with pierced windows, its roof */
+  if (z < 1.9 && z > -3.0 && ax < 6.4) {
+    if (y < 4.4) { const win = y > 1.4 && y < 3.2 && Math.floor((x + 100) / 0.9) % 2 && (z > 1.5 || z < -2.6); return win ? 'glass:DARK_GLASS' : S; }
+    if (y < 5.0 && ax < 6.0 && z < 1.5) return 'stone:TRIM_CREAM';
+  }
+  /* the four towers of the front: hyperboloid shafts that narrow, ribbed, with a bulbous pinnacle */
+  for (const tx of [-4.8, -1.6, 1.6, 4.8]) {
+    const r = Math.hypot(x - tx, z - 0.4), h = 9.6 + (Math.abs(tx) > 3 ? 0 : 0.8);
+    if (y >= 3.8 && y < h) { const t = (y - 3.8) / (h - 3.8), R = 0.78 * (1 - 0.35 * t) + 0.12 * Math.cos(Math.atan2(z - 0.4, x - tx) * 6) * (1 - t); if (r < R && (r > R - 0.3 || t > 0.97)) return (y % 1.2 < 0.25 && t > 0.1) ? 'glass:DARK_GLASS' : S; }
+    if (y >= h && y < h + 0.9) { const t = (y - h) / 0.9; if (r < 0.62 * Math.sqrt(Math.max(0, 1 - sq(t * 1.05))) + 0.04) return t > 0.5 ? 'stone:GOLD' : S; }
+  }
+  /* the central tower (the Jesus tower): taller, stars at its top */
+  const rc = Math.hypot(x, z + 1.6);
+  if (y >= 4.4 && y < 11.8) { const t = (y - 4.4) / 7.4, R = 1.2 * (1 - 0.55 * t); if (rc < R && rc > R - 0.38) return S; }
+  if (y >= 11.8 && y < 12.9 && rc < 0.5 * (1 - (y - 11.8) / 1.1) + 0.04) return 'stone:GOLD';
+  return null;
+}
+
 export default {
   parthenon: { ext: [72 * PA_S, 20 * PA_S, 34 * PA_S], cell: parthenon },
   colosseum: { ext: [2 * CO_A * CO_S, 48 * CO_S, 2 * CO_B * CO_S], cell: colosseum },
@@ -1185,4 +1261,8 @@ export default {
   hoover: { ext: [18, 13.2, 9.2], cell: hoover },
   abu_simbel: { ext: [14, 9.2, 6.8], cell: abuSimbel },
   sydney_bridge: { ext: [32, 9.2, 4.4], cell: sydneyBridge },
+  borobudur: { ext: [18, 9.6, 18], cell: borobudur },
+  shwedagon: { ext: [10, 13.6, 10], cell: shwedagon },
+  temple_heaven: { ext: [12, 10.2, 12], cell: templeHeaven },
+  sagrada: { ext: [14, 13.2, 6.4], cell: sagrada },
 };

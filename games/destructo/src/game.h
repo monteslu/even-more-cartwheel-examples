@@ -149,8 +149,8 @@ typedef struct level_def {
   float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
-#define NLEVELS 68 /* every level the game can build: the shown ones (NSHOWN: 4 tutorials, then the real landmarks; 6 more built and held, levels.c) and the 26 kit structures held out of the select */
-#define NSHOWN 42  /* the level select, the progression and the next level: the tutorials and the real landmarks (the rows before LANDMARKS_END in levels.c) */
+#define NLEVELS 71 /* every level the game can build: the shown ones (NSHOWN: 4 tutorials, then the real landmarks; 6 more built and held, levels.c) and the 26 kit structures held out of the select */
+#define NSHOWN 45  /* the level select, the progression and the next level: the tutorials and the real landmarks (the rows before LANDMARKS_END in levels.c) */
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or

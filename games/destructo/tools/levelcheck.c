@@ -296,6 +296,7 @@ static void landmark_check(int level, const char *control) {
   }
   int first = -1, nfloat = floating(&G, &first), first_over = -1, nover = overlapping(&G, &first_over);
   t3_vec3 over_at = first_over >= 0 ? game_block_xform(&G, first_over).p : (t3_vec3){ 0, 0, 0 };
+  t3_vec3 float_at = first >= 0 ? game_block_xform(&G, first).p : (t3_vec3){ 0, 0, 0 };
   static t3_vec3 p0[MAXBLK];
   for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? game_block_xform(&G, i).p : (t3_vec3){ 0, 0, 0 };
   game_settle(&G, level_settle_ticks(G.L));
@@ -347,8 +348,8 @@ static void landmark_check(int level, const char *control) {
     game_step(&G, &in);
     ticks++;
   }
-  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"welded\":%s,\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"woken_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
-         level, G.L->name, control ? control : "", G.nweld > 0 ? "true" : "false", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, unrested, first_un, moved * 1000, woken * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
+  printf("{\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"welded\":%s,\"blocks\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"over_at\":[%.3f,%.3f,%.3f],\"float_at\":[%.3f,%.3f,%.3f],\"unrested\":%d,\"first_unrested\":%d,\"settle_move_mm\":%.1f,\"woken_move_mm\":%.1f,\"moved_from\":[%.3f,%.3f,%.3f],\"moved_half\":[%.3f,%.3f,%.3f],\"moved_mat\":%d,\"solved\":%s,\"shots\":%d,\"par\":%d,\"orbit\":%.3f}\n",
+         level, G.L->name, control ? control : "", G.nweld > 0 ? "true" : "false", blocks, nfloat, first, nover, over_at.x, over_at.y, over_at.z, float_at.x, float_at.y, float_at.z, unrested, first_un, moved * 1000, woken * 1000, moved_from.x, moved_from.y, moved_from.z, moved_half.x, moved_half.y, moved_half.z, moved_mat, G.state == GS_WON ? "true" : "false", G.shots, G.L->par, G.orbit);
   fflush(stdout);
 }
 
