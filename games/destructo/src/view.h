@@ -6,6 +6,8 @@
 
 void view_init(cw_node root);
 void view_level(const game *g);                 /* (re)build the scenery for g's level */
+/* the same a step at a time: start at 0, call with each answer until -1 */
+int view_level_step(const game *g, int step);
 void view_sync(const game *g, float alpha);      /* every frame: blocks, launcher, shot, aim path */
 /* every frame; overview: the player holds the wide view */
 void view_camera(const game *g, cw_node camera, float aspect, float dt, bool overview, float alpha);

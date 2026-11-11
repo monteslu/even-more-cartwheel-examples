@@ -725,13 +725,18 @@ static void grass_apart(grass_tuft *t, int n) {
 float g_view_ms[8]; /* the last view_level's parts, ms: sky and fog, ground, sea and river, backdrop, grass, trees, coplanar separation (profiling only) */
 static double vl_t;
 #define VL_MARK(i) do { double n_ = (double)cw_profile_now_ns() * 1e-6; g_view_ms[i] = (float)(n_ - vl_t); vl_t = n_; } while (0)
-void view_level(const game *g) {
+/* the level's render side, built a step at a time (view_level_step: each returns the next step, -1 when done) so the loading
+ * screen's frames each do a slice (a landmark's took 140 ms in one) */
+int view_level_step(const game *g, int step) {
   vl_t = (double)cw_profile_now_ns() * 1e-6;
+  const setting *S = SET = &SETTINGS[level_setting(g->L)];
+  bool sea = S->backdrop == BD_SEA, harbour = S->backdrop == BD_HARBOUR;
+  switch (step) {
+  case 0: {
   trees_clear();
   if (cw_node_valid(V.field)) cw_node_free(V.field);
   V.field = cw_node_new("Node3D", "Field");
   cw_node_add_child(V.root, V.field);
-  const setting *S = SET = &SETTINGS[level_setting(g->L)];
   for (int m = 0; m < 4; m++) memcpy(V.pal[m], S->pal[m], sizeof V.pal[m]);
   V.pal[M_TARGET][0] = V.pal[M_TARGET][1] = V.pal[M_TARGET][2] = 1;
   /* the light: a strong low sun behind the launcher, a cooler sky */
@@ -766,8 +771,10 @@ void view_level(const game *g) {
     cw_node_set(f, "max_opacity", cw_val_float(0.55f));
   }
   VL_MARK(0);
+  return 1;
+  }
+  case 1: {
   /* the ground, and the yard and track worn into it */
-  bool sea = S->backdrop == BD_SEA, harbour = S->backdrop == BD_HARBOUR;
   V.cliff = -(g->ring + 10); /* the headland reaches past the launcher's circle */
   V.beam_w = g->L->kind == K_LANDMARK ? 0.45f : 1;
   {
@@ -792,6 +799,9 @@ void view_level(const game *g) {
     }
   }
   VL_MARK(1);
+  return 2;
+  }
+  case 2: {
   if (sea || harbour) { /* the headland ends at a cliff behind the castle; the sea far below to the horizon (the harbour: all round, at the quay's foot) */
     if (sea) {
       t3_material *cm = std_mat(S->back_low[0] * 0.9f + 0.25f, S->back_low[1] * 0.6f + 0.22f, S->back_low[2] * 0.5f + 0.2f, 0.95f, 0);
@@ -826,6 +836,9 @@ void view_level(const game *g) {
     flat("Bank", 7.0f, 600, (t3_vec3){ 4.8f, 0.04f, 0 }, ground_mat(S->yard, 2, 120, 3, 0.9f));
   }
   VL_MARK(2);
+  return 3;
+  }
+  case 3: {
   /* the backdrop */
   {
     t3_material *m = std_mat(1, 1, 1, 0.92f, 0);
@@ -857,6 +870,9 @@ void view_level(const game *g) {
     } else piece(V.field, "Backdrop", backdrop_geo(S, g->L->seed), m, false);
   }
   VL_MARK(3);
+  return 4;
+  }
+  case 4: {
   /* grass on green ground: tufts in the field round the yard, thick near it and thinning out to 45 m, off the yard,
    * the track and the river; the setting's green, lighter and drier in patches */
   if (S->ground[1] > S->ground[0] * 1.25f && S->ground[1] > S->ground[2] * 2 && !opt_get("NO_GRASS")) {
@@ -886,6 +902,9 @@ void view_level(const game *g) {
     grass_build(V.field, tufts, n);
   }
   VL_MARK(4);
+  return 5;
+  }
+  case 5: {
   /* trees: the setting's two species, in groves, outside the field of fire */
   if (S->ntrees > 0 && !opt_get("NO_TREES")) {
     static tree_spot spots[TREES_MAX];
@@ -918,6 +937,9 @@ void view_level(const game *g) {
     trees_build(V.field, spots, n);
   }
   VL_MARK(5);
+  return 6;
+  }
+  default: {
   /* (the field's faces laid flush on others, scanned and layered apart with cop_separate (games/common/coplanar.h), found 0 to 8 vertices to move
    * in a field of 100,000 faces and cost 0.2 to 2.5 s a level: the field is made so that none lie flush, and tests/destructo-coplanar.mjs scans every
    * level for pairs. dm set OLD_LOAD 1 (the load gate's control) scans as before.) */
@@ -931,6 +953,12 @@ void view_level(const game *g) {
   memset(V.lay_born, 0, sizeof V.lay_born);
   V.built_level = g->level;
   V.cam_init = false;
+  return -1;
+  }
+  }
+}
+void view_level(const game *g) {
+  for (int s = 0; s >= 0;) s = view_level_step(g, s);
 }
 
 /* ── every frame ───────────────────────────────────────────────────── */

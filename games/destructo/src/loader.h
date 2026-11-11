@@ -4,6 +4,7 @@
  * thread never runs its own game_new while one is under way (loader_idle_wait). */
 #ifndef DESTRUCTO_LOADER_H
 #define DESTRUCTO_LOADER_H
+#include <stdatomic.h>
 #include <stdbool.h>
 #include "game.h"
 
@@ -13,6 +14,11 @@ typedef struct load_slot {
   int state;                         /* 0 empty, 1 queued, 2 building, 3 built (main thread only) */
   int want_level, want_players, want_mode, want_ticks, want; /* asked for while a build ran */
   float ms;                          /* the build's wall time, ms (profiling only) */
+  /* progress (loader_progress): the job counts the settle ticks it has done, the main thread reads them */
+  atomic_int settle_done, settle_total;
+  double started_ms, stage_ms;       /* main thread: when the job began, and when the stage it is in was first seen */
+  int seen_stage;
+  float prog_max;                    /* monotonic: the largest progress shown for this build */
 } load_slot;
 
 /* ask for a level to be built in the slot (a build already held or under way for it stays; another build under way
@@ -32,4 +38,12 @@ void loader_release(load_slot *s);
 void loader_idle_wait(void);
 /* the old path (tests): builds are made on the calling thread, at once, in loader_request */
 void loader_set_sync(bool on);
+
+/* what the build is doing, for the loading screen */
+enum { LP_NONE, LP_WAIT, LP_BLOCKS, LP_STRUCT, LP_SETTLE, LP_DONE };
+const char *loader_phase_name(int phase);
+/* how far the slot's build has got, 0..1 (never goes back), and its phase. Real counts where the job has them: the
+ * blocks placed (against what the level made last time), the settle ticks stepped; the structure's own pre-stress and
+ * sleep (landmarks.c) have no counter, so that part is measured against how long the level took last time. */
+float loader_progress(load_slot *s, int *phase, int *blocks);
 #endif

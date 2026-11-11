@@ -80,9 +80,10 @@ void replay_log(const game *live, const input *in) {
 void replay_after_step(const game *live) {
   if (live->shots != R.shots) R.shots = live->shots, R.fire_tick = live->tick;
   if (game_over(live) && !R.judged_tick) {
-    shadow_ok(true);
     R.judged_tick = live->tick, R.judged_hash = game_state_hash(live);
-    R.start_gap = R.fire_tick - 1 - R.r.tick + R.settle_left;
+    /* (the shadow may still be on the job: the main thread never waits for it; replay_follow takes it when it is built) */
+    if (shadow_ok(false)) R.start_gap = R.fire_tick - 1 - R.r.tick + R.settle_left;
+    else R.start_gap = -1;
   }
   R.last_state = live->state;
 }
@@ -112,6 +113,7 @@ static int target(const game *live) {
 void replay_follow(const game *live, double budget_ms) {
   if (!R.have || R.running || live->sandbox) return;
   if (!shadow_ok(false)) return;
+  if (R.start_gap < 0) R.start_gap = R.fire_tick - 1 - R.r.tick + R.settle_left; /* (judged while the shadow was still being built) */
   double t0 = now_ms();
   int to = target(live);
   while ((R.settle_left > 0 || R.r.tick < to) && now_ms() - t0 < budget_ms) shadow_step();
@@ -125,7 +127,7 @@ void replay_skip(void) {
 }
 
 float replay_progress(void) {
-  if (R.pending) return 0;
+  if (R.pending) return 0; /* (the card shows the job's own bar meanwhile) */
   if (replay_ready()) return 1;
   if (!R.judged_tick || R.start_gap <= 0) return 0;
   return 1 - (float)(R.fire_tick - 1 - R.r.tick + R.settle_left) / (float)R.start_gap;

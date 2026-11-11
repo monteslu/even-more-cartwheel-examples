@@ -65,6 +65,9 @@ static struct {
   bot_state bot;
   int loading; /* a level asked for (index + 1) that is still being built: the card or menu stays up meanwhile */
   bool in_match, built, have_game;
+  int vstep;         /* view_level_step's next step while fin is 1 */
+  int fin;           /* a built level's render side is made a step a frame behind the loading screen: 1 view, 2 effects */
+  bool defer_view;   /* load_level_as leaves the render side to those steps */
   int phase, phase_t;
   int sel, players, mode;
   bool free_fire;    /* the select screen's free fire */
@@ -100,6 +103,22 @@ static struct {
 } G;
 
 static cw_font font;
+
+/* the loading screen's record: every frame from the ask to a playable level (and three after) logged, so a gate can see
+ * the screen move on each one (tests/destructo-loading.mjs). Render side only. */
+#define LOG_MAX 1024
+static struct {
+  bool active; int after;
+  int32_t n, frame[LOG_MAX], shown[LOG_MAX];
+  float progress[LOG_MAX], gap_ms[LOG_MAX], gap_max, last_gap;
+  double last_render;
+  int32_t frames_shown, phase, nwork, over33;
+  float work_max, work_sum;
+  float ring[256]; int32_t ring_i; /* the last 256 frames' CPU time, ms (ui.frame_work_ms): what an action cost the frame it was pressed on */
+  float prog;                 /* the progress the screen shows now (stays at 1 after a build) */
+  float rect[4], text_rect[4]; /* the spinner and the text, as fractions of the canvas */
+  bool drawn;                 /* the overlay was drawn this frame */
+} LG;
 static int32_t seat_devices[MAXP]; /* debug: each seat's input devices (seat.devices) */
 
 /* frame timing round a blast (the hitch gate reads these): the real monotonic clock, in carts too. Render only. */
@@ -283,7 +302,8 @@ static void load_level_as(int level, bool settle) {
 #endif
   G.have_game = true;
   bot_reset(&G.bot);
-  if (G.built && !reuse) {
+  if (G.built && !reuse && G.defer_view) G.fin = 1, G.vstep = 0;
+  else if (G.built && !reuse) {
     fx_clear(), view_level(&G.g);
     double t3 = perf_now();
     prime_effects();
@@ -313,12 +333,24 @@ static void preview_poll(void) {
 /* the level asked for: begun once it is built (loader.c), the frames go on meanwhile */
 static double t_accept;
 static void begin_level_now(int level);
+/* the live game is this level, built and never stepped (a preview the player chose from): beginning it is a move */
+static bool level_held(int level) {
+  return G.have_game && G.g.level == level && G.g.tick == 0 && G.g.players == G.players && G.g.mode == G.mode && !G.g.proj_live;
+}
+static void log_begin(void) { LG.active = true, LG.after = 0, LG.n = 0, LG.gap_max = 0, LG.nwork = LG.over33 = 0, LG.work_max = LG.work_sum = 0, LG.prog = 0, LG.phase = LP_WAIT; }
 static void request_level(int level) {
   if (G.loading) return;
   t_accept = perf_now();
-  if (old_load()) { begin_level_now(level); LD.ready = (float)(perf_now() - t_accept); return; }
+  if (old_load() || opt_on("OLD_WAIT")) { /* the old path: the main thread waits for the build, the screen standing still */
+    log_begin();
+    begin_level_now(level);
+    LD.ready = (float)(perf_now() - t_accept);
+    return;
+  }
+  if (level_held(level)) { begin_level_now(level); LD.ready = (float)(perf_now() - t_accept); return; }
+  log_begin();
   prebuild(level);
-  G.loading = level + 1;
+  G.loading = level + 1; /* the loading screen shows on the next frame; the ticks go on meanwhile (fixed_update) */
 }
 
 static void begin_level_now(int level) {
@@ -343,6 +375,7 @@ static void begin_level_now(int level) {
   if (opt_get("REPLAY_PERTURB")) g_replay_perturb = true;
 #endif
   G.phase = PH_PLAY, G.phase_t = 0, G.overview = false;
+  if (!G.fin) LG.prog = 1;
   if (!G.free_fire) save()->last_level = level, save()->last_mode = G.mode;
 }
 
@@ -360,7 +393,8 @@ static void start(int players, void *u) {
 #ifdef DESTRUCTO_AUTOPILOT
   if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
   G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
-  begin_level_now(start_level());
+  if (opt_on("ASYNC_RESTART")) request_level(start_level());
+  else begin_level_now(start_level());
 #else
   G.phase = PH_SELECT, G.phase_t = 0;
   G.mode = CW_CLAMP(save()->last_mode, 0, 2);
@@ -380,7 +414,8 @@ static void restart(void) {
   if (!G.in_match) return;
   if (opt_get("PLAYERS")) G.players = CW_CLAMP(atoi(opt_get("PLAYERS")), 1, MAXP);
   G.mode = G.players > 1 ? MODE_VERSUS : MODE_COOP;
-  begin_level_now(start_level());
+  if (opt_on("ASYNC_RESTART")) { G.loading = 0; request_level(start_level()); } /* (a gate: the loading screen, as a player gets it) */
+  else begin_level_now(start_level());
 }
 static void option_changed(const char *name) {
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
@@ -394,11 +429,29 @@ static void option_changed(const char *name) {
 static bool warmup(void *u) {
   (void)u;
   if (G.built) return true;
-  cw_node root = cw_tree_root(cw_scene_app_tree());
-  G.camera = cw_node_get(root, "Main/Camera");
-  view_init(root);
-  fx_init(root);
-  if (!G.have_game) G.players = 1, preview_level(start_level()); /* a structure behind the title */
+  static bool scene;
+  if (!scene) {
+    scene = true;
+    cw_node root = cw_tree_root(cw_scene_app_tree());
+    G.camera = cw_node_get(root, "Main/Camera");
+    view_init(root);
+    fx_init(root);
+  }
+  if (!G.have_game) { /* a structure behind the title: built on the job while the engine's loading screen shows its bar */
+    G.players = 1;
+    if (old_load() || opt_on("OLD_WAIT")) preview_level(start_level());
+    else {
+      static bool asked;
+      if (!asked) asked = true, prebuild(start_level());
+      if (cw_is_deterministic_run()) loader_wait(&NX); /* (a test: the whole warm-up in the first frame) */
+      if (!loader_built(&NX, start_level(), G.players, G.mode)) {
+        int ph;
+        cw_loading_set((int)(loader_progress(&NX, &ph, NULL) * 1000), 1000, CW_LOAD_SCENE);
+        return false;
+      }
+      load_level_as(start_level(), false);
+    }
+  }
   G.built = true;
   view_level(&G.g);
   prime_effects();
@@ -465,6 +518,14 @@ static void init(void *u) {
   cw_debug_field("feel.slow_tickms", F.slow_tickms, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_world", F.slow_world, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_post", F.slow_post, CW_DBG_F32, SLOW_N), cw_debug_field("feel.slow_pre", F.slow_pre, CW_DBG_F32, SLOW_N);
   cw_debug_field("ui.cue_press", G.cue_press, CW_DBG_I32, 3), cw_debug_field("ui.cue_draw", G.cue_draw, CW_DBG_I32, 3);
   cw_debug_i32("beat.ticks", &G.beat_ticks), cw_debug_f32("beat.min", &G.beat_min), cw_debug_f32("beat.scale", &G.beat_scale); /* the winning blow's slow-motion beat: ticks it ran, the slowest clock, the clock now */
+  cw_debug_i32("ui.loading", &G.loading); /* the level being built behind the loading screen (index + 1), 0 when none */
+  cw_debug_f32("ui.loading_progress", &LG.prog), cw_debug_i32("ui.loading_phase", &LG.phase), cw_debug_i32("ui.loading_frames", &LG.frames_shown);
+  cw_debug_field("ui.loading_rect", LG.rect, CW_DBG_F32, 4), cw_debug_field("ui.loading_text_rect", LG.text_rect, CW_DBG_F32, 4);
+  cw_debug_i32("ui.log_n", &LG.n), cw_debug_f32("ui.gap_max_ms", &LG.gap_max);
+  cw_debug_field("ui.frame_work_ms", LG.ring, CW_DBG_F32, 256), cw_debug_i32("ui.frame_i", &LG.ring_i);
+  cw_debug_i32("ui.load_frames", &LG.nwork), cw_debug_i32("ui.load_over33", &LG.over33), cw_debug_f32("ui.load_work_max_ms", &LG.work_max); /* the transition: frames, frames whose CPU time passed 33 ms, the longest */
+  cw_debug_field("ui.log_frame", LG.frame, CW_DBG_I32, LOG_MAX), cw_debug_field("ui.log_shown", LG.shown, CW_DBG_I32, LOG_MAX);
+  cw_debug_field("ui.log_progress", LG.progress, CW_DBG_F32, LOG_MAX), cw_debug_field("ui.log_gap_ms", LG.gap_ms, CW_DBG_F32, LOG_MAX);
   cw_debug_i32("game.phase", &G.phase_dbg);
   cw_debug_i32("game.level", &G.level);
   cw_debug_i32("menu.sel", &G.sel);
@@ -721,11 +782,36 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
-  if (G.loading && loader_built(&NX, G.loading - 1, G.players, G.mode)) {
-    int lv = G.loading - 1;
-    G.loading = 0;
-    begin_level_now(lv);
-    LD.ready = (float)(perf_now() - t_accept);
+  if (G.loading) {
+    if (loader_built(&NX, G.loading - 1, G.players, G.mode)) {
+      int lv = G.loading - 1;
+      G.defer_view = true;
+      begin_level_now(lv);
+      G.defer_view = false;
+      if (G.fin) return; /* the render side follows, a step a frame, the loading screen up */
+      G.loading = 0;
+      LD.ready = (float)(perf_now() - t_accept);
+    } else if (G.fin) {
+      double t0 = perf_now();
+      if (G.fin == 1 && G.vstep == 0) LD.view = 0;
+      if (G.fin == 1) { /* the render side, a slice a frame */
+        if (G.vstep == 0) fx_clear();
+        G.vstep = view_level_step(&G.g, G.vstep);
+        LD.view += (float)(perf_now() - t0);
+        if (G.vstep < 0) G.fin = 2;
+      }
+      else prime_effects(), G.fin = 0, G.loading = 0, LG.prog = 1, LD.prime = (float)(perf_now() - t0), LD.ready = (float)(perf_now() - t_accept);
+      return;
+    } else {
+      /* the level is being built on the job: nothing steps, input is ignored but Back, which gives it up where there is a
+       * menu to go back to (the build goes on and is kept for the menu's preview) */
+      if (ui("ui_back") && G.phase != PH_PLAY) {
+        sound_menu(2);
+        G.loading = 0, LG.active = false;
+        if (G.phase == PH_RESULT) G.phase = PH_SELECT, G.phase_t = 0, preview_level(G.sel);
+      }
+      return;
+    }
   }
   G.phase_t++;
   if (G.ammo_pop > 0) G.ammo_pop--;
@@ -747,7 +833,7 @@ static void fixed_update(void *u, double dt) {
       if (!G.free_fire && G.sel > unlocked()) G.sel = unlocked();
       preview_level(G.sel);
     }
-    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), begin_level_now(G.sel); /* (waits for the preview's build when it is not done: the same frame the level begins on every host) */
+    if (ui("ui_accept") || pressed(G.fire, -1)) sound_menu(1), request_level(G.sel); /* (the loading screen when the preview's build is not done) */
     G.players = CW_MAX(1, cw_shell_players());
     break;
   }
@@ -1012,7 +1098,6 @@ static void hud_result(cw_vec2 cs, float u) {
   float x = cs.x - (w + 28 * u) * k, y = cs.y * 0.5f - h * 0.5f, cx = x + w * 0.5f;
   cw_color head = res == RES_BROUGHT_DOWN || res == RES_PARTY ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
   panel(x, y, w, h, u, head);
-  if (G.loading) text("Building the next level", cx, y + h - 46 * u, 24 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
   if (res == RES_PARTY) { /* steady hands: who stayed in, and how the others went out */
     char b[96];
     int win = g->party_winner;
@@ -1108,6 +1193,41 @@ static void hud_select(cw_vec2 cs, float u) {
   cw_prompt_text(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, cw_v2(cs.x * 0.5f, y), 30 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
 }
 
+/* the loading screen: the picture dimmed behind a ring that turns with the real clock (not the frame count), the level's
+ * name, what the build is doing and a bar of how far it has got. Drawn on every frame of the wait, never blocking. */
+static void hud_loading(cw_vec2 cs, float u) {
+  int lv = G.loading - 1, phase = LP_WAIT, nb = 0;
+  float p = loader_progress(&NX, &phase, &nb);
+  if (G.fin) p = fmaxf(p, 0.99f), phase = LP_DONE;
+  if (p < LG.prog) p = LG.prog;
+  LG.prog = p, LG.phase = phase;
+  cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0.02f, 0.03f, 0.06f, 0.72f));
+  float cx = cs.x * 0.5f, cy = cs.y * 0.4f, R = 70 * u, W = 14 * u;
+  cw_vec2 c = cw_v2(cx, cy);
+  cw_r2d_arc(c, R - W, R, 0, 6.2831853f, 64, rgba(1, 1, 1, 0.14f));
+  double t = perf_now() * 1e-3;
+  float head = (float)(fmod(t / 1.1, 1.0) * 6.2831853);
+  for (int i = 0; i < 14; i++) { /* a comet: the head bright, the tail fading */
+    float a1 = head - i * 0.12f, k = 1 - i / 14.0f;
+    cw_r2d_arc(c, R - W, R, a1 - 0.13f, a1, 6, rgba(1, 0.82f, 0.3f, 0.95f * k * k));
+  }
+  char b[160];
+  snprintf(b, sizeof b, "Building %s", level_get(lv)->name);
+  cw_text_style st = tstyle(44 * u, WHITE);
+  cw_text_metrics m = cw_font_measure(font, b, &st);
+  text(b, cx, cy + R + 36 * u, 44 * u, WHITE, CW_ALIGN_CENTER);
+  float bw = 560 * u, bh = 14 * u, bx = cx - bw * 0.5f, by = cy + R + 36 * u + m.height + 26 * u;
+  cw_r2d_round_rect(cw_rect_make(bx, by, bw, bh), bh * 0.5f, 6, rgba(1, 1, 1, 0.16f));
+  if (p > 0.005f) cw_r2d_round_rect(cw_rect_make(bx, by, fmaxf(bh, bw * p), bh), bh * 0.5f, 6, GOLD);
+  if (nb > 0 && phase == LP_BLOCKS) snprintf(b, sizeof b, "%s: %d blocks", loader_phase_name(phase), nb);
+  else snprintf(b, sizeof b, "%s", loader_phase_name(phase));
+  text(b, cx, by + bh + 14 * u, 26 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+  if (G.phase != PH_PLAY) cw_prompt_text(font, "{ui_back}: back", -1, cw_v2(cx, by + bh + 60 * u), 22 * u, rgba(1, 1, 1, 0.55f), CW_ALIGN_CENTER);
+  LG.rect[0] = (cx - R - 4 * u) / cs.x, LG.rect[1] = (cy - R - 4 * u) / cs.y, LG.rect[2] = (2 * R + 8 * u) / cs.x, LG.rect[3] = (2 * R + 8 * u) / cs.y;
+  LG.text_rect[0] = (cx - m.width * 0.5f) / cs.x, LG.text_rect[1] = (cy + R + 36 * u) / cs.y, LG.text_rect[2] = m.width / cs.x, LG.text_rect[3] = m.height / cs.y;
+  LG.drawn = true, LG.frames_shown++;
+}
+
 static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f;
@@ -1116,6 +1236,11 @@ static void hud(void) {
      * of the structure down, from the charge on) took a millisecond of that frame to bake */
     static bool baked;
     if (!baked) baked = true, text("0123456789%:/.,-+! ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz", -cs.x * 4, -cs.y * 4, 27 * u, WHITE, CW_ALIGN_LEFT);
+  }
+  if (G.loading) { /* the loading screen stands alone: the old level's HUD or card would read as the new one's */
+    hud_loading(cs, u);
+    cw_r2d_end();
+    return;
   }
   if (G.phase == PH_SELECT) hud_select(cs, u);
   else if (G.phase == PH_RESULT && replay_running()) hud_replay(cs, u);
@@ -1128,9 +1253,16 @@ static void hud(void) {
 
 static void render(void *u, double alpha) {
   (void)u;
+  double t_render = perf_now();
+  LG.drawn = false;
+  if (LG.active && LG.n < LOG_MAX) { /* (the gap to the render before: a blocked main thread shows here) */
+    LG.last_gap = LG.last_render > 0 ? (float)(t_render - LG.last_render) : 0;
+    if (LG.last_gap > LG.gap_max) LG.gap_max = LG.last_gap;
+  }
+  LG.last_render = t_render;
   const float dt = 1.0f / 60.0f; /* the view animates by frames: the same pictures on every host */
   bool playing = cw_shell_screen_now() == CW_SHELL_PLAY;
-  if (G.built) {
+  if (G.built && G.fin != 1) { /* (fin 2: the new level's instances are put in place under the loading screen, so its first frame is not the old one's) */
     int w, h;
     cw_window_size(&w, &h);
     float a = playing ? (float)alpha : 1.0f;
@@ -1204,6 +1336,17 @@ static void render(void *u, double alpha) {
       }
     }
     R.win_work += w_;
+    LG.ring[LG.ring_i++ & 255] = (float)w_;
+    if (LG.active) { /* the transition's record: this frame's CPU time (its ticks and its render), where it blocked would show */
+      LG.nwork++, LG.work_sum += (float)w_;
+      if ((float)w_ > LG.work_max) LG.work_max = (float)w_;
+      if (w_ > 33) LG.over33++;
+      if (LG.n < LOG_MAX) {
+        int i = LG.n++;
+        LG.frame[i] = (int32_t)R.frame, LG.shown[i] = LG.drawn, LG.progress[i] = LG.drawn ? LG.prog : 0, LG.gap_ms[i] = (float)w_;
+      }
+      if (!G.loading && ++LG.after > 3) LG.active = false;
+    }
     if (LD.pending == 2) LD.frame0 = (float)w_, LD.pending = 1; /* the frame that made the level, then the next */
     else if (LD.pending == 1) LD.first = (float)w_, LD.pending = 0;
   }
