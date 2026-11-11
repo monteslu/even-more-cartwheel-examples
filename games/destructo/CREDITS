@@ -35,8 +35,39 @@ model's licence:
 - Chichen Itza: "Kukulcan-Pyramide 20220523" by PantheraLeo1359531, CC0,
   https://commons.wikimedia.org/wiki/File:Kukulc%C3%A1n-Pyramide_20220523.stl
 - Taj Mahal: "Taj Mahal" by Julio Mendes, CC0, https://www.printables.com/model/1328502
+- Mount Rushmore: "Low Poly Mount Rushmore" by 3DPrintables, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/1287390-low-poly-mount-rushmore
+- Notre-Dame: "Notre Dame de Paris" by Antonin Gazda, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/77766-notre-dame-de-paris
+- Pantheon: "Pantheon" by JohnnyTO, Creative Commons Attribution Share Alike (CC BY-SA, as Printables offers it),
+  https://www.printables.com/model/421804-pantheon. Share-alike: the Pantheon's cells in src/lm_data.c (the block
+  between "begin m_pantheon" and "end m_pantheon") are under CC BY-SA too, not MIT.
+- Arc de Triomphe: "arc de triomphe" by mooki, public domain (Printables "Creative Commons - Public Domain", CC0),
+  https://www.printables.com/model/1304387-arc-de-triomphe
+- Hagia Sophia: "Hagia Sophia Mosque (Ayasofya) Istanbul" by Ibisevic, Creative Commons Attribution (CC BY, as Printables
+  offers it), https://www.printables.com/model/838052-hagia-sophia-mosque-ayasofya-istanbul
+- Blue Mosque: "sultan ahmed mosque" by Mohamed Ali Bouslama, Creative Commons Attribution (CC BY, as Printables offers
+  it), https://www.printables.com/model/1011830-sultan-ahmed-mosque
+- Japanese Castle: "Japanese castle" by Kubkooo, Creative Commons Attribution Share Alike (CC BY-SA, as Printables offers
+  it), https://www.printables.com/model/1701161. Share-alike: its cells (between "begin m_himeji" and "end m_himeji") are
+  under CC BY-SA too, not MIT.
+- Stacked Tower (Taipei): "Taipei 101" by hellonearth311, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/1592292
+- Crown Tower (New York): "Chrysler Building New York City" by Dr. Skycat, public domain (Printables "Creative Commons -
+  Public Domain", CC0), https://www.printables.com/model/52633
+- Television Tower (Berlin): "Berlin tv tower" by Storm_wind, public domain (Printables "Creative Commons - Public
+  Domain", CC0), https://www.printables.com/model/920288
+- Sail Hotel (Dubai): "Burj Al Arab" by Kleiner Lateiner, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/183954
+- Mont Saint-Michel (held): "Mont Saint Michel enhanced" by ABitMoreAdventure, Creative Commons Attribution Share Alike
+  (CC BY-SA), https://www.printables.com/model/848389 (cells between "begin m_msm" and "end m_msm": CC BY-SA)
+- Machu Picchu (held): "Low Poly Machu Pichu" by 3DPrintables, Creative Commons Attribution (CC BY),
+  https://www.printables.com/model/1287394-low-poly-machu-pichu
+- Great Wall of China (held): "Great Wall of China" by Qing Zhang, public domain (Printables "Creative Commons - Public
+  Domain", CC0), https://www.printables.com/model/1872878-great-wall-of-china
 
 The other landmarks (the Great Sphinx, the Pyramids of Giza, the Space Needle, the Sydney Opera House, Neuschwanstein
 Castle, Willis Tower, the Empire State Building, the Colosseum, the Parthenon, Tower Bridge, Saint Basil's Cathedral,
-the Petronas Towers, Angkor Wat, the CN Tower and Stonehenge) are shaped in this repository's code
-(tools/landmark-procs.mjs, src/landmarks.c), MIT.
+the Petronas Towers, Angkor Wat, the CN Tower, Stonehenge, the Golden Gate Bridge, the Brooklyn Bridge, the Gateway
+Arch, the Brandenburg Gate, the Kremlin, the Atomium, Petra's Treasury and the Tokyo Tower) are shaped in this
+repository's code (tools/landmark-procs.mjs, src/landmarks.c), MIT.

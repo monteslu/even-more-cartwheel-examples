@@ -14,10 +14,11 @@
 // NO_CHUNKS=1 (the level as loose blocks, the old behaviour: the Needle slumps while it stands alone).
 // Run: node tests/destructo-legout.mjs [--gpu gl|webgpu]
 import { runCheck, inPairs, gpusArg } from './lib/romdev.mjs';
+import { levelIndex } from './lib/levelindex.mjs';
 
 const TALL = { 3: 'The Black Tower', 4: 'The Empire', 8: 'The Spire', 9: 'The Great Clock', 10: 'Leaning Tower of Pisa', 1: 'The Needle', 17: 'The Tower' };
 const HALF = { ...TALL, 15: 'Statue of Liberty', 16: 'The Redeemer', 13: 'Angkor Wat' };
-const LEVELS = { needle: 1, iron: 2, parthenon: 11, chichen: 14 };
+const LEVELS = { needle: levelIndex('The Needle'), iron: levelIndex('Iron Lady'), parthenon: levelIndex('Parthenon'), chichen: levelIndex('Chichen Itza') };
 const NAMES = { 1: 'The Needle', 2: 'Iron Lady', 11: 'Parthenon', 14: 'Chichen Itza' };
 const at8 = (rows, level) => rows.filter((r) => NAMES[r.level] === r.name).filter((r) => r.phase === 'legout' && r.level === level && Math.abs(r.t - 8) < 0.01).pop();
 const stand = (rows, level) => rows.find((r) => r.phase === 'standing' && r.level === level);

@@ -10,8 +10,9 @@
 // Controls, must fail: OLD_LOAD=1 (the old rule, a leg is judged by where the centre stands over the hull of what is left: a shot at one leg leaves the tower standing), OLD_SLEEP=1 (the rule that put the whole contact group to sleep, towers hung in the air), OLD_RELEASE=1 (the structure let go as sections of 150 blocks, not one rigid body).
 // Run: node tests/destructo-realshot.mjs [--gpu gl|webgpu]
 import { runCheck, inPairs, gpusArg } from './lib/romdev.mjs';
+import { levelIndex } from './lib/levelindex.mjs';
 
-const L = { needle: 1, iron: 2, black: 3, empire: 4, taj: 7, pisa: 10, liberty: 15, redeemer: 16 };
+const L = Object.fromEntries(Object.entries({ needle: 'The Needle', iron: 'Iron Lady', black: 'The Black Tower', empire: 'The Empire', taj: 'Taj Mahal', pisa: 'Leaning Tower of Pisa', liberty: 'Statue of Liberty', redeemer: 'The Redeemer' }).map(([k, n]) => [k, levelIndex(n)]));
 let bad = 0;
 for (const gpu of gpusArg()) {
   const run = async (args) => { const r = await runCheck('levels', args, { gpu }); if (r.status !== 0) { console.log(`FAIL check levels ${args} exited ${r.status}`); process.exit(1); } return r.rows; };
