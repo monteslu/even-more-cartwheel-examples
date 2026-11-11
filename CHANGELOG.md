@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.15.1
+
+- **Destructo**: the next level is ready the moment you accept it (50 to 130 ms; the Empire took over 15 seconds, Iron Lady over 5). It builds in the background while the results card shows, and the level-select preview builds in the background too; if you accept before it is done, the card says "Building the next level". The replay's second world builds in the background. The depth-fighting scan of the whole field is gone (the grass shares no planes), which was most of the load time. A level with nothing built ahead of it, such as the first after the title, still waits for its build.
+
 ## 0.15.0
 
 - **Destructo**: simpler controls and a clear screen. Aim with the left stick or the d-pad, go round the structure with
