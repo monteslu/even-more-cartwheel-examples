@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.1
+
+- **Destructo**: a level start never freezes the screen. While a level builds, the dimmed last view stays up with a spinner turning on the real clock, "Building <level>", a progress bar and a phase line, and Back cancels. The level's drawing is built a slice a frame behind the screen, the replay's second world is never waited for, and the first level builds under the engine's progress bar at start. A check records the frames of a start and fails if the spinner stops, the text goes, the progress goes back or a frame takes over 100 ms; the old blocking path fails it with frames of up to 28 seconds.
+
 ## 0.17.0
 
 - **Destructo**: the game answers you at once. After a shot leaves, aim, ammunition and fire were shut until the rubble settled (2.7 seconds here, up to 15 on a big collapse) and presses in that time were thrown away. Now the aim opens when the shot strikes, the launcher turns and ammunition changes in the same tick, and a fire press made while the shot is in the air is kept and fires the moment the aim opens, with a "FIRE QUEUED" mark. The ammunition icon and the menu tile pop in the frame of the press.
