@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.0
+
+- **Destructo**: only famous places. The four tutorial levels and the 26 other invented buildings are gone, and so is Christ the Redeemer; the level select is 41 real landmarks ordered by difficulty, and the first level is the Leaning Tower of Pisa with the first-use hints. The store art and screenshot show landmarks.
+- Tests: the performance, hitch and flash checks run on the Taj Mahal; a newcomer clears the first level within par plus 4, with a control whose aim is far worse.
+- Known: Notre-Dame's collapse costs more than a frame's budget on the check machine and the human-like full sweep clears Golden Span 4 of 8 and Brooklyn Bridge 6 of 8.
+
 ## 0.21.0
 
 - **Destructo**: four more landmarks, 42 in all: Stonehenge (the lintels now lie along the ring instead of across it), Saint Basil's Cathedral, the Red Tower in Tokyo and the Temple of Heaven. Each is named from the frame alone by a judge in both views. Mount Rushmore is built of 0.28 m bricks now: the physics step averages 6.5 ms over four seconds after a charge, down from 12.4 ms.
