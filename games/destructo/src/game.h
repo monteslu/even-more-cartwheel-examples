@@ -300,6 +300,7 @@ cw_xform3 game_block_interp(const game *g, int i, float alpha);   /* ... as draw
 t3_vec3 game_block_vel(const game *g, int i);                     /* the velocity of the block's middle */
 int game_block_of_shape(cw_shape3d s);                            /* the block a shape belongs to, -1 none */
 cw_shape3d block_shape(game *g, int i, cw_body3d body, cw_xform3 local); /* a box shape for block i on a body */
+cw_shape3d block_shape_static(game *g, int i, cw_body3d body, cw_xform3 local); /* ... with no mass worked out (the caller applies it once) */
 /* chunks.c */
 int chunk_new(game *g, cw_body3d body, bool dyn, bool placed);
 void chunk_add_member(game *g, int c, int i);

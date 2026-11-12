@@ -108,6 +108,25 @@ int game_block_of_shape(cw_shape3d s) {
   return (int)u - 1;
 }
 
+/* the same shape made without Box3D working the body's mass out again over every shape it holds (a welded chunk of thousands of
+ * members cut in pieces made them one at a time, each over the others: most of a 100 ms frame); the caller applies the mass once
+ * (b3Body_ApplyMassFromShapes) when a dynamic body is done */
+cw_shape3d block_shape_static(game *g, int i, cw_body3d body, cw_xform3 local) {
+  block *k = &g->b[i];
+  const material_info *m = &MATS[k->mat];
+  b3ShapeDef sd = b3DefaultShapeDef();
+  sd.baseMaterial = b3DefaultSurfaceMaterial();
+  sd.baseMaterial.friction = m->friction, sd.baseMaterial.restitution = m->restitution, sd.baseMaterial.userMaterialId = (uint64_t)k->mat;
+  sd.density = m->density;
+  sd.filter.categoryBits = 1ull << LAYER_BLOCK;
+  sd.filter.maskBits = (uint64_t)0xffffffffu | (1ull << 63); /* every layer, and the queries (engine physics3d: cw__shape_mask) */
+  sd.enableSensorEvents = true, sd.enableContactEvents = false, sd.enableHitEvents = true;
+  sd.userData = (void *)(intptr_t)(i + 1);
+  sd.updateBodyMass = false;
+  b3BoxHull box = b3MakeTransformedBoxHull(k->half.x, k->half.y, k->half.z, (b3Transform){ { local.p.x, local.p.y, local.p.z }, { { local.q.x, local.q.y, local.q.z }, local.q.w } });
+  return (cw_shape3d){ b3StoreShapeId(b3CreateHullShape(cw_body3d_raw(body), &sd, &box.base)) };
+}
+
 cw_shape3d block_shape(game *g, int i, cw_body3d body, cw_xform3 local) {
   block *k = &g->b[i];
   cw_shape3d_def sd = cw_shape3d_default_def();

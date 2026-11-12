@@ -128,7 +128,12 @@ void chunk_remove_member(game *g, int i) {
   block *b = &g->b[i];
   int c = b->chunk;
   chunk *k = &g->ch[c];
-  if (k->n > 1 && cw_shape3d_valid(b->shape)) cw_shape3d_destroy(b->shape);
+  if (k->n > 1 && cw_shape3d_valid(b->shape)) {
+    /* (Box3D works the body's mass out again over every shape that is left each time one goes: a static body has none, and on a
+     * welded chunk of thousands of members breaking a few hundred was most of a 40 ms frame) */
+    if (k->dyn) cw_shape3d_destroy(b->shape);
+    else b3DestroyShape(cw_shape3d_raw(b->shape), false);
+  }
   unlink_member(g, i);
   g->sup_dirty = 1;
   int L = k->leader;
@@ -160,11 +165,12 @@ static int chunk_carve(game *g, int c, const int *mem, int nm) {
   g->ch[nc].frac_tick = k->frac_tick, g->ch[nc].rel_tick = k->rel_tick;
   for (int m = 0; m < nm; m++) {
     block *b = &g->b[mem[m]];
-    cw_shape3d_destroy(b->shape);
+    b3DestroyShape(cw_shape3d_raw(b->shape), false); /* (the mass of what is left is made once, below) */
     unlink_member(g, mem[m]);
-    b->shape = block_shape(g, mem[m], nb, b->local);
+    b->shape = block_shape_static(g, mem[m], nb, b->local); /* (no mass worked out a member at a time: once for the piece, below) */
     chunk_add_member(g, nc, mem[m]);
   }
+  if (dyn) b3Body_ApplyMassFromShapes(cw_body3d_raw(k->body)), b3Body_ApplyMassFromShapes(cw_body3d_raw(nb));
   g->ch[k->leader].stamp = ++g->epoch, g->ch[nc].stamp = g->epoch, g->ch[k->leader].dirty = 1, g->ch[nc].dirty = 1;
   g->sup_dirty = 1;
   if (dyn) {
