@@ -143,6 +143,7 @@ typedef struct level_def {
   int setting;       /* the setting (ST_*) + 1 */
   float mark;        /* the share that counts as brought down */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
+  float cam[6];      /* a level's own aim view (all zero: the standard one): the eye this far behind the launcher (negative: ahead of it), this far above it and to its right, the point looked at this far short of the structure's middle and this high, the lens (degrees) */
 } level_def;
 #define NLEVELS 42 /* the shipped landmarks (the rows of levels.c): the level select, the progression and the next level */
 int level_find(const char *name); /* a level's index by its name, -1 none */

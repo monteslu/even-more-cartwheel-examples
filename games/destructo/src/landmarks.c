@@ -495,7 +495,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_MONT_ST_MICHEL: { static const float s[][2] = { { -3.0f, -0.3f }, { -3.0f, 0.8f } }; build_model(g, L, &LMV_m_msm, s, 2); break; }
   case LM_JAPANESE_CASTLE: { static const float s[][2] = { { 6.5f, 0 }, { -6.5f, 0 } }; build_model(g, L, &LMV_m_himeji, s, 2); break; }
   case LM_MACHU_PICCHU: { static const float s[][2] = { { 1.0f, 3.8f }, { 4.8f, 5.0f } }; build_model(g, L, &LMV_machu, s, 2); break; }
-  case LM_HOOVER: { static const float s[][2] = { { -3.4f, 4.2f }, { 0.0f, -1.8f } }; build_vox(g, &LMV_hoover_rock, 0, 0, 0); int r0 = g->nb; build_model(g, L, &LMV_hoover, s, 2); water_setup(g, r0, g->nb, 12.9f, 310.0f, 14.0f); break; }
+  case LM_HOOVER: { static const float s[][2] = { { -3.4f, 4.2f }, { 0.0f, -1.8f } }; build_vox(g, &LMV_hoover_rock, 0, 0, 0); int r0 = g->nb; build_model(g, L, &LMV_hoover, s, 2); water_setup(g, r0, g->nb, 12.9f, 700.0f, 14.0f); break; }
   case LM_ABU_SIMBEL: { static const float s[][2] = { { 0.0f, -2.0f }, { 3.5f, -2.0f } }; build_model(g, L, &LMV_abu_simbel, s, 2); break; }
   case LM_SYDNEY_BRIDGE: { static const float s[][2] = { { 6.0f, 0 }, { -6.0f, 0 } }; build_model(g, L, &LMV_sydney_bridge, s, 2); break; }
   case LM_BOROBUDUR: { static const float s[][2] = { { 8.0f, 3.0f }, { -5.5f, 5.0f } }; build_model(g, L, &LMV_borobudur, s, 2); break; }

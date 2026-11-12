@@ -1094,13 +1094,13 @@ static void lake_view(const game *g, float alpha) {
     /* a block of water one metre tall (the node's y scale is the level): its top, and the face it shows the dam, from the dam's curved upstream
      * face back to the far ridge, as wide as the canyon at the surface (flaring upstream) */
     enum { NXS = 40, NZS = 24, NT = (NXS + 1) * (NZS + 1), NV = NT + 2 * (NXS + 1) };
-    const float Zb = -36.4f;
+    const float Zb = -46.2f;
     static float pos[NV * 3], uv[NV * 2];
     static unsigned idx[(NXS * NZS + NXS) * 6];
     for (int j = 0; j <= NZS; j++)
       for (int i = 0; i <= NXS; i++) {
         float zf = water_dam_zc(w, 0) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS;
-        float half = 1.4f * (4.6f + 0.2f * (w->level0 / 1.4f)) + fminf(4.2f, 0.42f * fmaxf(0, -z / 1.4f - 2.2f)) + 0.3f, x = -half + 2 * half * (float)i / NXS;
+        float lv = w->level0 / 1.4f, half = 1.4f * (5.5f + 0.2f * fminf(lv, 10.0f) + 0.08f * fmaxf(0, lv - 10.0f) + fminf(7.0f, 0.45f * fmaxf(0, -z / 1.4f - 2.2f))) + 0.3f, x = -half + 2 * half * (float)i / NXS;
         zf = water_dam_zc(w, x) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS; /* the far edge follows the arch */
         int v = j * (NXS + 1) + i;
         pos[v * 3] = x, pos[v * 3 + 1] = 1, pos[v * 3 + 2] = z;
@@ -1379,11 +1379,18 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     /* (the aim view is back a little after the shot lands, while the rubble still settles) behind the launcher, a little to the right, looking down the aim over the structure */
     t3_vec3 m = g->muzzle;
     float tall = fmaxf(0, top - 12); /* a tall landmark: the camera rises and looks up its height */
-    float lift = g->L->lm == LM_HOOVER ? 16.0f : 0, fwdk = g->L->lm == LM_HOOVER ? 24.0f : 0; /* per-level framing: the dam is looked at from downstream and above */
-    eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f - fwdk) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f + lift, m.z - fwd.z * (8.5f + tall * 0.4f - fwdk) + right.z * 2.6f };
-    float pitch_look = cw_clampf(g->pitch, -0.05f, 0.5f);
-    at = (t3_vec3){ m.x + fwd.x * g->ring, m.y + top * 0.25f + tall * 0.3f + pitch_look * 8 - 1.0f, m.z + fwd.z * g->ring };
-    if (lift > 0) at = (t3_vec3){ m.x + fwd.x * (g->ring - 6), top * 0.45f, m.z + fwd.z * (g->ring - 6) };
+    float lcv[6];
+    memcpy(lcv, g->L->cam, sizeof lcv);
+    if (opt_get("CAM")) sscanf(opt_get("CAM"), "%f,%f,%f,%f,%f,%f", &lcv[0], &lcv[1], &lcv[2], &lcv[3], &lcv[4], &lcv[5]); /* development: the level's aim view tuned by eye (dm set CAM back,up,side,short,aty,fov) */
+    const float *lc = lcv; /* a level's own aim view (level_def.cam) */
+    if (lc[5] > 0) {
+      eye = (t3_vec3){ m.x - fwd.x * lc[0] + right.x * lc[2], m.y + lc[1], m.z - fwd.z * lc[0] + right.z * lc[2] };
+      at = (t3_vec3){ m.x + fwd.x * (g->ring - lc[3]), lc[4], m.z + fwd.z * (g->ring - lc[3]) };
+    } else {
+      eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f, m.z - fwd.z * (8.5f + tall * 0.4f) + right.z * 2.6f };
+      float pitch_look = cw_clampf(g->pitch, -0.05f, 0.5f);
+      at = (t3_vec3){ m.x + fwd.x * g->ring, m.y + top * 0.25f + tall * 0.3f + pitch_look * 8 - 1.0f, m.z + fwd.z * g->ring };
+    }
     k = g->state == V.last_state || g->ready ? 4 : 2;
   } else if (g->state == GS_FLIGHT && g->proj_live) {
     cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);
@@ -1430,7 +1437,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
-  float want_fov = aimv && !overview ? 32.0f : 50.0f; /* aiming looks long down the field */
+  float want_fov = aimv && !overview ? (g->L->cam[5] > 0 ? (opt_get("CAM") ? (float)atof(strrchr(opt_get("CAM"), ',') + 1) : g->L->cam[5]) : 32.0f) : 50.0f; /* aiming looks long down the field */
   V.fov += (want_fov - V.fov) * t;
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   cw_node_set(camera, "near", cw_val_float(0.2f));

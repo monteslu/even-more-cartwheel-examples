@@ -842,7 +842,7 @@ static void fixed_update(void *u, double dt) {
     if (opt_on("HOLD")) break;    /* tests/destructo-coplanar.mjs: the level settled as for play, then held (no shot fired) */
     if (opt_get("SCENE")) { /* the look sheets: a foot of the structure broken (dm set SCENE legout) or a charge at its middle (boom), or at the Hoover Dam's foot (dam); no shot; the world steps, the view draws it */
       input none = { 0 };
-      G.overview = !opt_get("SCENE_CAM"); /* the wide view unless SCENE_CAM is set (the game's own collapse camera) */
+      G.overview = !(opt_get("SCENE_CAM") || opt_get("SCENE_AIM")); /* the wide view unless SCENE_CAM is set (the game's own collapse camera) */
       if (!strncmp(opt_get("SCENE"), "shot", 4)) { /* a real shot at the nearest foot: shot, heavy or charge (SCENE shotN, N the ammunition) */
         if (G.g.tick == 40) { int a = opt_get("SCENE")[4] - '0'; if (game_aim_shot(&G.g, a >= 0 && a < NAMMO ? a : 0, 0) >= 0) game_fire(&G.g); }
         G.g.sandbox = true;
@@ -859,6 +859,7 @@ static void fixed_update(void *u, double dt) {
       else if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
       G.g.state = GS_SETTLE;
       game_step(&G.g, &none);
+      if (opt_get("SCENE_AIM")) G.g.state = GS_AIM, G.g.ready = false; /* the look sheets of the aim view (the real camera of the opening shot) while the scene runs */
       fx_events(&G.g, G.g.cur);
       sound_events(&G.g, cw_node3d_global_position(G.camera));
       break;
