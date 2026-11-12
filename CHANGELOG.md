@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.21.0
+
+- **Destructo**: four more landmarks, 42 in all: Stonehenge (the lintels now lie along the ring instead of across it), Saint Basil's Cathedral, the Red Tower in Tokyo and the Temple of Heaven. Each is named from the frame alone by a judge in both views. Mount Rushmore is built of 0.28 m bricks now: the physics step averages 6.5 ms over four seconds after a charge, down from 12.4 ms.
+- The block builder keeps aligned parts clear of each other, so seams no longer overlap, and the level check prints where the first floating block is.
+- Held until they read at a glance: the Great Wall, Machu Picchu, Petra, Hoover Dam, Abu Simbel, the Sydney Harbour Bridge, Twin Spires, Neuschwanstein, Borobudur, Shwedagon, the Sagrada Familia and Mont Saint-Michel.
+
 ## 0.20.0
 
 - **Destructo**: eight more landmarks, 38 in all: Mount Rushmore (four heads in pale stone on a rock mountain, built of 0.2 m bricks), the Kremlin (the Spasskaya tower with its clock faces and star, green tents, gold onion domes, a bell tower and the swallowtail wall), the Brandenburg Gate (six columns, a flat attic and the horse-drawn chariot), the Colosseum, the Atomium in Brussels, a Japanese five-storey pagoda, the Gateway Arch in St. Louis and the Brooklyn Bridge. Each is named from the frame alone by a judge in both views. The Colosseum no longer has the overlapping blocks that held it back.
