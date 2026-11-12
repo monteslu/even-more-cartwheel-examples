@@ -318,7 +318,7 @@ void view_init(cw_node root) {
     t3_material *pm = std_mat(0.07f, 0.33f, 0.58f, 0.04f, 0);
     pm->emissive = (t3_color){ 0.02f, 0.1f, 0.2f };
     pm->emissive_intensity = 0.5f;
-    V.pool = imesh(world, "Pool", t3_cylinder_geometry_new(0.5f, 0.5f, 1, 14, 1, false), pm, WATER_POOL, false);
+    V.pool = imesh(world, "Pool", t3_cylinder_geometry_new(0.5f, 0.5f, 1, 20, 1, false), pm, WATER_POOL + 1, false);
   }
   trees_init();
   for (int i = 0; i < MAXTGT; i++) {
@@ -1094,13 +1094,13 @@ static void lake_view(const game *g, float alpha) {
     /* a block of water one metre tall (the node's y scale is the level): its top, and the face it shows the dam, from the dam's curved upstream
      * face back to the far ridge, as wide as the canyon at the surface (flaring upstream) */
     enum { NXS = 40, NZS = 24, NT = (NXS + 1) * (NZS + 1), NV = NT + 2 * (NXS + 1) };
-    const float Zb = -26.0f;
+    const float Zb = -36.4f;
     static float pos[NV * 3], uv[NV * 2];
     static unsigned idx[(NXS * NZS + NXS) * 6];
     for (int j = 0; j <= NZS; j++)
       for (int i = 0; i <= NXS; i++) {
         float zf = water_dam_zc(w, 0) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS;
-        float half = 9.6f + 0.1f * w->level0 + fminf(3.0f, 0.3f * fmaxf(0, -z - 6.0f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
+        float half = 1.4f * (4.6f + 0.2f * (w->level0 / 1.4f)) + fminf(4.2f, 0.42f * fmaxf(0, -z / 1.4f - 2.2f)) + 0.3f, x = -half + 2 * half * (float)i / NXS;
         zf = water_dam_zc(w, x) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS; /* the far edge follows the arch */
         int v = j * (NXS + 1) + i;
         pos[v * 3] = x, pos[v * 3 + 1] = 1, pos[v * 3 + 2] = z;
@@ -1162,6 +1162,14 @@ static void lake_view(const game *g, float alpha) {
     t3_mat4_compose(&mx, (t3_vec3){ w->pool[i].x, w->pool[i].y + 0.07f + 0.0007f * (float)i, w->pool[i].z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.8f, 0.16f, 1.8f });
     t3_instanced_mesh_set_matrix_at(V.pool, i, &mx);
     t3_instanced_mesh_set_color_at(V.pool, i, (t3_color){ 1, 1, 1 });
+  }
+  float flood = fminf(44.0f, w->vol_out * 0.12f); /* the water that has spilled runs out over the valley floor below the dam: a sheet that lengthens with it */
+  if (flood > 0.5f) {
+    t3_mat4 mx;
+    t3_mat4_compose(&mx, (t3_vec3){ 0, 0.16f, water_dam_zc(w, 0) + 4.0f + flood * 0.5f }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 15.0f + flood * 0.15f, 0.22f, flood });
+    t3_instanced_mesh_set_matrix_at(V.pool, np, &mx);
+    t3_instanced_mesh_set_color_at(V.pool, np, (t3_color){ 1.15f, 1.3f, 1.45f });
+    np++;
   }
   V.pool->count = np;
   V.pool->instance_matrix->version++;
@@ -1371,9 +1379,11 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     /* (the aim view is back a little after the shot lands, while the rubble still settles) behind the launcher, a little to the right, looking down the aim over the structure */
     t3_vec3 m = g->muzzle;
     float tall = fmaxf(0, top - 12); /* a tall landmark: the camera rises and looks up its height */
-    eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f, m.z - fwd.z * (8.5f + tall * 0.4f) + right.z * 2.6f };
+    float lift = g->L->lm == LM_HOOVER ? 16.0f : 0, fwdk = g->L->lm == LM_HOOVER ? 24.0f : 0; /* per-level framing: the dam is looked at from downstream and above */
+    eye = (t3_vec3){ m.x - fwd.x * (8.5f + tall * 0.4f - fwdk) + right.x * 2.6f, m.y + 3.6f + tall * 0.15f + lift, m.z - fwd.z * (8.5f + tall * 0.4f - fwdk) + right.z * 2.6f };
     float pitch_look = cw_clampf(g->pitch, -0.05f, 0.5f);
     at = (t3_vec3){ m.x + fwd.x * g->ring, m.y + top * 0.25f + tall * 0.3f + pitch_look * 8 - 1.0f, m.z + fwd.z * g->ring };
+    if (lift > 0) at = (t3_vec3){ m.x + fwd.x * (g->ring - 6), top * 0.45f, m.z + fwd.z * (g->ring - 6) };
     k = g->state == V.last_state || g->ready ? 4 : 2;
   } else if (g->state == GS_FLIGHT && g->proj_live) {
     cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);

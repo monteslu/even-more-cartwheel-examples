@@ -1072,18 +1072,42 @@ function machu(x, y, z) {
   return null;
 }
 
-/* ── the Hoover Dam's canyon: the dark V of rock the dam wall (an openly licensed arch dam model: hoover_dam in landmark-models.json) stands in,
- * flaring upstream where the lake lies; the lake itself is drawn by the game (src/water.c, view.c) ── */
-function hoover(x, y, z) {
-  const ax = Math.abs(x);
-  const flare = Math.min(3.0, 0.3 * Math.max(0, -z - 6.0));
-  const inner = 9.4 + 0.1 * y + flare;
-  const band = (Math.floor(y / 1.1) & 1) ? 'stone:ROSE_STONE' : 'stone:ROCK';
-  const rim = inner + 1.0;
-  let gh = 10.8 - 3.2 * Math.max(0, ax - rim) + 0.4 * Math.sin(z * 0.9 + x * 0.7) - Math.max(0, z - 5.0) * 4.5 - Math.max(0, -z - 26.0) * 4.0;
+/* ── the Hoover Dam: a thin curved concrete arch-gravity wall across a narrow dark canyon (the arch bulges toward the lake), its straight road
+ * along the crest, the four round intake towers standing in the lake on its upstream side, the powerhouse at the foot downstream. The lake
+ * behind it (a wide flat water mesh nearly to the crest) is drawn by the game: src/water.c, view.c. The canyon is a steep V cut in a ridge that
+ * falls away to the plain, flaring a little upstream. ── */
+function hooverBase(x, y, z) {
+  const ax = Math.abs(x), H = 10.0;
+  const flare = Math.min(3.0, 0.3 * Math.max(0, -z - 2.2));
+  const inner = 4.6 + 0.2 * y + flare; /* the canyon: steep walls, closing a little toward the floor */
+  const zc = 0.08 * x * x - 1.2; /* the dam's upstream face: the arch bulges toward the lake (-z) */
+  const band = (Math.floor(y / 1.1) & 1) ? 'stone:ROSE_STONE' : 'stone:ROCK'; /* a dark canyon, red-brown strata */
+  /* the wall: thin, a little thicker at the foot, vertical sides on the arch */
+  if (y < H && ax <= 4.6 + 0.2 * y - 0.2) {
+    const t = 0.9 + (H - y) * 0.07, step = Math.round(t * 3) / 3;
+    if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : 'stone:LIMESTONE';
+  }
+  /* the straight road along the crest, with its parapets */
+  if (y >= H && y < H + 0.35 && ax <= 4.6 + 0.2 * H - 0.2 && (Math.abs(z - (zc - 0.1)) < 0.17 || Math.abs(z - (zc + 0.8)) < 0.17)) return 'stone:TRIM_CREAM';
+  /* the four intake towers, two to a side, standing in the lake upstream of the crest: tapering drums, a cornice, a dark cap, a walk to the crest */
+  for (const sx of [-1, 1]) for (const tx of [4.2, 5.8]) {
+    const cx = sx * tx, cz = 0.08 * cx * cx - 1.2 - 1.9, rr = Math.hypot(x - cx, z - cz);
+    const rad = 0.78 - 0.02 * Math.max(0, y - 2.0);
+    if (y < H + 3.1 && rr < rad && ax <= inner - 0.2) return y > H + 2.35 && y < H + 2.7 ? 'stone:BRONZE' : y >= H + 2.7 ? 'stone:DARK_STONE' : 'stone:TRIM_CREAM';
+    if (y >= H - 0.3 && y < H && Math.abs(x - cx) < 0.18 && z > cz && z < zc) return 'stone:TRIM_CREAM';
+  }
+  /* the powerhouse at the foot downstream: a long low hall of two wings */
+  if (z > 1.6 + 0.08 * x * x * 0.2 && z < 4.0 && ax < 3.9 && y < 1.5 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:CONCRETE' : 'stone:TRIM_CREAM';
+  /* the rock: a ridge, its crest at the canyon's rim, falling to the plain on both sides, the canyon cut into it; it runs back along the lake and ends in the far hills */
+  const rim = 4.6 + 0.2 * 11 + flare;
+  let gh = 10.8 - 3.2 * Math.max(0, ax - rim) + 0.4 * Math.sin(z * 0.9 + x * 0.7) - Math.max(0, z - 1.2) * 4.5 - Math.max(0, -z - 3.0) * 0.1 - Math.max(0, -z - 26.0) * 4.0;
   if (y < gh && (ax > inner + 0.3 || z < -27)) return band;
   return null;
 }
+
+/* the dam made 1.4 times bigger in every direction (the canyon, the lake and the towers with it) */
+const HOOVER_S = 1.4;
+function hoover(x, y, z) { return hooverBase(x / HOOVER_S, y / HOOVER_S, z / HOOVER_S); }
 
 /* ── Abu Simbel's Great Temple: the rock-cut façade, battered, four seated colossi two each side of the doorway, the frieze of baboons under the cornice, the cliff above ── */
 function abuSimbel(x, y, z) {
@@ -1252,7 +1276,7 @@ export default {
   great_wall: { ext: [32, 9.0, 11.5], cell: greatWall },
   petra: { ext: [15, 11.5, 6.4], cell: petra },
   machu: { ext: [18, 11, 12.4], cell: machu },
-  hoover: { ext: [40, 14.4, 58], cell: hoover },
+  hoover: { ext: [41, 20.2, 82], cell: hoover },
   abu_simbel: { ext: [14, 9.2, 6.8], cell: abuSimbel },
   sydney_bridge: { ext: [32, 9.2, 4.4], cell: sydneyBridge },
   borobudur: { ext: [18, 9.6, 18], cell: borobudur },

@@ -174,7 +174,7 @@ typedef struct player_state {
 #define WATER_POOL 240
 #define WATER_BIN 0.3f
 #define WATER_BX 72
-#define WATER_BY 36
+#define WATER_BY 52
 #define WATER_NB (WATER_BX * WATER_BY)
 #define WATER_LIST 12000
 typedef struct water_state {

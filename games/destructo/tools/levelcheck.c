@@ -578,7 +578,7 @@ static void water_check(bool control) {
     if (t == TOTAL + 1) G.wt.level = 0.0f, G.wt.flow = 0; /* the flow is shut off: the parcels in the air land, the pool comes to rest */
     if (t == CHARGE_TICK && !control) {
       const water_state *w = &G.wt;
-      game_charge_at(&G, (t3_vec3){ 0.0f, 0.8f, water_dam_zc(w, 0.0f) + 0.6f });
+      game_charge_at(&G, (t3_vec3){ 0.0f, 1.6f, water_dam_zc(w, 0.0f) + 1.2f });
     }
     game_step(&G, &none);
     step_sum += G.world_ms, step_n++; if (G.world_ms > step_max) step_max = G.world_ms;
