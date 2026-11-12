@@ -1100,7 +1100,7 @@ static void lake_view(const game *g, float alpha) {
     for (int j = 0; j <= NZS; j++)
       for (int i = 0; i <= NXS; i++) {
         float zf = water_dam_zc(w, 0) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS;
-        float half = 4.6f + 0.2f * w->level0 + fminf(3.0f, 0.3f * fmaxf(0, -z - 2.2f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
+        float half = 9.6f + 0.1f * w->level0 + fminf(3.0f, 0.3f * fmaxf(0, -z - 6.0f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
         zf = water_dam_zc(w, x) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS; /* the far edge follows the arch */
         int v = j * (NXS + 1) + i;
         pos[v * 3] = x, pos[v * 3 + 1] = 1, pos[v * 3 + 2] = z;

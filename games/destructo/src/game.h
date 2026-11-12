@@ -173,14 +173,15 @@ typedef struct player_state {
 #define MAXWATER 240
 #define WATER_POOL 240
 #define WATER_BIN 0.3f
-#define WATER_BX 52
+#define WATER_BX 72
 #define WATER_BY 36
 #define WATER_NB (WATER_BX * WATER_BY)
 #define WATER_LIST 12000
 typedef struct water_state {
   bool on;
   float level0, level, area; /* the lake's surface: where it began, where it is now, its area (m^2) */
-  float dam_top, arch_a, arch_z0, bx0; /* the dam's crest height and arch (the face's z is arch_a x^2 + arch_z0), the bins' left edge */
+  float dam_top, arch_a, arch_z0, bx0;
+  float face_z[WATER_BX]; /* the dam's upstream face along x (the lowest z of the blocks over each bin column) */ /* the dam's crest height and arch (the face's z is arch_a x^2 + arch_z0), the bins' left edge */
   uint16_t bin_off[WATER_NB + 1], bin_blk[WATER_LIST];
   uint8_t bin_n[WATER_NB];
   uint16_t open_bin[WATER_NB];
@@ -369,7 +370,7 @@ void game_fire(game *g);
 /* levels.c */
 void level_build(game *g, const level_def *L);
 /* water.c */
-void water_setup(game *g, float level, float area, float dam_top, float arch_a, float arch_z0);
+void water_setup(game *g, int first, int last, float level, float area, float dam_top); /* the dam is the blocks first..last-1 */
 void water_step(game *g);
 int water_awake(const game *g);
 float water_dam_zc(const water_state *w, float x);

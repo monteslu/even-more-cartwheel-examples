@@ -32,37 +32,34 @@
 
 static inline t3_vec3 V3(float x, float y, float z) { return (t3_vec3){ x, y, z }; }
 
-float water_dam_zc(const water_state *w, float x) { return w->arch_a * x * x + w->arch_z0; }
-
-/* the lake's spill gate: which blocks are the dam (the face the water stands against), found by where their middles are */
-static bool is_dam(const water_state *w, t3_vec3 p) {
-  float ax = fabsf(p.x), zc = water_dam_zc(w, p.x);
-  if (p.y < 0.3f || p.y > w->dam_top - 0.1f) return false;
-  if (ax > 4.6f + 0.2f * p.y + 0.9f) return false;
-  return p.z > zc - 0.8f && p.z < zc + 0.7f + (w->dam_top - p.y) * 0.07f + 0.6f;
+float water_dam_zc(const water_state *w, float x) {
+  int ix = (int)floorf((x - w->bx0) / WATER_BIN);
+  return w->face_z[ix < 0 ? 0 : ix >= WATER_BX ? WATER_BX - 1 : ix];
 }
 
-void water_setup(game *g, float level, float area, float dam_top, float arch_a, float arch_z0) {
+/* the lake's spill gate: the dam is the blocks laid between first and last (the level's builder says which), cut into bins on its face */
+void water_setup(game *g, int first, int last, float level, float area, float dam_top) {
   water_state *w = &g->wt;
   memset(w, 0, sizeof *w);
   w->on = true;
-  w->level = w->level0 = level, w->area = area, w->dam_top = dam_top, w->arch_a = arch_a, w->arch_z0 = arch_z0;
+  w->level = w->level0 = level, w->area = area, w->dam_top = dam_top;
   w->bx0 = -WATER_BX * 0.5f * WATER_BIN;
-  int cnt[WATER_NB] = { 0 };
+  for (int i = 0; i < WATER_BX; i++) w->face_z[i] = 1e9f;
+  static int cnt[WATER_NB];
+  memset(cnt, 0, sizeof cnt);
   /* two passes over the dam's blocks: how many a bin lists, then the lists */
   for (int pass = 0; pass < 2; pass++) {
     int fill[WATER_NB] = { 0 };
-    for (int i = 0; i < g->nb; i++) {
+    for (int i = first; i < last && i < g->nb; i++) {
       const block *k = &g->b[i];
       if (!k->alive || k->mat == M_TARGET || k->target >= 0) continue;
       t3_vec3 p = game_block_xform(g, i).p;
-      if (!is_dam(w, p)) continue;
       int ix0 = (int)floorf((p.x - k->half.x - w->bx0) / WATER_BIN + 0.5f), ix1 = (int)floorf((p.x + k->half.x - w->bx0) / WATER_BIN - 0.5f);
       int iy0 = (int)floorf((p.y - k->half.y) / WATER_BIN + 0.5f), iy1 = (int)floorf((p.y + k->half.y) / WATER_BIN - 0.5f);
       for (int iy = iy0 < 0 ? 0 : iy0; iy <= iy1 && iy < WATER_BY; iy++)
         for (int ix = ix0 < 0 ? 0 : ix0; ix <= ix1 && ix < WATER_BX; ix++) {
           int b = iy * WATER_BX + ix;
-          if (pass == 0) cnt[b]++;
+          if (pass == 0) { cnt[b]++; if (p.z - k->half.z < w->face_z[ix]) w->face_z[ix] = p.z - k->half.z; }
           else if (w->bin_off[b] + fill[b] < WATER_LIST) w->bin_blk[w->bin_off[b] + fill[b]++] = (uint16_t)i;
         }
     }
@@ -72,6 +69,7 @@ void water_setup(game *g, float level, float area, float dam_top, float arch_a, 
       w->bin_off[WATER_NB] = (uint16_t)(o > 65535 ? 65535 : o);
     }
   }
+  for (int i = 0; i < WATER_BX; i++) if (w->face_z[i] > 1e8f) w->face_z[i] = 0;
   for (int b = 0; b < WATER_NB; b++) w->bin_n[b] = (uint8_t)(w->bin_off[b + 1] > w->bin_off[b] ? w->bin_off[b + 1] - w->bin_off[b] : 0);
 }
 
@@ -187,7 +185,7 @@ void water_step(game *g) {
       uint32_t s = (uint32_t)(w->spawned * 2654435761u) ^ 0x9e3779b9u;
       float jx = (hashf(s) - 0.5f) * 0.12f, jy = (hashf(s ^ 0x85ebca6bu) - 0.5f) * 0.12f, jz = (float)(made & 3) * 0.27f;
       float v = fminf(0.85f * sqrtf(2 * GRAV * h), 6.5f);
-      make_parcel(g, slot, V3(cx + jx, cy + jy, water_dam_zc(w, cx) - 0.7f - jz), V3((hashf(s ^ 0x1b873593u) - 0.5f) * 0.4f, 0, v));
+      make_parcel(g, slot, V3(cx + jx, cy + jy, water_dam_zc(w, cx) - 0.6f - jz), V3((hashf(s ^ 0x1b873593u) - 0.5f) * 0.4f, 0, v));
       if (w->spawned == 0) w->first_tick = g->tick;
       w->spawned++, made++;
       w->carry -= 1;
