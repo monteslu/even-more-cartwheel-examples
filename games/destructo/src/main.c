@@ -852,7 +852,8 @@ static void fixed_update(void *u, double dt) {
         break;
       }
       if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "cut")) opt_set("NO_SUPPORT", "1"), game_cutaway(&G.g);
-      else if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ 0.0f, 0.8f, water_dam_zc(&G.g.wt, 0.0f) + 0.6f }); /* the Hoover Dam: a charge at the dam's foot (the spill's look sheet) */
+      else if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ 0.0f, 1.2f, water_dam_zc(&G.g.wt, 0.0f) + 0.6f }); /* the Hoover Dam: a charge at the dam's foot (the spill's look sheet) */
+      else if (G.g.tick == 80 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ -1.0f, 3.2f, water_dam_zc(&G.g.wt, -1.0f) + 0.8f }); /* ... and a second, higher, a second later */
       else if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
       G.g.state = GS_SETTLE;
       game_step(&G.g, &none);
