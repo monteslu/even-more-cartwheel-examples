@@ -42,7 +42,7 @@
   "gateway": { "proc": "gateway", "size": { "axis": "x", "len": 20 }, "cell": 0.071, "course": 0.071, "wall": 1, "core": 0, "weld": true, "member": [ 24, 6 ] },
   "brandenburg": { "proc": "brandenburg", "size": { "axis": "x", "len": 13 }, "cell": 0.093, "course": 0.093, "wall": 0, "core": 0, "weld": true, "member": [ 24, 6 ] },
   "tokyo_tower": { "proc": "tokyo_tower", "size": { "axis": "x", "len": 5.6 }, "cell": 0.083, "course": 0.083, "wall": 0, "core": 0, "weld": true, "member": [ 40, 6 ] },
-  "atomium": { "proc": "atomium", "size": { "axis": "x", "len": 9 }, "cell": 0.116, "course": 0.116, "wall": 0, "core": 0, "weld": true, "member": [ 24, 6 ] },
+  "atomium": { "proc": "atomium", "size": { "axis": "x", "len": 9 }, "cell": 0.18, "course": 0.18, "wall": 0, "core": 0, "weld": true, "member": [ 24, 6 ] },
   "petra": { "proc": "petra", "size": { "axis": "x", "len": 15 }, "cell": 0.22, "course": 0.22, "wall": 1, "core": 4 },
   "m_notre_dame": { "obj": "../models2/notre-dame/notre-dame.obj", "yaw": 90, "fill": "flood", "core": 0, "weld": true, "member": [ 24, 6 ], "wall": 1, "size": { "axis": "z", "len": 15 }, "cell": 0.082, "course": 0.082, "default": { "mat": "stone", "paint": "LIMESTONE" } },
   "m_pantheon": { "obj": "../models2/pantheon/pantheon.obj", "yaw": 0, "fill": "flood", "core": 0, "weld": true, "member": [ 24, 6 ], "wall": 1, "size": { "axis": "z", "len": 12 }, "cell": 0.105, "course": 0.105, "default": { "mat": "stone", "paint": "CONCRETE" } },
