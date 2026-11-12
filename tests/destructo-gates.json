@@ -18,5 +18,10 @@
     "name": "destructo-loading",
     "script": "tests/destructo-loading.mjs",
     "note": "A level nothing was built for (dm restart with ASYNC_RESTART) shows the loading screen on every frame: the spinner moves, the text is there, the progress only goes up, no frame over 100 ms; the control (OLD_WAIT, the main thread waiting for the build) fails. romdev only."
+  },
+  {
+    "name": "destructo-water",
+    "script": "tests/destructo-water.mjs",
+    "note": "The lake behind the Hoover Dam: a charge at the dam foot, the spill starts within 1 s, flow measured, parcels capped at 240 and the awake bodies under 2,500, no parcel above the lake, the pool at rest; the control with the dam standing makes no water."
   }
 ]

@@ -558,6 +558,53 @@ static void realshot_check(int level, int ammo) {
   for (int u = 0; u < chunks_unsupported(&G) && u < 8; u++) printf("{\"unsup\":%d,\"n\":%.0f,\"d\":%.3f,\"req\":%.3f,\"dirty\":%.0f,\"stamp\":%.0f,\"seen\":%.0f,\"d0\":%.3f,\"c\":%.0f}\n", u, g_unsup_dbg[u][0], g_unsup_dbg[u][1], g_unsup_dbg[u][2], g_unsup_dbg[u][3], g_unsup_dbg[u][4], g_unsup_dbg[u][5], g_unsup_dbg[u][6], g_unsup_dbg[u][7]);
 }
 
+/* --water [--control]: the lake behind the Hoover Dam. The level settles as the game settles it; then, for 12 s, a charge goes off at the dam's foot
+ * at 1 s (with --control: nothing does, the dam stands). One row a half second, from the charge: the breach (bins open), the flow it passes (m^3/s),
+ * the parcels made, alive, awake and their mean and highest height and kinetic energy (J), the lake's level, the bodies awake besides the water, the
+ * physics step; and one summary row: the tick the first parcel was made after the charge, the peak flow, the peak kinetic energy against the
+ * last, the parcels at rest at the end. tests/destructo-water.mjs judges them (the control: no parcel is ever made). */
+static void water_check(bool control) {
+  int level = level_find("Hoover Dam");
+  if (level < 0) { printf("{\"phase\":\"water\",\"error\":\"no Hoover Dam level\"}\n"); return; }
+  game_new(&G, level, 1, MODE_COOP);
+  game_settle(&G, level_settle_ticks(G.L));
+  input none = { 0 };
+  G.state = GS_SETTLE;
+  const int CHARGE_TICK = 60, TOTAL = 60 * 12, DRAIN_TOTAL = TOTAL + 60 * 15; /* then the lake is drained (its level set to the floor) and the pool left to settle */
+  int first = -1, nopen_max = 0, awake_max = 0, alive_max = 0;
+  float flow_max = 0, ke_max = 0, ke_last = 0, my0 = 0, ymax_all = -1e9f, wl0 = G.wt.level;
+  double step_sum = 0, step_max = 0; int step_n = 0;
+  for (int t = 1; t <= DRAIN_TOTAL; t++) {
+    if (t == TOTAL + 1) G.wt.level = 0.0f, G.wt.flow = 0; /* the flow is shut off: the parcels in the air land, the pool comes to rest */
+    if (t == CHARGE_TICK && !control) {
+      const water_state *w = &G.wt;
+      game_charge_at(&G, (t3_vec3){ 0.0f, 0.8f, water_dam_zc(w, 0.0f) + 0.6f });
+    }
+    game_step(&G, &none);
+    step_sum += G.world_ms, step_n++; if (G.world_ms > step_max) step_max = G.world_ms;
+    if (first < 0 && G.wt.spawned > 0) first = t;
+    int alive, wawake; float my, ymx, ke;
+    water_stats(&G, &alive, &wawake, &my, &ymx, &ke);
+    int other = game_awake(&G);
+    if (G.wt.nopen > nopen_max) nopen_max = G.wt.nopen;
+    if (G.wt.flow > flow_max) flow_max = G.wt.flow;
+    if (ke > ke_max) ke_max = ke;
+    if (alive > alive_max) alive_max = alive;
+    if (other + wawake > awake_max) awake_max = other + wawake;
+    if (ymx > ymax_all) ymax_all = ymx;
+    ke_last = ke;
+    if (t % 30 == 0)
+      printf("{\"phase\":\"water_t\",\"t\":%.1f,\"since_charge\":%.1f,\"open\":%d,\"flow\":%.2f,\"spawned\":%d,\"alive\":%d,\"awake_water\":%d,\"mean_y\":%.2f,\"max_y\":%.2f,\"ke\":%.0f,\"level\":%.2f,\"awake_other\":%d,\"world_ms\":%.2f,\"pooled\":%d}\n",
+             t / 60.0f, (t - CHARGE_TICK) / 60.0f, G.wt.nopen, G.wt.flow, G.wt.spawned, alive, wawake, my, ymx, ke, G.wt.level, other, G.world_ms, G.wt.retired);
+  }
+  int alive, wawake; float my, ymx, ke;
+  water_stats(&G, &alive, &wawake, &my, &ymx, &ke);
+  (void)my0;
+  printf("{\"phase\":\"water\",\"control\":%d,\"spill_start_s\":%.2f,\"spawned\":%d,\"flow_peak\":%.2f,\"open_peak\":%d,\"alive_max\":%d,\"awake_max\":%d,\"ke_peak\":%.0f,\"ke_last\":%.0f,\"asleep_end\":%d,\"alive_end\":%d,\"mean_y_end\":%.2f,\"max_y_all\":%.2f,\"level0\":%.2f,\"level_end\":%.2f,\"vol_out\":%.1f,\"step_mean_ms\":%.2f,\"step_max_ms\":%.2f,\"pooled\":%d}\n",
+         control, first < 0 ? -1.0f : (first - CHARGE_TICK) / 60.0f, G.wt.spawned, flow_max, nopen_max, alive_max, awake_max, ke_max, ke_last, alive - wawake, alive, my, ymax_all, wl0, G.wt.level, G.wt.vol_out, step_n ? step_sum / step_n : 0, step_max, G.wt.retired);
+  fflush(stdout);
+}
+
 int main(int argc, char **argv) {
   cw_jobs_init(-1);
   for (int a = 1; a + 1 < argc;) { /* --opt NAME=VALUE anywhere: a run option (opts.h), then dropped from the arguments */
@@ -574,6 +621,11 @@ int main(int argc, char **argv) {
   if (argc > 1 && !strcmp(argv[1], "--realshot")) {
     int am = opt_get("AMMO") ? atoi(opt_get("AMMO")) : 0;
     for (int a = 2; a < argc; a++) if (argv[a][0] >= '0' && argv[a][0] <= '9') realshot_check(atoi(argv[a]), am);
+    game_free(&G);
+    return 0;
+  }
+  if (argc > 1 && !strcmp(argv[1], "--water")) {
+    water_check(argc > 2 && !strcmp(argv[2], "--control"));
     game_free(&G);
     return 0;
   }

@@ -73,6 +73,7 @@ extern const lm_vox LMV_m_rushmore;
 extern const lm_vox LMV_rushmore;
 extern const lm_vox LMV_great_wall;
 extern const lm_vox LMV_machu;
+extern const lm_vox LMV_hoover_rock;
 extern const lm_vox LMV_hoover;
 extern const lm_vox LMV_abu_simbel;
 extern const lm_vox LMV_sydney_bridge;

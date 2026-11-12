@@ -367,7 +367,7 @@ void game_new(game *g, int level, int players, int mode) {
   wd.substeps = opt_get("SUBSTEPS") ? atoi(opt_get("SUBSTEPS")) : 4;
   wd.hit_speed = 1.2f;
   wd.restitution_threshold = 2.0f;
-  wd.layers[LAYER_GROUND] = "ground", wd.layers[LAYER_BLOCK] = "block", wd.layers[LAYER_PROJ] = "shot";
+  wd.layers[LAYER_GROUND] = "ground", wd.layers[LAYER_BLOCK] = "block", wd.layers[LAYER_PROJ] = "shot", wd.layers[3] = "water";
   /* the physics on at most 12 of the pool's threads: past about 12 a step stops getting faster (tests/destructo-physics.mjs:
    * 6000 bodies 5.8 ms on 12 threads, 5.4 on 16 and 24), and on a loaded machine all 24 made the blast's steps slower
    * (Great Keep's collapse on romdev, load about 13: a step 6.2 to 7.1 ms on 24, 4.0 to 4.2 on 12). The same bits on any
@@ -461,7 +461,7 @@ void game_settle_finish(game *g) {
   g->nev = 0;
 }
 
-int game_awake(const game *g) { return cw_world3d_stats(g->w).awake_bodies; }
+int game_awake(const game *g) { return cw_world3d_stats(g->w).awake_bodies - water_awake(g); }
 
 t3_vec3 game_aim_dir(const game *g) {
   float sy, cy, sp, cp;
@@ -895,8 +895,9 @@ void game_step(game *g, const input *in) {
     const float v[10] = { pr.step, pr.pairs, pr.collide, pr.solve, pr.splitIslands, pr.refit, pr.bullets, pr.sleepIslands, pr.transforms, pr.hitEvents };
     memcpy(g_phys_worst, v, sizeof v);
   }
-  if (st.awake_bodies > g->max_awake) g->max_awake = st.awake_bodies;
-  g->awake_now = st.awake_bodies;
+  const int wk = water_awake(g); /* the lake's parcels do not count: a level is judged with water still running */
+  if (st.awake_bodies - wk > g->max_awake) g->max_awake = st.awake_bodies - wk;
+  g->awake_now = st.awake_bodies - wk;
   read_hits(g, pv);
   if (g->blast_shell > 0) { /* the blast goes on outward */
     blast_shell(g, g->blast_shell);
@@ -906,6 +907,7 @@ void game_step(game *g, const input *in) {
   int broke0 = g->broken;
   break_queued(g);
   chunks_step(g);
+  water_step(g);
   g->breaks_tick = g->broken - broke0;
   /* the shot */
   if (g->proj_live) {
@@ -939,7 +941,7 @@ void game_step(game *g, const input *in) {
   if (g->state == GS_FLIGHT) {
     if (!g->proj_live || (g->proj_hit_tick >= 0 && g->tick - g->proj_hit_tick > 40) || g->state_t > 60 * 6 || win_now(g)) g->state = GS_SETTLE, g->state_t = 0, g->settle_quiet = 0;
   } else if (g->state == GS_SETTLE) {
-    int awake = st.awake_bodies - (g->proj_live ? 1 : 0);
+    int awake = st.awake_bodies - wk - (g->proj_live ? 1 : 0);
     g->settle_quiet = awake <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->settle_quiet + 1 : 0;
     if (g->old_rules && g->tgt_left == 0 && g->state_t > 90) g->settle_quiet = 999; /* the control: judged while it falls */
     if (g->settle_quiet > SETTLE_QUIET || g->state_t > SETTLE_MAX || win_now(g)) {
@@ -977,7 +979,7 @@ void game_step(game *g, const input *in) {
   }
   /* the card is up and the rubble still falls: the share it shows only grows, until the world is still (at most 8 s) */
   if (g->rating_t > 0 && game_over(g)) {
-    int aw = st.awake_bodies;
+    int aw = st.awake_bodies - wk;
     g->judged_share = fmaxf(g->judged_share, game_share(g));
     g->rating_quiet = aw <= SETTLE_AWAKE && g->npend == 0 && g->blast_shell == 0 ? g->rating_quiet + 1 : 0;
     if (g->rating_quiet > SETTLE_QUIET || ++g->rating_t > 480) g->rating_t = 0;

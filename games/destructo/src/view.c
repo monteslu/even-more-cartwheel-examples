@@ -33,6 +33,8 @@ static struct {
   cw_node root, field, sky, sun, post;
   t3_instanced_mesh *poles, *flags, *beams;
   t3_instanced_mesh *blk[M_COUNT];
+  t3_instanced_mesh *water, *pool; /* the lake's parcels, and the pool they leave (water.c) */
+  cw_node lake;             /* the lake's surface for this level, under the field (freed with it) */
   t3_instanced_mesh *path, *roof, *curtain; /* curtain: a tower's tinted glass (glass painted dark or blue): no lamps behind it, the sky in it */
   float wind;
   cw_node crystal_light[MAXTGT];
@@ -307,6 +309,16 @@ void view_init(cw_node root) {
     t3_material_set_map(cm, ct);
     t3_release(ct);
     V.curtain = imesh(world, "CurtainGlass", t3_box_geometry_new(1, 1, 1, 1, 1, 1), cm, MAXBLK / 2, true);
+  }
+  { /* the water's parcels: small glossy spheres, foam-white where they run fast */
+    t3_material *wm = std_mat(1, 1, 1, 0.07f, 0);
+    wm->emissive = (t3_color){ 0.05f, 0.16f, 0.3f };
+    wm->emissive_intensity = 0.6f;
+    V.water = imesh(world, "Water", t3_sphere_geometry_new(0.5f, 10, 6), wm, MAXWATER, false);
+    t3_material *pm = std_mat(0.07f, 0.33f, 0.58f, 0.04f, 0);
+    pm->emissive = (t3_color){ 0.02f, 0.1f, 0.2f };
+    pm->emissive_intensity = 0.5f;
+    V.pool = imesh(world, "Pool", t3_cylinder_geometry_new(0.5f, 0.5f, 1, 14, 1, false), pm, WATER_POOL, false);
   }
   trees_init();
   for (int i = 0; i < MAXTGT; i++) {
@@ -1067,8 +1079,98 @@ static void block_layers(const game *g) {
     }
 }
 
+static void lake_view(const game *g, float alpha);
+
+/* ── the lake behind a dam, and its water (water.c) ─────────────────────────────────────────────────── */
+/* the lake: a surface over the canyon, from the dam's curved face back to the far cliff, at the level the sim says (it falls as the dam spills) */
+static void lake_view(const game *g, float alpha) {
+  const water_state *w = &g->wt;
+  if (!w->on) {
+    if (cw_node_valid(V.lake)) cw_node3d_set_scale(V.lake, (t3_vec3){ 0, 0, 0 }); /* (no lake in this level) */
+    V.water->count = 0, V.pool->count = 0;
+    return;
+  }
+  if (!cw_node_valid(V.lake)) {
+    /* a block of water one metre tall (the node's y scale is the level): its top, and the face it shows the dam, from the dam's curved upstream
+     * face back to the far ridge, as wide as the canyon at the surface (flaring upstream) */
+    enum { NXS = 40, NZS = 16, NT = (NXS + 1) * (NZS + 1), NV = NT + 2 * (NXS + 1) };
+    const float Zb = -12.6f;
+    static float pos[NV * 3], uv[NV * 2];
+    static unsigned idx[(NXS * NZS + NXS) * 6];
+    for (int j = 0; j <= NZS; j++)
+      for (int i = 0; i <= NXS; i++) {
+        float zf = water_dam_zc(w, 0) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS;
+        float half = 3.6f + 0.4f * w->level0 + fminf(2.0f, 0.3f * fmaxf(0, -z - 2.2f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
+        zf = water_dam_zc(w, x) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS; /* the far edge follows the arch */
+        int v = j * (NXS + 1) + i;
+        pos[v * 3] = x, pos[v * 3 + 1] = 1, pos[v * 3 + 2] = z;
+        uv[v * 2] = x * 0.25f, uv[v * 2 + 1] = z * 0.25f;
+      }
+    for (int i = 0; i <= NXS; i++) { /* the face toward the dam: the top row's x and z, a metre down */
+      int top = NZS * (NXS + 1) + i;
+      for (int k = 0; k < 2; k++) {
+        int v = NT + k * (NXS + 1) + i;
+        pos[v * 3] = pos[top * 3], pos[v * 3 + 1] = k ? 1.0f : 0.0f, pos[v * 3 + 2] = pos[top * 3 + 2];
+        uv[v * 2] = pos[top * 3] * 0.25f, uv[v * 2 + 1] = k * 0.25f;
+      }
+    }
+    int n = 0;
+    for (int j = 0; j < NZS; j++)
+      for (int i = 0; i < NXS; i++) {
+        unsigned a = (unsigned)(j * (NXS + 1) + i), b = a + NXS + 1, c = a + 1, d = b + 1;
+        idx[n++] = a, idx[n++] = b, idx[n++] = c, idx[n++] = c, idx[n++] = b, idx[n++] = d;
+      }
+    for (int i = 0; i < NXS; i++) {
+      unsigned a = (unsigned)(NT + i), b = a + NXS + 1, c = a + 1, d = b + 1; /* a, c: the foot; b, d: the surface */
+      idx[n++] = a, idx[n++] = c, idx[n++] = b, idx[n++] = b, idx[n++] = c, idx[n++] = d;
+    }
+    t3_geometry *geo = t3_geometry_new();
+    t3_geometry_set_attribute(geo, T3_ATTR_POSITION, t3_attribute_new(T3_FLOAT32, pos, NV, 3));
+    t3_geometry_set_attribute(geo, T3_ATTR_UV, t3_attribute_new(T3_FLOAT32, uv, NV, 2));
+    t3_geometry_set_index(geo, t3_attribute_new(T3_UINT32, idx, n, 1));
+    t3_geometry_compute_vertex_normals(geo);
+    t3_geometry_compute_bounding_sphere(geo);
+    t3_geometry_compute_bounding_box(geo);
+    t3_material *m = std_mat(0.06f, 0.3f, 0.52f, 0.05f, 0.0f);
+    m->emissive = (t3_color){ 0.02f, 0.1f, 0.2f };
+    m->emissive_intensity = 0.5f;
+    V.lake = piece(V.field, "Lake", geo, m, false);
+  }
+  cw_node3d_set_position(V.lake, (t3_vec3){ 0, 0, 0 });
+  cw_node3d_set_scale(V.lake, (t3_vec3){ 1, fmaxf(0.01f, w->level), 1 });
+  /* the parcels */
+  int n = 0;
+  for (int i = 0; i < w->n; i++) {
+    if (!w->live[i]) continue;
+    cw_xform3 x = cw_body3d_interpolated(w->body[i], alpha);
+    t3_vec3 vel = cw_body3d_velocity(w->body[i]);
+    float sp = sqrtf(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z), f = cw_smoothstep(2.5f, 6.0f, sp);
+    t3_mat4 mx;
+    t3_mat4_compose(&mx, x.p, x.q, (t3_vec3){ 0.5f, 0.5f, 0.5f }); /* (a parcel draws bigger than its body: a few hundred must read as a stream) */
+    t3_instanced_mesh_set_matrix_at(V.water, n, &mx);
+    float tint = 0.9f + 0.2f * (float)((i * 37) & 15) / 15.0f;
+    t3_instanced_mesh_set_color_at(V.water, n, (t3_color){ (0.22f + 0.7f * f) * tint, (0.52f + 0.4f * f) * tint, (0.95f + 0.05f * f) * tint });
+    n++;
+  }
+  V.water->count = n;
+  V.water->instance_matrix->version++;
+  if (V.water->instance_color) V.water->instance_color->version++;
+  /* the pool: a disc where each parcel lay, a quarter metre deep (a parcel is 0.22 m^3 over its disc) */
+  int np = w->npool < WATER_POOL ? w->npool : WATER_POOL;
+  for (int i = 0; i < np; i++) {
+    t3_mat4 mx;
+    t3_mat4_compose(&mx, (t3_vec3){ w->pool[i].x, w->pool[i].y + 0.07f + 0.0007f * (float)i, w->pool[i].z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.4f, 0.14f, 1.4f });
+    t3_instanced_mesh_set_matrix_at(V.pool, i, &mx);
+    t3_instanced_mesh_set_color_at(V.pool, i, (t3_color){ 1, 1, 1 });
+  }
+  V.pool->count = np;
+  V.pool->instance_matrix->version++;
+  if (V.pool->instance_color) V.pool->instance_color->version++;
+}
+
 void view_sync(const game *g, float alpha) {
   block_layers(g);
+  lake_view(g, alpha);
   int cnt[M_COUNT] = { 0 }, nroof = 0, ncurt = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];

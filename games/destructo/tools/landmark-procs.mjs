@@ -1072,24 +1072,36 @@ function machu(x, y, z) {
   return null;
 }
 
-/* ── the Hoover Dam: a curved concrete arch dam across a canyon, stepping out toward its foot, the two pairs of intake towers on the canyon walls, the powerhouse below ── */
+/* ── the Hoover Dam: the curved concrete arch-gravity dam across a red canyon, its crest road, the four round intake towers standing in the lake
+ * before the canyon walls, the lake behind it (its surface is drawn by the game: src/water.c, view.c), the powerhouse at the foot downstream.
+ * The canyon is a V cut in a ridge that falls away to the plain, flaring upstream where the lake lies; a low ridge closes the lake's far end. ── */
 function hoover(x, y, z) {
   const ax = Math.abs(x), H = 9.0;
-  const inner = 3.6 + 0.4 * y; /* the canyon: its walls close in toward the floor */
-  if (ax > inner + 0.2 && z > -3.6 && z < 5.0 && y < 11.5 - 0.15 * Math.max(0, ax - 7) + 0.3 * Math.sin(z * 1.2 + x * 0.8) - Math.max(0, z - 2.5) * 0.9 - Math.max(0, -z - 2.2) * 0.8) return y > 6 ? 'stone:SAND_STONE' : 'stone:ROSE_STONE';
-  /* the dam: the arc bulges upstream (toward -z), the face downstream stepped */
-  if (y < H && ax <= inner + 0.4) {
-    const zc = 0.08 * x * x - 1.2, t = 0.7 + (H - y) * 0.26, step = Math.round(t * 3) / 3;
-    if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
+  const flare = Math.min(2.0, 0.3 * Math.max(0, -z - 2.2));
+  const inner = 3.6 + 0.4 * y + flare; /* the canyon: its walls close in toward the floor */
+  const zc = 0.08 * x * x - 1.2; /* the dam's upstream face: the arch bulges toward the lake (-z) */
+  const band = (Math.floor(y / 0.9) & 1) ? 'stone:SAND_STONE' : 'stone:ROSE_STONE'; /* the canyon's strata, red and tan */
+  /* the dam: thick at the foot, thin at the crest, its downstream face stepped */
+  if (y < H && ax <= 3.6 + 0.4 * y + 0.4) {
+    const t = 0.8 + (H - y) * 0.3, step = Math.round(t * 3) / 3;
+    if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : 'stone:LIMESTONE';
   }
-  /* the intake towers: two each side, rising from the crest, round, with their domes (they stand in the lake in front of the canyon wall) */
-  for (const sx of [-1, 1]) for (const tx of [4.5, 6.0]) {
-    const cx = sx * tx, cz = 0.08 * cx * cx - 1.2 + 0.3, rr = Math.hypot(x - cx, z - cz);
-    if (rr < 0.6 && y >= H - 0.2 && y < H + 3.0) return y > H + 2.4 && y < H + 2.7 ? 'stone:TRIM_CREAM' : 'stone:LIMESTONE';
-    if (y >= H + 3.0 && y < H + 3.9 && rr < 0.62 * Math.sqrt(Math.max(0, 1 - sq((y - H - 3.0) / 0.9)))) return 'stone:GOLD';
+  /* the crest road's parapets, a cell high, along the arch */
+  if (y >= H && y < H + 0.35 && ax <= 3.6 + 0.4 * H + 0.4 && (Math.abs(z - (zc - 0.1)) < 0.17 || Math.abs(z - (zc + 0.8)) < 0.17)) return 'stone:TRIM_CREAM';
+  /* the four intake towers, two to a side, standing in the lake upstream of the crest: tapering drums, a cornice, a dark cap, a walk to the crest */
+  for (const sx of [-1, 1]) for (const tx of [3.9, 5.7]) {
+    const cx = sx * tx, cz = 0.08 * cx * cx - 1.2 - 1.9, rr = Math.hypot(x - cx, z - cz);
+    const rad = 0.78 - 0.02 * Math.max(0, y - 2.0);
+    if (y < H + 3.1 && rr < rad) return y > H + 2.35 && y < H + 2.7 ? 'stone:SAND_STONE' : y >= H + 2.7 ? 'stone:DARK_STONE' : 'stone:TRIM_CREAM';
+    if (y >= H - 0.3 && y < H && Math.abs(x - cx) < 0.18 && z > cz && z < zc) return 'stone:TRIM_CREAM';
   }
   /* the powerhouse at the foot downstream: a long low hall of two wings */
-  if (z > 1.6 + 0.08 * x * x * 0.2 && z < 4.0 && ax < 4.4 && y < 1.5 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:TRIM_CREAM' : 'stone:CONCRETE';
+  if (z > 1.6 + 0.08 * x * x * 0.2 && z < 4.0 && ax < 4.4 && y < 1.5 && !(ax < 0.6 && z < 2.6)) return y > 1.1 ? 'stone:CONCRETE' : 'stone:TRIM_CREAM';
+  /* the rock: a ridge, its crest at the canyon's rim, falling to the plain on both sides, the canyon cut into it; the lake's far end closed by a low ridge */
+  const rim = 3.6 + 0.4 * 11 + flare;
+  let gh = 9.8 - 3.2 * Math.max(0, ax - rim) + 0.4 * Math.sin(z * 0.9 + x * 0.7) - Math.max(0, z - 1.2) * 4.5 - Math.max(0, -z - 2.0) * 0.12 - Math.max(0, -z - 14.5) * 4.0;
+  if (z < -12.4) gh = Math.min(gh + 1, 8.6 + 0.3 * Math.sin(x * 1.1));
+  if (y < gh && (ax > inner + 0.2 || z < -12.4)) return band;
   return null;
 }
 
@@ -1260,7 +1272,7 @@ export default {
   great_wall: { ext: [32, 9.0, 11.5], cell: greatWall },
   petra: { ext: [15, 11.5, 6.4], cell: petra },
   machu: { ext: [18, 11, 12.4], cell: machu },
-  hoover: { ext: [18, 13.2, 9.2], cell: hoover },
+  hoover: { ext: [29, 13.2, 32], cell: hoover },
   abu_simbel: { ext: [14, 9.2, 6.8], cell: abuSimbel },
   sydney_bridge: { ext: [32, 9.2, 4.4], cell: sydneyBridge },
   borobudur: { ext: [18, 9.6, 18], cell: borobudur },

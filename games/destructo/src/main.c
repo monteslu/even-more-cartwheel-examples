@@ -840,7 +840,7 @@ static void fixed_update(void *u, double dt) {
 #ifdef DESTRUCTO_AUTOPILOT
     if (opt_get("FREEZE")) break; /* development: the level as built, nothing stepped (looking at a builder's work) */
     if (opt_on("HOLD")) break;    /* tests/destructo-coplanar.mjs: the level settled as for play, then held (no shot fired) */
-    if (opt_get("SCENE")) { /* the look sheets: a foot of the structure broken (dm set SCENE legout) or a charge at its middle (boom), no shot; the world steps, the view draws it */
+    if (opt_get("SCENE")) { /* the look sheets: a foot of the structure broken (dm set SCENE legout) or a charge at its middle (boom), or at the Hoover Dam's foot (dam); no shot; the world steps, the view draws it */
       input none = { 0 };
       G.overview = !opt_get("SCENE_CAM"); /* the wide view unless SCENE_CAM is set (the game's own collapse camera) */
       if (!strncmp(opt_get("SCENE"), "shot", 4)) { /* a real shot at the nearest foot: shot, heavy or charge (SCENE shotN, N the ammunition) */
@@ -852,6 +852,7 @@ static void fixed_update(void *u, double dt) {
         break;
       }
       if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "cut")) opt_set("NO_SUPPORT", "1"), game_cutaway(&G.g);
+      else if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ 0.0f, 0.8f, water_dam_zc(&G.g.wt, 0.0f) + 0.6f }); /* the Hoover Dam: a charge at the dam's foot (the spill's look sheet) */
       else if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
       G.g.state = GS_SETTLE;
       game_step(&G.g, &none);

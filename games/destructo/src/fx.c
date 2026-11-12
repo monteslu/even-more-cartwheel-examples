@@ -359,6 +359,9 @@ void fx_events(const game *g, int shooter) {
       light_swell(e->p, 22, 8, 0.1f, 0.4f, 1, 0.75f, 0.4f);
       rumble(shooter, 0.55f, 0.25f, 160);
       break;
+    case EV_SPILL: /* the dam spills: a low steady rumble in the pad, by the flow (a swell, never a jolt) */
+      rumble(shooter, fminf(0.4f, 0.08f + 0.02f * e->size), 0.05f, 250);
+      break;
     default: break;
     }
   }

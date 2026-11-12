@@ -107,7 +107,8 @@ typedef struct banner { int blk; t3_vec3 local; float h; uint8_t colour, side; }
 
 /* events for the view and the sound (render only; the simulation never reads them back) */
 enum { EV_HIT, EV_BREAK, EV_SHATTER, EV_BOOM, EV_LAUNCH, EV_TARGET, EV_LAND, EV_SPLASH, EV_STRIKE /* a ball crushing into the structure (its burst) */,
-       EV_CRACK /* a chunk let go (its support gone): a: its mass in kg, size: its height */, EV_CRUMBLE /* a chunk landed hard and broke: a: the energy in joules */ };
+       EV_CRACK /* a chunk let go (its support gone): a: its mass in kg, size: its height */, EV_CRUMBLE /* a chunk landed hard and broke: a: the energy in joules */,
+       EV_SPILL /* a dam spills (water.c): size: the flow in m^3/s, a: parcels made so far */ };
 typedef struct sim_event {
   uint8_t kind, mat;
   t3_vec3 p, n;
@@ -143,7 +144,7 @@ typedef struct level_def {
   float mark;        /* the share that counts as brought down */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
-#define NLEVELS 41 /* the shipped landmarks (the rows of levels.c): the level select, the progression and the next level */
+#define NLEVELS 42 /* the shipped landmarks (the rows of levels.c): the level select, the progression and the next level */
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or
@@ -165,6 +166,34 @@ typedef struct player_state {
   int8_t out;        /* party: 0 in, 1 out for a crystal, 2 out on strikes */
   int8_t out_order;  /* party: 1 the first out, 2 the next ... */
 } player_state;
+
+
+/* water (water.c): the lake behind a dam, and what spills when the dam breaks. The dam's face is cut into bins (BIN metres square);
+ * a bin lists the dam blocks over it and is open once none of them stands where it was built */
+#define MAXWATER 240
+#define WATER_POOL 240
+#define WATER_BIN 0.3f
+#define WATER_BX 52
+#define WATER_BY 28
+#define WATER_NB (WATER_BX * WATER_BY)
+#define WATER_LIST 12000
+typedef struct water_state {
+  bool on;
+  float level0, level, area; /* the lake's surface: where it began, where it is now, its area (m^2) */
+  float dam_top, arch_a, arch_z0, bx0; /* the dam's crest height and arch (the face's z is arch_a x^2 + arch_z0), the bins' left edge */
+  uint16_t bin_off[WATER_NB + 1], bin_blk[WATER_LIST];
+  uint8_t bin_n[WATER_NB];
+  uint16_t open_bin[WATER_NB];
+  int nopen;
+  float flow, carry, vol_out; /* the breach's flow now (m^3/s), the parcel not yet made, the water spilled (m^3) */
+  int rr, spawned, first_tick; /* which open bin the next parcel comes through, parcels made, the tick the first was */
+  int n;
+  cw_body3d body[MAXWATER];
+  int born[MAXWATER];
+  uint8_t live[MAXWATER]; /* parcels in play: one that has come to rest low down is retired into the pool (its body parked under the ground) */
+  t3_vec3 pool[WATER_POOL]; /* where the water lies: one disc a retired parcel (x, ground height, z) */
+  int npool, retired;
+} water_state;
 
 typedef struct game {
   cw_world3d w;
@@ -261,6 +290,7 @@ typedef struct game {
   uint8_t paint_now; /* the paint game_add_block gives (levels.c) */
   banner ban[MAXBANNER];
   int nban;
+  water_state wt;    /* a landmark with a lake behind a dam (water.c) */
 } game;
 
 /* sim.c */
@@ -338,6 +368,12 @@ void game_fire(game *g);
 
 /* levels.c */
 void level_build(game *g, const level_def *L);
+/* water.c */
+void water_setup(game *g, float level, float area, float dam_top, float arch_a, float arch_z0);
+void water_step(game *g);
+int water_awake(const game *g);
+float water_dam_zc(const water_state *w, float x);
+void water_stats(const game *g, int *alive, int *awake, float *mean_y, float *max_y, float *ke);
 /* landmarks.c */
 enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA_HOUSE, LM_TAJ_MAHAL, LM_WILLIS, LM_NEUSCHWANSTEIN, LM_BURJ_KHALIFA,
        LM_COLOSSEUM, LM_BIG_BEN, LM_PISA, LM_PARTHENON, LM_STONEHENGE, LM_TOWER_BRIDGE, LM_ST_BASILS, LM_PETRONAS, LM_PAGODA, LM_ANGKOR_WAT,
