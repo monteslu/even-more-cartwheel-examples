@@ -38,8 +38,8 @@ float water_dam_zc(const water_state *w, float x) { return w->arch_a * x * x + w
 static bool is_dam(const water_state *w, t3_vec3 p) {
   float ax = fabsf(p.x), zc = water_dam_zc(w, p.x);
   if (p.y < 0.3f || p.y > w->dam_top - 0.1f) return false;
-  if (ax > 3.6f + 0.4f * p.y + 0.9f) return false;
-  return p.z > zc - 0.8f && p.z < zc + 0.7f + (w->dam_top - p.y) * 0.26f + 0.6f;
+  if (ax > 4.6f + 0.2f * p.y + 0.9f) return false;
+  return p.z > zc - 0.8f && p.z < zc + 0.7f + (w->dam_top - p.y) * 0.07f + 0.6f;
 }
 
 void water_setup(game *g, float level, float area, float dam_top, float arch_a, float arch_z0) {
@@ -144,7 +144,7 @@ void water_step(game *g) {
     if (!w->live[i] || g->tick - w->born[i] < 60) continue;
     cw_xform3 x = cw_body3d_transform(w->body[i]);
     t3_vec3 v = cw_body3d_velocity(w->body[i]);
-    if (x.p.y < 1.4f && v.x * v.x + v.y * v.y + v.z * v.z < 0.8f * 0.8f) retire_to_pool(g, i, false);
+    if ((x.p.y < 1.4f && v.x * v.x + v.y * v.y + v.z * v.z < 0.8f * 0.8f) || (g->tick - w->born[i] > 150 && v.x * v.x + v.y * v.y + v.z * v.z < 0.3f * 0.3f)) retire_to_pool(g, i, false);
   }
   /* the breach, read every third tick: the open bins under the surface and the flow they pass */
   if (g->tick % 3 == 0 || w->nopen < 0) {

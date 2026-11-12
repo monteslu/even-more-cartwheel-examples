@@ -1093,14 +1093,14 @@ static void lake_view(const game *g, float alpha) {
   if (!cw_node_valid(V.lake)) {
     /* a block of water one metre tall (the node's y scale is the level): its top, and the face it shows the dam, from the dam's curved upstream
      * face back to the far ridge, as wide as the canyon at the surface (flaring upstream) */
-    enum { NXS = 40, NZS = 16, NT = (NXS + 1) * (NZS + 1), NV = NT + 2 * (NXS + 1) };
-    const float Zb = -12.6f;
+    enum { NXS = 40, NZS = 24, NT = (NXS + 1) * (NZS + 1), NV = NT + 2 * (NXS + 1) };
+    const float Zb = -26.0f;
     static float pos[NV * 3], uv[NV * 2];
     static unsigned idx[(NXS * NZS + NXS) * 6];
     for (int j = 0; j <= NZS; j++)
       for (int i = 0; i <= NXS; i++) {
         float zf = water_dam_zc(w, 0) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS;
-        float half = 3.6f + 0.4f * w->level0 + fminf(2.0f, 0.3f * fmaxf(0, -z - 2.2f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
+        float half = 4.6f + 0.2f * w->level0 + fminf(3.0f, 0.3f * fmaxf(0, -z - 2.2f)) + 0.2f, x = -half + 2 * half * (float)i / NXS;
         zf = water_dam_zc(w, x) - 0.1f, z = Zb + (zf - Zb) * (float)j / NZS; /* the far edge follows the arch */
         int v = j * (NXS + 1) + i;
         pos[v * 3] = x, pos[v * 3 + 1] = 1, pos[v * 3 + 2] = z;
@@ -1146,7 +1146,7 @@ static void lake_view(const game *g, float alpha) {
     t3_vec3 vel = cw_body3d_velocity(w->body[i]);
     float sp = sqrtf(vel.x * vel.x + vel.y * vel.y + vel.z * vel.z), f = cw_smoothstep(2.5f, 6.0f, sp);
     t3_mat4 mx;
-    t3_mat4_compose(&mx, x.p, x.q, (t3_vec3){ 0.5f, 0.5f, 0.5f }); /* (a parcel draws bigger than its body: a few hundred must read as a stream) */
+    t3_mat4_compose(&mx, x.p, x.q, (t3_vec3){ 0.9f, 0.9f, 0.9f }); /* (a parcel draws bigger than its body: a few hundred must read as a stream) */
     t3_instanced_mesh_set_matrix_at(V.water, n, &mx);
     float tint = 0.9f + 0.2f * (float)((i * 37) & 15) / 15.0f;
     t3_instanced_mesh_set_color_at(V.water, n, (t3_color){ (0.22f + 0.7f * f) * tint, (0.52f + 0.4f * f) * tint, (0.95f + 0.05f * f) * tint });
@@ -1159,7 +1159,7 @@ static void lake_view(const game *g, float alpha) {
   int np = w->npool < WATER_POOL ? w->npool : WATER_POOL;
   for (int i = 0; i < np; i++) {
     t3_mat4 mx;
-    t3_mat4_compose(&mx, (t3_vec3){ w->pool[i].x, w->pool[i].y + 0.07f + 0.0007f * (float)i, w->pool[i].z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.4f, 0.14f, 1.4f });
+    t3_mat4_compose(&mx, (t3_vec3){ w->pool[i].x, w->pool[i].y + 0.07f + 0.0007f * (float)i, w->pool[i].z }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.8f, 0.16f, 1.8f });
     t3_instanced_mesh_set_matrix_at(V.pool, i, &mx);
     t3_instanced_mesh_set_color_at(V.pool, i, (t3_color){ 1, 1, 1 });
   }
