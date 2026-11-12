@@ -405,11 +405,14 @@ float vol_all = 0, vol_mass = 0;
   int broken_leg = game_legout(&G, charge);
   int snap = 0;
   const int snaps[16] = { 30, 60, 120, 180, 240, 300, 360, 420, 480, 600, 720, 840, 960, 1080, 1200, 1500 };
-  double ms_sum = 0, ms_max = 0, w_sum = 0, p_sum = 0; int ms_n = 0;
+  double ms_sum = 0, ms_max = 0, w_sum = 0, w_max = 0, p_sum = 0; int ms_n = 0;
+  double w4_sum = 0, w4_max = 0; int w4_n = 0, aw4 = 0;
   float worst_rebound = 0, worst_rig = 0; int pairs_all = 0;
   for (int t = 1; t <= 1500; t++) {
     game_step(&G, &none);
     ms_sum += G.tick_ms, w_sum += G.world_ms, p_sum += G.post_ms, ms_n++; if (G.tick_ms > ms_max) ms_max = G.tick_ms;
+    if (G.world_ms > w_max) w_max = G.world_ms;
+    if (t > 60 && t <= 240) { w4_sum += G.world_ms, w4_n++; if (G.world_ms > w4_max) w4_max = G.world_ms; int aw = game_awake(&G); if (aw > aw4) aw4 = aw; }
     if (opt_on("TRACE") && t <= 10) { float vm = 0; int nd = 0, na = 0; for (int c = 0; c < G.nch; c++) if (G.ch[c].alive && G.ch[c].dyn && G.ch[c].placed) { nd++; if (cw_body3d_awake(G.ch[c].body)) na++; t3_vec3 v = cw_body3d_velocity(G.ch[c].body); float s = sqrtf(v.x*v.x+v.y*v.y+v.z*v.z); if (s > vm) vm = s; } printf("{\"trace\":%d,\"dyn\":%d,\"awake\":%d,\"vmax\":%.2f}\n", t, nd, na, vm); }
     /* chunks let go this tick: each a piece */
     for (int c = 0; c < G.nch; c++) {
@@ -472,12 +475,14 @@ float vol_all = 0, vol_mass = 0;
       for (int i = 0; i < G.nb; i++) if (was[i] && G.b[i].alive && !G.b[i].gen) { t3_vec3 p = game_block_xform(&G, i).p; if (p.y > top_y) top_y = p.y; cog_x += p.x, cog_z += p.z, cog_n++; }
       int alive_placed = 0;
       for (int i = 0; i < G.nb; i++) alive_placed += G.b[i].alive && G.b[i].tag == 1 && G.b[i].target < 0 && !G.b[i].gen;
-      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"legout\",\"t\":%.2f,\"broken\":%d,\"placed\":%d,\"placed_alive\":%d,\"standing\":%d,\"released\":%d,\"fractured\":%d,\"largest\":%d,\"over6\":%d,\"pieces\":%d,\"rigid_mm\":%.2f,\"pairs\":%d,\"rebound\":%.3f,\"fallers\":%d,\"moved\":%.3f,\"top_y\":%.2f,\"tip\":[%.2f,%.2f,%.2f,%.2f,%.0f,%.0f,%.2f,%.0f],\"cog\":[%.2f,%.2f],\"awake\":%d,\"tick_ms_mean\":%.2f,\"tick_ms_max\":%.2f,\"world_ms_mean\":%.2f,\"post_ms_mean\":%.2f,\"ms_settype\":%.1f,\"ms_carve\":%.1f,\"ms_resolve\":%.1f,\"ms_support\":%.1f,\"height\":%.2f}\n",
-             level, G.L->name, t / 60.0f, broken_leg, total, alive_placed, sn, G.released, G.fractured, big, o6s, npc, worst_rig, pairs_all, worst_rebound, fallers, was_n ? (float)moved_n / (float)was_n : 0, top_y, g_tipdbg[0], g_tipdbg[1], g_tipdbg[2], g_tipdbg[3], g_tipdbg[4], g_tipdbg[5], g_tipdbg[6], g_tipdbg[7], cog_n ? cog_x / cog_n : 0, cog_n ? cog_z / cog_n : 0, game_awake(&G), ms_n ? ms_sum / ms_n : 0, ms_max, ms_n ? w_sum / ms_n : 0, ms_n ? p_sum / ms_n : 0, g_ch_ms[0], g_ch_ms[1], g_ch_ms[2], g_ch_ms[3], G.top);
+      printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"legout\",\"t\":%.2f,\"broken\":%d,\"placed\":%d,\"placed_alive\":%d,\"standing\":%d,\"released\":%d,\"fractured\":%d,\"largest\":%d,\"over6\":%d,\"pieces\":%d,\"rigid_mm\":%.2f,\"pairs\":%d,\"rebound\":%.3f,\"fallers\":%d,\"moved\":%.3f,\"top_y\":%.2f,\"tip\":[%.2f,%.2f,%.2f,%.2f,%.0f,%.0f,%.2f,%.0f],\"cog\":[%.2f,%.2f],\"awake\":%d,\"tick_ms_mean\":%.2f,\"tick_ms_max\":%.2f,\"world_ms_mean\":%.2f,\"world_ms_max\":%.2f,\"post_ms_mean\":%.2f,\"ms_settype\":%.1f,\"ms_carve\":%.1f,\"ms_resolve\":%.1f,\"ms_support\":%.1f,\"height\":%.2f}\n",
+             level, G.L->name, t / 60.0f, broken_leg, total, alive_placed, sn, G.released, G.fractured, big, o6s, npc, worst_rig, pairs_all, worst_rebound, fallers, was_n ? (float)moved_n / (float)was_n : 0, top_y, g_tipdbg[0], g_tipdbg[1], g_tipdbg[2], g_tipdbg[3], g_tipdbg[4], g_tipdbg[5], g_tipdbg[6], g_tipdbg[7], cog_n ? cog_x / cog_n : 0, cog_n ? cog_z / cog_n : 0, game_awake(&G), ms_n ? ms_sum / ms_n : 0, ms_max, ms_n ? w_sum / ms_n : 0, w_max, ms_n ? p_sum / ms_n : 0, g_ch_ms[0], g_ch_ms[1], g_ch_ms[2], g_ch_ms[3], G.top);
       fflush(stdout);
       snap++;
     }
   }
+  printf("{\"level\":%d,\"name\":\"%s\",\"phase\":\"window\",\"world_ms_mean_1_4s\":%.2f,\"world_ms_max_1_4s\":%.2f,\"awake_max_1_4s\":%d}\n", level, G.L->name, w4_n ? w4_sum / w4_n : 0, w4_max, aw4);
+  fflush(stdout);
 }
 
 /* --realshot [--opt AMMO=n] level ...: a real shot (ammunition n: 0 shot, 1 heavy ball, 2 charge) fired through the launcher at the nearest low block of the structure (a foot or a base column), then 10 s. Per snapshot:
