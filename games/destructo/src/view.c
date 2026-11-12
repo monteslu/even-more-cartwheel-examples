@@ -318,7 +318,7 @@ void view_init(cw_node root) {
     t3_material *pm = std_mat(0.07f, 0.33f, 0.58f, 0.04f, 0);
     pm->emissive = (t3_color){ 0.02f, 0.1f, 0.2f };
     pm->emissive_intensity = 0.5f;
-    V.pool = imesh(world, "Pool", t3_cylinder_geometry_new(0.5f, 0.5f, 1, 20, 1, false), pm, WATER_POOL + 1, false);
+    V.pool = imesh(world, "Pool", t3_cylinder_geometry_new(0.5f, 0.5f, 1, 20, 1, false), pm, WATER_POOL + 8, false);
   }
   trees_init();
   for (int i = 0; i < MAXTGT; i++) {
@@ -1163,13 +1163,21 @@ static void lake_view(const game *g, float alpha) {
     t3_instanced_mesh_set_matrix_at(V.pool, i, &mx);
     t3_instanced_mesh_set_color_at(V.pool, i, (t3_color){ 1, 1, 1 });
   }
-  float flood = fminf(44.0f, w->vol_out * 0.12f); /* the water that has spilled runs out over the valley floor below the dam: a sheet that lengthens with it */
+  /* the flood: the water that has spilled runs out over the valley floor below the dam as a wave front that lengthens with it: a broad sheet, and over it
+   * bands of foam that run downstream, brighter toward the front (each band a squashed disc, its place sliding with the tick) */
+  float flood = fminf(60.0f, w->vol_out * 0.16f);
   if (flood > 0.5f) {
-    t3_mat4 mx;
-    t3_mat4_compose(&mx, (t3_vec3){ 0, 0.16f, water_dam_zc(w, 0) + 4.0f + flood * 0.5f }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 15.0f + flood * 0.15f, 0.22f, flood });
-    t3_instanced_mesh_set_matrix_at(V.pool, np, &mx);
-    t3_instanced_mesh_set_color_at(V.pool, np, (t3_color){ 1.15f, 1.3f, 1.45f });
-    np++;
+    float z0 = water_dam_zc(w, 0) + 3.0f, ph = (float)g->tick * 0.05f;
+    for (int k = 0; k < 6 && np < WATER_POOL + 8; k++) {
+      float f = k == 0 ? 1.0f : 1.0f - 0.14f * (float)k + 0.07f * sinf(ph * 2.0f + (float)k * 1.7f), len = flood * f;
+      float spread = 1.0f - 0.1f * (float)k;
+      t3_mat4 mx;
+      t3_mat4_compose(&mx, (t3_vec3){ 0.6f * sinf(ph + (float)k), 0.16f + 0.03f * (float)k, z0 + len * 0.5f }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ (17.0f + flood * 0.35f) * spread, 0.22f, len });
+      t3_instanced_mesh_set_matrix_at(V.pool, np, &mx);
+      float b = k == 0 ? 1.0f : 1.25f + 0.12f * (float)k;
+      t3_instanced_mesh_set_color_at(V.pool, np, k == 0 ? (t3_color){ 0.9f, 1.25f, 1.5f } : (t3_color){ b, b * 1.1f, b * 1.2f });
+      np++;
+    }
   }
   V.pool->count = np;
   V.pool->instance_matrix->version++;

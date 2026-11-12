@@ -192,8 +192,22 @@ void water_step(game *g) {
       w->vol_out += WATER_VP;
       w->level -= WATER_VP / w->area;
     }
-    if (made > 0 && (g->tick % 20 == 0 || w->spawned == made)) game_ev(g, EV_SPILL, 0, V3(0, w->level, 0), V3(0, 1, 0), w->flow, 0, w->spawned);
+    if (made > 0 && (g->tick % 20 == 0 || w->spawned == made)) { /* the event sits at the breach (its middle, on the dam's downstream side) so the spray and mist rise there */
+      float sx = 0, sy = 0, sz = 0;
+      for (int k = 0; k < w->nopen; k++) { int ob = w->open_bin[k]; sx += (float)(ob % WATER_BX); sy += (float)(ob / WATER_BX); }
+      sx = w->bx0 + (sx / (float)w->nopen + 0.5f) * WATER_BIN, sy = (sy / (float)w->nopen + 0.5f) * WATER_BIN, sz = water_dam_zc(w, sx) + 1.0f;
+      game_ev(g, EV_SPILL, 0, V3(sx, sy, sz), V3(0, 1, 0), w->flow, 0, w->spawned);
+    }
   } else w->carry = 0;
+  /* the breach's beat: the world's clock slows to about a third for 23 ticks from the first water, eased in and out (the winning blow's beat, a moment to see the dam give) */
+  if (w->spawned > 0 && g->state != GS_WON) {
+    int t = g->tick - w->first_tick;
+    if (t >= 0 && t < 23) {
+      float k = fminf(fminf(1.0f, (float)t / 6.0f), fminf(1.0f, (float)(23 - t) / 6.0f));
+      k = k * k * (3 - 2 * k);
+      g->time_scale = 1.0f - 0.65f * k;
+    } else if (t == 23) g->time_scale = 0;
+  }
 }
 
 /* the water's own numbers for the checks: parcels alive, awake, at rest; their mean height and the kinetic energy (J) of them all */

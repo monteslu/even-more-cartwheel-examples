@@ -35,7 +35,7 @@ static struct {
   cw_node root;
   cw_node boom[BOOMS];
   int nboom;
-  cw_node dust_warm, dust_pale, dust_big, plume, chips[M_COUNT], sparks, glass, sparkle, muzzle, smoke;
+  cw_node mist, spray, dust_warm, dust_pale, dust_big, plume, chips[M_COUNT], sparks, glass, sparkle, muzzle, smoke;
   cw_node light[LIGHTS];
   float light_t[LIGHTS], light_peak[LIGHTS], light_rise[LIGHTS], light_fall[LIGHTS];
   int nl;
@@ -128,6 +128,17 @@ static const char *const SMOKE[] = { "amount", "8", "lifetime", "2.4", "explosiv
   "color_ramp", "\"0 0.9 0.88 0.85 0, 0.1 0.8 0.78 0.76 0.6, 1 0.7 0.7 0.7 0\"",
   "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.2", NULL };
 
+/* the dam's spill: a huge soft white-blue mist that billows up from the breach, and the fast spray thrown out of it */
+static const char *const MIST[] = { "amount", "10", "lifetime", "4.0", "lifetime_random", "0.3", "explosiveness", "0.5", "one_shot", "true",
+  "emission_shape", "BOX", "emission_extents", "vec3(2.2, 0.8, 0.8)", "direction", "vec3(0, 1, 0.5)", "spread", "70", "speed_min", "1.5", "speed_max", "5",
+  "gravity", "vec3(0, 0.5, 0.3)", "damping", "0.8", "blend", "ALPHA", "soft_distance", "1.0", "size", "4.2", "size_random", "0.35",
+  "size_curve", "\"0 0.4, 0.3 1, 1 1.8\"", "color_ramp", "\"0 0.9 0.96 1 0, 0.15 0.88 0.95 1 0.55, 0.6 0.82 0.9 0.98 0.3, 1 0.8 0.88 0.95 0\"",
+  "texture", "\"fx/smoke.png\"", "hframes", "8", "vframes", "8", "spin", "0.1", "turbulence", "0.8", "turbulence_scale", "0.3", "camera_fade", "4", NULL };
+static const char *const SPRAY[] = { "amount", "40", "lifetime", "1.6", "lifetime_random", "0.4", "explosiveness", "0.8", "one_shot", "true",
+  "emission_shape", "BOX", "emission_extents", "vec3(2.0, 0.6, 0.3)", "direction", "vec3(0, 0.6, 1)", "spread", "55", "speed_min", "3", "speed_max", "9",
+  "gravity", "vec3(0, -9.8, 0)", "draw_mode", "MESH", "mesh_primitive", "BOX", "blend", "ADD", "size", "0.13", "size_random", "0.7",
+  "color", "color(0.8, 0.95, 1.0, 1)", "energy", "1.6", "color_ramp", "\"0 1 1 1 1, 0.6 0.8 0.93 1 0.7, 1 0.7 0.9 1 0\"", NULL };
+
 /* the plume a collapse leaves: a few big soft puffs that rise a little, drift downwind and thin over 8 to 11 s */
 static const char *const PLUME[] = { "amount", "5", "lifetime", "9.5", "lifetime_random", "0.15", "explosiveness", "0.6", "one_shot", "true",
   "emission_shape", "BOX", "emission_extents", "vec3(2.4, 0.6, 2.4)", "direction", "vec3(0, 1, 0)", "spread", "60", "speed_min", "0.3", "speed_max", "1.2",
@@ -202,6 +213,8 @@ void fx_init(cw_node root) {
   FX.dust_pale = bnode("DustPale", DUST_PALE, 330, 24);
   FX.dust_big = bnode("DustBig", DUST_BIG, 360, 10);
   FX.plume = bnode("Plume", PLUME, 380, 8);
+  FX.mist = bnode("SpillMist", MIST, 400, 8);
+  FX.spray = bnode("SpillSpray", SPRAY, 410, 8);
   for (int i = 0; i < MARKS; i++) {
     cw_node d = FX.mark[i] = cw_node_new("Decal3D", "GroundMark");
     cw_node_add_child(FX.root, d);
@@ -360,7 +373,10 @@ void fx_events(const game *g, int shooter) {
       rumble(shooter, 0.55f, 0.25f, 160);
       break;
     case EV_SPILL: /* the dam spills: a low steady rumble in the pad, by the flow (a swell, never a jolt) */
-      rumble(shooter, fminf(0.4f, 0.08f + 0.02f * e->size), 0.05f, 250);
+      rumble(shooter, fminf(0.5f, 0.08f + 0.004f * e->size), 0.05f, 250); /* by the flow: a swell, never a jolt */
+      cw_particles_burst(FX.mist, e->p, (t3_vec3){ 0, 1, 0.4f });
+      cw_particles_burst(FX.spray, e->p, (t3_vec3){ 0, 0.5f, 1 });
+      if (e->a < 40) cw_particles_burst(FX.mist, (t3_vec3){ e->p.x, 0.6f, e->p.z + 3.0f }, (t3_vec3){ 0, 1, 0.6f }); /* the first surge hits the valley floor */
       break;
     default: break;
     }
