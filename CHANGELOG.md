@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.0
+
+- **Destructo**: the Hoover Dam, with water. A thin curved concrete wall with four intake towers and a crest road stands in a tall dark gorge with a big lake behind it, opened from downstream and above. Break the wall at its foot and the lake spills through the breach at once: a slow-motion beat on the first water, mist and spray, a surge that spreads down the valley as a flood wave, the lake dropping as it empties, and the pad rumbling with the flow. The water is up to 240 small bodies that run downhill, lose their energy and pool, and do not count toward the settle wait. A level can now set its own camera framing.
+- A blind judge names the dam from the frame alone in both views, and a check with the dam left standing makes no water.
+- Landmarks: 42 in all.
+
 ## 0.23.0
 
 - **Destructo**: finer bricks. Thirty-one landmarks are built of smaller bricks, 1.4 to 2.8 times finer cells: Saint Basil's has 8,048 bricks (from 2,804), the Kremlin 4,642 (from 997), Notre-Dame 5,794 (from 2,093), the Pantheon 5,864, the pagoda 6,052, the Japanese castle 5,646 and the Taj Mahal 3,696. A blind judge still names each from the frame alone; Harbour Sails, Angkor Wat, Hagia Sophia, the Blue Mosque and the Atoms keep their older cells because the finer ones failed a check.
