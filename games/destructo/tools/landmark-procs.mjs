@@ -1084,17 +1084,17 @@ function hooverBase(x, y, z) {
   const zc = 0.1 * x * x - 1.2; /* the dam's upstream face: the arch bulges toward the lake (-z), so from below the face is a deep concave curve */
   const band = (Math.floor(y / 1.1) % 7 === 5) ? 'stone:ROSE_STONE' : (Math.floor(y / 1.1) & 1) ? 'stone:ROCK' : 'stone:IRON'; /* a dark canyon, red-brown strata */
   /* the wall: thin, a little thicker at the foot, vertical sides on the arch; its ends bury themselves in the canyon's walls (the rock is laid first and the wall is cut out of it) */
-  if (y < H && ax <= W(y) + 0.9) {
+  if (y < H && ax <= W(y) - 0.2) {
     const t = 0.8 + (H - y) * 0.045, step = Math.round(t * 3) / 3;
     if (z > zc - 0.25 && z < zc + step - 0.25) return y > H - 0.35 ? 'stone:TRIM_CREAM' : y < 1.5 ? 'stone:CONCRETE' : 'stone:WHITE_STONE';
   }
   /* the straight road along the crest, with its parapets */
-  if (y >= H && y < H + 0.35 && ax <= W(H) + 0.9 && (Math.abs(z - (zc - 0.1)) < 0.17 || Math.abs(z - (zc + 0.8)) < 0.17)) return 'stone:TRIM_CREAM';
+  if (y >= H && y < H + 0.35 && ax <= W(H) - 0.2 && (Math.abs(z - (zc - 0.1)) < 0.17 || Math.abs(z - (zc + 0.8)) < 0.17)) return 'stone:TRIM_CREAM';
   /* the four round intake towers, two to a side, standing in the lake upstream of the crest against the canyon wall: tapering drums, a cornice, a dark cap, a walk to the crest */
-  for (const sx of [-1, 1]) for (const tx of [4.4, 6.3]) {
+  for (const sx of [-1, 1]) for (const tx of [4.0, 5.6]) {
     const cx = sx * tx, cz = 0.1 * cx * cx - 1.2 - 1.9, rr = Math.hypot(x - cx, z - cz);
     const rad = 0.82 - 0.02 * Math.max(0, y - 2.0);
-    if (y < H + 4.0 && rr < rad) return y > H + 3.2 && y < H + 3.6 ? 'stone:BRONZE' : y >= H + 3.6 ? 'stone:DARK_STONE' : 'stone:TRIM_CREAM';
+    if (y < H + 4.0 && rr < rad && ax <= W(y) - 0.2) return y > H + 3.2 && y < H + 3.6 ? 'stone:BRONZE' : y >= H + 3.6 ? 'stone:DARK_STONE' : 'stone:TRIM_CREAM';
     if (y >= H - 0.3 && y < H && Math.abs(x - cx) < 0.18 && z > cz && z < zc) return 'stone:TRIM_CREAM';
   }
   /* the powerhouse at the foot downstream: two long low wings along the curve of the wall's foot, a gap between */
