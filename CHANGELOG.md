@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.0
+
+- **Destructo**: finer bricks. Thirty-one landmarks are built of smaller bricks, 1.4 to 2.8 times finer cells: Saint Basil's has 8,048 bricks (from 2,804), the Kremlin 4,642 (from 997), Notre-Dame 5,794 (from 2,093), the Pantheon 5,864, the pagoda 6,052, the Japanese castle 5,646 and the Taj Mahal 3,696. A blind judge still names each from the frame alone; Harbour Sails, Angkor Wat, Hagia Sophia, the Blue Mosque and the Atoms keep their older cells because the finer ones failed a check.
+- **Destructo**: a collapse no longer spikes. Removing a piece from a bonded structure made the physics recompute its mass once per member, so a welded landmark's worst collapse tick took 100 to 700 ms; it is under 20 ms now (Notre-Dame 11.9 ms, Pisa 19.2 ms the worst), and the mean physics step on every landmark is under 7.3 ms on the check machine.
+- Known: the human-like full sweep clears Golden Span 4 of 8 and Brooklyn Bridge 6 of 8.
+
 ## 0.22.0
 
 - **Destructo**: only famous places. The four tutorial levels and the 26 other invented buildings are gone, and so is Christ the Redeemer; the level select is 41 real landmarks ordered by difficulty, and the first level is the Leaning Tower of Pisa with the first-use hints. The store art and screenshot show landmarks.
