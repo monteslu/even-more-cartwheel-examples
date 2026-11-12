@@ -12,7 +12,7 @@
   {
     "name": "destructo-newcomer",
     "script": "tests/destructo-newcomer.mjs",
-    "note": "The human-like newcomer clears levels 1 to 3 with all eight seeds, level 1 within par plus 4 (the full sweep is tests/destructo-human.mjs)."
+    "note": "The human-like newcomer clears level 1 (a real landmark) with all eight seeds within par plus 4, and a player with eight times the aim error does not (the full sweep is tests/destructo-human.mjs)."
   },
   {
     "name": "destructo-loading",

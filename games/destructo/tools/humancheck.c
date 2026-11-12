@@ -27,11 +27,9 @@
 static game G;
 #ifdef PRE_R3 /* the build before round 3 (the gate's measurement of it): no judged share, no marks */
 #define JUDGED_SHARE 0.0f
-#define KEG(k) 0
 #define MARK 0.0f
 #else
 #define JUDGED_SHARE G.judged_share
-#define KEG(k) ((k)->keg)
 #define MARK game_mark(&G)
 #endif
 
@@ -68,9 +66,9 @@ static void play(int level, int seed, float skill_k) {
     if (first_down < 0 && G.tgt_left < left) first_down = G.shots;
     ticks++;
   }
-  printf("{\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"seed\":%d,\"full_power\":%d,\"cleared\":%s,\"shots\":%d,\"ammo\":%d,\"par\":%d,\"stars\":%d,"
+  printf("{\"level\":%d,\"name\":\"%s\",\"seed\":%d,\"full_power\":%d,\"cleared\":%s,\"shots\":%d,\"ammo\":%d,\"par\":%d,\"stars\":%d,"
          "\"targets\":%d,\"left\":%d,\"first_down_shot\":%d,\"share\":%.3f,\"mark\":%.3f,\"broken\":%d,\"ticks\":%d,\"orbit_ticks\":%d,\"orbit\":%.3f}\n",
-         level, G.L->name, G.L->kind, seed, h.full_power, G.state == GS_WON ? "true" : "false", G.shots, ammo_total(&G), G.L->par, game_stars(&G),
+         level, G.L->name, seed, h.full_power, G.state == GS_WON ? "true" : "false", G.shots, ammo_total(&G), G.L->par, game_stars(&G),
          G.ntgt, G.tgt_left, first_down, JUDGED_SHARE, MARK, G.broken, ticks, orbit_ticks, G.orbit);
   fflush(stdout);
 }
@@ -98,7 +96,7 @@ static void shot(int level, int ammo) {
     t3_vec3 p = game_block_xform(&G, i).p;
     body[placed] = i, at[placed] = p, vol[placed] = k->vol, lim[placed] = fmaxf(0.6f, fmaxf(k->half.x, fmaxf(k->half.y, k->half.z)));
     vol_all += k->vol, placed++;
-    if (KEG(k) || fabsf(p.x) > 1.5f || p.y < 0.5f || p.y > fmaxf(1.0f, G.top * 0.5f)) continue;
+    if (fabsf(p.x) > 1.5f || p.y < 0.5f || p.y > fmaxf(1.0f, G.top * 0.5f)) continue;
     float d = (G.muzzle.z - p.z) + fabsf(p.x) * 0.5f + fabsf(p.y - G.top * 0.33f) * 0.5f;
     if (d < best) best = d, aim = p;
   }

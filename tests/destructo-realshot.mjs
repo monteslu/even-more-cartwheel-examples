@@ -1,5 +1,5 @@
 // destructo real-shot gate: gravity, through the real weapons. levelcheck --realshot fires a shot, a heavy ball and a charge (the launcher's own aim and fire, game_aim_shot: the nearest
-// low block of the structure) at a leg or base of Iron Lady, the Needle, the Black Tower, the Empire, the Pisa tower, the Taj, the Statue of Liberty and the Redeemer; and LOWHALF breaks the lower half of each at once
+// low block of the structure) at a leg or base of Iron Lady, the Needle, the Black Tower, the Empire, the Pisa tower, the Taj, the Statue of Liberty; and LOWHALF breaks the lower half of each at once
 // (what a few good shots do). Checked every tick of every run:
 //   floating   no standing assembly is left without a load path to the ground for more than 6 ticks (the layer a tick that judges a collapse), no loose chunk lies asleep in the air for more than 6 ticks
 //   falls      with the lower half gone, over 60% of the blocks have moved over 1 m or are gone at 4 s
@@ -12,7 +12,7 @@
 import { runCheck, inPairs, gpusArg } from './lib/romdev.mjs';
 import { levelIndex } from './lib/levelindex.mjs';
 
-const L = Object.fromEntries(Object.entries({ needle: 'The Needle', iron: 'Iron Lady', black: 'The Black Tower', empire: 'The Empire', taj: 'Taj Mahal', pisa: 'Leaning Tower of Pisa', liberty: 'Statue of Liberty', redeemer: 'The Redeemer' }).map(([k, n]) => [k, levelIndex(n)]));
+const L = Object.fromEntries(Object.entries({ needle: 'The Needle', iron: 'Iron Lady', black: 'The Black Tower', empire: 'The Empire', taj: 'Taj Mahal', pisa: 'Leaning Tower of Pisa', liberty: 'Statue of Liberty' }).map(([k, n]) => [k, levelIndex(n)]));
 let bad = 0;
 for (const gpu of gpusArg()) {
   const run = async (args) => { const r = await runCheck('levels', args, { gpu }); if (r.status !== 0) { console.log(`FAIL check levels ${args} exited ${r.status}`); process.exit(1); } return r.rows; };
@@ -23,7 +23,7 @@ for (const gpu of gpusArg()) {
   jobs.push(() => run(['--opt', 'HALFOUT=1', '--realshot', L.iron, L.needle, L.black, L.empire, L.pisa]));
   jobs.push(() => run(['--opt', 'HALFOUT=1', '--opt', 'OLD_RELEASE=1', '--realshot', L.iron, L.black]));
   jobs.push(() => run(['--opt', 'OLD_LOAD=1', '--opt', 'AMMO=0', '--realshot', L.iron]));
-  jobs.push(() => run(['--opt', 'AMMO=1', '--opt', 'SHOTS=3', '--realshot', L.liberty, L.redeemer, L.taj]));
+  jobs.push(() => run(['--opt', 'AMMO=1', '--opt', 'SHOTS=3', '--realshot', L.liberty, L.pisa, L.taj]));
   const [shot, heavy, charge, low, oldsleep, half, oldrel, oldload, prog] = await inPairs(jobs);
   const last = (rows, lv) => rows.filter((r) => r.phase === 'realshot' && r.level === lv).pop();
   const at = (rows, lv, t) => rows.filter((r) => r.phase === 'realshot' && r.level === lv && Math.abs(r.t - t) < 0.01).pop();
@@ -62,7 +62,7 @@ for (const gpu of gpusArg()) {
   }
   const ol = last(oldload, L.iron);
   if (ol.moved > 0.2) { bad++; console.log(`CONTROL PASSED (a failure): ${gpu} the old rule let Iron Lady go over (${(ol.moved * 100).toFixed(0)}% moved)`); } else console.log(`ok   control (the old rule) leaves Iron Lady standing after a shot at one leg as it must fail: ${(ol.moved * 100).toFixed(0)}% moved`);
-  for (const lv of [L.liberty, L.redeemer, L.taj]) { /* three heavy balls at the base, one after another */
+  for (const lv of [L.liberty, L.pisa, L.taj]) { /* three heavy balls at the base, one after another */
     const r = last(prog, lv);
     const why = [];
     if (r.floating_ticks > 6) why.push(`${r.floating_ticks} ticks floating`);

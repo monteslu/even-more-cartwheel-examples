@@ -1,23 +1,18 @@
 # Destructo
 
-Bring famous buildings of the world down. The level select opens on four small tutorial structures (a tower, a tall
-tower, a garden wall and a stepped shrine that teach the shot, the heavy ball, the lob and the charge), then the
-real landmarks, by difficulty and world region: forty-two of them, from every continent and age. Among them: the
+Bring famous buildings of the world down. The level select holds only real landmarks, by difficulty (the first is a small, simple one a newcomer can clear, and the first control prompts show there): forty-one of them, from every continent and age. Among them: the
 Great Sphinx, the Needle of Seattle, the Iron Lady of Paris, the Black Tower of Chicago, the Empire and the Crown
 Tower of New York, the Harbour Sails of Sydney, the Pyramids of Giza, the Taj Mahal, the Parthenon, Pisa, Tower
-Bridge, Angkor Wat, Chichen Itza, the Statue of Liberty, the Redeemer of Rio, Notre-Dame, the Pantheon,
+Bridge, Angkor Wat, Chichen Itza, the Statue of Liberty, Notre-Dame, the Pantheon,
 the Arc de Triomphe, Hagia Sophia, the Blue Mosque, the Stacked Tower of Taipei, the Golden Span of San Francisco, the
 Television Tower of Berlin, the Sail Hotel of Dubai a castle of Japan, the Atoms of Brussels, the Gateway of St. Louis, the Brooklyn Bridge, the Colosseum, Stonehenge, Saint Basil's, the Kremlin, Mount Rushmore, the Brandenburg Gate, the Red Tower of Tokyo, the Temple of Heaven and a five-storey pagoda. Each is scaled to the field with its
 proportions kept and built of thousands of small bricks of stone, steel, glass and brick that break the way their
 material does. Each level shows the landmark's name and where it stands. More landmarks are built and held until they
-pass the landmarks gate and a blind look (`LANDMARK_HELD` in src/levels.c); the other kit structures (a few dozen:
-towers, walls, bridges, castles, scaffolds, keeps) stay in the table after `LANDMARKS_END` for the gates and the
-bench, out of the level select.
+pass the landmarks gate and a blind look (`LANDMARK_HELD` in src/levels.c).
 
-Bring structures down. Towers, walls, bridges, castles, scaffolds and stepped pyramids of wood, stone, glass and steel,
+Bring structures down. Famous landmarks of wood, stone, glass and steel,
 hundreds to a few thousand blocks each, stand on a field. You have a launcher, a few rounds of shot, a heavy ball or
-two and some charges. Every structure hides glowing crystals: bring them all down to clear it. Red powder kegs stand
-against the foot of some structures: a keg that is hit goes off, and its blast sets off the next.
+two and some charges. Every structure hides glowing crystals: bring them all down to clear it.
 
 One to four players take turns at the one launcher on the one structure: together (co-op: one count of shots against
 par), against each other (versus: each shot scores for whoever fired it), or at a party (steady hands: ammunition
@@ -49,9 +44,8 @@ turns on free fire: every structure open, ammunition without end, nothing judged
 A level is judged once its world is still (at most two bodies awake for a third of a second; a turn's settle ends
 after 15 s whatever still moves), never while the structure is falling. The share of the structure brought down is
 counted by volume over every block the level placed (crystals not counted): a block is down when it is broken, gone
-off the field, or more than its own size (and at least 0.6 m) from where it settled before play. Each kit has a mark:
-half a tower or a scaffold, two fifths of a keep, about a third of a wall, a quarter of a castle, a fifth of a bridge, 15% of a
-stepped pyramid. The HUD shows the share against the mark while you play.
+off the field, or more than its own size (and at least 0.6 m) from where it settled before play. Each landmark has a mark of its own, from
+a hundredth of the Pisa tower or the Pyramids to over a third of the tall slender towers. The HUD shows the share against the mark while you play.
 
 | Stars | Needs |
 |---|---|
@@ -106,12 +100,7 @@ thing they touch and push and break everything within about four and a half metr
   antennas are single blocks, and a landmark settles 5.5 s before play (a tall tower sways a few centimetres for four or
   five seconds). Two settings are the landmarks' own: a city (a lawn and a paved square, a skyline of towers far out)
   and a harbour (a paved point out in the water, the city across the bay).
-- `src/levels.c`: the levels' table, and thirty levels from seven kits. Walls are running-bond brick courses that hand the corners to the
-  other pair of walls each course, so they lock; floors are planks that the storey above stands on. Each kit has a
-  character: stepped roofs in red, slate or copper with gilded finials (a wide step is a ring of four boards, a third
-  the weight of a solid slab; a six-storey tower's roof stands on its top floor, since every course more on it is a
-  lean that creeps), battlements, trim courses, timber-framed top storeys, a castle gate under a steel lintel, brick piers with cream caps, a turquoise-banded pyramid with a gilded
-  shrine; banners on poles ride the blocks they stand on; windows are glass bricks lit from inside.
+- `src/levels.c`: the levels' table: each landmark with its ammunition, par, mark, setting and starting view, easiest first.
 - `src/replay.c`: the instant replay (above).
 - `src/bot.c`: the bot plays through the controls: it flies the shot's path the way the world will (gravity in the
   world's sub-steps), picks a straight shot at a crystal it can see, a lob over what hides it, a charge, or a heavy
@@ -127,9 +116,9 @@ thing they touch and push and break everything within about four and a half metr
   with the d-pad, until the glow shows.
 - `src/view.c`, `src/trees.c`, `src/fx.c`, `src/sound.c`: one instanced box per material with a texture made at
   start-up and the builder's paints in real material colours (warm stone, timber, plaster, slate, terracotta,
-  copper), the roofs' boards drawn with a course texture of their own; a setting per kit (highlands under
-  snow-capped mountains, a golden meadow, a river gorge, a headland over the sea, a quarry, red mesas over pale
-  dunes, a snowy pass) with its own ground (rolling past the field of play, its colour wandering, the yard and the
+  copper), the roofs' boards drawn with a course texture of their own; a setting per region (highlands under
+  snow-capped mountains, a golden meadow, a headland over the sea, red mesas over pale
+  dunes, a snowy pass, a city, a harbour) with its own ground (rolling past the field of play, its colour wandering, the yard and the
   track worn into it), backdrop, light, haze and share of a contrast grade (`assets/grade/contrast.cube`, from
   `tools/gen-grade.mjs`); trees of layered foliage (alpha-cut leaf, needle and frond cards made at start-up, their
   normals out from each clump so a crown shades like a volume): oaks, birches, spruces, snow-laden firs and date
@@ -164,25 +153,20 @@ thing they touch and push and break everything within about four and a half metr
 
 ## Performance
 
-On the Radeon 890M at 1920x1080 on High, during Great Keep's collapse (1241 blocks broken, 2182 bodies awake and
-drawn): GPU 3.56 ms on GL and 3.41 ms on WebGPU (`tests/destructo-perf.mjs`); without the trees
-(`dm set NO_TREES 1`) the same collapse measured 3.3 ms and 3.0 ms. The trees cast and take no shadow (they stand
-past the sun's shadow map) and the ground has a hole under the yard, which is drawn once. SSAO is off (0.9 ms, the
-edges of the block textures carry the shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU
-multisamples 4x for any MSAA setting; SMAA halved its scene pass). Physics in the cart (romdev's host) during the same
-collapse: about 2.3 ms a step at worst over the collapse windows.
+On the Radeon 890M at 1920x1080 on High, through romdev's frame timing (the whole frame's GPU time, HUD and final copy
+included, as the perf gate measures it), during the Taj Mahal's collapse (720 blocks broken, 1470 bodies awake, 2665
+blocks drawn): GPU 2.6 ms on GL and 1.8 ms on WebGPU (`tests/destructo-perf.mjs`); the gate's bound is 6 ms, and four
+times the pixels (3840x2160) reads 8.2 ms. The trees cast and take no shadow (they stand past the sun's shadow map) and
+the ground has a hole under the yard, which is drawn once. SSAO is off (0.9 ms, the edges of the block textures carry the
+shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU multisamples 4x for any MSAA
+setting; SMAA halved its scene pass). Physics in the cart (romdev's host) runs about 5 ms of CPU a frame over the collapse.
 
-Through romdev's frame timing (the whole frame's GPU time, HUD and final copy included, as the perf gate now measures it):
-the same collapse 3.6 to 5.4 ms on GL and 3.6 to 4.1 ms on WebGPU, and Neuschwanstein Castle's 4.7 to 5.2 ms, with the
-890M's clock between about 740 and 2330 MHz; the gate's bound is 6 ms, and four times the pixels (3840x2160) reads
-12.5 ms.
-
-- **The blast frame.** A charge on Great Keep breaks about 800 blocks. Before the fix the frame it went off in took
+- **The blast frame.** A charge on the Taj Mahal breaks about 700 blocks. Before the fix the frame it went off in took
   33 ms in the cart and 70 ms natively, and nearly all of that was not physics: the first explosion, dust and shards
   compiled their GPU programs on that frame. Three things fix it: every effect is fired once under the ground at
   load, so its programs are built before play; breaks wait in a fracture queue and at most 24 run a tick; and a
   charge's push runs outward over four ticks, a shell of the blast a tick. The longest frame of the blast is now
-  13.2 ms in the cart on romdev and 10.3 ms natively, against 16.6 ms (`tests/destructo-hitch.mjs`; its control,
+  6.7 ms of CPU on GL and 10.8 ms on WebGPU in the cart on romdev, against 16.6 ms (`tests/destructo-hitch.mjs`; its control,
   `destructo_bench_nobudget`, is the game as before the fix and must go over).
 
 - **Memory.** Making, stepping and destroying worlds gives the memory back: the cart's memory stays flat over 60
@@ -201,14 +185,14 @@ gate steps frames in long ranges, at most two hosts at once (`tests/lib/romdev.m
 | Command | Checks |
 |---|---|
 | `node tests/destructo-physics.mjs` | the measurements above, in the cart, each with a control that must fail; the solver runs on the cart's workers (the pool beats one thread at 2000, 4000 and 6000 bodies) |
-| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each kit's mark, and each landmark's own, is reachable; two kegs chain (controls: the old result rules, a nudged replay, kegs too far apart) |
+| `node tests/destructo-levels.mjs` | every level stands still for a minute, nothing floats or is placed inside another, the bot clears it within par; the level is judged only once still and its stars and headline match the structure 5 s later; the replay ends on the live state; each landmark's mark is reachable (controls: the old result rules, a nudged replay) |
 | `node tests/destructo-landmarks.mjs` | every landmark: as built every block stands on something and none is inside another, after its settle every block lies on something and nothing moved 0.6 m, and the bot clears it within par (controls: a block put in the air, as built and after the settle; the bot aiming 150 milliradians off) |
-| `node tests/destructo-human.mjs` | eight human-like players (src/human.c) on every level with the ammunition it gives: every one clears levels 1 to 3, every level is cleared by 7 of 8, 97% of all plays clear; a steadier player is within par on two levels in three and more often than the newcomer; players go round to a hidden crystal (controls: the cannon before the fix, the ball breaking only the block it touches; the player who never goes round) |
-| `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Great Keep (control: a NaN put into a block) |
+| `node tests/destructo-human.mjs` | eight human-like players (src/human.c) on every level with the ammunition it gives: every one clears level 1, every level is cleared by 7 of 8, 97% of all plays clear; a steadier player is within par on two levels in three and more often than the newcomer; players go round to a hidden crystal (controls: the cannon before the fix, the ball breaking only the block it touches; the player who never goes round) |
+| `node tests/destructo-soak.mjs [--quick]` | the bot level after level, 1 to 4 players: no NaN, no jitter left awake, no memory growth, every replay on the live state; and free fire on Taj Mahal (control: a NaN put into a block) |
 | `node tests/destructo-result.mjs` | in the game: the result judged with at most 10 bodies awake, the replay ends on the live state (controls: the old rules, a nudged replay) |
-| `node tests/destructo-flash.mjs` | every frame of Great Keep's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
-| `node tests/destructo-perf.mjs` | the frame's GPU time (romdev's `frame({op:'timing'})`) during a keep's collapse and a landmark's (Neuschwanstein Castle) at 1920x1080 on High, GL and WebGPU, on the 890M, within 6 ms (controls: GL at 3840x2160, WebGPU against 0.5 ms) |
-| `node tests/destructo-hitch.mjs` | the most CPU any frame of Great Keep's blast takes in the cart, timed by romdev, under 16.6 ms, GL and WebGPU (control: the game before the fix) |
+| `node tests/destructo-flash.mjs` | every frame of Taj Mahal's blast through the engine's flash check (WCAG 2.3.1's general and red flash thresholds, small lights switching together, regular flicker) (controls: the game's 10 Hz wash and the engine's 8 Hz strobe) |
+| `node tests/destructo-perf.mjs` | the frame's GPU time (romdev's `frame({op:'timing'})`) during Taj Mahal's collapse at 1920x1080 on High, GL and WebGPU, on the 890M, within 6 ms (controls: GL at 3840x2160, WebGPU against 0.5 ms) |
+| `node tests/destructo-hitch.mjs` | the most CPU any frame of Taj Mahal's blast takes in the cart, timed by romdev, under 16.6 ms, GL and WebGPU (control: the game before the fix) |
 | `node tests/destructo-look.mjs` | one picture of each setting: mean luma 95 to 125 and a deviation of 55 or more (never flat, never washed out) (control: three times the exposure) |
 | `node tests/destructo-play.mjs` (`tests/gate.mjs --gates-file destructo-gates.json`) | a person's first shot: the same collapse on GL and WebGPU; two pads join and the second walks away, and the first still plays the second seat's turn (controls: a script that never fires; the seat rule before the fix waits on the idle pad) |
 | `node tests/destructo-coplanar.mjs` | no two faces fight for the depth test on any level (the settled blocks held to their counts) (controls: the detector's selftest, a doubled face) |

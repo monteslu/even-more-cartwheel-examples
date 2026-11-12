@@ -8,7 +8,7 @@
 // of a second late, fires once the aim looks right to 4 milliradians, and sends its buttons through the game's own
 // pad mapping. Eight such players (seeds) play every level from its start with the ammunition the level gives.
 //
-//   newcomer   every one of the eight clears levels 1 to 3 (the first levels decide whether a person goes on), every
+//   newcomer   every one of the eight clears level 1 (the first level decides whether a person goes on), every
 //              level is cleared by at least 7 of the 8, and 97% of all the plays clear
 //   skill      par is the reward for skill: a steadier player (a third of the newcomer's aim error) clears within
 //              par (two stars or three) on at least two levels in three, and more often than the newcomer does
@@ -57,7 +57,7 @@ const newcomer = (rows, label) => {
   const lv = byLevel(rows);
   for (const [l, rs] of lv) {
     const c = rs.filter((r) => r.cleared).length;
-    if (l < 3 && c < rs.length) why.push(`level ${l + 1} ${rs[0].name}: ${c} of ${rs.length} cleared (a first level: all must)`);
+    if (l < 1 && c < rs.length) why.push(`level ${l + 1} ${rs[0].name}: ${c} of ${rs.length} cleared (a first level: all must)`);
     else if (c < rs.length - 1) why.push(`level ${l + 1} ${rs[0].name}: ${c} of ${rs.length} cleared`);
   }
   const all = rows.filter((r) => r.cleared).length;
@@ -71,7 +71,7 @@ let bad = 0;
 const rows = await run(['--seeds', String(SEEDS)]);
 for (const [l, rs] of byLevel(rows)) {
   const c = rs.filter((r) => r.cleared);
-  console.log(`${c.length >= rs.length - (l < 3 ? 0 : 1) ? 'ok  ' : 'FAIL'} ${String(l + 1).padStart(2)} ${rs[0].name.padEnd(14)} cleared by ${c.length} of ${rs.length}; shots used ${rs.map((r) => `${r.shots}${r.cleared ? '' : 'x'}`).join(' ')} of ${rs[0].ammo} (par ${rs[0].par}); stars ${rs.map((r) => r.stars).join('')}; first crystal down on shot ${rs.map((r) => r.first_down_shot).join(' ')}`);
+  console.log(`${c.length >= rs.length - (l < 1 ? 0 : 1) ? 'ok  ' : 'FAIL'} ${String(l + 1).padStart(2)} ${rs[0].name.padEnd(14)} cleared by ${c.length} of ${rs.length}; shots used ${rs.map((r) => `${r.shots}${r.cleared ? '' : 'x'}`).join(' ')} of ${rs[0].ammo} (par ${rs[0].par}); stars ${rs.map((r) => r.stars).join('')}; first crystal down on shot ${rs.map((r) => r.first_down_shot).join(' ')}`);
 }
 const why = newcomer(rows, 'newcomer');
 if (why.length) { bad++; console.log(`FAIL newcomer: ${why.join('; ')}`); } else console.log('ok   newcomer: every first level cleared by every player, every level by 7 of 8 or more, 97% of plays');

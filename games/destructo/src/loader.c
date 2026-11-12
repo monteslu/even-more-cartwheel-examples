@@ -170,15 +170,14 @@ float loader_progress(load_slot *s, int *phase, int *blocks) {
   if (s->state == S_BUILT) ph = LP_DONE, p = 1;
   else if (s->state == S_BUILDING) {
     const level_def *L = level_get(s->level);
-    bool lm = L->kind == K_LANDMARK;
-    float b0 = 0.02f, b1 = lm ? 0.22f : 0.35f, s1 = lm ? 0.72f : 0.35f; /* blocks, structure and settle shares of the bar */
+    float b0 = 0.02f, b1 = 0.22f, s1 = 0.72f; /* blocks, structure and settle shares of the bar */
     int stage = g_ld_stage, td = atomic_load(&s->settle_done), tt = atomic_load(&s->settle_total);
     double now = now_ms();
     if (stage != s->seen_stage) s->seen_stage = stage, s->stage_ms = now;
     nb = s->g->nb;
     if (stage <= 1) ph = LP_BLOCKS, p = b0 * 0.5f;
     else if (stage == 2) {
-      float est = EXP_NB[s->level] > 0 ? (float)EXP_NB[s->level] : (lm ? 4000.0f : 700.0f);
+      float est = EXP_NB[s->level] > 0 ? (float)EXP_NB[s->level] : 4000.0f;
       ph = LP_BLOCKS, p = b0 + (b1 - b0) * fminf(0.97f, nb / est);
     } else if (stage == 3 || stage == 4) {
       float est = EXP_STRUCT_MS[s->level] > 0 ? EXP_STRUCT_MS[s->level] : 1500.0f;

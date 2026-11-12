@@ -8,7 +8,7 @@
 //   hollow     the tall buildings (Black Tower, Empire, Spire, Great Clock, Pisa, Needle, The Tower) are a frame: the share of their volume in
 //              blocks thicker than 45 cm in every direction (a solid mass) is under 10%
 //   core out   the whole half of the footprint under 2.2 m broken (LEG_HALF=1): the storeys over it come down (a chunk lets go) and 8 s on the largest
-//              piece is under 10% of the blocks, for the same buildings and the Redeemer, the Statue and Angkor Wat
+//              piece is under 10% of the blocks, for the same buildings and the Statue and Angkor Wat
 //   the frames: at 4 s over 60% of the blocks have moved over 1 m or are gone (what the pictures show)
 // Controls, each must fail its check: NO_SUPPORT=1 (nothing is judged, the building stands as the solid core did), SOLIDCORE=1 (a solid block in the middle of the Black Tower: hollow fails), LOOSE=1 (every piece let go breaks into single blocks at once: no rigid piece to measure),
 // NO_CHUNKS=1 (the level as loose blocks, the old behaviour: the Needle slumps while it stands alone).
@@ -18,7 +18,7 @@ import { levelIndex } from './lib/levelindex.mjs';
 
 const byName = (names) => Object.fromEntries(names.map((n) => [levelIndex(n), n]));
 const TALL = byName(['The Black Tower', 'The Empire', 'The Spire', 'The Great Clock', 'Leaning Tower of Pisa', 'The Needle', 'The Tower']);
-const HALF = { ...TALL, ...byName(['Statue of Liberty', 'The Redeemer', 'Angkor Wat']) };
+const HALF = { ...TALL, ...byName(['Statue of Liberty', 'Angkor Wat']) };
 const LEVELS = { needle: levelIndex('The Needle'), iron: levelIndex('Iron Lady'), parthenon: levelIndex('Parthenon'), chichen: levelIndex('Chichen Itza') };
 const NAMES = byName(['The Needle', 'Iron Lady', 'Parthenon', 'Chichen Itza']);
 const at8 = (rows, level) => rows.filter((r) => NAMES[r.level] === r.name).filter((r) => r.phase === 'legout' && r.level === level && Math.abs(r.t - 8) < 0.01).pop();

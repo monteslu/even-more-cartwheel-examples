@@ -424,16 +424,6 @@ static void build_liberty(game *g, const level_def *L) {
   for (int t = 0; t < L->targets && t < 2; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
 }
 
-/* ── Christ the Redeemer: the statue, arms out, on its plinth on the summit ── */
-static void build_christ(game *g, const level_def *L) {
-  const float PL = 2.4f;
-  sculpt p = { sh_box_fill, -1.2f, 1.2f, -1.2f, 1.2f, 0, PL, 0.3f, 0.3f, true };
-  sculpt_run(g, &p);
-  build_vox(g, &LMV_christ_redeemer, 0, PL, 0);
-  static const float spot[][2] = { { 0.9f, 0.9f } };
-  for (int t = 0; t < L->targets && t < 1; t++) landmark_crystal(g, spot[t][0], spot[t][1]);
-}
-
 void landmark_build(game *g, const level_def *L) {
   g->paint_now = P_NONE;
   switch (L->lm) {
@@ -477,7 +467,6 @@ void landmark_build(game *g, const level_def *L) {
   case LM_ST_BASILS: { static const float s[][2] = { { 0, 5.4f }, { 5.4f, 0 }, { -5.4f, 0 } }; build_vox(g, &LMV_sb_base, 0, 0, 0); build_model(g, L, &LMV_st_basils, s, 3); break; }
   case LM_TOWER_BRIDGE: { static const float s[][2] = { { -4.0f, 0 }, { 4.0f, 0 } }; build_vox(g, &LMV_tb_steel, 0, 0, 0); build_model(g, L, &LMV_tower_bridge, s, 2); break; }
   case LM_MOAI: build_moai(g, L); break;
-  case LM_CHRIST_REDEEMER: build_christ(g, L); break;
   case LM_COLOSSEUM: { static const float s[][2] = { { -5.6f, 3.2f }, { 5.6f, -3.2f } }; build_vox(g, &LMV_col_cavea, 0, 0, 0); build_model(g, L, &LMV_colosseum, s, 2); break; }
   case LM_BIG_BEN: { static const float s[][2] = { { 2.4f, 0 }, { -2.4f, 0 } }; build_model(g, L, &LMV_big_ben, s, 2); break; }
   case LM_PISA: { static const float s[][2] = { { -2.8f, 0 } }; build_model(g, L, &LMV_pisa, s, 1); break; }

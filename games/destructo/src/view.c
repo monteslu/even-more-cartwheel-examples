@@ -378,9 +378,9 @@ static void build_launcher(const game *g) {
   piece(V.barrel, "Breech", xform_geo(bk, (t3_vec3){ 0, 0, 1.0f }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1, 1, 1 }), std_mat(0.16f, 0.2f, 0.28f, 0.3f, 0.85f), true);
 }
 
-/* ── the settings: each kit stands somewhere of its own ─────────────── */
+/* ── the settings: each landmark stands somewhere of its own ─────────────── */
 
-enum { BD_HILLS, BD_MOUNTAINS, BD_MESAS, BD_SEA, BD_GORGE, BD_QUARRY, BD_CITY, BD_HARBOUR };
+enum { BD_HILLS, BD_MOUNTAINS, BD_MESAS, BD_SEA, BD_CITY, BD_HARBOUR };
 typedef struct setting {
   float tod, north, sun_energy, sky_energy, exposure;
   float ground[3], yard[3];
@@ -398,39 +398,28 @@ typedef struct setting {
 } setting;
 
 static const setting SETTINGS[ST_COUNT] = {
-  /* tower: a highland valley under grey-blue mountains; oaks and a few spruces */
-  [K_TOWER] = { 15.7f, 55, 4.6f, 1.6f, 1.85f, { 0.18f, 0.37f, 0.08f }, { 0.36f, 0.27f, 0.17f }, { 0.55f, 0.65f, 0.8f }, 0.0012f,
+  /* highland: a highland valley under grey-blue mountains; oaks and a few spruces */
+  [ST_HIGHLAND] = { 15.7f, 55, 4.6f, 1.6f, 1.85f, { 0.18f, 0.37f, 0.08f }, { 0.36f, 0.27f, 0.17f }, { 0.55f, 0.65f, 0.8f }, 0.0012f,
                 BD_MOUNTAINS, { 0.06f, 0.1f, 0.08f }, { 0.85f, 0.88f, 0.92f },
                 { { 0.5f, 0.3f, 0.15f }, { 0.4f, 0.31f, 0.2f }, { 1.0f, 0.82f, 0.5f }, { 0.7f, 0.16f, 0.1f } },
                 0.25f, 2.5f, { SP_OAK, SP_SPRUCE }, 0.3f, 90, { { 0.13f, 0.27f, 0.05f }, { 1, 1, 1 } } },
-  /* wall: a golden meadow, low hills, autumn oaks and birches */
-  [K_WALL] = { 16.7f, 35, 4.6f, 1.6f, 1.8f, { 0.33f, 0.43f, 0.1f }, { 0.4f, 0.29f, 0.16f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
+  /* meadow: a golden meadow, low hills, autumn oaks and birches */
+  [ST_MEADOW] = { 16.7f, 35, 4.6f, 1.6f, 1.8f, { 0.33f, 0.43f, 0.1f }, { 0.4f, 0.29f, 0.16f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
                BD_HILLS, { 0.18f, 0.32f, 0.1f }, { 0.36f, 0.42f, 0.16f },
                { { 0.52f, 0.32f, 0.16f }, { 0.56f, 0.44f, 0.29f }, { 1.0f, 0.8f, 0.45f }, { 0.2f, 0.4f, 0.9f } },
                0.28f, 2.0f, { SP_OAK, SP_BIRCH }, 0.35f, 90, { { 0.55f, 0.22f, 0.03f }, { 0.55f, 0.42f, 0.05f } } },
-  /* bridge: a river gorge between steep rock walls, spruces and birches */
-  [K_BRIDGE] = { 15.2f, 70, 4.6f, 1.6f, 1.72f, { 0.17f, 0.36f, 0.11f }, { 0.36f, 0.3f, 0.23f }, { 0.55f, 0.68f, 0.75f }, 0.0018f,
-                 BD_GORGE, { 0.34f, 0.27f, 0.22f }, { 0.58f, 0.5f, 0.42f },
-                 { { 0.48f, 0.29f, 0.15f }, { 0.46f, 0.4f, 0.33f }, { 1.0f, 0.8f, 0.45f }, { 0.25f, 0.28f, 0.33f } },
-                 0.22f, 1.5f, { SP_SPRUCE, SP_BIRCH }, 0.3f, 90, { { 1, 1, 1 }, { 0.26f, 0.4f, 0.07f } } },
-  /* castle: a headland over the sea, the cliffs falling away behind; oaks bent by the wind, spruces */
-  [K_CASTLE] = { 15.9f, 50, 4.6f, 1.6f, 1.5f, { 0.19f, 0.4f, 0.09f }, { 0.42f, 0.35f, 0.25f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
+  /* headland: a headland over the sea, the cliffs falling away behind; oaks bent by the wind, spruces */
+  [ST_HEADLAND] = { 15.9f, 50, 4.6f, 1.6f, 1.5f, { 0.19f, 0.4f, 0.09f }, { 0.42f, 0.35f, 0.25f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f },
                  { { 0.5f, 0.3f, 0.15f }, { 0.58f, 0.54f, 0.47f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } },
                  0.3f, 0, { SP_OAK, SP_SPRUCE }, 0.25f, 90, { { 0.12f, 0.25f, 0.06f }, { 1, 1, 1 } } },
-  /* scaffold: a quarry's floor among terraced orange walls, a few birches seeded on the spoil (exposure 1.9: at 1.76 the
-   * picture read at a mean luma of 93, under the look gate's 95, on GL and WebGPU) */
-  [K_SCAFFOLD] = { 15.4f, 65, 4.6f, 1.6f, 1.9f, { 0.34f, 0.31f, 0.28f }, { 0.26f, 0.23f, 0.2f }, { 0.75f, 0.68f, 0.6f }, 0.0018f,
-                   BD_QUARRY, { 0.26f, 0.15f, 0.09f }, { 0.82f, 0.58f, 0.36f },
-                   { { 0.55f, 0.36f, 0.18f }, { 0.46f, 0.44f, 0.41f }, { 0.55f, 0.9f, 1.0f }, { 1.0f, 0.72f, 0.08f } },
-                   0.25f, 0.8f, { SP_BIRCH, SP_BIRCH }, 0, 34, { { 0.3f, 0.42f, 0.08f }, { 0.3f, 0.42f, 0.08f } } },
-  /* pyramid: pale desert sand under red mesas, date palms in groves */
-  [K_PYRAMID] = { 16.6f, 40, 4.6f, 1.6f, 1.52f, { 0.84f, 0.74f, 0.58f }, { 0.66f, 0.54f, 0.4f }, { 0.8f, 0.72f, 0.62f }, 0.0007f,
+  /* desert: pale desert sand under red mesas, date palms in groves */
+  [ST_DESERT] = { 16.6f, 40, 4.6f, 1.6f, 1.52f, { 0.84f, 0.74f, 0.58f }, { 0.66f, 0.54f, 0.4f }, { 0.8f, 0.72f, 0.62f }, 0.0007f,
                   BD_MESAS, { 0.09f, 0.028f, 0.014f }, { 0.3f, 0.12f, 0.055f },
                   { { 0.5f, 0.31f, 0.15f }, { 0.62f, 0.5f, 0.33f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } },
                   0.08f, 3.5f, { SP_PALM, SP_PALM }, 0, 30, { { 0.2f, 0.32f, 0.07f }, { 0.2f, 0.32f, 0.07f } } },
-  /* keep: a snowy pass between white peaks over dark rock, snow-laden firs, a cold light */
-  [K_KEEP] = { 14.2f, 75, 4.6f, 1.6f, 0.95f, { 0.7f, 0.74f, 0.82f }, { 0.58f, 0.56f, 0.56f }, { 0.75f, 0.82f, 0.95f }, 0.0012f,
+  /* snow: a snowy pass between white peaks over dark rock, snow-laden firs, a cold light */
+  [ST_SNOW] = { 14.2f, 75, 4.6f, 1.6f, 0.95f, { 0.7f, 0.74f, 0.82f }, { 0.58f, 0.56f, 0.56f }, { 0.75f, 0.82f, 0.95f }, 0.0012f,
                BD_MOUNTAINS, { 0.04f, 0.045f, 0.06f }, { 0.78f, 0.8f, 0.86f },
                { { 0.48f, 0.28f, 0.14f }, { 0.42f, 0.42f, 0.45f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } },
                0.22f, 3.0f, { SP_FIR_SNOW, SP_FIR_SNOW }, 0, 72, { { 1, 1, 1 }, { 1, 1, 1 } } },
@@ -446,8 +435,8 @@ static const setting SETTINGS[ST_COUNT] = {
                    0.15f, 0, { SP_PALM, SP_PALM }, 0, 0, { { 0.2f, 0.32f, 0.07f }, { 0.2f, 0.32f, 0.07f } } },
 };
 /* how much of the contrast grade (assets/grade/contrast.cube) each setting takes */
-static const float GRADE[ST_COUNT] = { [ST_HIGHLAND] = 0.55f, [ST_MEADOW] = 0.55f, [ST_GORGE] = 0.55f, [ST_HEADLAND] = 0.65f,
-                                       [ST_QUARRY] = 0.65f, [ST_DESERT] = 1.0f, [ST_SNOW] = 0.95f, [ST_CITY] = 0.7f, [ST_HARBOUR] = 0.7f };
+static const float GRADE[ST_COUNT] = { [ST_HIGHLAND] = 0.55f, [ST_MEADOW] = 0.55f, [ST_HEADLAND] = 0.65f,
+                                       [ST_DESERT] = 1.0f, [ST_SNOW] = 0.95f, [ST_CITY] = 0.7f, [ST_HARBOUR] = 0.7f };
 static const setting *SET;
 
 /* the paints (game.h P_*), linear colours */
@@ -456,7 +445,7 @@ static const float PAINT[P_COUNT][3] = {
   [P_TRIM_CREAM] = { 0.72f, 0.6f, 0.4f }, [P_TIMBER] = { 0.12f, 0.065f, 0.035f }, [P_PLASTER] = { 0.72f, 0.66f, 0.54f },
   [P_GOLD] = { 1.0f, 0.68f, 0.12f }, [P_TURQUOISE] = { 0.04f, 0.42f, 0.46f }, [P_BRICK] = { 0.45f, 0.15f, 0.08f },
   [P_DARK_STONE] = { 0.2f, 0.2f, 0.23f }, [P_SAND_STONE] = { 0.68f, 0.5f, 0.3f }, [P_ROSE_STONE] = { 0.62f, 0.38f, 0.32f },
-  [P_WHITE_STONE] = { 0.66f, 0.63f, 0.56f }, [P_KEG] = { 0.62f, 0.07f, 0.03f },
+  [P_WHITE_STONE] = { 0.66f, 0.63f, 0.56f },
   [P_MARBLE] = { 0.8f, 0.78f, 0.74f }, [P_LIMESTONE] = { 0.6f, 0.55f, 0.45f }, [P_BRONZE] = { 0.13f, 0.095f, 0.07f },
   [P_DARK_GLASS] = { 0.05f, 0.055f, 0.065f }, [P_TILE_WHITE] = { 0.84f, 0.82f, 0.77f }, [P_RED_BRICK] = { 0.52f, 0.15f, 0.09f },
   [P_WHITE_PAINT] = { 0.76f, 0.76f, 0.74f }, [P_BLUE_GLASS] = { 0.16f, 0.26f, 0.36f }, [P_ROCK] = { 0.27f, 0.25f, 0.23f },
@@ -469,8 +458,8 @@ static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8
 static float terrace(float h, float step) { float k = floorf(h / step); float f = h / step - k; return (k + cw_smoothstep(0.7f, 0.95f, f)) * step; }
 static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
   enum { NA = 160, NR = 16 };
-  float r_in = S->backdrop == BD_QUARRY ? 60 : S->backdrop == BD_GORGE ? 70 : S->backdrop == BD_MOUNTAINS ? 150 : 110;
-  float r_out = S->backdrop == BD_QUARRY ? 130 : S->backdrop == BD_MOUNTAINS ? 440 : 320;
+  float r_in = S->backdrop == BD_MOUNTAINS ? 150 : 110;
+  float r_out = S->backdrop == BD_MOUNTAINS ? 440 : 320;
   float *pos = malloc(sizeof(float) * 3 * NA * NR), *col = malloc(sizeof(float) * 3 * NA * NR), *uv = malloc(sizeof(float) * 2 * NA * NR);
   unsigned *idx = malloc(sizeof(unsigned) * 6 * NA * (NR - 1));
   for (int r = 0; r < NR; r++)
@@ -484,8 +473,6 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
       switch (S->backdrop) {
       case BD_MOUNTAINS: h = (powf(n, 1.5f) * 95 + 8) * rise * (0.3f + 0.7f * t); top = 70; break; /* low enough to leave the sky its share of the picture */
       case BD_MESAS: h = terrace(fmaxf(0, n - 0.42f) * 160, 14) * rise; top = 40; break;
-      case BD_QUARRY: h = terrace(rise * (14 + n * 24), 6); top = 34; break;
-      case BD_GORGE: h = (40 + n * 50) * cw_smoothstep(0.0f, 0.3f, t) * cw_smoothstep(30, 80, fabsf(x)); top = 80; break;
       case BD_SEA: h = z > V.cliff ? (n * 22 + 4) * rise : -60; top = 30; break; /* none over the sea */
       default: h = (n * 30 + 6) * rise * (1 - 0.3f * t); top = 35; break;
       }
@@ -494,7 +481,7 @@ static t3_geometry *backdrop_geo(const setting *S, uint32_t seed) {
       uv[i * 2] = ang * 24, uv[i * 2 + 1] = rad * 0.04f + h * 0.05f; /* steep faces stretch the texture less */
       float k = cw_clampf(h / top, 0, 1);
       if (S->backdrop == BD_MOUNTAINS) k = cw_smoothstep(0.5f, 0.66f, k + (fbm(x * 0.02f, z * 0.02f + h * 0.03f, (int)seed + 3) - 0.5f) * 0.45f); /* snow on the peaks and down the gullies, rock between */
-      float band = (S->backdrop == BD_QUARRY || S->backdrop == BD_MESAS) ? 0.82f + 0.18f * sinf(h * 0.9f) : 1; /* strata */
+      float band = S->backdrop == BD_MESAS ? 0.82f + 0.18f * sinf(h * 0.9f) : 1; /* strata */
       for (int c = 0; c < 3; c++) col[i * 3 + c] = (S->back_low[c] + (S->back_high[c] - S->back_low[c]) * k) * band;
     }
   int n = 0;
@@ -624,7 +611,6 @@ static float relief_h(const setting *S, const game *g, float x, float z) {
   /* the field of play: the structure's yard and the launcher's circle round it, and all between (it fires from anywhere
    * on the circle) */
   float d = sqrtf(x * x + z * z) - g->ring - 4;
-  if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
   float rise = cw_smoothstep(6.0f, 36.0f, d), n = fbm(x / 38.0f + 3, z / 38.0f + 11, 71);
   if (S->backdrop == BD_MESAS) n = 0.55f * n + 0.45f * (0.5f + 0.5f * sinf(x * 0.08f + z * 0.035f + n * 5)); /* dunes */
   return S->relief * rise * n * 1.6f;
@@ -776,7 +762,7 @@ int view_level_step(const game *g, int step) {
   case 1: {
   /* the ground, and the yard and track worn into it */
   V.cliff = -(g->ring + 10); /* the headland reaches past the launcher's circle */
-  V.beam_w = g->L->kind == K_LANDMARK ? 0.45f : 1;
+  V.beam_w = 0.45f;
   {
     static const float grey[3] = { 1, 1, 1 };
     t3_material *gm = ground_mat(grey, 1, 1, S->ground[1] > S->ground[0] * 1.3f ? 0 : 4, 0.95f); /* blades on grass, grit elsewhere */
@@ -830,11 +816,6 @@ int view_level_step(const game *g, int step) {
       else cw_warn("destructo: bad sea setting %s", W[i]);
     }
   }
-  if (S->backdrop == BD_GORGE) { /* a river under the bridge's first span, running down the gorge */
-    t3_material *wm = std_mat(0.04f, 0.2f, 0.3f, 0.06f, 0);
-    flat("River", 4.0f, 600, (t3_vec3){ 4.8f, 0.05f, 0 }, wm);
-    flat("Bank", 7.0f, 600, (t3_vec3){ 4.8f, 0.04f, 0 }, ground_mat(S->yard, 2, 120, 3, 0.9f));
-  }
   VL_MARK(2);
   return 3;
   }
@@ -886,8 +867,7 @@ int view_level_step(const game *g, int step) {
       float rr = r + 2 + powf(hashf((uint32_t)i * 40503u + 17u), 1.8f) * 32;
       float x = cosf(a) * rr, z = sinf(a) * rr;
       float rad = sqrtf(x * x + z * z), d = fminf(rad - r, fabsf(rad - g->ring) - 4.0f);
-      if (S->backdrop == BD_GORGE) d = fminf(d, fabsf(x - 4.8f) - 6);
-      float clump = fbm(x / 9.0f + 5, z / 9.0f + 2, 33);
+          float clump = fbm(x / 9.0f + 5, z / 9.0f + 2, 33);
       if (d < 1.5f + clump * 3 || clump < 0.3f) continue;
       if (sea && z < V.cliff + 2) continue;
       if (harbour && (fabsf(x) > fmaxf(g->extent + 5, g->ring + 3) + 4.5f || fabsf(z) > fmaxf(g->extent + 5, g->ring + 3) + 4.5f)) continue;
@@ -916,7 +896,6 @@ int view_level_step(const game *g, int step) {
       if (x * x + z * z < (g->ring + 12) * (g->ring + 12)) continue; /* the field of fire: the launcher fires from anywhere on its circle */
       if (x * x + z * z < (g->extent + 12) * (g->extent + 12)) continue;
       if (sea && z < V.cliff + 4) continue;
-      if (S->backdrop == BD_GORGE && fabsf(x - 4.8f) < 6) continue;
       if (fbm(x / 34.0f + 9, z / 34.0f + 9, 61) < (groves ? 0.52f : 0.38f)) continue; /* groves and clearings */
       tree_spot *t = &spots[n];
       float h = hashf((uint32_t)i * 59u + 3u), sel = hashf((uint32_t)i * 7u + 11u);

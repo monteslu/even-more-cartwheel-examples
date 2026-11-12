@@ -30,7 +30,7 @@ try {
   await h.close();
   const r = await openCart('destructo_auto', { gpu, tag: 'ui-look-result' });
   try {
-    for (const [k, v] of Object.entries({ LEVEL_NAME: 'First Stones', QUALITY: 3 })) await r.command(`dm set ${k} "${v}"`);
+    for (const [k, v] of Object.entries({ LEVEL_NAME: 'Leaning Tower of Pisa', QUALITY: 3 })) await r.command(`dm set ${k} "${v}"`);
     await r.command('dm restart');
     await r.step(1500 - r.frame);
     await r.shot(join(out, '6-result.png'));

@@ -1,5 +1,5 @@
-// destructo flash check: no strobing. The game's biggest blast (destructo_bench as a cart on romdev: Great Keep, whose
-// first charge breaks about 800 blocks, with its fire, dust, sparks, shards, crystal bursts and lights, the HUD on) is
+// destructo flash check: no strobing. The game's biggest blast (destructo_bench as a cart on romdev: Taj Mahal, whose
+// first charge breaks hundreds of blocks, with its fire, dust, sparks, shards, crystal bursts and lights, the HUD on) is
 // captured every frame from half a second before the charge goes off to two and a half seconds after it (one
 // recordSession span, each frame box-filtered down in linear light as the native frame dump did), on GL and WebGPU, and
 // measured by the engine's flash check (deps/cartwheel-engine/tools/lib/flash.mjs, through tests/lib/flash-run.mjs:
@@ -33,7 +33,7 @@ for (const gpu of gpusArg()) {
   if (!boom) { console.log(`FAIL ${gpu}: the bench fired no charge in 1500 frames`); bad++; continue; }
   console.log(`${gpu}: the charge goes off on frame ${boom}`);
   const span = { from: boom - BEFORE, frames: boom + AFTER };
-  for (const [label, opts, control] of [[`Great Keep's blast on ${gpu}, frames ${span.from}-${span.frames}`, {}, false],
+  for (const [label, opts, control] of [[`Taj Mahal's blast on ${gpu}, frames ${span.from}-${span.frames}`, {}, false],
     [`the blast under the game's 10 Hz white wash on ${gpu}, dm set STROBE_CONTROL 1`, { STROBE_CONTROL: 1 }, true]]) {
     let run;
     for (let k = 0; !run; k++) { /* a capture that lost a frame (romdev's WebGPU readback once missed one) is taken again, once */

@@ -1,4 +1,4 @@
-// destructo spike hunt: the bot's collapse scenes (Great Keep, The Empire) on romdev; every frame whose CPU (ticks and render)
+// destructo spike hunt: the bot's collapse scenes (Taj Mahal) on romdev; every frame whose CPU (ticks and render)
 // passes 6 ms is recorded in the cart (feel.slow_*: the tick, the game state, the CPU, the tick's parts). Reports the worst
 // frame and the list; the gate (--max-ms N) holds the worst CPU a frame under N ms.
 // Run: node tests/destructo-spikes.mjs [--gpu gl|webgpu] [--max-ms 16] [--frames 1500]
@@ -7,7 +7,7 @@ import { openCart, gpusArg } from './lib/romdev.mjs';
 const arg = (k, d) => (process.argv.includes(k) ? process.argv[process.argv.indexOf(k) + 1] : d);
 const maxMs = +arg('--max-ms', 0), frames = +arg('--frames', 1500);
 let bad = 0;
-for (const gpu of gpusArg()) for (const app of ['destructo_bench', 'destructo_bench_landmark']) {
+for (const gpu of gpusArg()) for (const app of ['destructo_bench']) {
   const h = await openCart(app, { gpu, tag: 'spikes' });
   try {
     await h.command('dm set QUALITY 3');

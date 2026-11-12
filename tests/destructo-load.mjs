@@ -18,7 +18,7 @@ import { inPairs } from './lib/romdev.mjs';
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
 const gpu = arg('--gpu', 'gl');
 const READY_MS = +arg('--ready', 700), FRAME_MS = +arg('--frame', 700);
-const LEVELS = arg('--levels', 'The Empire,Iron Lady,Neuschwanstein Castle,Great Keep,Stone Giant,First Stones').split(',');
+const LEVELS = arg('--levels', 'The Empire,Iron Lady,Colosseum,Hagia Sophia,Taj Mahal,Leaning Tower of Pisa').split(',');
 
 async function transition(name, opts) {
   const h = await openCart('destructo_auto', { gpu, tag: 'load' });

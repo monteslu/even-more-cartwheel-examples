@@ -6,7 +6,7 @@
 // highest memory over its last lap of the levels within 5% of the lap before (it stops growing: in the cart "rss" is
 // the cart's linear memory, the heap's high water; --quick runs, and the 20-minute ones, are too short for two laps
 // after the first and skip it).
-// Free fire: 10 minutes (--quick: 4) shooting at Great Keep with ammunition without end, never judged: soak ok, at
+// Free fire: 10 minutes (--quick: 4) shooting at Taj Mahal with ammunition without end, never judged: soak ok, at
 // least 5 shots a minute (52 in 10 minutes on 2026-11-10, once the bot could roll the launcher round the structure;
 // 6 a minute was set before), the bodies never past the cap (3000) and the memory at the end within 5% of a minute in.
 // Party (steady hands): 2 and 4 players, 8 minutes each (--quick: 3): soak ok, at least one round finished (one
@@ -34,7 +34,7 @@ const runs = await inPairs([
   ...SOAKS.map(([players, mode, level]) => () => run(quick ? 8 : players === 1 ? 60 : 20, players, level, mode)),
   () => run(3, 1, 0, 0, ['inject']),
   ...PARTY.map((players) => () => run(quick ? 3 : 8, players, 6, 3)),
-  () => run(ffMinutes, 1, 'Great Keep', 2),
+  () => run(ffMinutes, 1, 'Taj Mahal', 2),
 ]);
 for (const [k, [players, mode, level]] of SOAKS.entries()) {
   const minutes = quick ? 8 : players === 1 ? 60 : 20;
@@ -92,7 +92,7 @@ for (const [k, players] of PARTY.entries()) {
     if (m[6] !== 'never') why.push('the level was judged');
   }
   if (first && end > first * 1.05) why.push(`memory ${first} kB a minute in, ${end} kB at the end`);
-  const line = `free fire on Great Keep, ${minutes} min: ${m ? `${m[1]} shots, ${m[2]} blocks broken into ${m[3]} pieces, ${m[4]} charges, most bodies ${m[5]}` : '?'}, rss ${first} kB a minute in, ${end} kB at the end`;
+  const line = `free fire on Taj Mahal, ${minutes} min: ${m ? `${m[1]} shots, ${m[2]} blocks broken into ${m[3]} pieces, ${m[4]} charges, most bodies ${m[5]}` : '?'}, rss ${first} kB a minute in, ${end} kB at the end`;
   if (why.length) { bad++; console.log(`FAIL ${line}\n     ${why.join('; ')}`); } else console.log(`ok   ${line}`);
 }
 process.exit(bad ? 1 : 0);

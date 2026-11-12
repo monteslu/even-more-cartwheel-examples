@@ -56,9 +56,7 @@ const float AMMO_POWER[NAMMO] = { [A_SHOT] = 1.0f, [A_HEAVY] = 1.0f, [A_CHARGE] 
 #define CHARGE_R 4.6f
 #define CHARGE_IMPULSE 5200.0f
 #define CHARGE_ENERGY 260000.0f
-#define KEG_R 3.4f        /* a keg's blast: radius, ... */
-#define KEG_K 0.7f        /* ... and strength against a charge's */
-#define KEG_DELAY 7       /* ticks between the blasts of a chain */
+#define CHARGE_DELAY 7    /* ticks between the blasts of two charges that go off one inside the other's */
 #define FRAC_SPEED 1.6f  /* m/s: a small chunk landing this hard breaks in two; a big one holds until it lands much harder (frac_speed) */
 static float frac_speed(int n) { return FRAC_SPEED + 0.08f * (float)(n > 60 ? 60 : n); } /* 6.4 m/s for a section of 60 blocks or more */
 #define FRAC_COOL 5      /* ticks before a piece breaks again */
@@ -191,15 +189,6 @@ void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour) {
   g->ban[g->nban++] = (banner){ blk, local, h, (uint8_t)colour, (uint8_t)(g->nban & 1) };
 }
 
-int game_add_keg(game *g, float x, float z) {
-  uint8_t was = g->paint_now;
-  g->paint_now = P_KEG;
-  int i = game_add_block(g, M_WOOD, v3(x, KEG_HALF + 0.004f, z), v3(KEG_HALF * 0.85f, KEG_HALF, KEG_HALF * 0.85f), 0);
-  g->paint_now = was;
-  if (i >= 0) g->b[i].keg = 1, g->b[i].hp *= 0.5f; /* a keg goes off at half a crate's knock */
-  return i;
-}
-
 int game_add_target(game *g, t3_vec3 c) {
   if (g->ntgt >= MAXTGT) return -1;
   int i = make_block(g, M_TARGET, c, v3(0.22f, 0.32f, 0.22f), (t3_quat){ 0, 0, 0, 1 }, v3(0, 0, 0), v3(0, 0, 0), 0, 0);
@@ -251,13 +240,6 @@ static void break_block(game *g, int i, t3_vec3 dir) {
   t3_vec3 h = k->half;
   int mat = k->mat, gen = k->gen, paint = k->paint;
   float big = fmaxf(h.x, fmaxf(h.y, h.z));
-  if (k->keg) { /* a keg goes off: its blast waits its turn (a chain runs a blast at a time) */
-    if (g->npend < MAXPEND) g->pend_charge[g->npend] = 0, g->pend_at[g->npend++] = x.p;
-    if (g->blast_shell == 0 && g->pend_wait <= 0) g->pend_wait = 2;
-    g->broken++;
-    kill_block(g, i);
-    return;
-  }
   bool glass = MATS[mat].pieces == 0;
   ev_push(g, glass ? EV_SHATTER : EV_BREAK, mat, x.p, dir, big * 2, vlen(v), i);
   g->broken++;
@@ -406,13 +388,13 @@ void game_new(game *g, int level, int players, int mode) {
   for (int i = 0; i < g->nb; i++) {
     if (!g->b[i].alive) continue;
     t3_vec3 p = g->b[i].home;
-    if (!g->b[i].keg && p.z + fmaxf(g->b[i].half.x, g->b[i].half.z) > front) front = p.z + fmaxf(g->b[i].half.x, g->b[i].half.z);
+    if (p.z + fmaxf(g->b[i].half.x, g->b[i].half.z) > front) front = p.z + fmaxf(g->b[i].half.x, g->b[i].half.z);
     float r = sqrtf(p.x * p.x + p.z * p.z) + vlen(g->b[i].half);
     if (r > ext) ext = r;
     if (p.y + g->b[i].half.y > top) top = p.y + g->b[i].half.y;
   }
   g->extent = ext, g->top = top, g->front = front;
-  game_sleep_all(g); /* what is dynamic (the crystals, the kegs) lies still from the first frame; the chunks stand */
+  game_sleep_all(g); /* what is dynamic (the crystals) lies still from the first frame; the chunks stand */
   g_ld_sleep_ms = (float)(ld_now() - ld3);
   g_ld_stage = 5;
   g->state = GS_AIM;
@@ -435,7 +417,7 @@ float game_front(const game *g) {
   float front = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
-    if (!k->alive || !k->tag || k->keg) continue;
+    if (!k->alive || !k->tag) continue;
     float f = k->home.x * u.x + k->home.z * u.z + fmaxf(k->half.x, k->half.z);
     if (f > front) front = f;
   }
@@ -519,7 +501,7 @@ static void proj_end(game *g) {
 /* one shell of a blast: the blocks between the last shell's radius and this one's are pushed and harmed */
 static void blast_shell(game *g, int shell) {
   t3_vec3 at = g->blast_at;
-  float R = g->blast_r > 0 ? g->blast_r : CHARGE_R, K = g->blast_k > 0 ? g->blast_k : 1;
+  float R = CHARGE_R, K = 1;
   float r0 = R * (float)(shell - 1) / BLAST_SHELLS, r1 = R * (float)shell / BLAST_SHELLS;
   if (g->no_budget) r0 = 0, r1 = R;
   cw_qshape3d q = cw_qshape3d_sphere(at, r1);
@@ -557,24 +539,23 @@ static void blast_shell(game *g, int shell) {
   for (int s = 0; s < m; s++) harm(g, idx[s], CHARGE_ENERGY * kk[s], dirs[s], false);
 }
 
-static void blast_begin(game *g, t3_vec3 at, float r, float k) {
-  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), r, 0, 0);
+static void blast_go(game *g, t3_vec3 at) {
+  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), CHARGE_R, 0, 0);
   g->booms++;
-  g->blast_at = at, g->blast_r = r, g->blast_k = k;
+  g->blast_at = at;
   blast_shell(g, 1);
   g->blast_shell = g->no_budget ? 0 : 2;
 }
 
-/* the next keg of a chain, once the blast before has run out */
-static void kegs_go(game *g) {
+/* the next charge, once the blast before has run out */
+static void pending_go(game *g) {
   if (g->npend == 0 || g->blast_shell != 0) return;
   if (g->pend_wait > 0) { g->pend_wait--; return; }
   t3_vec3 at = g->pend_at[0];
-  bool charge = g->pend_charge[0];
-  for (int i = 1; i < g->npend; i++) g->pend_at[i - 1] = g->pend_at[i], g->pend_charge[i - 1] = g->pend_charge[i];
+  for (int i = 1; i < g->npend; i++) g->pend_at[i - 1] = g->pend_at[i];
   g->npend--;
-  blast_begin(g, at, charge ? CHARGE_R : KEG_R, charge ? 1 : KEG_K);
-  g->pend_wait = KEG_DELAY;
+  blast_go(g, at);
+  g->pend_wait = CHARGE_DELAY;
 }
 
 void game_hit_block(game *g, int i, float e) {
@@ -584,18 +565,14 @@ void game_hit_block(game *g, int i, float e) {
 
 static void detonate(game *g, t3_vec3 at) {
   proj_end(g);
-  if (g->blast_shell != 0) { /* a keg's blast is running: the charge goes next */
+  if (g->blast_shell != 0) { /* a blast is running: this charge goes next */
     if (g->npend < MAXPEND) {
-      for (int i = g->npend; i > 0; i--) g->pend_at[i] = g->pend_at[i - 1], g->pend_charge[i] = g->pend_charge[i - 1];
-      g->pend_at[0] = at, g->pend_charge[0] = 1, g->npend++, g->pend_wait = 0;
+      for (int i = g->npend; i > 0; i--) g->pend_at[i] = g->pend_at[i - 1];
+      g->pend_at[0] = at, g->npend++, g->pend_wait = 0;
     }
     return;
   }
-  ev_push(g, EV_BOOM, 0, at, v3(0, 1, 0), CHARGE_R, 0, 0);
-  g->booms++;
-  g->blast_at = at, g->blast_r = CHARGE_R, g->blast_k = 1;
-  blast_shell(g, 1);
-  g->blast_shell = g->no_budget ? 0 : 2;
+  blast_go(g, at);
 }
 
 /* A ball's strike on the structure. Box3D hands a hit to the one block the ball touches, and the game used to stop
@@ -834,7 +811,7 @@ static bool block_moved(const game *g, const block *k) {
   return vlen(vsub(p, k->home)) > lim;
 }
 
-float game_mark(const game *g) { return g->L->mark > 0 ? g->L->mark : KIT_MARK[g->L->kind]; }
+float game_mark(const game *g) { return g->L->mark; }
 
 float game_share(const game *g) {
   if (g->vol_total <= 0) return 0;
@@ -906,7 +883,7 @@ void game_step(game *g, const input *in) {
     blast_shell(g, g->blast_shell);
     g->blast_shell = g->blast_shell >= BLAST_SHELLS ? 0 : g->blast_shell + 1;
   }
-  kegs_go(g);
+  pending_go(g);
   int broke0 = g->broken;
   break_queued(g);
   chunks_step(g);
@@ -1043,7 +1020,7 @@ int game_aim_shot(game *g, int ammo, int pick) {
   float bd = 1e9f;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
-    if (!k->alive || k->tag != 1 || k->target >= 0 || k->keg || k->home.y - k->half.y > 1.2f || k->home.y > 3.0f) continue;
+    if (!k->alive || k->tag != 1 || k->target >= 0 || k->home.y - k->half.y > 1.2f || k->home.y > 3.0f) continue;
     float dx = k->home.x - g->muzzle.x, dz = k->home.z - g->muzzle.z, d = dx * dx + dz * dz + (float)pick * 0.0f;
     if (d < bd) bd = d, best = i;
   }
@@ -1063,7 +1040,7 @@ int game_cutaway(game *g) {
   int n = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
-    if (!k->alive || k->tag == 0 || k->target >= 0 || k->keg) continue;
+    if (!k->alive || k->tag == 0 || k->target >= 0) continue;
     if (k->home.x * u.x + k->home.z * u.z > 0.05f) kill_block(g, i), n++;
   }
   return n;

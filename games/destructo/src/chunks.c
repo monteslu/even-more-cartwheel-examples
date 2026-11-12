@@ -837,13 +837,13 @@ static void xz_extent(const block *b, cw_xform3 x, float *ex, float *ez) {
   *ez = b->half.x * fabsf(ax.z) + b->half.z * fabsf(az.z);
 }
 
-static bool placed_block(const block *k) { return k->alive && k->tag && k->target < 0 && !k->keg; }
+static bool placed_block(const block *k) { return k->alive && k->tag && k->target < 0; }
 
 static void build_i(game *g);
 void chunks_build(game *g) { ch_lock(); build_i(g); ch_unlock(); }
 void chunks_step(game *g);
 static void build_i(game *g) {
-  float cell = opt_get("CELL") ? (float)atof(opt_get("CELL")) : (g->L->kind == K_LANDMARK ? 2.0f : 1.0f);
+  float cell = opt_get("CELL") ? (float)atof(opt_get("CELL")) : 2.0f;
   int nb = g->nb;
   static cw_xform3 X[MAXBLK];
   static uint8_t welded[MAXBLK];

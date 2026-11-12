@@ -22,13 +22,13 @@ const NAMES = [...table.slice(0, table.indexOf('\n};')).matchAll(/(?:LANDMARK\(|
 // seconds; settled, a block leans a few milliradians and sits a few millimetres off its neighbours, and two faces that
 // lean against each other cross somewhere whatever layers they are drawn on. The game draws each block proud by a
 // layer per axis that clears its settled neighbours (games/destructo/src/view.c, block_layers): that takes the settled
-// structures from 81,015 pairs over the 30 levels to 2,009, where a leaning face crosses its neighbour's.
+// structures from 81,015 pairs over the levels to 2,009, where a leaning face crosses its neighbour's.
 // They are held to these counts (a quarter over, and ten), so a change that brings the flush faces back fails.
 // Measured through romdev on 2026-11-10, every level settled as for play and held (dm set HOLD 1: no shot fired, so
 // the scan sees the level as built and settled, not debris of the bot's first shot).
 // Each is held to its count a quarter over, and ten; a level measured at none is held to none. The landmarks are
 // measured as built on that day: measure again (and set these again) when games/destructo/src/landmarks.c changes.
-const SETTLED = {"Sail Hotel": 4, "Great Sphinx": 29, "The Needle": 479, "Iron Lady": 397, "The Black Tower": 353, "The Empire": 155, "Harbour Sails": 1900, "Pyramids of Giza": 15, "Taj Mahal": 200, "Neuschwanstein Castle": 390, "The Spire": 163, "First Stones": 33, "Lookout": 48, "Garden Wall": 53, "Two Floors": 35, "Glass House": 0, "Step Shrine": 0, "Mill Bridge": 0, "The Gatehouse": 65, "Watch Pair": 59, "Tall Order": 63, "Iron Frame": 0, "Sun Steps": 0, "Old Keep": 218, "River Span": 0, "Hill Fort": 92, "Lantern Tower": 95, "Workyard": 12, "Long Rampart": 44, "Tall Keep": 350, "High Steps": 0, "Viaduct": 0, "Twin Gates": 204, "Sky Frame": 0, "Stone Giant": 107, "Great Keep": 524, "Citadel": 200, "Grand Steps": 0, "Iron Bridge": 0, "Glass Works": 12, "The Last Fort": 420};
+const SETTLED = {"Sail Hotel": 4, "Great Sphinx": 29, "The Needle": 479, "Iron Lady": 397, "The Black Tower": 353, "The Empire": 155, "Harbour Sails": 1900, "Pyramids of Giza": 15, "Taj Mahal": 200, "Neuschwanstein Castle": 390, "The Spire": 163};
 
 async function scan(level, opts, cmds) {
   const h = await openCart('destructo_auto', { gpu, tag: `coplanar-${level}` });

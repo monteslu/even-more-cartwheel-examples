@@ -1,6 +1,4 @@
-// destructo perf gate: destructo_bench (the bot on Great Keep, a keep of about 1900 blocks: its charges bring most of
-// it down, 1400 blocks broken and 2400 bodies awake at once, the camera on the collapse) and destructo_bench_landmark
-// (the bot on Neuschwanstein Castle, the landmark whose collapse wakes the most bodies), each as a cart on romdev at
+// destructo perf gate: destructo_bench (the bot on Taj Mahal, a charge breaks about 700 blocks and wakes about 2,000 bodies, the camera on the collapse), as a cart on romdev at
 // 1920x1080 on the High preset, on GL and on WebGPU, on the test GPU (romdev's pinned GPU, the 890M).
 // The bench runs to frame 360 in one step, then romdev times frames 361 to 1080 in one call (frame({op:'timing'}),
 // romdev 0.153.0: wall, CPU in the frame call and GPU time a frame, in 120-frame windows, the server held for the run;
@@ -9,9 +7,7 @@
 // (game.broken read over the same frames), within BOUND_GL on GL and BOUND_WGPU on WebGPU. romdev's GPU time is the
 // host's round the whole frame (WebGPU: the union of every pass's timestamps; GL: a GL_TIME_ELAPSED query round the
 // frame, which also counts the GPU waiting on the CPU inside the frame), so it includes the HUD and the final copy that
-// the native gate's pass sums left out: the bounds are set from clean romdev runs on the 890M on 2026-11-10 (GL Great Keep
-// 4.1 to 5.4 ms with the GPU clock between 740 and 2330 MHz, the landmark 5.2; WebGPU Great Keep 4.1, the landmark
-// 5.1), a little over the slowest, not the native gate's 4 ms. Every run must be on the pinned GPU, not noisy
+// the native gate's pass sums left out: the bound is set from clean romdev runs on the 890M, a little over the slowest, not the native gate's 4 ms. Every run must be on the pinned GPU, not noisy
 // (romdev's contention check: a noisy run is measured again a minute later, for up to twenty minutes, and only a quiet
 // run is judged), draw everything (no "not in any
 // program table" line in the cart's log) and show a real collapse (a hundred blocks broken, a thousand bodies awake
@@ -69,9 +65,8 @@ const check = (name, r, bound, mustFail = false) => {
 for (const gpu of gpusArg()) {
   const B = gpu === 'gl' ? BOUND_GL : BOUND_WGPU;
   const k = await run('destructo_bench', gpu);
-  check(`Great Keep ${gpu} 1920x1080 High`, k, B);
-  check(`landmark ${gpu} 1920x1080 High`, await run('destructo_bench_landmark', gpu), B);
-  if (controls && gpu === 'gl') check('Great Keep GL at 3840x2160 (four times the pixels)', await run('destructo_bench', 'gl', { width: 3840, height: 2160 }), B, true);
-  if (controls && gpu === 'webgpu') check('Great Keep WebGPU against 0.5 ms', k, 0.5, true);
+  check(`Taj Mahal ${gpu} 1920x1080 High`, k, B);
+  if (controls && gpu === 'gl') check('Taj Mahal GL at 3840x2160 (four times the pixels)', await run('destructo_bench', 'gl', { width: 3840, height: 2160 }), B, true);
+  if (controls && gpu === 'webgpu') check('Taj Mahal WebGPU against 0.5 ms', k, 0.5, true);
 }
 process.exit(bad ? 1 : 0);

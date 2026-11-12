@@ -48,7 +48,7 @@ for (const gpu of gpusArg()) { // the select screen: a held direction runs along
     await run(2);
     const one = (await h.state())['menu.sel'] - sel0;
     /* the hold in two halves, each read: the list is shorter than a second's run, so one reading would wrap */
-    const N = +/#define NSHOWN (\d+)/.exec(readFileSync(join(ROOT, 'games/destructo/src/game.h'), 'utf8'))[1];
+    const N = +/#define NLEVELS (\d+)/.exec(readFileSync(join(ROOT, 'games/destructo/src/game.h'), 'utf8'))[1];
     await call('input', { op: 'timeline', timeline: [{ frame: at + 2, buttons: ['down'], until: at + 32 }] }, h.session);
     at += 32;
     const mid = (await h.state())['menu.sel'];
@@ -243,7 +243,7 @@ for (const gpu of gpusArg()) {
 for (const gpu of gpusArg()) { // the winning blow's slow-motion beat: about 0.4 s at 0.35x, eased in and out, the card's keys never held
   const h = await openCart('destructo_auto', { gpu, tag: 'feel-beat' });
   try {
-    for (const [k, v] of Object.entries({ LEVEL_NAME: 'First Stones', QUALITY: 3, ...(control ? { OLD_FEEL: 1 } : {}) })) await h.command(`dm set ${k} "${v}"`);
+    for (const [k, v] of Object.entries({ LEVEL_NAME: 'Great Sphinx', QUALITY: 3, ...(control ? { OLD_FEEL: 1 } : {}) })) await h.command(`dm set ${k} "${v}"`);
     await h.command('dm restart');
     await h.step(1500 - h.frame);
     const s = await h.state();

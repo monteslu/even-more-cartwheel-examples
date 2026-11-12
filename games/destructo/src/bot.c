@@ -125,7 +125,7 @@ static void plan(game *g, bot_state *b) {
     for (int pass = 0; pass < 2 && pick < 0; pass++)
       for (int i = 0; i < g->nb; i++) {
         const block *k = &g->b[i];
-        if (!k->alive || !k->tag || k->target >= 0 || k->down || k->keg) continue;
+        if (!k->alive || !k->tag || k->target >= 0 || k->down) continue;
         t3_vec3 p = game_block_xform(g, (int)(k - g->b)).p;
         float near = 1e9f;
         for (int c = 0; c < g->ntgt; c++) {

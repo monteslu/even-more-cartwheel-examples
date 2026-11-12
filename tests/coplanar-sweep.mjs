@@ -47,7 +47,7 @@ const SWEEP = 120, STEP = 10, TURNS = 6, LIMIT = 40, SCALE = 2, STILL_TURNS = 2,
 
 // from: the frame the level is loaded and still by; cam: from (x, y, z) at (tx, ty, tz), gliding (dx, dy, dz) m/s
 const SCENES = {
-  destructo: [{ name: 'The Last Fort (its settled stone courses)', app: 'destructo_auto', from: 190, romdev: true, env: { LEVEL_NAME: 'The Last Fort', NO_HUD: '1' },
+  destructo: [{ name: 'Colosseum (its settled stone courses)', app: 'destructo_auto', from: 190, romdev: true, env: { LEVEL_NAME: 'Colosseum', NO_HUD: '1' },
     cam: [-3, 3, -16, -3, 2.5, 0, 0.05, 0, 0] }],
   emberthrone: [{ name: 'the meadow\'s buildings', app: 'emberthrone_auto', from: 150, env: { ADV_NO_HUD: '1' },
     cam: [176, 20, 262, 180, 16, 271, 0.05, 0, 0] }],

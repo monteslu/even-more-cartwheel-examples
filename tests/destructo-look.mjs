@@ -1,6 +1,5 @@
-// destructo look gate: one frame of each setting (a tower in the highlands, a wall in a meadow, a bridge over a
-// river gorge, a castle on sea cliffs, a scaffold in a quarry, a pyramid among desert mesas, a keep in a snowy pass,
-// the Black Tower in the city, Tower Bridge on the harbour), as the player aims, without the HUD:
+// destructo look gate: one frame of each setting (a highland, a meadow, a headland over the sea, the desert, a snowy pass,
+// the city, the harbour: a famous landmark in each), as the player aims, without the HUD:
 // destructo_auto as a cart on romdev at 1920x1080 on the High preset, on GL and on WebGPU, the level and the options
 // set over the debug channel (dm set LEVEL_NAME ..., NO_HUD, QUALITY; dm restart). Each frame's luma (Rec. 709 of the
 // sRGB values, 0..255) must average 95 to 125 and spread with a standard deviation of 55 or more: lit, contrasty,
@@ -14,8 +13,7 @@ import { openCart, inPairs, gpusArg, ROOT } from './lib/romdev.mjs';
 
 const OUT = join(ROOT, 'out/look');
 mkdirSync(OUT, { recursive: true });
-const KITS = [['tower', 'First Stones'], ['wall', 'Garden Wall'], ['bridge', 'Mill Bridge'], ['castle', 'The Gatehouse'], ['scaffold', 'Glass House'],
-  ['pyramid', 'Step Shrine'], ['keep', 'Old Keep'], ['city', 'The Black Tower'], ['harbour', 'Tower Bridge']];
+const KITS = [['highland', 'Mount Rushmore'], ['meadow', 'Taj Mahal'], ['headland', 'Parthenon'], ['desert', 'Great Sphinx'], ['snow', "Saint Basil's Cathedral"], ['city', 'The Black Tower'], ['harbour', 'Tower Bridge']];
 async function shot(gpu, level, file, opts = {}) {
   const h = await openCart('destructo_auto', { gpu, tag: 'look' });
   try {

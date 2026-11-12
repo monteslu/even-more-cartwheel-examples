@@ -59,7 +59,6 @@ typedef struct block {
   bool down;         /* counted as brought down (score) */
   bool queued;       /* out of strength, waiting its turn to break (the fracture queue) */
   uint16_t blasted;  /* the charge (game.booms) that last pushed it */
-  uint8_t keg;       /* a powder keg: when it breaks it goes off like a smaller charge (and may set off the next) */
 } block;
 
 /* A chunk is one rigid body of several blocks (a compound of box shapes): a landmark's welded lattice section, a
@@ -99,7 +98,7 @@ typedef struct target_state {
 
 /* paints the level builder gives blocks (the look only) */
 enum { P_NONE, P_ROOF_RED, P_ROOF_SLATE, P_ROOF_COPPER, P_TRIM_CREAM, P_TIMBER, P_PLASTER, P_GOLD, P_TURQUOISE, P_BRICK, P_DARK_STONE,
-       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE, P_KEG,
+       P_SAND_STONE, P_ROSE_STONE, P_WHITE_STONE,
        P_MARBLE, P_LIMESTONE, P_BRONZE, P_DARK_GLASS, P_TILE_WHITE, P_RED_BRICK, P_WHITE_PAINT, P_BLUE_GLASS, P_ROCK, P_SILVER,
        P_SARSEN, P_VERDIGRIS, P_CONCRETE, P_SHELL_WHITE, P_PODIUM, P_IRON, P_COUNT };
 /* a banner on a pole, carried by a block (it goes where the block goes, and with it) */
@@ -129,28 +128,22 @@ typedef struct input {
   bool fire, ammo_next, ammo_prev;
 } input;
 
-/* a level, as generated (levels.c) */
-enum { K_TOWER, K_WALL, K_BRIDGE, K_CASTLE, K_SCAFFOLD, K_PYRAMID, K_KEEP, K_LANDMARK, K_COUNT };
-/* the settings a structure stands in (view.c): each kit's own, in the kits' order, a city and a harbour */
-enum { ST_HIGHLAND, ST_MEADOW, ST_GORGE, ST_HEADLAND, ST_QUARRY, ST_DESERT, ST_SNOW, ST_CITY, ST_HARBOUR, ST_COUNT };
+/* the settings a structure stands in (view.c) */
+enum { ST_HIGHLAND, ST_MEADOW, ST_HEADLAND, ST_DESERT, ST_SNOW, ST_CITY, ST_HARBOUR, ST_COUNT };
 typedef struct level_def {
   const char *name;
-  int kind;
   uint32_t seed;
-  int size;          /* the kit's scale: storeys, rings, spans */
   int targets;
   int par;           /* shots for three stars */
   int ammo[NAMMO];   /* what the level gives */
   float range;       /* launcher distance from the structure's middle */
-  int theme;         /* ground and sky */
-  int lm;            /* K_LANDMARK: which landmark (landmarks.c LM_*) */
-  const char *place; /* K_LANDMARK: where it stands (shown under its name) */
-  int setting;       /* the setting (ST_*) + 1; 0: the kit's own */
-  float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
+  int lm;            /* which landmark (landmarks.c LM_*) */
+  const char *place; /* where it stands (shown under its name) */
+  int setting;       /* the setting (ST_*) + 1 */
+  float mark;        /* the share that counts as brought down */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
-#define NLEVELS 72 /* every level the game can build: the shown ones (NSHOWN: 4 tutorials, then the real landmarks; 6 more built and held, levels.c) and the 26 kit structures held out of the select */
-#define NSHOWN 46  /* the level select, the progression and the next level: the tutorials and the real landmarks (the rows before LANDMARKS_END in levels.c) */
+#define NLEVELS 41 /* the shipped landmarks (the rows of levels.c): the level select, the progression and the next level */
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or
@@ -231,11 +224,9 @@ typedef struct game {
   /* a charge's blast runs outward over a few ticks, a shell a tick */
   t3_vec3 blast_at;
   int blast_shell;   /* the next shell, 0 when no blast is running */
-  float blast_r, blast_k; /* the running blast's radius and strength (a charge: CHARGE_R and 1; a keg: smaller) */
-  /* kegs set off and waiting their blast (a chain goes off one after another, a few ticks apart) */
+  /* charges that went off inside a running blast, waiting their turn (a few ticks apart) */
 #define MAXPEND 16
   t3_vec3 pend_at[MAXPEND];
-  uint8_t pend_charge[MAXPEND]; /* a charge that went off during a keg's blast (a charge's size, not a keg's) */
   int npend, pend_wait;
   int breaks_tick, made_tick; /* this tick's breaks and bodies made (stats) */
   int settle_quiet;
@@ -327,9 +318,7 @@ int game_stars(const game *g);
 /* the share of the structure (by volume, crystals not counted) brought down: broken, lost off the field, or standing
  * more than its own size (and at least 0.6 m) from where it settled before play. Live: the HUD and the judgement */
 float game_share(const game *g);
-/* the level's mark: the share that counts as "brought down" (and the third star needs), by kit (levels.c): half a
- * tower or a scaffold, less of a wall or a castle, a sixth of a solid stepped pyramid */
-extern const float KIT_MARK[K_COUNT];
+/* the level's mark: the share that counts as "brought down" (and the third star needs), each landmark's own (levels.c) */
 float game_mark(const game *g);
 #define SETTLE_AWAKE 2    /* the world is still: this many bodies awake at most ... */
 #define SETTLE_QUIET 20   /* ... for this many ticks */
@@ -340,10 +329,7 @@ int game_result(const game *g);
 /* place a block (levels.c builds with it): bottom-centre at p, half sizes, turned yaw about y */
 int game_add_block(game *g, int mat, t3_vec3 centre, t3_vec3 half, float yaw);
 int game_add_target(game *g, t3_vec3 centre);
-/* a powder keg standing on the ground at (x, z) (levels.c places them against the structure) */
-int game_add_keg(game *g, float x, float z);
-#define KEG_HALF 0.32f
-/* harm block i by energy e (J) the way a hit does (tests: set off a keg) */
+/* harm block i by energy e (J) the way a hit does (tests) */
 void game_hit_block(game *g, int i, float e);
 /* a banner on block blk, its pole foot at local (block frame), h tall */
 void game_add_banner(game *g, int blk, t3_vec3 local, float h, int colour);
@@ -354,7 +340,7 @@ void level_build(game *g, const level_def *L);
 /* landmarks.c */
 enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA_HOUSE, LM_TAJ_MAHAL, LM_WILLIS, LM_NEUSCHWANSTEIN, LM_BURJ_KHALIFA,
        LM_COLOSSEUM, LM_BIG_BEN, LM_PISA, LM_PARTHENON, LM_STONEHENGE, LM_TOWER_BRIDGE, LM_ST_BASILS, LM_PETRONAS, LM_PAGODA, LM_ANGKOR_WAT,
-       LM_CHICHEN_ITZA, LM_LIBERTY, LM_CHRIST_REDEEMER, LM_CN_TOWER, LM_MOAI,
+       LM_CHICHEN_ITZA, LM_LIBERTY, LM_CN_TOWER, LM_MOAI,
        LM_RUSHMORE, LM_KREMLIN, LM_TAIPEI, LM_GOLDEN_GATE, LM_BROOKLYN, LM_CHRYSLER, LM_GATEWAY, LM_ARC, LM_BRANDENBURG, LM_PANTHEON, LM_NOTRE_DAME,
        LM_TOKYO_TOWER, LM_ATOMIUM, LM_GREAT_WALL, LM_PETRA, LM_HAGIA_SOPHIA, LM_BLUE_MOSQUE, LM_MONT_ST_MICHEL, LM_JAPANESE_CASTLE, LM_MACHU_PICCHU, LM_BERLIN_TV, LM_BURJ_ARAB, LM_HOOVER, LM_ABU_SIMBEL, LM_SYDNEY_BRIDGE, LM_BOROBUDUR, LM_SHWEDAGON, LM_TEMPLE_HEAVEN, LM_SAGRADA, LM_COUNT };
 void landmark_build(game *g, const level_def *L);

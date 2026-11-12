@@ -1,5 +1,5 @@
 // destructo hitch gate: the frame the charge goes off in must not be a dropped frame. destructo_bench (the bot on
-// Great Keep: its charge breaks hundreds of blocks and wakes two thousand bodies) runs as a cart on romdev, on GL and on
+// Taj Mahal: its charge breaks about 700 blocks and wakes two thousand bodies) runs as a cart on romdev, on GL and on
 // WebGPU. A first run steps to frame 760 in ranges and reads where the charge went off (fx.boom_frame); a second run
 // steps to 30 frames before it, and romdev times the 210 frames from there in one call (frame({op:'timing'}), every
 // frame's wall, CPU in the frame call and GPU time, series kept).

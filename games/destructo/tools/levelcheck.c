@@ -11,16 +11,14 @@
  *            awake, and 5 s later no more than 2% more of the structure has come down. The stars and the headline
  *            are checked against this tool's own count of the structure 5 s after the judgement (every block the level
  *            placed, by volume: gone, or more than its own size and at least 0.6 m from where it settled): three
- *            stars or "brought down" only with the level's mark of it down (game_mark: a half, a third ... by kit)
+ *            stars or "brought down" only with the level's mark of it down (game_mark: each landmark's own)
  *
  *   destructo_levelcheck [level ...]             (default: every level)
- *   destructo_levelcheck --control float|rest|solve|early|stars   the controls: a floating block put into level 1, a
+ *   destructo_levelcheck --control float|rest|solve|stars|settle   the controls: a floating block put into level 1, a
  *            plank hung off the edge of level 1's top, a bot aiming 150 milliradians off on level 2, and the result
- *            rules before the fix (judged 1.5 s after the last crystal fell, stars by shots alone) on Stone Giant
- *            (level 24, judged while it falls) and Garden Wall (level 3, three stars with the wall standing); each must
- *            fail its check
- *   destructo_levelcheck --kegs   two kegs 1.6 m apart in level 1's yard, the first set off: the second must go off
- *            too (a chain); the control, 8 m apart, must not
+ *            rules before the fix (judged 1.5 s after the last crystal fell, stars by shots alone) on Hagia Sophia (three
+ *            stars with the building standing), and the old wait (judged only once the world is still) on the
+ *            Colosseum; each must fail its check
  *   replay   the level's last shot replayed from the shadow game (replay.c: the level made again and stepped with the
  *            logged inputs) ends on the live game's judged hash. Control (--control replay, level 1): the replay's
  *            last shot fired 3 milliradians off must end on another hash */
@@ -133,8 +131,7 @@ static void check(int level, const char *control) {
   int nfloat = floating(&G, &first);
   int first_over = -1, nover = overlapping(&G, &first_over);
   if (getenv("LC_DEBUG") && first >= 0) { t3_vec3 p = game_block_xform(&G, first).p; fprintf(stderr, "first float %d %s at %.3f %.3f %.3f half %.3f %.3f %.3f\n", first, MATS[G.b[first].mat].name, p.x, p.y, p.z, G.b[first].half.x, G.b[first].half.y, G.b[first].half.z); }
-  int blocks = G.nalive, nkegs = 0;
-  for (int i = 0; i < G.nb; i++) nkegs += G.b[i].alive && G.b[i].keg;
+  int blocks = G.nalive;
   /* settle, then rest */
   static t3_vec3 p0[MAXBLK];
   for (int i = 0; i < G.nb; i++) p0[i] = G.b[i].alive ? game_block_xform(&G, i).p : (t3_vec3){ 0, 0, 0 };
@@ -247,10 +244,10 @@ static void check(int level, const char *control) {
   }
   float share_after = vol_all > 0 ? vol_down / vol_all : 0;
   printf("{\"judge_lag\":%d,\"judged_awake\":%d,\"share_judged\":%.4f,\"share_after\":%.4f,\"result\":%d,\"stars3\":%d,\"mark\":%.3f,\"replay\":%d,\"replay_ticks\":%d,", judge_lag, judged_awake, share_judged, share_after, result, stars == 3, game_mark(&G), replay_match(), replay_ticks);
-  printf("\"level\":%d,\"name\":\"%s\",\"kind\":%d,\"control\":\"%s\",\"blocks\":%d,\"kegs\":%d,\"targets\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"first_over\":%d,"
+  printf("\"level\":%d,\"name\":\"%s\",\"control\":\"%s\",\"blocks\":%d,\"targets\":%d,\"floating\":%d,\"first_float\":%d,\"overlapping\":%d,\"first_over\":%d,"
          "\"settle_move_mm\":%.2f,\"settle_worst\":\"%s %d y%.2f\",\"broken_settle\":%d,\"drift_mm\":%.3f,\"worst\":%d,\"awake_end\":%d,\"targets_moved\":%d,"
          "\"solved\":%s,\"shots\":%d,\"par\":%d,\"stars\":%d,\"bot_ticks\":%d,\"broken\":%d,\"fragments\":%d,\"max_awake\":%d,\"step_ms_max\":%.2f}\n",
-         level, G.L->name, G.L->kind, control ? control : "", blocks, nkegs, G.ntgt, nfloat, first, nover, first_over, settle_move * 1000, settle_worst >= 0 ? MATS[G.b[settle_worst].mat].name : "", settle_worst, settle_worst >= 0 ? p0[settle_worst].y : 0.0f, broken_settle, drift * 1000, worst, awake, tdown,
+         level, G.L->name, control ? control : "", blocks, G.ntgt, nfloat, first, nover, first_over, settle_move * 1000, settle_worst >= 0 ? MATS[G.b[settle_worst].mat].name : "", settle_worst, settle_worst >= 0 ? p0[settle_worst].y : 0.0f, broken_settle, drift * 1000, worst, awake, tdown,
          G.state == GS_WON ? "true" : "false", G.shots, G.L->par, stars, ticks, G.broken, G.fragments, max_awake, step_max);
   fflush(stdout);
 }
@@ -556,21 +553,6 @@ static void realshot_check(int level, int ammo) {
   for (int u = 0; u < chunks_unsupported(&G) && u < 8; u++) printf("{\"unsup\":%d,\"n\":%.0f,\"d\":%.3f,\"req\":%.3f,\"dirty\":%.0f,\"stamp\":%.0f,\"seen\":%.0f,\"d0\":%.3f,\"c\":%.0f}\n", u, g_unsup_dbg[u][0], g_unsup_dbg[u][1], g_unsup_dbg[u][2], g_unsup_dbg[u][3], g_unsup_dbg[u][4], g_unsup_dbg[u][5], g_unsup_dbg[u][6], g_unsup_dbg[u][7]);
 }
 
-/* kegs: two powder kegs in level 1's yard, gap metres apart; the first is set off; how many blasts follow */
-static void kegs(float gap) {
-  game_new(&G, 0, 1, MODE_COOP);
-  int a = game_add_keg(&G, 7.0f, 6.0f);
-  game_add_keg(&G, 7.0f + gap, 6.0f);
-  game_settle(&G, 60);
-  game_hit_block(&G, a, 1e6f);
-  input none = { 0 };
-  G.state = GS_SETTLE;
-  for (int t = 0; t < 240; t++) game_step(&G, &none);
-  int kegs_left = 0;
-  for (int i = 0; i < G.nb; i++) kegs_left += G.b[i].alive && G.b[i].keg;
-  printf("{\"kegs_gap\":%.1f,\"booms\":%d,\"kegs_left\":%d}\n", gap, G.booms, kegs_left);
-}
-
 int main(int argc, char **argv) {
   cw_jobs_init(-1);
   for (int a = 1; a + 1 < argc;) { /* --opt NAME=VALUE anywhere: a run option (opts.h), then dropped from the arguments */
@@ -580,7 +562,7 @@ int main(int argc, char **argv) {
     bool charge = false; int nl = 0;
     for (int a = 2; a < argc; a++) { if (!strcmp(argv[a], "--charge")) charge = true; else if (argv[a][0] >= '0' && argv[a][0] <= '9') nl++; }
     for (int a = 2; a < argc; a++) if (argv[a][0] >= '0' && argv[a][0] <= '9') legout_check(atoi(argv[a]), charge);
-    if (nl == 0) for (int l = 0; l < NLEVELS; l++) if (LEVELS[l].kind == K_LANDMARK) legout_check(l, charge);
+    if (nl == 0) for (int l = 0; l < NLEVELS; l++) legout_check(l, charge);
     game_free(&G);
     return 0;
   }
@@ -590,17 +572,11 @@ int main(int argc, char **argv) {
     game_free(&G);
     return 0;
   }
-  if (argc > 1 && !strcmp(argv[1], "--kegs")) { /* the chain, and its control (too far apart to set each other off) */
-    kegs(1.6f), kegs(8.0f);
-    game_free(&G);
-    return 0;
-  }
   if (argc > 1 && !strcmp(argv[1], "--landmarks")) {
     const char *c = argc > 3 && !strcmp(argv[2], "--control") ? argv[3] : NULL;
     if (c && !strcmp(c, "oldwelds")) landmark_check(1, c); /* the control: the Needle with the welds as they were */
     else
       for (int l = 0; l < NLEVELS; l++) {
-        if (LEVELS[l].kind != K_LANDMARK) continue;
         landmark_check(l, c);
         if (c) break; /* a control: the first landmark */
       }
@@ -610,7 +586,7 @@ int main(int argc, char **argv) {
   if (argc > 2 && !strcmp(argv[1], "--control")) {
     const char *c = argv[2];
     /* by name: the levels before them move as levels are added */
-    int early = level_find(opt_get("EARLY_LEVEL") ? opt_get("EARLY_LEVEL") : "Lookout"), stars = level_find("Garden Wall");
+    int early = level_find(opt_get("EARLY_LEVEL") ? opt_get("EARLY_LEVEL") : "Colosseum"), stars = level_find("Hagia Sophia");
     check(!strcmp(c, "solve") ? 1 : !strcmp(c, "replay") ? 0 : (!strcmp(c, "early") || !strcmp(c, "settle")) ? (early >= 0 ? early : 23) : !strcmp(c, "stars") ? (stars >= 0 ? stars : 2) : 0, c);
     game_free(&G);
     game_free(&G);
