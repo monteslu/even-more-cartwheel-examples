@@ -1162,6 +1162,8 @@ function borobudur(x, y, z) {
       return Math.max(ax, az) > hw - 0.32 && y > y0 + 0.55 ? L : D;
     }
   }
+  /* the rows of bell stupas along the square terraces' edges */
+  for (let k = 0; k < 5; k++) { const y0 = k * 0.9 + 0.9, Lk = HW[k] - 0.7; if (y >= y0 && y < y0 + 0.8 && k < 4 && Math.abs(Math.max(ax, az) - Lk) < 0.5) { const along = ax > az ? z : x, c = Math.round(along / 0.95) * 0.95, perp = ax > az ? Math.sign(x) * Lk : Math.sign(z) * Lk; const rr = ax > az ? Math.hypot(x - perp, z - c) : Math.hypot(x - c, z - perp); if (Math.abs(c) < Lk && rr < 0.34 * Math.sqrt(Math.max(0, 1 - sq((y - y0) / 0.8))) + 0.04) return 'stone:LIMESTONE'; } }
   if (y >= 4.5 && y < 6.0) { const k = Math.min(2, Math.floor((y - 4.5) / 0.5)), R = [3.7, 3.0, 2.3][k]; if (r < R) return D; }
   /* the rings of small bell stupas on the three round terraces */
   const rings = [[4.5, 3.2, 16], [5.0, 2.55, 12], [5.5, 1.9, 8]];
@@ -1200,7 +1202,7 @@ function templeHeaven(x, y, z) {
   for (let k = 0; k < 3; k++) if (y >= k * 0.7 && y < k * 0.7 + 0.7 && r < 5.8 - k * 0.8) return y > k * 0.7 + 0.5 && r > 5.8 - k * 0.8 - 0.3 ? 'stone:MARBLE' : 'stone:WHITE_STONE';
   if (y >= 2.1 && y < 4.7 && r < 2.5 && r > 1.5) return Math.abs(((Math.atan2(z, x) + 6.2832) % 0.5236) - 0.26) < 0.17 ? 'stone:RED_BRICK' : (y > 3.7 && y < 4.0 ? 'stone:GOLD' : 'glass:DARK_GLASS'); /* the hall's wall of red columns */
   const tiers = [[4.7, 6.2, 3.8, 2.3], [6.2, 7.6, 3.1, 1.7], [7.6, 8.9, 2.4, 0.5]];
-  for (const [y0, y1, r0, r1] of tiers) if (y >= y0 && y < y1) { const t = (y - y0) / (y1 - y0), R = r0 + (r1 - r0) * t; if (r < R && r > R - 0.38) return 'glass:BLUE_GLASS'; if (y < y0 + 0.2 && r < r0 && r > r0 - 0.6) return 'stone:RED_BRICK'; }
+  for (const [y0, y1, r0, r1] of tiers) if (y >= y0 && y < y1) { const t = (y - y0) / (y1 - y0), R = r0 + (r1 - r0) * t; if (r < R && r > R - 0.38) return 'glass:BLUE_GLASS'; if (y < y0 + 0.24 && r < r0 && r > 1.4) return 'stone:RED_BRICK'; }
   if (y >= 8.9 && y < 9.9 && Math.hypot(r, y - 9.4) < 0.55) return 'stone:GOLD';
   return null;
 }

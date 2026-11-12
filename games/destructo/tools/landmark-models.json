@@ -71,7 +71,7 @@
   "hoover": { "proc": "hoover", "size": { "axis": "x", "len": 18 }, "cell": 0.33, "course": 0.3, "wall": 1, "core": 4 },
   "abu_simbel": { "proc": "abu_simbel", "size": { "axis": "x", "len": 14 }, "cell": 0.24, "course": 0.22, "wall": 1, "core": 4 },
   "sydney_bridge": { "proc": "sydney_bridge", "size": { "axis": "x", "len": 32 }, "cell": 0.12, "course": 0.12, "wall": 0, "core": 0, "weld": true, "member": [ 24, 6 ] },
-  "borobudur": { "proc": "borobudur", "size": { "axis": "x", "len": 18 }, "cell": 0.22, "course": 0.22, "wall": 1, "core": 4 },
+  "borobudur": { "proc": "borobudur", "size": { "axis": "x", "len": 18 }, "cell": 0.3, "course": 0.3, "wall": 1, "core": 4 },
   "shwedagon": { "proc": "shwedagon", "size": { "axis": "x", "len": 10 }, "cell": 0.12, "course": 0.12, "wall": 1, "core": 0, "weld": true, "member": [ 24, 6 ] },
   "temple_heaven": { "proc": "temple_heaven", "size": { "axis": "x", "len": 12 }, "cell": 0.14, "course": 0.14, "wall": 1, "core": 0, "weld": true, "member": [ 24, 6 ] },
   "sagrada": { "proc": "sagrada", "size": { "axis": "x", "len": 14 }, "cell": 0.14, "course": 0.14, "wall": 1, "core": 0, "weld": true, "member": [ 24, 6 ] }

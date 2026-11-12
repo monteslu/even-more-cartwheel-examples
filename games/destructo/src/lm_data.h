@@ -76,4 +76,8 @@ extern const lm_vox LMV_machu;
 extern const lm_vox LMV_hoover;
 extern const lm_vox LMV_abu_simbel;
 extern const lm_vox LMV_sydney_bridge;
+extern const lm_vox LMV_borobudur;
+extern const lm_vox LMV_shwedagon;
+extern const lm_vox LMV_temple_heaven;
+extern const lm_vox LMV_sagrada;
 #endif

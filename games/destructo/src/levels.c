@@ -82,6 +82,10 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK_HELD("Hoover Dam", LM_HOOVER, 2, 3, 6, 2, 1, 34, "Nevada, United States", ST_DESERT, 0.05f, 0.3f)
   LANDMARK_HELD("Abu Simbel", LM_ABU_SIMBEL, 2, 3, 6, 2, 1, 26, "Nubia, Egypt", ST_DESERT, 0.05f, 0.25f)
   LANDMARK_HELD("Sydney Harbour Bridge", LM_SYDNEY_BRIDGE, 2, 3, 6, 2, 1, 40, "Sydney, Australia", ST_HARBOUR, 0.05f, 0.5f)
+  LANDMARK_HELD("Borobudur", LM_BOROBUDUR, 2, 3, 6, 2, 1, 34, "Java, Indonesia", ST_MEADOW, 0.02f, 0.5f)
+  LANDMARK_HELD("Shwedagon Pagoda", LM_SHWEDAGON, 2, 3, 6, 2, 1, 28, "Yangon, Myanmar", ST_MEADOW, 0.1f, 0.3f)
+  LANDMARK("Temple of Heaven", LM_TEMPLE_HEAVEN, 2, 3, 6, 2, 1, 28, "Beijing, China", ST_MEADOW, 0.1f, 0.3f),
+  LANDMARK_HELD("Sagrada Familia", LM_SAGRADA, 2, 3, 6, 2, 1, 32, "Barcelona, Spain", ST_CITY, 0.1f, 0.3f)
   /* LANDMARKS_END */
   /* kit structures held out of the level select (NSHOWN levels are shown): the gates still build and check them, and the bench uses Great Keep */
   { "Two Floors", K_TOWER, 47, 3, 2, 3, { 5, 1, 0 }, 30, 1 },

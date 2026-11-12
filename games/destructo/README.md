@@ -2,12 +2,12 @@
 
 Bring famous buildings of the world down. The level select opens on four small tutorial structures (a tower, a tall
 tower, a garden wall and a stepped shrine that teach the shot, the heavy ball, the lob and the charge), then the
-real landmarks, by difficulty and world region: forty-one of them, from every continent and age. Among them: the
+real landmarks, by difficulty and world region: forty-two of them, from every continent and age. Among them: the
 Great Sphinx, the Needle of Seattle, the Iron Lady of Paris, the Black Tower of Chicago, the Empire and the Crown
 Tower of New York, the Harbour Sails of Sydney, the Pyramids of Giza, the Taj Mahal, the Parthenon, Pisa, Tower
 Bridge, Angkor Wat, Chichen Itza, the Statue of Liberty, the Redeemer of Rio, Notre-Dame, the Pantheon,
 the Arc de Triomphe, Hagia Sophia, the Blue Mosque, the Stacked Tower of Taipei, the Golden Span of San Francisco, the
-Television Tower of Berlin, the Sail Hotel of Dubai a castle of Japan, the Atoms of Brussels, the Gateway of St. Louis, the Brooklyn Bridge, the Colosseum, Stonehenge, Saint Basil's, the Kremlin, Mount Rushmore, the Brandenburg Gate, the Red Tower of Tokyo and a five-storey pagoda. Each is scaled to the field with its
+Television Tower of Berlin, the Sail Hotel of Dubai a castle of Japan, the Atoms of Brussels, the Gateway of St. Louis, the Brooklyn Bridge, the Colosseum, Stonehenge, Saint Basil's, the Kremlin, Mount Rushmore, the Brandenburg Gate, the Red Tower of Tokyo, the Temple of Heaven and a five-storey pagoda. Each is scaled to the field with its
 proportions kept and built of thousands of small bricks of stone, steel, glass and brick that break the way their
 material does. Each level shows the landmark's name and where it stands. More landmarks are built and held until they
 pass the landmarks gate and a blind look (`LANDMARK_HELD` in src/levels.c); the other kit structures (a few dozen:

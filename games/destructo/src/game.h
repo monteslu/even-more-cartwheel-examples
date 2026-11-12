@@ -149,8 +149,8 @@ typedef struct level_def {
   float mark;        /* the share that counts as brought down; 0: the kit's (KIT_MARK) */
   float orbit0;      /* where the launcher starts on its circle (radians from +z, growing to its right): the view that shows the structure best */
 } level_def;
-#define NLEVELS 71 /* every level the game can build: the shown ones (NSHOWN: 4 tutorials, then the real landmarks; 6 more built and held, levels.c) and the 26 kit structures held out of the select */
-#define NSHOWN 45  /* the level select, the progression and the next level: the tutorials and the real landmarks (the rows before LANDMARKS_END in levels.c) */
+#define NLEVELS 72 /* every level the game can build: the shown ones (NSHOWN: 4 tutorials, then the real landmarks; 6 more built and held, levels.c) and the 26 kit structures held out of the select */
+#define NSHOWN 46  /* the level select, the progression and the next level: the tutorials and the real landmarks (the rows before LANDMARKS_END in levels.c) */
 int level_find(const char *name); /* a level's index by its name, -1 none */
 int level_setting(const level_def *L);
 /* how long the level settles before play: 3 s, and a landmark 5.5 s (a tall tower sways a few centimetres for four or
@@ -356,7 +356,7 @@ enum { LM_SPHINX, LM_SPACE_NEEDLE, LM_GIZA, LM_EIFFEL, LM_EMPIRE_STATE, LM_OPERA
        LM_COLOSSEUM, LM_BIG_BEN, LM_PISA, LM_PARTHENON, LM_STONEHENGE, LM_TOWER_BRIDGE, LM_ST_BASILS, LM_PETRONAS, LM_PAGODA, LM_ANGKOR_WAT,
        LM_CHICHEN_ITZA, LM_LIBERTY, LM_CHRIST_REDEEMER, LM_CN_TOWER, LM_MOAI,
        LM_RUSHMORE, LM_KREMLIN, LM_TAIPEI, LM_GOLDEN_GATE, LM_BROOKLYN, LM_CHRYSLER, LM_GATEWAY, LM_ARC, LM_BRANDENBURG, LM_PANTHEON, LM_NOTRE_DAME,
-       LM_TOKYO_TOWER, LM_ATOMIUM, LM_GREAT_WALL, LM_PETRA, LM_HAGIA_SOPHIA, LM_BLUE_MOSQUE, LM_MONT_ST_MICHEL, LM_JAPANESE_CASTLE, LM_MACHU_PICCHU, LM_BERLIN_TV, LM_BURJ_ARAB, LM_HOOVER, LM_ABU_SIMBEL, LM_SYDNEY_BRIDGE, LM_COUNT };
+       LM_TOKYO_TOWER, LM_ATOMIUM, LM_GREAT_WALL, LM_PETRA, LM_HAGIA_SOPHIA, LM_BLUE_MOSQUE, LM_MONT_ST_MICHEL, LM_JAPANESE_CASTLE, LM_MACHU_PICCHU, LM_BERLIN_TV, LM_BURJ_ARAB, LM_HOOVER, LM_ABU_SIMBEL, LM_SYDNEY_BRIDGE, LM_BOROBUDUR, LM_SHWEDAGON, LM_TEMPLE_HEAVEN, LM_SAGRADA, LM_COUNT };
 void landmark_build(game *g, const level_def *L);
 /* a crystal standing on whatever is highest at (x, z) (a flat top wide enough for it); false: no such place near */
 bool landmark_crystal(game *g, float x, float z);
