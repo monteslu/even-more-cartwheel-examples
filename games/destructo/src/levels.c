@@ -63,7 +63,7 @@ const level_def LEVELS[NLEVELS] = {
   LANDMARK("Saint Basil's Cathedral", LM_ST_BASILS, 3, 3, 6, 2, 1, 32, "Moscow, Russia", ST_SNOW, 0.3f, 0.4f),
   LANDMARK_HELD("Twin Spires", LM_PETRONAS, 2, 3, 6, 2, 2, 40, "Kuala Lumpur, Malaysia", ST_CITY, 0.35f, 0.25f)
   LANDMARK("Five-Storey Pagoda", LM_PAGODA, 1, 2, 5, 1, 0, 22, "Kyoto, Japan", ST_MEADOW, 0.35f, 0.4f),
-  LANDMARK_CAM("Hoover Dam", LM_HOOVER, 2, 2, 6, 2, 2, 48, "Nevada, United States", ST_DESERT, 0.01f, 0.0f, -4.0f, 36.0f, 2.0f, -4.0f, 8.0f, 50.0f),
+  LANDMARK_CAM("Hoover Dam", LM_HOOVER, 2, 2, 6, 2, 2, 48, "Nevada, United States", ST_DESERT, 0.003f, 0.0f, -4.0f, 36.0f, 2.0f, -4.0f, 8.0f, 50.0f),
   LANDMARK_HELD("Abu Simbel", LM_ABU_SIMBEL, 2, 3, 6, 2, 1, 26, "Nubia, Egypt", ST_DESERT, 0.05f, 0.25f)
   LANDMARK_HELD("Sydney Harbour Bridge", LM_SYDNEY_BRIDGE, 2, 3, 6, 2, 1, 40, "Sydney, Australia", ST_HARBOUR, 0.05f, 0.5f)
   LANDMARK_HELD("Borobudur", LM_BOROBUDUR, 2, 3, 6, 2, 1, 34, "Java, Indonesia", ST_MEADOW, 0.02f, 0.5f)
