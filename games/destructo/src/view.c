@@ -1350,7 +1350,8 @@ void view_sync(const game *g, float alpha) {
       if (p.y < 0) break;
       if (along >= next) {
         float f = 1 - (float)np / NPATH;
-        float r = 0.07f + 0.05f * f;
+        float cd = sqrtf((p.x - V.eye.x) * (p.x - V.eye.x) + (p.y - V.eye.y) * (p.y - V.eye.y) + (p.z - V.eye.z) * (p.z - V.eye.z));
+        float r = (0.07f + 0.05f * f) * fmaxf(1.0f, cd / 14.0f); /* a bead keeps its size on the screen from a high camera (a dam seen from 36 m) */
         t3_mat4 m;
         t3_mat4_compose(&m, p, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ r, r, r });
         t3_instanced_mesh_set_matrix_at(V.path, np, &m);
@@ -1358,7 +1359,14 @@ void view_sync(const game *g, float alpha) {
         t3_instanced_mesh_set_color_at(V.path, np, (t3_color){ b, b, b });
         np++;
         next += 1.1f;
-        if (p.x * out.x + p.z * out.z <= V.front) break;
+        if (p.x * out.x + p.z * out.z <= V.front) { /* the last bead, where the shot reaches the structure: a big bright mark */
+          t3_mat4 m2;
+          float R = r * 4.0f;
+          t3_mat4_compose(&m2, p, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ R, R, R });
+          t3_instanced_mesh_set_matrix_at(V.path, np - 1, &m2);
+          t3_instanced_mesh_set_color_at(V.path, np - 1, (t3_color){ 1.0f, 0.85f, 0.2f });
+          break;
+        }
       }
     }
   }

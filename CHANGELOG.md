@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.25.2
+
+- **Destructo**: Hoover Dam and Mount Rushmore have 14 shots, 4 heavy balls and 4 charges. The aim path now keeps its size on screen from a high camera and ends in a large gold marker where the shot reaches the structure, so you can see where you are aiming on every level. The Hoover Dam camera sits lower and farther back, and the Mount Rushmore camera backs off so all four heads fit.
+
 ## 0.25.1
 
 - **Destructo**: the Eiffel Tower and the Willis Tower topple again. Since 0.23.0 their finer bricks made them sit down when a leg or half the footing was shot out; both are back at their earlier brick size. One shot at one leg of the Eiffel Tower now sends it 3.35 m sideways in two seconds, and the Willis Tower with half its footing out tips 17.8 degrees. Mount Rushmore keeps its fine heads.
