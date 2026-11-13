@@ -478,6 +478,7 @@ void landmark_build(game *g, const level_def *L) {
   case LM_RUSHMORE: { /* a mountain in big blocks and the four faces cut fine: two grids of the one model (the rock, the heads in bricks of 15 cm, welded into pieces that break where they are hit), the rock laid first */
     static const float s[][2] = { { -6.6f, -0.3f }, { 5.0f, 0.0f }, { 1.6f, -3.3f } };
     build_vox(g, &LMV_m_rushmore, 0, 0, 0);
+    build_vox(g, &LMV_m_rushmore_mid, 0, 0, 0);
     build_model(g, L, &LMV_m_rushmore_heads, s, 3);
     break; }
   case LM_KREMLIN: { static const float s[][2] = { { 6.0f, 1.6f }, { -6.0f, -1.8f } }; build_model(g, L, &LMV_kremlin, s, 2); break; }

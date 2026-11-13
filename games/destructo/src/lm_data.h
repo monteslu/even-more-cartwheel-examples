@@ -71,6 +71,7 @@ extern const lm_vox LMV_m_chrysler;
 extern const lm_vox LMV_m_berlin_tv;
 extern const lm_vox LMV_m_burj_arab;
 extern const lm_vox LMV_m_rushmore;
+extern const lm_vox LMV_m_rushmore_mid;
 extern const lm_vox LMV_m_rushmore_heads;
 extern const lm_vox LMV_rushmore;
 extern const lm_vox LMV_great_wall;
