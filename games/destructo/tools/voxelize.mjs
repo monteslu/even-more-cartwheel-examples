@@ -45,6 +45,7 @@
  *   include    [[x0, y0, z0, x1, y1, z1], ...] (game metres): only the cells whose middle is in one of these boxes (a detailed part of a model laid fine
  *              over the same model's coarse part: boxes on both grids' lines so the two meet with no gap)
  *   support    S cells: a cell with nothing in the course below within S cells gets a pillar of stone filled down from it (what hangs in the air is not laid)
+ *   shell26    true: a cell is on the outside when any of its 26 neighbours is air (a slanted wall one cell thick has no pinholes to see the inside through)
  *   snap       metres: include / exclude box edges are rounded to a multiple of this
  *   exclude    the same boxes as a list: the cells whose middle is in one are left out (the coarse part, where a fine part is laid)
  *   speckle    { "paints": [P, ...], "scale": m, "seed": n }: the paint of a cell from a slow noise over the part (granite in patches), unless a band, stripe or carve names one
@@ -81,7 +82,7 @@ const PAINTS = {
   DARK_STONE: [0.2, 0.2, 0.23], SAND_STONE: [0.68, 0.5, 0.3], ROSE_STONE: [0.62, 0.38, 0.32], WHITE_STONE: [0.66, 0.63, 0.56],
   MARBLE: [0.8, 0.78, 0.74], LIMESTONE: [0.6, 0.55, 0.45], BRONZE: [0.13, 0.095, 0.07], DARK_GLASS: [0.05, 0.055, 0.065],
   TILE_WHITE: [0.84, 0.82, 0.77], RED_BRICK: [0.52, 0.15, 0.09], WHITE_PAINT: [0.76, 0.76, 0.74], BLUE_GLASS: [0.16, 0.26, 0.36],
-  ROCK: [0.27, 0.25, 0.23], SILVER: [0.5, 0.53, 0.57], SARSEN: [0.46, 0.47, 0.42], VERDIGRIS: [0.36, 0.58, 0.5], CONCRETE: [0.58, 0.57, 0.54], SHELL_WHITE: [0.95, 0.94, 0.9], PODIUM: [0.4, 0.28, 0.2], IRON: [0.3, 0.19, 0.12],
+  ROCK: [0.27, 0.25, 0.23], SILVER: [0.5, 0.53, 0.57], SARSEN: [0.46, 0.47, 0.42], VERDIGRIS: [0.36, 0.58, 0.5], CONCRETE: [0.58, 0.57, 0.54], SHELL_WHITE: [0.95, 0.94, 0.9], PODIUM: [0.4, 0.28, 0.2], IRON: [0.3, 0.19, 0.12], GRANITE: [0.13, 0.125, 0.115], GRANITE_WARM: [0.17, 0.135, 0.1], GRANITE_COOL: [0.11, 0.115, 0.125],
 };
 const MATS = { wood: 'M_WOOD', stone: 'M_STONE', glass: 'M_GLASS', steel: 'M_STEEL' };
 
@@ -234,6 +235,7 @@ function voxelize(name, C) {
       for (let jj = j - 1; jj >= 0 && solid[at(i, jj, k)] < 0; jj--) solid[at(i, jj, k)] = solid[c];
     }
   }
+  const N26 = []; for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) for (let d = -1; d <= 1; d++) if (a || b || d) N26.push([a, b, d]);
   /* depth: cells from the outside (6-connected), to keep a wall and make the core */
   const depth = new Int32Array(N).fill(1 << 20);
   let front = [];
@@ -241,7 +243,7 @@ function voxelize(name, C) {
     const c = at(i, j, k);
     if (solid[c] < 0) continue;
     let edge = false;
-    for (const [di, dj, dk] of [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
+    for (const [di, dj, dk] of C.shell26 ? N26 : [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]) {
       const ii = i + di, jj = j + dj, kk = k + dk;
       if (jj < 0) continue; /* the ground is not outside */
       if (ii < 0 || kk < 0 || ii >= nx || jj >= ny || kk >= nz || solid[at(ii, jj, kk)] < 0) { edge = true; break; }

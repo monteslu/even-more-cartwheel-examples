@@ -463,6 +463,7 @@ static const float PAINT[P_COUNT][3] = {
   [P_WHITE_PAINT] = { 0.76f, 0.76f, 0.74f }, [P_BLUE_GLASS] = { 0.16f, 0.26f, 0.36f }, [P_ROCK] = { 0.27f, 0.25f, 0.23f },
   [P_SILVER] = { 0.5f, 0.53f, 0.57f }, [P_SARSEN] = { 0.46f, 0.47f, 0.42f }, [P_VERDIGRIS] = { 0.36f, 0.58f, 0.5f }, [P_CONCRETE] = { 0.58f, 0.57f, 0.54f },
   [P_SHELL_WHITE] = { 0.95f, 0.94f, 0.9f }, [P_PODIUM] = { 0.4f, 0.28f, 0.2f }, [P_IRON] = { 0.2f, 0.13f, 0.09f },
+  [P_GRANITE] = { 0.13f, 0.125f, 0.115f }, [P_GRANITE_WARM] = { 0.17f, 0.135f, 0.1f }, [P_GRANITE_COOL] = { 0.11f, 0.115f, 0.125f }, /* mountain rock: the light is strong, a paint this dark shows mid grey */
 };
 static const float BANNER[4][3] = { { 0.85f, 0.08f, 0.06f }, { 0.08f, 0.22f, 0.8f }, { 1.0f, 0.72f, 0.05f }, { 0.08f, 0.55f, 0.2f } };
 
