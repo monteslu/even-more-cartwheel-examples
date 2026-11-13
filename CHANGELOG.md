@@ -1,9 +1,12 @@
 # Changelog
 
+## 0.25.1
+
+- **Destructo**: the Eiffel Tower and the Willis Tower topple again. Since 0.23.0 their finer bricks made them sit down when a leg or half the footing was shot out; both are back at their earlier brick size. One shot at one leg of the Eiffel Tower now sends it 3.35 m sideways in two seconds, and the Willis Tower with half its footing out tips 17.8 degrees. Mount Rushmore keeps its fine heads.
+
 ## 0.25.0
 
 - **Destructo**: Mount Rushmore, rebuilt. The four heads are laid in 12 cm bricks, bonded and hollow so brows, noses and chins hold their shape, in pale carved stone on a rough granite mountain built of large blocks. The level opens straight at the faces from slightly below, and a charge on a head breaks it away as a lump that shatters. A blind judge names it from the frame alone in both views (97 and 93).
-- Known: the Eiffel Tower and the Willis Tower, built of finer bricks since 0.23.0, may sit down rather than topple when a leg is shot out; being checked.
 
 ## 0.24.1
 
