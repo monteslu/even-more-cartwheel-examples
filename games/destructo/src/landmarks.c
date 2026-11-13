@@ -475,10 +475,9 @@ void landmark_build(game *g, const level_def *L) {
   case LM_PAGODA: { static const float s[][2] = { { 0, 2.3f } }; build_model(g, L, &LMV_pagoda, s, 1); break; }
   case LM_CHICHEN_ITZA: { static const float s[][2] = { { 0.9f, 0.9f }, { -0.9f, -0.9f } }; /* two spots, not one twice (two crystals in one place lay into each other) */ build_model(g, L, &LMV_chichen_itza, s, 2); break; }
   case LM_LIBERTY: build_liberty(g, L); break;
-  case LM_RUSHMORE: { /* a mountain in big blocks, the faces cut fine: three grids of the one model (the rock, the front in a finer grid round the heads, the heads finest) laid coarse to fine, each resting on the one before */
+  case LM_RUSHMORE: { /* a mountain in big blocks and the four faces cut fine: two grids of the one model (the rock, the heads in bricks of 15 cm, welded into pieces that break where they are hit), the rock laid first */
     static const float s[][2] = { { -6.6f, -0.3f }, { 5.0f, 0.0f }, { 1.6f, -3.3f } };
     build_vox(g, &LMV_m_rushmore, 0, 0, 0);
-    build_vox(g, &LMV_m_rushmore_mid, 0, 0, 0);
     build_model(g, L, &LMV_m_rushmore_heads, s, 3);
     break; }
   case LM_KREMLIN: { static const float s[][2] = { { 6.0f, 1.6f }, { -6.0f, -1.8f } }; build_model(g, L, &LMV_kremlin, s, 2); break; }
