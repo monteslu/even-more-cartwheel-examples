@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.1
+
+- **Destructo**: new launcher art from the current game: the cover, background, title, icon and four screenshots show the lattice Iron Lady toppling, the Hoover Dam water spill, the Mount Rushmore faces and the Taj Mahal dome opening, in the new light.
+
 ## 0.27.0
 
 - **Destructo**: a new light. The sun casts two cascades of soft shadows that now reach the whole scene (they cast nothing before), a sky light fills the shade with blue instead of black, ambient occlusion darkens the carved faces and crevices, a film grade gives warm highlights and cool shadows with more colour, and grass blades catch the sun. Each setting is tuned on its own. About 1 to 1.7 ms more GPU a frame.
