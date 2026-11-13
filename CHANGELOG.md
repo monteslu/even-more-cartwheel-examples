@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.24.1
+
+- **Destructo**: the Hoover Dam's gorge walls have larger blocks in their cores, 12% fewer static chunks with the same silhouette and surface.
+
 ## 0.24.0
 
 - **Destructo**: the Hoover Dam, with water. A thin curved concrete wall with four intake towers and a crest road stands in a tall dark gorge with a big lake behind it, opened from downstream and above. Break the wall at its foot and the lake spills through the breach at once: a slow-motion beat on the first water, mist and spray, a surge that spreads down the valley as a flood wave, the lake dropping as it empties, and the pad rumbling with the flow. The water is up to 240 small bodies that run downhill, lose their energy and pool, and do not count toward the settle wait. A level can now set its own camera framing.
