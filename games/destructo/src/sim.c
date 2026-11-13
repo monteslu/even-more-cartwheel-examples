@@ -1086,6 +1086,7 @@ int game_legout(game *g, bool charge) {
     if (d > fd) fd = d, foot = i;
   }
   t3_vec3 at = foot >= 0 ? g->b[foot].home : v3(cx, 0.5f, cz);
+  if (charge && opt_get("CHARGE_AT")) { float qx = 0, qy = 0, qz = 0; if (sscanf(opt_get("CHARGE_AT"), "%f,%f,%f", &qx, &qy, &qz) == 3) { detonate(g, v3(qx, qy, qz)); return 0; } } /* development: a charge where the look sheet wants it (a face high on a mountain) */
   if (charge) { detonate(g, v3(at.x * 0.9f + cx * 0.1f, 0.5f, at.z * 0.9f + cz * 0.1f)); return 0; } /* at the foot, on the face */
   /* a leg: the third of the footprint (a wedge of 120 degrees) round the foot furthest out, from 0.35 of its reach outward, up to 2.2 m */
   float R = sqrtf(fd), fx = at.x - cx, fz = at.z - cz;

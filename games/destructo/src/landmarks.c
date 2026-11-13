@@ -261,10 +261,10 @@ static int build_vox_turned(game *g, const lm_vox *v, float dx, float dy, float 
   int laid = 0;
   if (v->core > 1) {
     int cf = g->nb;
-    sculpt k = { sh_vox_core, x0, x1, z0, z1, y0, y1, v->cell * v->core, v->course * v->core, true };
+    sculpt k = { sh_vox_core, x0, x1, z0, z1, y0, y1, v->cell * v->core, v->course * v->core, true, v->bond != 0 };
     laid += sculpt_run(g, &k);
     if (v->core >= 4) {
-      sculpt k2 = { sh_vox_core2, x0, x1, z0, z1, y0, y1, v->cell * (v->core / 2), v->course * (v->core / 2), true };
+      sculpt k2 = { sh_vox_core2, x0, x1, z0, z1, y0, y1, v->cell * (v->core / 2), v->course * (v->core / 2), true, v->bond != 0 };
       laid += sculpt_run(g, &k2);
     }
     for (int i = cf; i < g->nb; i++) g->b[i].tag = 2; /* the core: not counted in the share brought down */
@@ -303,8 +303,9 @@ static int build_vox_turned(game *g, const lm_vox *v, float dx, float dy, float 
     turn_blocks(g, from0, dx, dz, yaw);
     weld_blocks(g, from, g->nb);
   } else {
-    sculpt s = { sh_vox, x0, x1, z0, z1, y0, y1, v->cell, v->course, false };
+    sculpt s = { sh_vox, x0, x1, z0, z1, y0, y1, v->cell, v->course, false, v->bond != 0 };
     laid += sculpt_run(g, &s);
+    if (v->bond) weld_blocks(g, from0, g->nb); /* the part's bricks bonded to those they touch: a piece that breaks where it is hit */
     turn_blocks(g, from0, dx, dz, yaw);
   }
   free(VXG), VXG = NULL;

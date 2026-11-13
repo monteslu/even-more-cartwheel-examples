@@ -15,6 +15,7 @@ typedef struct lm_vox {
   const uint16_t *pal;
   int nruns;
   const uint8_t *runs;
+  int bond;    /* 1: laid as bricks, every cell, welded to the bricks it touches (what overhangs is not dropped) */
 } lm_vox;
 #define LMV_CELL(m, p) ((uint16_t)(((p) << 8) | ((m) + 1)))
 extern const lm_vox LMV_sphinx;

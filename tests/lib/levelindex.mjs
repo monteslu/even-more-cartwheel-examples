@@ -5,5 +5,5 @@ import { fileURLToPath } from 'node:url';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const src = readFileSync(join(ROOT, 'games/destructo/src/levels.c'), 'utf8');
 const body = src.slice(src.indexOf('const level_def LEVELS[NLEVELS] = {'));
-const NAMES = [...body.slice(0, body.indexOf('\n};')).matchAll(/^  (?:LANDMARK\(|\{ )"([^"]+)"/gm)].map((m) => m[1]);
+const NAMES = [...body.slice(0, body.indexOf('\n};')).matchAll(/^  (?:LANDMARK(?:_CAM)?\(|\{ )"([^"]+)"/gm)].map((m) => m[1]);
 export const levelIndex = (name) => { const i = NAMES.indexOf(name); if (i < 0) throw new Error(`no level named ${name}`); return i; };
