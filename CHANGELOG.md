@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.26.0
+
+- **Destructo**: richer surfaces on every landmark. Stone, wood and steel bricks carry normal maps in four variants, and each stone brick carries a surface baked from the landmark's model: shading in recesses and carved relief, grime by height, long stains, light and dark courses, strata on the Hoover Dam cliffs and rust on the Iron Lady, all of which stays on a brick when it falls. The four Mount Rushmore faces now read in the surface itself (brows, noses, lips, cheeks, jaws). Frame cost is unchanged.
+
 ## 0.25.2
 
 - **Destructo**: Hoover Dam and Mount Rushmore have 14 shots, 4 heavy balls and 4 charges. The aim path now keeps its size on screen from a high camera and ends in a large gold marker where the shot reaches the structure, so you can see where you are aiming on every level. The Hoover Dam camera sits lower and farther back, and the Mount Rushmore camera backs off so all four heads fit.
