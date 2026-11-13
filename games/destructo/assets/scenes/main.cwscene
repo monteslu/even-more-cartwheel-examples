@@ -21,16 +21,26 @@ environment = true
 position = vec3(0, 6, 6)
 shadow = true
 shadow_size = 2048
-shadow_extent = 30
-shadow_far = 160
+shadow_cascades = 2
+shadow_distance = 110
+cascade_fade = true
+shadow_far = 500
 shadow_bias = -0.0006
 shadow_normal_bias = 0.03
+
+; the sky's light on the shaded faces: a hemisphere, blue above and the warm ground's bounce below (the sky above draws itself)
+[node name="Ambient" parent="." type="WorldEnvironment"]
+use_background = false
+ambient_energy = 0
+hemi_energy = 0.9
+sky_color = color(0.42, 0.6, 1, 1)
+ground_color = color(0.4, 0.34, 0.2, 1)
 
 ; a cool fill from the far side so the shaded faces keep their colour
 [node name="Fill" parent="." type="DirectionalLight3D"]
 rotation = vec3(-0.6, 2.6, 0)
-color = color(0.6, 0.7, 1, 1)
-energy = 0.55
+color = color(0.45, 0.6, 1, 1)
+energy = 0.5
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(4, 6, 36)
@@ -52,9 +62,13 @@ bloom = true
 bloom_intensity = 0.09
 bloom_threshold = 1.2
 bloom_knee = 0.5
-ssao = false
+ssao = true
+ssao_radius = 0.6
+ssao_intensity = 1
+ssao_power = 1.2
+ssao_steps = 6
 grade = true
 lut = "grade/contrast.cube"
 vignette = true
-vignette_intensity = 0.65
+vignette_intensity = 0.4
 vignette_smoothness = 0.6

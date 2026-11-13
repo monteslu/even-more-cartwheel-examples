@@ -419,6 +419,7 @@ void grass_build(cw_node parent, const grass_tuft *t, int n) {
   }
   t3_material *m = t3_mesh_standard_material_new(0xffffff);
   m->vertex_colors = true, m->roughness = 0.95f, m->side = T3_DOUBLE_SIDE, m->alpha_test = 0.5f;
+  m->color = (t3_color){ 1.9f, 1.9f, 1.9f }; /* the blades catch the sun: richer than the ground under them */
   t3_material_set_map(m, TX[TX_GRASS]);
   t3_mesh *mesh = t3_mesh_new(mb_finish(&b), m);
   mesh->base.cast_shadow = false, mesh->base.receive_shadow = true;

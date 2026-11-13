@@ -459,44 +459,44 @@ typedef struct setting {
 
 static const setting SETTINGS[ST_COUNT] = {
   /* highland: a highland valley under grey-blue mountains; oaks and a few spruces */
-  [ST_HIGHLAND] = { 15.7f, 55, 4.6f, 1.6f, 1.85f, { 0.18f, 0.37f, 0.08f }, { 0.36f, 0.27f, 0.17f }, { 0.55f, 0.65f, 0.8f }, 0.0012f,
+  [ST_HIGHLAND] = { 15.7f, 55, 4.6f, 2.0f, 1.6f, { 0.18f, 0.37f, 0.08f }, { 0.36f, 0.27f, 0.17f }, { 0.55f, 0.65f, 0.8f }, 0.0012f,
                 BD_MOUNTAINS, { 0.06f, 0.1f, 0.08f }, { 0.85f, 0.88f, 0.92f },
                 { { 0.5f, 0.3f, 0.15f }, { 0.4f, 0.31f, 0.2f }, { 1.0f, 0.82f, 0.5f }, { 0.7f, 0.16f, 0.1f } },
                 0.25f, 2.5f, { SP_OAK, SP_SPRUCE }, 0.3f, 90, { { 0.13f, 0.27f, 0.05f }, { 1, 1, 1 } } },
   /* meadow: a golden meadow, low hills, autumn oaks and birches */
-  [ST_MEADOW] = { 16.7f, 35, 4.6f, 1.6f, 1.8f, { 0.33f, 0.43f, 0.1f }, { 0.4f, 0.29f, 0.16f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
+  [ST_MEADOW] = { 16.7f, 35, 4.6f, 2.0f, 1.65f, { 0.33f, 0.43f, 0.1f }, { 0.4f, 0.29f, 0.16f }, { 0.75f, 0.65f, 0.5f }, 0.0016f,
                BD_HILLS, { 0.18f, 0.32f, 0.1f }, { 0.36f, 0.42f, 0.16f },
                { { 0.52f, 0.32f, 0.16f }, { 0.56f, 0.44f, 0.29f }, { 1.0f, 0.8f, 0.45f }, { 0.2f, 0.4f, 0.9f } },
                0.28f, 2.0f, { SP_OAK, SP_BIRCH }, 0.35f, 90, { { 0.55f, 0.22f, 0.03f }, { 0.55f, 0.42f, 0.05f } } },
   /* headland: a headland over the sea, the cliffs falling away behind; oaks bent by the wind, spruces */
-  [ST_HEADLAND] = { 15.9f, 50, 4.6f, 1.6f, 1.5f, { 0.19f, 0.4f, 0.09f }, { 0.42f, 0.35f, 0.25f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
+  [ST_HEADLAND] = { 15.9f, 50, 4.6f, 2.0f, 1.4f, { 0.19f, 0.4f, 0.09f }, { 0.42f, 0.35f, 0.25f }, { 0.65f, 0.78f, 0.92f }, 0.0014f,
                  BD_SEA, { 0.32f, 0.5f, 0.2f }, { 0.4f, 0.55f, 0.25f },
                  { { 0.5f, 0.3f, 0.15f }, { 0.58f, 0.54f, 0.47f }, { 1.0f, 0.85f, 0.5f }, { 0.2f, 0.3f, 0.6f } },
                  0.3f, 0, { SP_OAK, SP_SPRUCE }, 0.25f, 90, { { 0.12f, 0.25f, 0.06f }, { 1, 1, 1 } } },
   /* desert: pale desert sand under red mesas, date palms in groves */
-  [ST_DESERT] = { 16.6f, 40, 4.6f, 1.6f, 1.52f, { 0.84f, 0.74f, 0.58f }, { 0.66f, 0.54f, 0.4f }, { 0.8f, 0.72f, 0.62f }, 0.0007f,
+  [ST_DESERT] = { 16.6f, 40, 4.6f, 2.0f, 1.1f, { 0.84f, 0.74f, 0.58f }, { 0.66f, 0.54f, 0.4f }, { 0.8f, 0.72f, 0.62f }, 0.0007f,
                   BD_MESAS, { 0.09f, 0.028f, 0.014f }, { 0.3f, 0.12f, 0.055f },
                   { { 0.5f, 0.31f, 0.15f }, { 0.62f, 0.5f, 0.33f }, { 0.4f, 0.95f, 0.9f }, { 0.75f, 0.2f, 0.12f } },
                   0.08f, 3.5f, { SP_PALM, SP_PALM }, 0, 30, { { 0.2f, 0.32f, 0.07f }, { 0.2f, 0.32f, 0.07f } } },
   /* snow: a snowy pass between white peaks over dark rock, snow-laden firs, a cold light */
-  [ST_SNOW] = { 14.2f, 75, 4.6f, 1.6f, 0.95f, { 0.7f, 0.74f, 0.82f }, { 0.58f, 0.56f, 0.56f }, { 0.75f, 0.82f, 0.95f }, 0.0012f,
+  [ST_SNOW] = { 14.2f, 75, 4.6f, 2.0f, 0.75f, { 0.7f, 0.74f, 0.82f }, { 0.58f, 0.56f, 0.56f }, { 0.75f, 0.82f, 0.95f }, 0.0012f,
                BD_MOUNTAINS, { 0.04f, 0.045f, 0.06f }, { 0.78f, 0.8f, 0.86f },
                { { 0.48f, 0.28f, 0.14f }, { 0.42f, 0.42f, 0.45f }, { 1.0f, 0.75f, 0.35f }, { 0.75f, 0.15f, 0.1f } },
                0.22f, 3.0f, { SP_FIR_SNOW, SP_FIR_SNOW }, 0, 72, { { 1, 1, 1 }, { 1, 1, 1 } } },
   /* city: a paved square in a park, plane trees, a skyline of towers all round in the haze */
-  [ST_CITY] = { 15.6f, 60, 4.6f, 1.6f, 1.6f, { 0.2f, 0.36f, 0.1f }, { 0.6f, 0.57f, 0.52f }, { 0.68f, 0.72f, 0.8f }, 0.0015f,
+  [ST_CITY] = { 15.6f, 60, 4.6f, 2.0f, 1.4f, { 0.2f, 0.36f, 0.1f }, { 0.6f, 0.57f, 0.52f }, { 0.68f, 0.72f, 0.8f }, 0.0015f,
                 BD_CITY, { 0.16f, 0.17f, 0.2f }, { 0.42f, 0.45f, 0.5f },
                 { { 0.5f, 0.31f, 0.16f }, { 0.55f, 0.52f, 0.47f }, { 1.0f, 0.82f, 0.5f }, { 0.35f, 0.37f, 0.4f } },
                 0.2f, 0, { SP_OAK, SP_BIRCH }, 0.3f, 60, { { 0.16f, 0.3f, 0.07f }, { 0.22f, 0.36f, 0.08f } } },
   /* harbour: a paved point out in the water, the city's towers across the bay */
-  [ST_HARBOUR] = { 15.8f, 50, 4.6f, 1.6f, 1.55f, { 0.2f, 0.36f, 0.1f }, { 0.58f, 0.55f, 0.5f }, { 0.68f, 0.76f, 0.86f }, 0.0012f,
+  [ST_HARBOUR] = { 15.8f, 50, 4.6f, 2.0f, 1.4f, { 0.2f, 0.36f, 0.1f }, { 0.58f, 0.55f, 0.5f }, { 0.68f, 0.76f, 0.86f }, 0.0012f,
                    BD_HARBOUR, { 0.16f, 0.17f, 0.2f }, { 0.42f, 0.45f, 0.5f },
                    { { 0.5f, 0.31f, 0.16f }, { 0.55f, 0.52f, 0.47f }, { 1.0f, 0.82f, 0.5f }, { 0.35f, 0.37f, 0.4f } },
                    0.15f, 0, { SP_PALM, SP_PALM }, 0, 0, { { 0.2f, 0.32f, 0.07f }, { 0.2f, 0.32f, 0.07f } } },
 };
 /* how much of the contrast grade (assets/grade/contrast.cube) each setting takes */
 static const float GRADE[ST_COUNT] = { [ST_HIGHLAND] = 0.55f, [ST_MEADOW] = 0.55f, [ST_HEADLAND] = 0.65f,
-                                       [ST_DESERT] = 1.0f, [ST_SNOW] = 0.95f, [ST_CITY] = 0.7f, [ST_HARBOUR] = 0.7f };
+                                       [ST_DESERT] = 1.0f, [ST_SNOW] = 1.0f, [ST_CITY] = 0.7f, [ST_HARBOUR] = 0.7f };
 static const setting *SET;
 
 /* the paints (game.h P_*), linear colours */
