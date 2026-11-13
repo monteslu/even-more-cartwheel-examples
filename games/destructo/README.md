@@ -155,10 +155,12 @@ thing they touch and push and break everything within about four and a half metr
 
 On the Radeon 890M at 1920x1080 on High, through romdev's frame timing (the whole frame's GPU time, HUD and final copy
 included, as the perf gate measures it), during the Taj Mahal's collapse (720 blocks broken, 1470 bodies awake, 2665
-blocks drawn): GPU 2.6 ms on GL and 1.8 ms on WebGPU (`tests/destructo-perf.mjs`); the gate's bound is 6 ms, and four
-times the pixels (3840x2160) reads 8.2 ms. The trees cast and take no shadow (they stand past the sun's shadow map) and
-the ground has a hole under the yard, which is drawn once. SSAO is off (0.9 ms, the edges of the block textures carry the
-shading instead) and the picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU multisamples 4x for any MSAA
+blocks drawn): GPU 5.2 ms on GL and 4.6 ms on WebGPU with the lighting below (`tests/destructo-perf.mjs`); the gate's bound is 6 ms, and four
+times the pixels (3840x2160) reads 16.3 ms. `tests/destructo-light-perf.mjs` times one landmark of every setting. The trees cast and take no shadow and
+the ground has a hole under the yard, which is drawn once. The light: the sun casts two cascaded shadow maps (the second out to
+110 m), a hemisphere light gives the shaded faces the sky's blue and the ground's warm bounce, SSAO (0.6 m) darkens the creases
+and shows the carved faces, and a film grade (`tools/gen-grade.mjs`) warms the lit side and cools the shade; together about
+1 to 1.6 ms of GPU time a frame. The picture is anti-aliased with SMAA rather than 4x MSAA (WebGPU multisamples 4x for any MSAA
 setting; SMAA halved its scene pass). Physics in the cart (romdev's host) runs about 5 ms of CPU a frame over the collapse.
 
 - **The blast frame.** A charge on the Taj Mahal breaks about 700 blocks. Before the fix the frame it went off in took

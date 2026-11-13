@@ -56,3 +56,5 @@ standard+senv+l1001+xcluster_csm
 standard+senv+l1001+xcluster_csm_plain
 standard+vcol+instbig+senv+icol+l1001+xcluster_csm
 standard+vcol+instbig+senv+icol+l1001+xcluster_csm_plain
+standard+map+instbig+nmap+senv+icol+l1001+xcluster_csm
+standard+map+instbig+nmap+senv+icol+l1001+xcluster_csm_plain
