@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.27.0
+
+- **Destructo**: a new light. The sun casts two cascades of soft shadows that now reach the whole scene (they cast nothing before), a sky light fills the shade with blue instead of black, ambient occlusion darkens the carved faces and crevices, a film grade gives warm highlights and cool shadows with more colour, and grass blades catch the sun. Each setting is tuned on its own. About 1 to 1.7 ms more GPU a frame.
+
 ## 0.26.1
 
 - **Destructo**: a far finer Iron Lady. The Eiffel Tower is now a real lattice of 7 cm members (5,463 welded, was 1,057): corner posts, X-braced panels, arches clear of the ground, a deep frieze, platforms with railings, a tapering shaft, the cabin and a tapered spire. It still topples from every leg-out test (one shot sends it 1.4 m sideways in two seconds), and steel heaps now crumble away sooner after they land. A blind judge names it at 96 and 97 percent.
