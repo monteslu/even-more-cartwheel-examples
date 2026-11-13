@@ -5,9 +5,9 @@
   "logo": "logo.png",
   "title": "title.jpg",
   "screenshots": [
-    { "path": "shot-1.jpg", "label": "Taj Mahal: a charge opens the dome and the white marble comes down" },
-    { "path": "shot-2.jpg", "label": "Iron Lady: the first shot lined up on the lattice tower in its park" },
-    { "path": "shot-3.jpg", "label": "Notre-Dame: the aim path arcing toward the cathedral's towers" },
-    { "path": "shot-4.jpg", "label": "Taj Mahal settling: the dust drifts and the debris comes to rest" }
+    { "path": "shot-1.jpg", "label": "Iron Lady: the lattice tower topples, shedding girders and dust" },
+    { "path": "shot-2.jpg", "label": "Hoover Dam: a breach opens and the lake spills through" },
+    { "path": "shot-3.jpg", "label": "Mount Rushmore: a charge goes off at the foot of the carved faces" },
+    { "path": "shot-4.jpg", "label": "Taj Mahal: the dome opens and the white marble comes down in dust" }
   ]
 }
