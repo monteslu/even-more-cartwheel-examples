@@ -26,13 +26,15 @@
 #include "view.h"
 
 #define NPATH 48
+#define NVAR 4
 
 bool g_view_no_path;
 
 static struct {
   cw_node root, field, sky, sun, post;
   t3_instanced_mesh *poles, *flags, *beams;
-  t3_instanced_mesh *blk[M_COUNT];
+  t3_instanced_mesh *blk[M_COUNT][NVAR]; /* a material's blocks drawn as NVAR variants of its face (a wall of blocks does not repeat one picture) */
+  int nvar[M_COUNT];
   t3_instanced_mesh *water, *pool; /* the lake's parcels, and the pool they leave (water.c) */
   cw_node lake;             /* the lake's surface for this level, under the field (freed with it) */
   t3_instanced_mesh *path, *roof, *curtain; /* curtain: a tower's tinted glass (glass painted dark or blue): no lamps behind it, the sky in it */
@@ -85,44 +87,68 @@ static float fbm(float x, float y, int s) {
 }
 static uint8_t u8(float v) { return (uint8_t)(cw_clampf(v, 0, 1) * 255 + 0.5f); }
 
-/* a block face: luminance detail (the instance colour gives the hue), darker at the edges */
-static t3_texture *block_texture(int mat) {
+/* a block face: luminance detail (the instance colour gives the hue), darker at the edges, and a normal map made from the
+ * same height field (grain, pits, hairline cracks, bedding, a chipped edge, brushed metal, wood grain), `seed` a variant of
+ * the face so a wall of blocks does not repeat one picture */
+static float ridge(float v, float w) { return 1 - cw_smoothstep(0, w, fabsf(v - 0.5f)); } /* 1 on a thin line where noise crosses its middle */
+static void block_texture(int mat, int seed, t3_texture **albedo, t3_texture **normal) {
   enum { N = 256 };
-  static uint8_t px[N * N * 4];
+  static uint8_t px[N * N * 4], nm[N * N * 4];
+  static float H[N * N];
+  static float AO[N * N];
+  const int s = seed * 53;
   for (int y = 0; y < N; y++)
     for (int x = 0; x < N; x++) {
       float u = (x + 0.5f) / N, v = (y + 0.5f) / N;
       float e = fminf(fminf(u, 1 - u), fminf(v, 1 - v));
       float edge = 0.62f + 0.38f * cw_smoothstep(0.0f, 0.07f, e);
-      float r = 1, g = 1, b = 1, a = 1;
+      float r = 1, g = 1, b = 1, a = 1, h = 0, ao = 1;
       switch (mat) {
       case M_WOOD: {
-        float n = fbm(u * 3, v * 24, 11);
+        float n = fbm(u * 3, v * 24, 11 + s);
         float grain = 0.5f + 0.5f * sinf((u * 7 + n * 2.2f) * 6.2831853f * 2.5f);
-        float k = 0.72f + 0.2f * grain + 0.12f * (fbm(u * 18, v * 3, 5) - 0.5f);
-        float knot = 1 - 0.35f * cw_smoothstep(0.06f, 0.0f, sqrtf((u - 0.63f) * (u - 0.63f) * 9 + (v - 0.35f) * (v - 0.35f)) - 0.02f);
+        float k = 0.72f + 0.2f * grain + 0.12f * (fbm(u * 18, v * 3, 5 + s) - 0.5f);
+        float kd = sqrtf((u - 0.63f) * (u - 0.63f) * 9 + (v - 0.35f) * (v - 0.35f));
+        float knot = 1 - 0.35f * cw_smoothstep(0.06f, 0.0f, kd - 0.02f);
+        float fine = vnoise(u * 8, v * 160, 61 + s); /* the pores, along the grain */
+        k *= 0.94f + 0.1f * fine;
+        h = 0.5f * grain + 0.25f * fine + 0.3f * knot + 0.1f * (fbm(u * 18, v * 3, 5 + s));
         r = g = b = k * knot * edge;
+        ao = 0.8f + 0.2f * grain;
         break;
       }
       case M_STONE: {
-        float n = fbm(u * 6, v * 6, 21), sp = vnoise(u * 60, v * 60, 3);
+        float n = fbm(u * 6, v * 6, 21 + s), sp = vnoise(u * 60, v * 60, 3 + s);
+        float n2 = fbm(u * 18, v * 18, 9 + s), gr = vnoise(u * 150, v * 150, 71 + s), gr2 = vnoise(u * 90 + 5, v * 90, 73 + s);
         float pit = sp > 0.86f ? 0.78f : 1;
-        float chip = 1 - 0.25f * cw_smoothstep(0.035f, 0.0f, e + (fbm(u * 20, v * 20, 9) - 0.5f) * 0.04f);
-        float bed = 0.94f + 0.06f * sinf((v * 5 + fbm(u * 4, v * 2, 13) * 1.5f) * 6.2831853f); /* the stone's bedding */
-        float k = (0.74f + 0.3f * (n - 0.5f) * 2) * pit * chip * bed;
+        float chip = 1 - 0.25f * cw_smoothstep(0.035f, 0.0f, e + (n2 - 0.5f) * 0.04f);
+        float bed = 0.94f + 0.06f * sinf((v * 5 + fbm(u * 4, v * 2, 13 + s) * 1.5f) * 6.2831853f); /* the stone's bedding */
+        float crack = ridge(fbm(u * 4.5f + 3, v * 3.2f, 33 + s), 0.018f) * cw_smoothstep(0.52f, 0.62f, fbm(u * 2, v * 2, 35 + s)); /* hairline cracks, only in some places */
+        float streak = fbm(u * 2.2f, v * 0.7f, 37 + s); /* mineral streaks running down the face */
+        float mica = gr > 0.9f ? 1.28f : gr2 < 0.07f ? 0.7f : 1; /* feldspar glints, dark hornblende flecks */
+        float k = (0.74f + 0.3f * (n - 0.5f) * 2 + 0.22f * (streak - 0.5f)) * pit * chip * bed * mica * (1 - 0.55f * crack);
+        h = 0.45f * n + 0.3f * n2 + 0.18f * gr + 0.1f * gr2 - (sp > 0.86f ? 0.3f : 0) - 0.5f * crack + 0.06f * sinf((v * 5 + fbm(u * 4, v * 2, 13 + s) * 1.5f) * 6.2831853f);
+        h -= 1.2f * (1 - cw_smoothstep(0.0f, 0.07f, e + (n2 - 0.5f) * 0.03f)); /* the edge worn down */
+        ao = 0.82f + 0.18f * n2;
         r = k * edge, g = k * edge, b = k * edge;
+        r *= 1 + 0.06f * (streak - 0.5f), b *= 1 - 0.06f * (streak - 0.5f);
         break;
       }
       case M_STEEL: {
-        float brush = 0.92f + 0.08f * vnoise(u * 3, v * 120, 31);
-        float k = brush * (0.9f + 0.1f * fbm(u * 8, v * 8, 4));
+        float brush = 0.92f + 0.08f * vnoise(u * 3, v * 120, 31 + s);
+        float k = brush * (0.9f + 0.1f * fbm(u * 8, v * 8, 4 + s));
+        h = 0.4f * vnoise(u * 3, v * 160, 31 + s) + 0.2f * fbm(u * 8, v * 8, 4 + s);
         /* rivets near the corners and along the edges */
         for (int i = 0; i < 4; i++) {
           float cx = i & 1 ? 0.91f : 0.09f, cy = i & 2 ? 0.91f : 0.09f;
           float d = sqrtf((u - cx) * (u - cx) + (v - cy) * (v - cy));
-          if (d < 0.035f) k *= 0.6f + 0.6f * (1 - d / 0.035f);
+          if (d < 0.035f) k *= 0.6f + 0.6f * (1 - d / 0.035f), h += 0.9f * (1 - d / 0.035f);
         }
-        float wear = fbm(u * 10, v * 10, 41) > 0.72f ? 0.55f : 1; /* paint worn to the metal */
+        float seam = cw_smoothstep(0.006f, 0.0f, fabsf(u - 0.5f)); /* a panel seam down the face */
+        k *= 1 - 0.25f * seam, h -= 0.8f * seam;
+        float wear = fbm(u * 10, v * 10, 41 + s) > 0.72f ? 0.55f : 1; /* paint worn to the metal */
+        h -= wear < 1 ? 0.25f : 0;
+        h -= 1.0f * (1 - cw_smoothstep(0.0f, 0.04f, e));
         r = g = b = k * edge;
         if (wear < 1) r *= 0.75f, g *= 0.75f, b *= 0.8f;
         break;
@@ -137,12 +163,29 @@ static t3_texture *block_texture(int mat) {
       default: r = g = b = edge; break;
       }
       uint8_t *p = &px[(y * N + x) * 4];
-      p[0] = u8(r), p[1] = u8(g), p[2] = u8(b), p[3] = u8(a);
+      p[0] = u8(r * ao), p[1] = u8(g * ao), p[2] = u8(b * ao), p[3] = u8(a);
+      H[y * N + x] = h;
+      AO[y * N + x] = ao;
     }
   t3_texture *t = t3_texture_new(N, N, px);
   t->color_space = T3_SRGB_COLOR_SPACE;
   t->anisotropy = 4;
-  return t;
+  *albedo = t;
+  *normal = NULL;
+  if (mat == M_GLASS) return;
+  const float strength = mat == M_STEEL ? 2.0f : mat == M_WOOD ? 3.0f : 4.5f; /* the slope of the height field in the normal */
+  for (int y = 0; y < N; y++)
+    for (int x = 0; x < N; x++) {
+      int xl = x > 0 ? x - 1 : x, xr = x < N - 1 ? x + 1 : x, yu = y > 0 ? y - 1 : y, yd = y < N - 1 ? y + 1 : y;
+      float dx = (H[y * N + xr] - H[y * N + xl]) * strength, dy = (H[yd * N + x] - H[yu * N + x]) * strength;
+      float il = 1.0f / sqrtf(dx * dx + dy * dy + 1);
+      uint8_t *p = &nm[(y * N + x) * 4];
+      p[0] = u8(0.5f - 0.5f * dx * il), p[1] = u8(0.5f + 0.5f * dy * il), p[2] = u8(0.5f + 0.5f * il), p[3] = 255; /* v runs down the image, up the face's v */
+    }
+  t3_texture *nt = t3_texture_new(N, N, nm);
+  nt->color_space = T3_LINEAR_SRGB_COLOR_SPACE;
+  nt->anisotropy = 4;
+  *normal = nt;
 }
 
 /* the roofs' boards: courses of slates or tiles across the face, each course shaded under the one above it */
@@ -280,23 +323,27 @@ void view_init(cw_node root) {
       mt->emissive_intensity = 4.5f; /* they glow past white into the bloom: they read through a structure */
       geo = t3_octahedron_geometry_new(0.5f, 0);
       xform_geo(geo, (t3_vec3){ 0, 0, 0 }, (t3_quat){ 0, 0, 0, 1 }, (t3_vec3){ 1.4f, 1.0f, 1.4f });
-    } else {
-      static const float rough[M_COUNT] = { 0.78f, 0.88f, 0.06f, 0.42f, 0 };
-      static const float metal[M_COUNT] = { 0, 0, 0, 0.55f, 0 };
-      mt = std_mat(1, 1, 1, rough[m], metal[m]);
-      t3_texture *tx = block_texture(m);
-      t3_material_set_map(mt, tx);
-      t3_release(tx);
-      if (m == M_GLASS) {
-        mt->transparent = true;
-        mt->opacity = 1;
-        mt->depth_write = false;
-        mt->emissive = (t3_color){ 1.0f, 0.62f, 0.28f }; /* lit windows: a lamp's warm light inside */
-        mt->emissive_intensity = 1.6f;
-      }
-      geo = t3_box_geometry_new(1, 1, 1, 1, 1, 1);
     }
-    V.blk[m] = imesh(world, MATS[m].name, geo, mt, MAXBLK, m != M_GLASS);
+    static const float rough[M_COUNT] = { 0.78f, 0.88f, 0.06f, 0.42f, 0 };
+    static const float metal[M_COUNT] = { 0, 0, 0, 0.55f, 0 };
+    if (m == M_TARGET) { V.nvar[m] = 1, V.blk[m][0] = imesh(world, MATS[m].name, geo, mt, MAXBLK, true); continue; }
+    V.nvar[m] = m == M_STONE ? 4 : m == M_GLASS ? 1 : 2;
+    for (int vi = 0; vi < V.nvar[m]; vi++) {
+      t3_material *vm = std_mat(1, 1, 1, rough[m], metal[m]);
+      t3_texture *tx, *nx;
+      block_texture(m, vi, &tx, &nx);
+      t3_material_set_map(vm, tx);
+      t3_release(tx);
+      if (nx) t3_material_set_texture(vm, T3_NORMAL_MAP, nx), t3_release(nx);
+      if (m == M_GLASS) {
+        vm->transparent = true;
+        vm->opacity = 1;
+        vm->depth_write = false;
+        vm->emissive = (t3_color){ 1.0f, 0.62f, 0.28f }; /* lit windows: a lamp's warm light inside */
+        vm->emissive_intensity = 1.6f;
+      }
+      V.blk[m][vi] = imesh(world, MATS[m].name, t3_box_geometry_new(1, 1, 1, 1, 1, 1), vm, MAXBLK, m != M_GLASS);
+    }
   }
   {
     t3_material *rm = std_mat(1, 1, 1, 0.66f, 0); /* glazed tile and slate: the sky shows in them (they went black in flight) */
@@ -305,7 +352,8 @@ void view_init(cw_node root) {
     t3_release(tx);
     V.roof = imesh(world, "Roofs", t3_box_geometry_new(1, 1, 1, 1, 1, 1), rm, MAXBLK / 4, true);
     t3_material *cm = std_mat(1, 1, 1, 0.1f, 0.65f);
-    t3_texture *ct = block_texture(M_GLASS);
+    t3_texture *ct, *cn;
+    block_texture(M_GLASS, 0, &ct, &cn);
     t3_material_set_map(cm, ct);
     t3_release(ct);
     V.curtain = imesh(world, "CurtainGlass", t3_box_geometry_new(1, 1, 1, 1, 1, 1), cm, MAXBLK / 2, true);
@@ -1188,7 +1236,7 @@ static void lake_view(const game *g, float alpha) {
 void view_sync(const game *g, float alpha) {
   block_layers(g);
   lake_view(g, alpha);
-  int cnt[M_COUNT] = { 0 }, nroof = 0, ncurt = 0;
+  int cnt[M_COUNT][NVAR] = { { 0 } }, nroof = 0, ncurt = 0;
   for (int i = 0; i < g->nb; i++) {
     const block *k = &g->b[i];
     if (!k->alive) continue;
@@ -1196,15 +1244,16 @@ void view_sync(const game *g, float alpha) {
     bool roofing = k->paint == P_ROOF_RED || k->paint == P_ROOF_SLATE || k->paint == P_ROOF_COPPER;
     if (roofing && nroof >= MAXBLK / 4) roofing = false;
     bool curtain = m == M_GLASS && (k->paint == P_DARK_GLASS || k->paint == P_BLUE_GLASS) && ncurt < MAXBLK / 2;
-    t3_instanced_mesh *im = roofing ? V.roof : curtain ? V.curtain : V.blk[m];
-    int s = roofing ? nroof++ : curtain ? ncurt++ : cnt[m]++;
+    int var = V.nvar[m] > 1 ? (k->tint >> 2) % V.nvar[m] : 0;
+    t3_instanced_mesh *im = roofing ? V.roof : curtain ? V.curtain : V.blk[m][var];
+    int s = roofing ? nroof++ : curtain ? ncurt++ : cnt[m][var]++;
     cw_xform3 x = game_block_interp(g, i, alpha);
     t3_mat4 mx;
     const float proud = m == M_TARGET || getenv_layers_off() ? 0 : 2.0f * LAY_STEP; /* a layer (both ends) */
     t3_vec3 sc = { k->half.x * 2 + proud * V.lay[i][0], k->half.y * 2 + proud * V.lay[i][1], k->half.z * 2 + proud * V.lay[i][2] };
     t3_mat4_compose(&mx, x.p, x.q, sc);
     t3_instanced_mesh_set_matrix_at(im, s, &mx);
-    float v = 0.74f + 0.48f * (float)k->tint / 255.0f, hue = ((k->tint * 37) & 255) / 255.0f - 0.5f; /* each block its own shade, a little warmer or cooler */
+    float v = (k->baked ? 0.88f + 0.24f * (float)k->tint / 255.0f : 0.74f + 0.48f * (float)k->tint / 255.0f) * (1.0f + (float)k->shade / 127.0f * 0.9f), hue = ((k->tint * 37) & 255) / 255.0f - 0.5f + (float)k->tone / 127.0f * 0.8f; /* each block its own shade, a little warmer or cooler; a landmark's bricks carry the model's relief and the rock's streaks */
     const float *c = V.pal[m];
     float dmg = 1;
     if (m != M_TARGET) {
@@ -1216,8 +1265,9 @@ void view_sync(const game *g, float alpha) {
     t3_color col = { c[0] * v * dmg * (1 + hue * 0.2f), c[1] * v * dmg, c[2] * v * dmg * (1 - hue * 0.24f) };
     if (k->paint) { /* the builder's paint: roofs, trims, timber, gold */
       const float *p = PAINT[k->paint];
-      float pv = 0.82f + 0.32f * (float)k->tint / 255.0f;
-      col = (t3_color){ p[0] * pv * dmg, p[1] * pv * dmg, p[2] * pv * dmg };
+      float pv = (k->baked ? 0.92f + 0.16f * (float)k->tint / 255.0f : 0.82f + 0.32f * (float)k->tint / 255.0f) * (1.0f + (float)k->shade / 127.0f * 0.9f);
+      float wm = (float)k->tone / 127.0f * 0.24f; /* warmer or cooler */
+      col = (t3_color){ p[0] * pv * dmg * (1 + wm), p[1] * pv * dmg, p[2] * pv * dmg * (1 - wm) };
     } else if (m == M_WOOD && (k->tint & 7) == 0) { /* painted wood: one plank in eight takes a bright colour */
       static const float paint[4][3] = { { 0.85f, 0.2f, 0.15f }, { 0.15f, 0.45f, 0.85f }, { 0.95f, 0.75f, 0.15f }, { 0.2f, 0.65f, 0.45f } };
       const float *p = paint[(k->tint >> 3) & 3];
@@ -1229,14 +1279,20 @@ void view_sync(const game *g, float alpha) {
       const float *r = raw[m == M_STONE];
       col = (t3_color){ col.r + (r[0] - col.r) * 0.4f, col.g + (r[1] - col.g) * 0.4f, col.b + (r[2] - col.b) * 0.4f };
     }
+    if (m == M_STEEL && k->tone > 0) { /* rust, from the weather baked into the member */
+      float t = (float)k->tone / 127.0f * 0.75f, lum = 0.5f * (col.r + col.g + col.b);
+      col = (t3_color){ col.r + (lum * 1.7f + 0.03f - col.r) * t, col.g + (lum * 0.7f + 0.01f - col.g) * t, col.b + (lum * 0.3f - col.b) * t };
+    }
     t3_instanced_mesh_set_color_at(im, s, col);
   }
   int inst = 0;
   for (int m = 0; m < M_COUNT; m++) {
-    V.blk[m]->count = cnt[m];
-    V.blk[m]->instance_matrix->version++;
-    if (V.blk[m]->instance_color) V.blk[m]->instance_color->version++;
-    inst += cnt[m];
+    for (int vi = 0; vi < V.nvar[m]; vi++) {
+      V.blk[m][vi]->count = cnt[m][vi];
+      V.blk[m][vi]->instance_matrix->version++;
+      if (V.blk[m][vi]->instance_color) V.blk[m][vi]->instance_color->version++;
+      inst += cnt[m][vi];
+    }
   }
   V.curtain->count = ncurt;
   V.curtain->instance_matrix->version++;

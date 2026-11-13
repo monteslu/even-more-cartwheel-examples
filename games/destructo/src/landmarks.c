@@ -199,6 +199,78 @@ static uint16_t sh_vox(float x, float y, float z) {
 }
 static uint16_t sh_vox_core(float x, float y, float z) { return vx_at(x, y, z) == 255 ? VX->pal[0] : 0; }
 static uint16_t sh_vox_core2(float x, float y, float z) { return vx_at(x, y, z) == 254 ? VX->pal[0] : 0; }
+/* ── the surface baked into each brick from the model's cells: how enclosed it is (recesses dark, ridges lit), the form's
+ * lean toward a fixed light (relief reads where a brick's own faces are all one tone), mineral streaks running down the
+ * rock, a drift of warm and cool, and hairline cracks. View-only (block.shade, block.tone); the brick carries them when it falls ── */
+static float bk_h(int x, int y, int z, uint32_t s) { return hashf((uint32_t)x * 374761393u ^ (uint32_t)y * 668265263u ^ (uint32_t)z * 2246822519u ^ s * 3266489917u); }
+static float bk_noise(float x, float y, float z, uint32_t s) {
+  int xi = (int)floorf(x), yi = (int)floorf(y), zi = (int)floorf(z);
+  float fx = x - xi, fy = y - yi, fz = z - zi;
+  fx = fx * fx * (3 - 2 * fx), fy = fy * fy * (3 - 2 * fy), fz = fz * fz * (3 - 2 * fz);
+  float a = 0;
+  for (int c = 0; c < 8; c++) {
+    int ox = c & 1, oy = (c >> 1) & 1, oz = c >> 2;
+    a += bk_h(xi + ox, yi + oy, zi + oz, s) * (ox ? fx : 1 - fx) * (oy ? fy : 1 - fy) * (oz ? fz : 1 - fz);
+  }
+  return a;
+}
+static float bk_fbm(float x, float y, float z, uint32_t s) {
+  float v = 0, a = 0.5f;
+  for (int i = 0; i < 4; i++) v += a * bk_noise(x, y, z, s + i), x *= 2.03f, y *= 2.03f, z *= 2.03f, a *= 0.5f;
+  return v / 0.9375f;
+}
+static void bake_surface(game *g, const lm_vox *v, int from, float dx, float dy, float dz) {
+  const float x0 = dx + v->x0, z0 = dz + v->z0, y0 = dy;
+  const int R = (int)cw_clampf(0.4f / v->cell + 0.5f, 1, 3);
+  const float L[3] = { -0.42f, 0.58f, 0.7f }, flat = L[2];
+  const uint32_t seed = g->L->seed;
+  const bool big = v->cell > 0.8f; /* blocks this big (a dam's cliffs) take strata and weather only */
+  const float top = fmaxf(1.0f, v->ny * v->course);
+  for (int bi = from; bi < g->nb; bi++) {
+    block *b = &g->b[bi];
+    if (!b->alive || (b->mat != M_STONE && b->mat != M_STEEL)) continue;
+    t3_vec3 p = b->home;
+    int ci = (int)floorf((p.x - x0) / v->cell), cj = (int)floorf((p.y - y0) / v->course), ck = (int)floorf((p.z - z0) / v->cell);
+    float wsum = 0, osum = 0, n[3] = { 0, 0, 0 };
+    for (int j = -R; j <= R && !big; j++)
+      for (int i = -R; i <= R; i++)
+        for (int k = -R; k <= R; k++) {
+          int I = ci + i, J = cj + j, K = ck + k;
+          if (J < 0) continue; /* the ground under a landmark says nothing of its form */
+          bool occ = (I < 0 || K < 0 || I >= v->nx || K >= v->nz || J >= v->ny) ? false : VXG[((size_t)J * v->nx + I) * v->nz + K] != 0;
+          float d2 = (float)(i * i + j * j + k * k), w = 1.0f / (1.0f + d2);
+          if (d2 == 0) continue; /* the brick itself says nothing of its surroundings */
+          wsum += w, osum += w * occ;
+          if (!occ) { float il = 1.0f / sqrtf(d2); n[0] += w * i * il, n[1] += w * j * il, n[2] += w * k * il; }
+        }
+    bool rock = b->paint == P_GRANITE || b->paint == P_GRANITE_WARM || b->paint == P_GRANITE_COOL; /* carved granite takes it all, plain rock and dressed masonry less */
+    const float amp = rock ? 1.0f : (b->paint == P_ROCK || b->paint == P_DARK_STONE) ? 0.7f : 1.0f;
+    float occ = wsum > 0 ? osum / wsum : 0.5f, nl = sqrtf(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+    float sh = -(occ - 0.5f) * (rock ? (v->cell < 0.3f ? 3.0f : 1.7f) : 1.8f); /* the fine carving (a face) wants its recesses deep; the mountain's big blocks only a little */ /* a recess is over half filled, a ridge under */
+    sh = cw_clampf(sh, -0.85f, 0.3f) * amp;
+    if (v->cell >= 0.3f) sh = fmaxf(sh, -0.35f);
+    if (nl > 0.05f) sh += (rock ? 1.1f : 0.5f * amp) * ((n[0] * L[0] + n[1] * L[1] + n[2] * L[2]) / nl - flat);
+    float fx = p.x + 7.7f, fy = p.y, fz = p.z + 3.3f;
+    sh += (bk_fbm(fx * 2.4f + fz * 1.2f, fy * 0.5f, fz * 0.9f, seed) - 0.5f) * 0.4f * amp; /* streaks that run down */
+    sh += (bk_fbm(fx * 7.0f, fy * 7.0f, fz * 7.0f, seed + 11) - 0.5f) * 0.16f * amp;    /* a grain finer than the courses */
+    float cr = bk_fbm(fx * 3.3f + fz * 1.4f, fy * 2.6f - fx * 0.7f, fz * 1.1f, seed + 29);
+    if (rock && fabsf(cr - 0.5f) < 0.014f) sh -= 0.6f;                                          /* a crack */
+    float tn = (bk_fbm(fx * 0.7f, fy * 0.8f, fz * 0.7f, seed + 41) - 0.5f) * 2.2f * amp;
+    if (!rock) { /* dressed masonry, strata and steel: what reads from 20 m is the weather by height, long stains, coursing and strata, not grain */
+      float ht = cw_clampf((p.y - y0) / top, 0, 1);
+      sh -= (bk_fbm(fx * 1.1f, fy * 0.9f, fz * 1.1f, seed + 5) - 0.5f) * 0.3f * amp; /* the fine grain of the rock noise is not wanted here: keep the larger drift */
+      sh += -0.3f * (1 - ht) * (1 - ht) + 0.12f * ht;                                 /* grime gathers at the foot, the top stays clean */
+      float st = bk_fbm(fx * 3.6f, fy * 0.22f, fz * 3.6f, seed + 17);                /* long stains running down the face */
+      sh -= 0.5f * cw_smoothstep(0.56f, 0.78f, st);
+      sh += (((int)floorf((p.y - y0) / 0.6f) & 1) ? 0.07f : -0.07f);                  /* courses, light and dark by turns */
+      if (big) sh += 0.32f * sinf(p.y * 2.2f + 6.0f * (bk_fbm(fx * 0.3f, fy * 0.2f, fz * 0.3f, seed + 9) - 0.5f)) ; /* strata */
+      tn = (0.5f - ht) * 1.3f + (bk_fbm(fx * 0.5f, fy * 1.4f, fz * 0.5f, seed + 41) - 0.5f) * 1.2f;
+      if (b->mat == M_STEEL) tn = cw_smoothstep(0.5f, 0.75f, bk_fbm(fx * 2.0f, fy * 0.5f, fz * 2.0f, seed + 23)) * 1.6f - 0.4f + 0.5f * (1 - ht); /* rust: runs from the joints, thickest low down */
+    }
+    b->shade = (int8_t)(cw_clampf(sh, -1, 1) * 127.0f), b->tone = (int8_t)(cw_clampf(tn, -1, 1) * 127.0f), b->baked = 1;
+  }
+}
+
 /* steel lattice: each brick from..to is bonded to the others of from..to it touches: the bonded members are one rigid
  * chunk (chunks.c), held up by the support graph and by nothing else (no joint: a joint is a soft constraint). */
 static void weld_blocks(game *g, int from, int to) {
@@ -300,11 +372,13 @@ static int build_vox_turned(game *g, const lm_vox *v, float dx, float dy, float 
         }
 #undef VI
     free(used);
+    bake_surface(g, v, from, dx, dy, dz);
     turn_blocks(g, from0, dx, dz, yaw);
     weld_blocks(g, from, g->nb);
   } else {
     sculpt s = { sh_vox, x0, x1, z0, z1, y0, y1, v->cell, v->course, false, v->bond != 0 };
     laid += sculpt_run(g, &s);
+    bake_surface(g, v, from0, dx, dy, dz);
     if (v->bond) weld_blocks(g, from0, g->nb); /* the part's bricks bonded to those they touch: a piece that breaks where it is hit */
     turn_blocks(g, from0, dx, dz, yaw);
   }

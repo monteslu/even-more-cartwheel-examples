@@ -52,6 +52,8 @@ typedef struct block {
   float vol;
   uint8_t mat, gen, alive, tint;
   uint8_t paint;     /* 0: the material's colour in the level's palette; else a paint (view.c PAINT): roofs, trims, timber */
+  int8_t shade, tone; /* view only, baked from a landmark's model (landmarks.c bake_surface): light and dark by the form's recesses and relief, warmer or cooler by the mineral's drift; 0 = none */
+  uint8_t baked;      /* shade and tone are set: the brick's own random tint is turned down so the relief reads */
   int8_t target;     /* index into game.tgt, or -1 */
   uint16_t tag;      /* the structure's own: 1 a block placed by the level (not a fragment), 2 one of a landmark's core (the big blocks inside, under its skin of bricks: not counted in the share brought down) */
   int born;          /* tick */
