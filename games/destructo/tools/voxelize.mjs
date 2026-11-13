@@ -40,6 +40,13 @@
  *   clear      [names]: the other parts of this landmark laid before it (their configs here): a cell is left out where
  *              it falls inside one of their cells, so the two parts never overlap at their seam (a part sampled on a
  *              coarser grid reaches past where the shape says it ends; two bodies laid into each other burst apart)
+ *   include    [[x0, y0, z0, x1, y1, z1], ...] (game metres): only the cells whose middle is in one of these boxes (a detailed part of a model laid fine
+ *              over the same model's coarse part: boxes on both grids' lines so the two meet with no gap)
+ *   snap       metres: include / exclude box edges are rounded to a multiple of this
+ *   exclude    the same boxes as a list: the cells whose middle is in one are left out (the coarse part, where a fine part is laid)
+ *   speckle    { "paints": [P, ...], "scale": m, "seed": n }: the paint of a cell from a slow noise over the part (granite in patches), unless a band, stripe or carve names one
+ *   ao         { "r": cells, "paints": [light, mid, dark], "lo", "hi" }: a cell's paint from how crowded its neighbourhood is (r cells each way): open and
+ *              jutting (a brow, a nose) light, sunk (an eye, under a chin) dark: the shading the eye reads a face by, painted into the bricks
  *   carve      [{ "box": [x0, y0, z0, x1, y1, z1] (game metres), "mat"?, "paint"? }]: cells in the box take this, or
  *              are emptied when neither is given (doors, a sunken court); "disc": [c, cy, r, "z"|"x"] keeps only the
  *              cells within r of (x = c, y = cy) (or z = c: a round face on a wall, a clock dial); with "top": [c, ax, az, wobble] only the
@@ -61,6 +68,7 @@ const OUT = resolve(opt('--out', join(HERE, '../src/lm_data.c')));
 const ONLY = opt('--only') ? opt('--only').split(',') : null;
 const PROCS = (await import('./landmark-procs.mjs')).default;
 const CONF = JSON.parse(readFileSync(join(HERE, 'landmark-models.json'), 'utf8'));
+if (process.env.VOX_OVERRIDE) for (const [n, o] of Object.entries(JSON.parse(process.env.VOX_OVERRIDE))) Object.assign(CONF[n], o); /* development: try a setting without editing the config */
 if (!MODELS) { console.error('--models <dir>: the directory holding the models (see CREDITS)'); process.exit(2); }
 
 /* the game's paints (src/view.c PAINT), for "auto" */
@@ -146,6 +154,9 @@ function voxelize(name, C) {
   if (C.shear) for (const v of V) v[0] += v[1] * C.shear; /* leaning further (the camera sees the lean across, x) */
   const ext = [(hi[0] - lo[0]) * s, (hi[1] - lo[1]) * ys, (hi[2] - lo[2]) * s];
   const cell = C.cell, course = C.course, K = Math.max(1, C.core || 0);
+  const sn = (b) => (C.snap ? b.map((e) => Math.round(e / C.snap) * C.snap) : b); /* boxes on the line of a grid both parts share */
+  if (C.include) C.include = C.include.map(sn);
+  if (C.exclude) C.exclude = C.exclude.map(sn);
   /* the grid: whole cores across (a multiple of k cells), centred */
   const roundK = (n) => Math.ceil(n / K) * K;
   const nx = roundK(Math.ceil(ext[0] / cell) + 2), nz = roundK(Math.ceil(ext[2] / cell) + 2), ny = roundK(Math.ceil(ext[1] / course));
@@ -274,6 +285,8 @@ function voxelize(name, C) {
     if (solid[c] < 0) continue;
     const y = (j + 0.5) * course, x = x0 + (i + 0.5) * cell, z = z0 + (k + 0.5) * cell;
     let v = mcode[solid[c]];
+    if (C.speckle) { const S = C.speckle, q = (S.seed || 0) + 1, sc = 1 / S.scale; const nz2 = Math.sin(x * sc * 1.7 + q) * Math.sin(y * sc * 2.3 - q * 2) + Math.sin(z * sc * 1.9 + x * sc * 0.8 + q * 3) * Math.cos(y * sc * 1.1 + q); v = code('stone', S.paints[Math.min(S.paints.length - 1, Math.floor((nz2 * 0.25 + 0.5) * S.paints.length))]); }
+    if (C.ao && depth[c] <= wall) { const r = C.ao.r; let n = 0, m = 0; for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) for (let d = -r; d <= r; d++) { const ii = i + b, jj = j + a, kk = k + d; m++; if (ii >= 0 && jj >= 0 && kk >= 0 && ii < nx && jj < ny && kk < nz && solid[at(ii, jj, kk)] >= 0) n++; } const f = n / m; v = code('stone', C.ao.paints[f < C.ao.lo ? 0 : f < C.ao.hi ? 1 : 2]); }
     for (const b of C.bands || []) if (y >= b.y0 && y < b.y1) v = code(b.mat, b.paint || 'NONE');
     if (C.stripe && j % C.stripe.every === 0) v = code(C.stripe.mat, C.stripe.paint); /* a band every so many courses (a tower's floors) */
     let carved = false;
@@ -288,6 +301,8 @@ function voxelize(name, C) {
     }
     if (carved) continue;
     if (!P && clears.some((g) => touches(g, x, y, z, cell, course, C.clearY))) continue; /* a model part: no cell where an earlier part has one */
+    if (C.include && !C.include.some((b) => x >= b[0] && x < b[3] && y >= b[1] && y < b[4] && z >= b[2] && z < b[5])) continue;
+    if (C.exclude && C.exclude.some((b) => x >= b[0] && x < b[3] && y >= b[1] && y < b[4] && z >= b[2] && z < b[5])) continue;
     if ((C.ymin != null && y < C.ymin) || (C.ymax != null && y >= C.ymax)) continue; /* one height of a model (its masonry below, its welded dome above) */
     shellCode[c] = v;
     if (C.frame && wall > 0 && depth[c] > wall) v = frameCell(i, j, k) ? code((C.coreMat || C.frame).mat, (C.coreMat || C.frame).paint) : 0; /* the inside is a frame, not a mass */
