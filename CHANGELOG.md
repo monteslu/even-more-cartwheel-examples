@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.25.0
+
+- **Destructo**: Mount Rushmore, rebuilt. The four heads are laid in 12 cm bricks, bonded and hollow so brows, noses and chins hold their shape, in pale carved stone on a rough granite mountain built of large blocks. The level opens straight at the faces from slightly below, and a charge on a head breaks it away as a lump that shatters. A blind judge names it from the frame alone in both views (97 and 93).
+- Known: the Eiffel Tower and the Willis Tower, built of finer bricks since 0.23.0, may sit down rather than topple when a leg is shot out; being checked.
+
 ## 0.24.1
 
 - **Destructo**: the Hoover Dam's gorge walls have larger blocks in their cores, 12% fewer static chunks with the same silhouette and surface.
