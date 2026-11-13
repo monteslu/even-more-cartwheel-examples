@@ -57,43 +57,76 @@ function sphinx(x, y, z) {
 }
 
 /* ── the Eiffel Tower (324 m): four lattice legs leaning in under the arches to the first platform, the second
- * platform where they meet, the single lattice shaft up to the top platform, the spire. Open ironwork: corner posts,
- * horizontal bars every bay and a diagonal in each bay, every member one brick thick and the bays open. Welded; real
- * metres, cells of 3 m ── */
-const EI_S = 0.05, EI_C = 3; /* game metres a metre; a cell in real metres */
-const eiW = (Y) => Math.max(62 * Math.exp(-Y / 95), 6);          /* the outer half-width at height Y */
+ * platform where they meet, the single lattice shaft up to the top platform, the spire. Open ironwork drawn one
+ * cell thick (a cell is 1.4 m of the real tower, 7 cm in the game): corner posts, a rung at the foot of each panel and
+ * both diagonals of its X, panels as wide as they are tall; the arches are a band of three cells; each platform a
+ * slab with its railing and the first one a deep frieze under it. Welded; real metres ── */
+const EI_S = 0.05, EI_C = 1.4; /* game metres a metre; a cell in real metres (the grid's cell is EI_C * EI_S) */
+const eiW = (Y) => Math.max(62 * Math.exp(-Y / 92), 6.6);          /* the outer half-width at height Y */
 const eiIn = (Y) => Y < 105 ? 37 * Math.pow(1 - Y / 105, 0.8) : 0; /* a leg's inner edge */
+/* a braced panel on a face: u is the position along the face from its start (0..span), row the course in this
+ * section counted up from its base; the panel is nb courses tall and about as wide, a rung at its foot, an upright
+ * between panels and both diagonals */
+function eiPanel(u, span, row, nb, thick) {
+  const c = EI_C, npan = Math.max(1, Math.round(span / (nb * c))), pw = span / npan;
+  const inBay = ((row % nb) + nb) % nb;
+  if (inBay === 0) return true;                                  /* the rung */
+  const f = (u % pw) / pw;                                       /* across the panel 0..1 */
+  if (u % pw < c * 0.9 || pw - (u % pw) < c * 0.1) return true;  /* the upright at a panel's edge */
+  const d1 = Math.abs(f * nb - (inBay + 0.5)), d2 = Math.abs((1 - f) * nb - (inBay + 0.5));
+  return d1 < thick || d2 < thick;
+}
 function eiffel(x, y, z) {
   const X = x / EI_S, Y = y / EI_S, Z = z / EI_S, aX = Math.abs(X), aZ = Math.abs(Z);
   const w = eiW(Y), inn = eiIn(Y), c = EI_C;
-  const row = Math.floor(Y / c), bay = 4, inBay = row % bay, bar = inBay === 0;
   const IRON = 'steel:IRON';
-  /* the platforms: a slab a course thick, out past the ironwork */
-  if (Y >= 57 && Y < 57 + c && aX < eiW(57) + 4 && aZ < eiW(57) + 4) return IRON;
-  if (Y >= 115 && Y < 115 + c && aX < eiW(115) + 3 && aZ < eiW(115) + 3) return IRON;
+  /* the platforms: a slab two courses thick with a railing on its rim; the first has a deep frieze under it */
+  const slab = (Y0, hw, thick) => {
+    if (Y < Y0 || Y >= Y0 + thick + c) return false;
+    if (aX >= hw || aZ >= hw) return false;
+    if (Y < Y0 + thick) return true;
+    return aX >= hw - c || aZ >= hw - c;                          /* the railing */
+  };
+  if (slab(57, eiW(57) + 4, 2 * c)) return IRON;
+  if (slab(115, eiW(115) + 3, 2 * c)) return IRON;
   /* the top: the cabin and the spire */
-  if (Y >= 276 && Y < 290) return aX < 7 && aZ < 7 && (aX > 7 - c || aZ > 7 - c || Y < 276 + c || Y >= 290 - c) ? IRON : null;
-  if (Y >= 290 && Y < 324) return Math.hypot(X, Z) < (Y < 300 ? 2.2 : 1.6) ? IRON : null;
+  if (Y >= 276 && Y < 290) {
+    if (aX >= 7.5 || aZ >= 7.5) return null;
+    const win = Y >= 276 + 2 * c && Y < 290 - 2 * c;
+    return (aX >= 7.5 - c || aZ >= 7.5 - c) ? (win && ((Math.floor((aX + aZ) / c)) % 3 === 1) ? null : IRON) : (Y < 276 + c || Y >= 290 - c ? IRON : null);
+  }
+  if (Y >= 290 && Y < 324) {
+    const r = Y < 296 ? 2.9 - (Y - 290) * 0.15 : Math.max(0.6, 2.0 - (Y - 296) * 0.05);
+    const rr = Math.hypot(X, Z);
+    return rr < r || (Y >= 296 && Y < 303 && Math.max(aX, aZ) < 3.0 && Math.max(aX, aZ) >= 3.0 - c * 0.8 && Math.floor((Y - 296) / c) % 2 === 0) ? IRON : null;
+  }
   if (Y >= 276) return null;
   if (aX > w || aZ > w) return null;
-  if (Y < 110) {
+  if (Y < 112) {
+    /* the frieze under the first platform: a belt of close lattice round the outside of the legs and across the arches */
+    const FR = 57 - 4 * c;
     /* four legs: each a square tube from inn to w on both axes */
     if (aX < inn || aZ < inn) {
-      /* the arches between the legs under the first platform, on the outer faces */
+      /* the arches between the legs on the outer faces: a band, and the panels above it up to the frieze */
       const onFace = (aX > w - c && aZ < inn) || (aZ > w - c && aX < inn);
+      if (!onFace) return null;
       const u = aX > w - c ? aZ : aX;
-      const r = Math.hypot(u, Y - 18);
-      if (onFace && Y > 18 && Y < 56 && Math.abs(r - 37) < c * 0.7) return IRON;
+      const r = Math.hypot(u, Y);
+      if (Y >= FR && Y < 57) return eiPanel(u + 200, 400, Math.floor((Y - FR) / c), 4, 0.8) ? IRON : null;
+      if (r > 35.5 && r < 41.5 && Y < FR && Y >= 1 * c) return IRON;                      /* the arch */
+      if (r >= 41.5 && Y < FR) return eiPanel(u + 200, 400, Math.floor(Y / c), 4, 0.8) ? IRON : null; /* the panels over it */
       return null;
     }
-    const xEdge = aX > w - c || aX < inn + c, zEdge = aZ > w - c || aZ < inn + c;
-    if (xEdge && zEdge) return IRON;                       /* the corner posts */
+    const xEdge = aX > w - c || (inn >= 2 * c && aX < inn + c), zEdge = aZ > w - c || (inn >= 2 * c && aZ < inn + c);
+    const legSec = Y < 57 ? 0 : 57 + 2 * c;                  /* the panels count up from the foot, and again from the first platform */
+    if (xEdge && zEdge) return IRON;                         /* the corner posts */
+    if (Y < 9 * c && ((aX > w - 2 * c || aX < inn + 2 * c) && (aZ > w - 2 * c || aZ < inn + 2 * c))) return IRON; /* heavier at the foot */
     if (xEdge || zEdge) {
-      if (bar) return IRON;                                /* a horizontal bar each bay */
-      /* one diagonal across the bay, its direction alternating bay to bay */
-      const along = xEdge ? aZ : aX, span = w - inn - 2 * c, t = (along - inn - c) / span;
-      const dir = (Math.floor(row / bay) & 1) ? 1 - t : t;
-      if (span > 0 && Math.abs(dir * bay - inBay - 0.5) < 0.5) return IRON;
+      if (Y >= FR && Y < 57) return IRON;                    /* the frieze, solid on the legs */
+      const nb = Y < 57 ? 6 : 5;
+      const span = Math.max(w - inn - 2 * c, c);
+      const along = xEdge ? aZ : aX;
+      return eiPanel(along - inn - c, span, Math.floor((Y - legSec) / c), nb, 0.75) ? IRON : null;
     }
     return null;
   }
@@ -101,13 +134,13 @@ function eiffel(x, y, z) {
   const xEdge = aX > w - c, zEdge = aZ > w - c;
   if (xEdge && zEdge) return IRON;
   if (xEdge || zEdge) {
-    if (bar) return IRON;
-    const along = xEdge ? Z : X, t = (along + w) / (2 * w);
-    const dir = (Math.floor(row / bay) & 1) ? 1 - t : t;
-    if (Math.abs(dir * bay - inBay - 0.5) < 0.5) return IRON;
+    const along = xEdge ? Z : X;
+    const nb = Y < 180 ? 5 : 4;
+    return eiPanel(along + w, 2 * w, Math.floor((Y - 115 - 2 * c) / c), nb, 0.75) ? IRON : null;
   }
   return null;
 }
+
 
 /* ── the Space Needle (184 m): three pairs of white legs splayed at the foot, pinched to a waist a third of the way
  * up and flaring again to hold the saucer; the dark lattice of the lift shaft in the middle; the saucer's ribbed

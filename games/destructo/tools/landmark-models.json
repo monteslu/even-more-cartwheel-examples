@@ -1,6 +1,6 @@
 {
   "sphinx": { "proc": "sphinx", "size": { "axis": "x", "len": 18 }, "cell": 0.07, "course": 0.07, "weld": true, "wall": 1, "core": 0 },
-  "eiffel": { "proc": "eiffel", "size": { "axis": "y", "len": 16.2 }, "cell": 0.15, "course": 0.15, "weld": true, "member": [ 24, 6 ] },
+  "eiffel": { "proc": "eiffel", "size": { "axis": "y", "len": 16.2 }, "cell": 0.07, "course": 0.07, "weld": true, "member": [ 24, 6 ] },
   "pisa": { "obj": "pisa/pisa.obj", "yaw": 0, "size": { "axis": "y", "len": 11 }, "cell": 0.083, "course": 0.103, "fill": "flood", "wall": 1, "core": 0, "default": { "mat": "stone", "paint": "MARBLE" }, "weld": true, "shear": 0.04, "member": [ 40, 6 ], "frame": { "floor": 3.6, "col": 3, "shaft": 0.45, "mat": "stone", "paint": "CONCRETE" },
   "coreMat": { "mat": "stone", "paint": "CONCRETE" } },
   "colosseum": { "clear": [ "col_cavea" ], "proc": "colosseum", "size": { "axis": "x", "len": 17.955000000000002 }, "cell": 0.2, "course": 0.2, "wall": 2, "core": 0, "except": "SAND_STONE|PLASTER", "weld": true },

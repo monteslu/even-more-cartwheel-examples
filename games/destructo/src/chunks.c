@@ -718,7 +718,7 @@ static void crumble(game *g) {
     if (!k->alive || !k->dyn || !k->placed || k->n <= 6 || g->tick - k->rel_tick < 50 || g->tick - k->frac_tick < 10) continue;
     { /* a lump gives way only once it lies (nearly still: a tower going over is not crumbling), however long it takes */
       t3_vec3 v = cw_body3d_velocity(k->body);
-      if (v.x * v.x + v.y * v.y + v.z * v.z < 1.0f && g->tick - k->rel_tick > 40) crumble_one(g, c), nf++;
+      if (v.x * v.x + v.y * v.y + v.z * v.z < (g->b[k->head].mat == M_STEEL && g->tick - k->rel_tick > 200 ? 4.0f : 1.0f) && g->tick - k->rel_tick > 40) crumble_one(g, c), nf += g->b[k->head].mat == M_STEEL ? 0 : 1; /* (a tangle of steel lattice that has been coming down for over three seconds gives way while it still rolls: thin members roll on, and a fine lattice has many more lumps than a coarse one) */
     }
   }
 }
