@@ -856,6 +856,7 @@ static void fixed_update(void *u, double dt) {
       else if (G.g.tick == 50 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ 3.0f, 1.6f, water_dam_zc(&G.g.wt, 3.0f) + 1.2f });
       else if (G.g.tick == 60 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ -3.0f, 1.6f, water_dam_zc(&G.g.wt, -3.0f) + 1.2f });
       else if (G.g.tick == 80 && !strcmp(opt_get("SCENE"), "dam")) game_charge_at(&G.g, (t3_vec3){ -1.0f, 3.2f, water_dam_zc(&G.g.wt, -1.0f) + 0.8f }); /* ... and a second, higher, a second later */
+      else if (G.g.tick == 40 && !strcmp(opt_get("SCENE"), "at") && opt_get("CHARGE_AT")) { float qx = 0, qy = 0, qz = 0; if (sscanf(opt_get("CHARGE_AT"), "%f,%f,%f", &qx, &qy, &qz) == 3) game_charge_at(&G.g, (t3_vec3){ qx, qy, qz }); } /* a charge where the look sheet wants it (the faces of a mountain) */
       else if (G.g.tick == 40) game_legout(&G.g, !strcmp(opt_get("SCENE"), "boom"));
       G.g.state = GS_SETTLE;
       game_step(&G.g, &none);
