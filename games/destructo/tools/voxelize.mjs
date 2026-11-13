@@ -42,6 +42,7 @@
  *              coarser grid reaches past where the shape says it ends; two bodies laid into each other burst apart)
  *   include    [[x0, y0, z0, x1, y1, z1], ...] (game metres): only the cells whose middle is in one of these boxes (a detailed part of a model laid fine
  *              over the same model's coarse part: boxes on both grids' lines so the two meet with no gap)
+ *   support    S cells: a cell with nothing in the course below within S cells gets a pillar of stone filled down from it (what hangs in the air is not laid)
  *   snap       metres: include / exclude box edges are rounded to a multiple of this
  *   exclude    the same boxes as a list: the cells whose middle is in one are left out (the coarse part, where a fine part is laid)
  *   speckle    { "paints": [P, ...], "scale": m, "seed": n }: the paint of a cell from a slow noise over the part (granite in patches), unless a band, stripe or carve names one
@@ -216,6 +217,21 @@ function voxelize(name, C) {
       for (let j = ny - 1; j >= 0; j--) { const c = at(i, j, k); if (surf[c] >= 0) m = surf[c]; else if (m >= 0) solid[c] = m; }
     }
   }
+  /* support: a cell with nothing in the course below within S cells (square) would hang in the air, and the masonry builder drops it and
+   * every cell stacked on it: a pillar is filled down from it to the next solid cell (or the ground). A face's chin and the tip of its nose become
+   * a drop of stone; the relief stays in the paint (ao reads the cells as the model had them, solidTrue) */
+  const solidTrue = Int32Array.from(solid);
+  if (C.support) {
+    const S = C.support;
+    for (let j = 1; j < ny; j++) for (let i = 0; i < nx; i++) for (let k = 0; k < nz; k++) {
+      const c = at(i, j, k);
+      if (solid[c] < 0) continue;
+      let ok = false;
+      for (let di = -S; di <= S && !ok; di++) for (let dk = -S; dk <= S && !ok; dk++) { const ii = i + di, kk = k + dk; if (ii >= 0 && kk >= 0 && ii < nx && kk < nz && solid[at(ii, j - 1, kk)] >= 0) ok = true; }
+      if (ok) continue;
+      for (let jj = j - 1; jj >= 0 && solid[at(i, jj, k)] < 0; jj--) solid[at(i, jj, k)] = solid[c];
+    }
+  }
   /* depth: cells from the outside (6-connected), to keep a wall and make the core */
   const depth = new Int32Array(N).fill(1 << 20);
   let front = [];
@@ -286,7 +302,7 @@ function voxelize(name, C) {
     const y = (j + 0.5) * course, x = x0 + (i + 0.5) * cell, z = z0 + (k + 0.5) * cell;
     let v = mcode[solid[c]];
     if (C.speckle) { const S = C.speckle, q = (S.seed || 0) + 1, sc = 1 / S.scale; const nz2 = Math.sin(x * sc * 1.7 + q) * Math.sin(y * sc * 2.3 - q * 2) + Math.sin(z * sc * 1.9 + x * sc * 0.8 + q * 3) * Math.cos(y * sc * 1.1 + q); v = code('stone', S.paints[Math.min(S.paints.length - 1, Math.floor((nz2 * 0.25 + 0.5) * S.paints.length))]); }
-    if (C.ao && depth[c] <= wall) { const r = C.ao.r; let n = 0, m = 0; for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) for (let d = -r; d <= r; d++) { const ii = i + b, jj = j + a, kk = k + d; m++; if (ii >= 0 && jj >= 0 && kk >= 0 && ii < nx && jj < ny && kk < nz && solid[at(ii, jj, kk)] >= 0) n++; } const f = n / m; v = code('stone', C.ao.paints[f < C.ao.lo ? 0 : f < C.ao.hi ? 1 : 2]); }
+    if (C.ao && depth[c] <= wall) { const r = C.ao.r; let n = 0, m = 0; for (let a = -r; a <= r; a++) for (let b = -r; b <= r; b++) for (let d = -r; d <= r; d++) { const ii = i + b, jj = j + a, kk = k + d; m++; if (ii >= 0 && jj >= 0 && kk >= 0 && ii < nx && jj < ny && kk < nz && solidTrue[at(ii, jj, kk)] >= 0) n++; } const f = solidTrue[c] < 0 ? 1 : n / m; v = code('stone', C.ao.paints[f < C.ao.lo ? 0 : f < C.ao.hi ? 1 : 2]); }
     for (const b of C.bands || []) if (y >= b.y0 && y < b.y1) v = code(b.mat, b.paint || 'NONE');
     if (C.stripe && j % C.stripe.every === 0) v = code(C.stripe.mat, C.stripe.paint); /* a band every so many courses (a tower's floors) */
     let carved = false;
