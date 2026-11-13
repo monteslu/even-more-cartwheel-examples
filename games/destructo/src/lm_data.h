@@ -72,7 +72,6 @@ extern const lm_vox LMV_m_berlin_tv;
 extern const lm_vox LMV_m_burj_arab;
 extern const lm_vox LMV_m_rushmore;
 extern const lm_vox LMV_m_rushmore_heads;
-extern const lm_vox LMV_rushmore;
 extern const lm_vox LMV_great_wall;
 extern const lm_vox LMV_machu;
 extern const lm_vox LMV_hoover_rock;

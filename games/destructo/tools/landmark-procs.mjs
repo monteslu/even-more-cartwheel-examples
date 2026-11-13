@@ -601,40 +601,6 @@ const ell = (x, y, z, cx, cy, cz, rx, ry, rz) => sq((x - cx) / rx) + sq((y - cy)
 /* a point on a straight segment's thick line: distance from (x, y) to the segment a..b in the plane */
 const segD = (x, y, ax, ay, bx, by) => { const dx = bx - ax, dy = by - ay, t = cl(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1), 0, 1); return Math.hypot(x - ax - t * dx, y - ay - t * dy); };
 
-/* ── Mount Rushmore: a granite mountain with a steep face, four heads carved on it, each a mass of its own stone on a
- * bulge of the face (it can break away from the cliff); the crystals lie on the summit behind them ── */
-const MR_H = [[-6.9, 0.1, 1.55], [-2.3, -0.5, 1.55], [2.3, 0.0, 1.55], [6.9, 0.1, 1.6]]; /* x, z offset, size: Washington, Jefferson, Roosevelt, Lincoln */
-const mrFace = (y, x) => (y < 1.6 ? 2.5 + (1.6 - y) * 0.8 : y < 6.6 ? 2.5 - (y - 1.6) * 0.14 : 1.8 - (y - 6.6) * 0.32) + 0.22 * Math.sin(y * 3.1 + x * 0.6) * (y > 1.6 ? 1 : 0); /* stepped strata along the face */
-function rushmore(x, y, z) {
-  const ax = Math.abs(x);
-  const n = Math.sin(x * 0.9) * 0.5 + Math.sin(x * 2.3 + 1) * 0.35 + Math.sin(x * 5.1) * 0.15;
-  const cy = 7.2, hd = 1.45 * 1.55;
-  /* the heads and their busts, in the pale granite */
-  for (const [hx, hz, sc] of MR_H) {
-    const cz = mrFace(cy, hx) + 0.55 + hz, X = x - hx, Y = y - cy, Z = z - cz;
-    const jw = 1 - 0.32 * Math.max(0, -Y) / (1.45 * sc), jaw = hx > 5.5;
-    if (ell(X / jw, Y, Z, 0, 0, 0, 1.15 * sc, 1.45 * sc, 1.0 * sc)) {
-      const fr = 1.0 * sc * Math.sqrt(Math.max(0, 1 - sq(X / (1.15 * sc * jw)) - sq(Y / (1.45 * sc))));
-      if (Z > fr - 0.7 && Math.abs(X) > 0.3 * sc && Math.abs(X) < 0.9 * sc && Y > -0.05 && Y < 0.5) return null; /* the eye sockets, deep */
-      if (Z > fr - 0.3 && Y < -0.8 && Y > -1.05 && Math.abs(X) < 0.5 * sc) return null; /* the mouth */
-      return 'stone:MARBLE';
-    }
-    if (Math.abs(X) < 0.42 && Y > -1.0 && Y < 0.4 && Z > 0 && Z < 2.0 * sc) return 'stone:MARBLE'; /* the nose, long */
-    if (Math.abs(X) < 1.1 * sc && Y > 0.45 && Y < 0.95 && Z > 0.1 && Z < 1.3 * sc) return 'stone:MARBLE'; /* the brow, heavy */
-    if (ell(X, Y, Z, 0, -1.6 * sc, 0.1, jaw ? 0.65 : 0.52, jaw ? 0.8 : 0.42, 0.55)) return 'stone:MARBLE'; /* the chin (a beard on the last) */
-    if (Math.abs(X) < 2.1 && Y < -1.55 && Y > -3.4 && Z > -1.2 && Z < 0.9 - 0.3 * (-Y - 1.55) && ell(X, 0, 0, 0, 0, 0, 2.1, 1, 1) && ell(X, Y, Z, 0, -2.5, -0.2, 2.1, 1.1, 1.5)) return 'stone:MARBLE'; /* the shoulders */
-  }
-  /* the mountain: strata of rock, a steep face stepping back, a ridge that falls away behind, rough along the top */
-  const top = 9.6 + n * 1.1 + (ax > 6.5 ? -1.0 * (ax - 6.5) * 0.5 : 0) - Math.max(0, -z - 1.0) * 1.1;
-  const zb = -1.6, xs = 9 - 0.22 * y + 0.35 * Math.sin(y * 1.9 + z);
-  if (ax > xs || z < zb || y > top) return null;
-  let fc = mrFace(y, x);
-  for (const [hx] of MR_H) { const d = Math.abs(x - hx); if (d < 2.4 && y > 4.0 && y < 9.2) fc -= 0.4 * Math.min(1, (2.4 - d) * 2) * Math.min(1, (y - 4.0) * 2, (9.2 - y) * 2); } /* the wall the heads are cut from stands back from them */
-  if (z > fc) return null;
-  const k = Math.floor(y * 1.5 + Math.sin(x * 0.7) * 0.7 + z * 0.3);
-  return ((k % 2) + 2) % 2 === 0 ? 'stone:ROCK' : 'stone:IRON';
-}
-
 /* ── the Kremlin: the red brick wall with its swallowtail merlons, the corner towers under green tents, the clock gate
  * tower with its stepped crown and gold star, the white bell tower, the cathedral's five gold domes ── */
 /* the Spasskaya clock tower: a square shaft in red brick, a stage with the clock faces, an open arcade, the tall green tent and the gold star */
@@ -1262,7 +1228,6 @@ export default {
   needle: { ext: [44 * SN_S, 184 * SN_S, 44 * SN_S], cell: needle },
   sphinx: { ext: [(SPH_X1 - SPH_X0) * SPH_S, 21.4 * SPH_S, 2 * SPH_Z * SPH_S], cell: sphinx },
   eiffel: { ext: [126 * EI_S, 324 * EI_S, 126 * EI_S], cell: eiffel },
-  rushmore: { ext: [20, 11.6, 8], cell: rushmore },
   kremlin: { ext: [20, 12.4, 11], cell: kremlin },
   taipei: { ext: [3.8, 17, 3.8], cell: taipei },
   golden_gate: { ext: [36, 8, 3.2], cell: goldenGate },
