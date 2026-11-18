@@ -1,5 +1,6 @@
 [
   {"name": "destructo-play", "gate": "destructo-play", "frames": 600, "note": "a player's first shots: hits, breaks, the pieces flying"},
+  {"name": "detexto-collapse", "app": "detexto_auto", "frames": 200, "from": 50, "startCmds": ["dm set LEVEL_NAME \"Taj Mahal\"", "dm set SCENE shot2", "dm restart"], "note": "a charge at the Taj Mahal's foot: the characters scattering in their glow, the dust (characters on black: the whole-frame motion of the collapse is about 0.0006, so its floor is 0.0005)", "minMotion": 0.0005},
   {"name": "emberthrone-journey", "gate": "emberthrone-journey", "frames": 1800, "note": "the bot's journey: fights, the hall's lights, transitions"},
   {"name": "jewels-play", "gate": "jewels-play", "frames": 1500, "note": "the bot's matches: gems bursting, cascades", "minMotion": 0.002},
   {"name": "jewels-pad", "gate": "jewels-pad", "frames": 1006, "note": "a pad player's matches: the cursor, swaps, bursts (a board game: the cursor, the swaps and the bursts are all that moves, so its floor is 0.001)", "minMotion": 0.001},
