@@ -181,8 +181,10 @@ static const char *CELLS_GLSL_HEAD =
     "    float col = float(r - (r / 2) * 2), row = float(r / 2);\n"
     "    vec2 c = base + vec2((col + 0.5) * cs.x * 0.5, cs.y - (row + 0.5) * cs.y / 3.0);\n"
     "    vec2 e = vec2(cs.x * 0.125, cs.y / 12.0);\n"
-    "    vec3 s = tap(c + vec2(-e.x, -e.y), isz) + tap(c + vec2(e.x, -e.y), isz) + tap(c + vec2(-e.x, e.y), isz) + tap(c + e, isz);\n"
-    "    s *= 0.25 * u_col.x;\n"
+    "    vec3 t0 = tap(c + vec2(-e.x, -e.y), isz), t1 = tap(c + vec2(e.x, -e.y), isz), t2 = tap(c + vec2(-e.x, e.y), isz), t3 = tap(c + e, isz);\n"
+    "    vec3 s = (t0 + t1 + t2 + t3) * 0.25;\n"
+    "    vec3 mx = t0; if (lum(t1) > lum(mx)) mx = t1; if (lum(t2) > lum(mx)) mx = t2; if (lum(t3) > lum(mx)) mx = t3;\n"
+    "    s = mix(s, mx, u_ex2.z) * u_col.x; /* thin bright things (a lattice girder) keep their light */\n"
     "    float zz = ldepth(c); z[r] = zz;\n"
     "    if (zz > 1e5) { s = vec3(0.0); far += 1.0; } else { zmax = max(zmax, zz); }\n"
     "    csum += s;\n"
@@ -267,8 +269,9 @@ static const char *CELLS_WGSL =
     "    let col = f32(r - (r / 2) * 2); let row = f32(r / 2);\n"
     "    let c = base + vec2f((col + 0.5) * cs.x * 0.5, cs.y - (row + 0.5) * cs.y / 3.0);\n"
     "    let e = vec2f(cs.x * 0.125, cs.y / 12.0);\n"
-    "    var s = tap(c + vec2f(-e.x, -e.y), isz) + tap(c + vec2f(e.x, -e.y), isz) + tap(c + vec2f(-e.x, e.y), isz) + tap(c + e, isz);\n"
-    "    s = s * 0.25 * u.u_col.x;\n"
+    "    let t0 = tap(c + vec2f(-e.x, -e.y), isz); let t1 = tap(c + vec2f(e.x, -e.y), isz); let t2 = tap(c + vec2f(-e.x, e.y), isz); let t3 = tap(c + e, isz);\n"
+    "    var mx = t0; if (lum(t1) > lum(mx)) { mx = t1; } if (lum(t2) > lum(mx)) { mx = t2; } if (lum(t3) > lum(mx)) { mx = t3; }\n"
+    "    var s = mix((t0 + t1 + t2 + t3) * 0.25, mx, u.u_ex2.z) * u.u_col.x;\n"
     "    let zz = ldepth(c); z[r] = zz;\n"
     "    if (zz > 1e5) { s = vec3f(0.0); far += 1.0; } else { zmax = max(zmax, zz); }\n"
     "    csum += s;\n"
@@ -453,7 +456,7 @@ static void cells_exec(cw_pass_ctx *ctx, void *u) {
                     optf("ASCII_BRIGHT_FLOOR", 0.35f));
   int nm = opt_on("ASCII_NO_HUD_BOXES") ? 0 : A.nmask;
   cw_pass_uniform4f(A.prog_cells, "u_ext", (float)nm, optf("ASCII_FLAT", 0.45f), (float)RAMP_N, optf("ASCII_RAMP_GAIN", 1.0f));
-  cw_pass_uniform4f(A.prog_cells, "u_ex2", optf("ASCII_FLAT_BRIGHT", 0.75f), optf("ASCII_WORLD_BRIGHT", 0.3f), 0, 0);
+  cw_pass_uniform4f(A.prog_cells, "u_ex2", optf("ASCII_FLAT_BRIGHT", 0.75f), optf("ASCII_WORLD_BRIGHT", 0.3f), optf("ASCII_PEAK", 0.5f), 0);
   for (int k = 0; k < MAXMASK; k++) {
     char nmk[8];
     snprintf(nmk, sizeof nmk, "u_m%d", k);

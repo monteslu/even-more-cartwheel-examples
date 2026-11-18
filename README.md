@@ -88,6 +88,20 @@ again in slow motion. Free fire opens every structure with ammunition without
 end. 30 levels, each checked to stand still for a minute, float nothing and
 fall to the bot within par.
 
+### Detexto
+
+![Detexto: a landmark in glowing magenta characters on black, the launcher arc in yellow](docs/screenshots/detexto.jpg)
+
+Destructo drawn as neon text. The same landmarks, launcher, ammunition and
+physics, for one to four players taking turns, with every frame turned into
+glowing characters on black: each landmark a tower of characters in its
+material's colour, the crystals magenta, the world a dim matrix green, and the
+characters tumbling with the blocks when a charge goes off. A pass picks a
+character for each cell from the 3D scene by its shape (the font's glyphs
+measured in six regions), holds it against shimmer, and draws it crisp at the
+output's full size over a soft glow; the HUD sits in neon-edged boxes on clean
+black.
+
 ### Ember Throne
 
 ![Ember Throne: the wayfarer at the keep's brazier between a brute and a lancer](docs/screenshots/emberthrone.jpg)

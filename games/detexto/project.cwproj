@@ -10,5 +10,5 @@ export.macos-arm64.platform = "macos"
 export.android-arm64.platform = "android-arm64"
 # launcher art and credits, packed into the cart (art/art.json)
 art = art
-description = "Bring down towers, walls, bridges, castles and scaffolds of wood, stone, glass and steel with a launcher, shot and charges: thirty structures of up to thousands of blocks that break and fall for real, for one to four players taking turns."
+description = "Bring famous landmarks down in neon text: towers, bridges, temples and monuments drawn as glowing characters on black, breaking and falling for real under shot, heavy balls and charges, for one to four players taking turns."
 author = "Luis Montes"

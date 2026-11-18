@@ -5,9 +5,9 @@
   "logo": "logo.png",
   "title": "title.jpg",
   "screenshots": [
-    { "path": "shot-1.jpg", "label": "Iron Lady: the lattice tower topples, shedding girders and dust" },
-    { "path": "shot-2.jpg", "label": "Hoover Dam: a breach opens and the lake spills through" },
-    { "path": "shot-3.jpg", "label": "Mount Rushmore: a charge goes off at the foot of the carved faces" },
-    { "path": "shot-4.jpg", "label": "Taj Mahal: the dome opens and the white marble comes down in dust" }
+    { "path": "shot-1.jpg", "label": "Hoover Dam in neon text: a breach opens and the lake spills through" },
+    { "path": "shot-2.jpg", "label": "Taj Mahal in neon text: the dome opens and the marble comes down" },
+    { "path": "shot-3.jpg", "label": "Mount Rushmore in neon text: a charge goes off at the foot of the carved faces" },
+    { "path": "shot-4.jpg", "label": "Iron Lady in neon text: the shot strikes the lattice tower" }
   ]
 }
