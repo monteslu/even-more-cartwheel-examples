@@ -563,7 +563,7 @@ static void border(cw_rect r, float u, cw_color c) {
   for (int k = 2; k >= 0; k--) {
     float g = (float)k * 3.0f * u;
     cw_color cc = c;
-    cc.a *= k == 0 ? 1.0f : k == 1 ? 0.28f : 0.12f;
+    cc.a *= k == 0 ? 1.0f : k == 1 ? 0.38f : 0.16f;
     cw_r2d_round_rect_lines(cw_rect_make(r.x - g, r.y - g, r.w + 2 * g, r.h + 2 * g), 8 * u + g, (k == 0 ? 2.0f : 3.0f) * u, 6, cc);
   }
 }
@@ -576,7 +576,7 @@ void ascii_hud_begin(cw_vec2 canvas, float u) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
     cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
-    border(rr, u, (cw_color){ r[5], r[6], r[7], 0.9f * r[4] });
+    border(rr, u, (cw_color){ r[5], r[6], r[7], r[4] });
   }
 }
 
@@ -643,6 +643,6 @@ void ascii_hud_draw(void) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
     cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
-    border(rr, H.u, (cw_color){ r[5], r[6], r[7], 0.9f * r[4] });
+    border(rr, H.u, (cw_color){ r[5], r[6], r[7], r[4] });
   }
 }

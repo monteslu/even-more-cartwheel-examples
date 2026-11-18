@@ -975,7 +975,13 @@ static void fixed_update(void *u, double dt) {
 /* ── the HUD ─────────────────────────────────────────────────────────── */
 
 static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
-static cw_text_style tstyle(float size, cw_color c) { return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.09f, .outline_color = rgba(0.02f, 0.02f, 0.05f, 0.9f) }; }
+/* HUD text at full opacity (a fade in or out still fades: alpha x 1.8, capped), with a soft glow of its own colour */
+static cw_color hud_col(cw_color c) { c.a = fminf(1, c.a * 1.8f); return c; }
+static cw_text_style tstyle(float size, cw_color c) {
+  c = hud_col(c);
+  return (cw_text_style){ .size = size, .color = c, .shadow_color = rgba(c.r, c.g, c.b, 0.42f * c.a), .shadow_spread = size * 0.04f,
+                          .shadow_softness = size * 0.2f, .own_backdrop = true };
+}
 static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
   cw_text_style st = tstyle(size, c);
   cw_text_metrics m = cw_font_measure(font, s, &st);
@@ -988,7 +994,7 @@ static cw_vec2 ptext(cw_font f, const char *s, int seat, cw_vec2 pos, float size
   cw_vec2 sz = cw_prompt_text_size(f, s, seat, size);
   float x = al == CW_ALIGN_CENTER ? pos.x - sz.x * 0.5f : al == CW_ALIGN_RIGHT ? pos.x - sz.x : pos.x;
   ascii_hud_rect(x, pos.y, sz.x, sz.y, c.a);
-  return cw_prompt_text(f, s, seat, pos, size, c, al);
+  return cw_prompt_text(f, s, seat, pos, size, hud_col(c), al);
 }
 static void panel(float x, float y, float w, float h, float u, cw_color edge) {
   (void)u; /* the box (ascii.h) draws the plate and the edge, in the panel's colour */
