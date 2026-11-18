@@ -480,7 +480,7 @@ static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
      * foot, and on the pause screen one behind the controls card at the top (ascii.h) */
     float k = cs.y / 1080.0f;
     ascii_hud_reset(cs, k);
-    ascii_hud_rect(cs.x * 0.25f, cs.y * 0.1f, cs.x * 0.5f, cs.y * 0.7f, 1);
+    ascii_hud_rect(cs.x * 0.25f, cs.y * 0.05f, cs.x * 0.5f, cs.y * 0.76f, 1);
     ascii_hud_rect(cs.x * 0.27f, cs.y * 0.895f, cs.x * 0.46f, cs.y * 0.075f, 1);
     if (screen == CW_SHELL_PAUSE) ascii_hud_rect(cs.x * 0.14f, cs.y * 0.02f, cs.x * 0.72f, 140 * k, 1);
     ascii_hud_end();
