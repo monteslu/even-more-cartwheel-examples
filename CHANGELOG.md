@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.28.0
+
+- **Detexto**, a new game: Destructo drawn as neon text. The same landmarks, launcher, ammunition, physics and modes
+  for one to four players taking turns, with every frame turned into glowing characters on black. Each cell of a
+  54-row grid takes the character whose shape fits the scene there (Fira Mono's glyphs measured in six regions, line
+  characters for edges, a brightness ramp for flat areas), held against shimmer, in its material's neon colour
+  (stone cyan, steel violet, glass mint, wood amber, red paint hot pink, gold yellow) over a soft glow; the world
+  round the field is a dim matrix green. The scene renders at 35% of the output and the characters at its full size,
+  crisp: at 1080p on a Radeon 890M (WebGPU) the GPU takes 1.33 ms a frame (4.42 ms with the scene at full size) and
+  about 2 ms at most through a collapse. The HUD and menus sit in neon-edged boxes of 70% black, their text glowing
+  at full opacity; the result card names the landmark. Gate `tests/detexto-look.mjs` and flash sweep entry
+  `detexto-collapse`, on GL and WebGPU.
+- Engine v0.48.0 (overlays draw at the output's full size over a scaled scene; `cw_quality_scene_scale`). Every
+  game builds and passes the smoke, art and prompt checks on it, draws its HUD crisp at Resolution 50% (each
+  game's bot through romdev), and Destructo's water gate passes (v0.47 changed the water).
+
 ## 0.27.1
 
 - **Destructo**: new launcher art from the current game: the cover, background, title, icon and four screenshots show the lattice Iron Lady toppling, the Hoover Dam water spill, the Mount Rushmore faces and the Taj Mahal dome opening, in the new light.
