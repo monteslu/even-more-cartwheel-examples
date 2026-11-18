@@ -39,7 +39,9 @@ static struct {
   /* this frame's grid (the POST pass makes it, the OVERLAY pass draws it) */
   const cw_rt *cells;
   uint64_t cells_frame;
-  bool have_cells, scaled;
+  bool have_cells;
+  int ow, oh;          /* the output's size (the OVERLAY pass's) */
+  float scene_scale;   /* the scene's share of the output in use (cw_quality_scene_scale) */
   int cols, rows, cw, ch;
   int frame;
   /* debug fields */
@@ -410,14 +412,21 @@ static void programs(void) {
 }
 
 /* POST: the grid from the scene (at the scene's render size, which may be a share of the output), then the glow */
+/* the scene's share of the output: the characters need only about two scene pixels a region, so the scene renders
+ * at SCENE_SCALE of the output (cw_quality_scene_scale), the characters at the output's full size */
+static void apply_scene_scale(void) {
+  float s = A.on ? optf("SCENE_SCALE", 0.35f) : 0;
+  if (s != A.scene_scale) A.scene_scale = s, cw_quality_scene_scale(s);
+}
+
 static void cells_exec(cw_pass_ctx *ctx, void *u) {
   (void)u;
   bool wg = cw_gpu_backend() == CW_GPU_WEBGPU;
   programs();
   if (!A.prog_cells || !A.prog_glow) return;
   /* the grid is laid on the OUTPUT (the characters draw there, crisp): ROWS rows, the font's own aspect */
-  int ow = ctx->output && ctx->output->w > 0 ? ctx->output->w : (int)lrintf((float)ctx->width / cw_gfx_render_scale());
-  int oh = ctx->output && ctx->output->h > 0 ? ctx->output->h : (int)lrintf((float)ctx->height / cw_gfx_render_scale());
+  /* the output's size as the OVERLAY pass saw it last frame (the scene here may be a share of it) */
+  int ow = A.ow > 0 ? A.ow : ctx->width, oh = A.oh > 0 ? A.oh : ctx->height;
   float rows_want = optf("ASCII_ROWS", 54);
   int ch = (int)lrintf((float)oh / (rows_want < 8 ? 8 : rows_want));
   if (ch < 6) ch = 6;
@@ -473,29 +482,14 @@ static void cells_exec(cw_pass_ctx *ctx, void *u) {
   cw_pass_uniform4f(A.prog_glow, "u_glow", optf("ASCII_GLOW", 0.5f), optf("ASCII_GLOW_FROM", 0.5f), 0, 0);
   cw_pass_fullscreen();
   A.cells = cur, A.cells_frame = ctx->frame, A.have_cells = true;
-  /* the scene at a share of the output (the Resolution setting): on this engine the OVERLAY passes draw into that
-   * share too, so the characters draw here, at the scene's size, and are scaled up with it (still legible) */
-  A.scaled = cw_gfx_render_scale() < 0.999f;
-  if (A.scaled && A.prog_text) {
-    int acw = (int)ceilf(sx), ach = (int)ceilf(sy);
-    make_atlas(acw, ach);
-    cw_pass_use(A.prog_text);
-    cw_pass_set_blend(CW_PASS_BLEND_ADD);
-    cw_pass_bind_texture(0, cur->tex);
-    cw_pass_bind_texture(1, A.atlas);
-    if (!wg) cw_pass_uniform1i(A.prog_text, "u_cells", 0), cw_pass_uniform1i(A.prog_text, "u_atlas", 1);
-    cw_pass_uniform4f(A.prog_text, "u_cell", (float)acw, (float)ach, (float)cols, (float)rows);
-    cw_pass_uniform4f(A.prog_text, "u_out", optf("ASCII_GAIN", 1.6f), 0, 0, 0);
-    cw_pass_fullscreen();
-    cw_pass_set_blend(CW_PASS_BLEND_NONE);
-    A.have_cells = false;
-  }
 }
 
 /* OVERLAY, first (before the 2D canvas and the HUD): the characters at the output's full size, added */
 static void text_exec(cw_pass_ctx *ctx, void *u) {
   (void)u;
+  apply_scene_scale();
   bool wg = cw_gpu_backend() == CW_GPU_WEBGPU;
+  A.ow = ctx->width, A.oh = ctx->height; /* the full output (the engine scales the scene up before OVERLAY) */
   if (!A.have_cells || !A.prog_text) return; /* no 3D since the last characters drawn: nothing to draw */
   A.have_cells = false;
   make_atlas(A.cw, A.ch);
@@ -532,6 +526,9 @@ void ascii_init(cw_tree *tree) {
   cw_pipeline_add_pass(p, &(cw_pass_desc){ .name = "ascii_text", .phase = CW_PHASE_OVERLAY, .order = -200, .writes = CW_RES_OUTPUT,
                                            .active = ascii_active, .execute = text_exec, .webgpu = true });
   A.ready = true;
+  A.scene_scale = -1;
+  apply_scene_scale();
+  cw_debug_f32("dt.ascii.scene_scale", &A.scene_scale);
   cw_debug_i32("dt.ascii.cols", &A.dbg_cols);
   cw_debug_i32("dt.ascii.rows", &A.dbg_rows);
   cw_debug_i32("dt.ascii.cell_w", &A.dbg_cw);
@@ -543,6 +540,7 @@ void ascii_init(cw_tree *tree) {
 
 void ascii_set_enabled(bool on) {
   A.on = on;
+  apply_scene_scale();
   A.dbg_on = on;
 }
 

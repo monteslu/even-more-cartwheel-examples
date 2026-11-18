@@ -96,13 +96,14 @@ original materials.
 
 ## Performance
 
-The characters cost little: at 1080p on a Radeon 890M the grid and the glow are about a millisecond. The scene can
-render at a share of the output (the Resolution setting) with no loss to the characters' sharpness, since they draw
-at the output's size: on the 890M at 1080p (WebGPU, GPU per frame) Resolution 100% takes 4.4 ms and 50% 1.8 ms.
+The scene renders at 35% of the output (`cw_quality_scene_scale`, cartwheel-engine 0.48; the run option
+`SCENE_SCALE` changes it): each character region still has about two scene pixels, and the characters themselves
+draw at the output's full size in the OVERLAY phase, so they stay crisp. On a Radeon 890M at 1080p (WebGPU, GPU per
+frame, interleaved rounds with an A/A pair): the scene at 100% 4.42 ms, at 35% 1.33 ms (A/A 1.34), at 25% 1.01 ms.
 
 ## Tests
 
 `tests/detexto-look.mjs` (romdev, GL and WebGPU): the frame is characters on black (over 55% black, 2 to 30% lit),
-the grid covers the frame, and at most 6% of the lit characters change between two frames while the camera moves.
+the scene renders at 35% while the cells are sized from the output, the grid covers the frame, and at most 6% of the lit characters change between two frames while the camera moves.
 Controls that must fail: the pass off (the plain picture) and the hold off (`ASCII_KEEP 1`, more change). The
 simulation, levels and physics are Destructo's and are gated there (`tests/destructo-*.mjs`).

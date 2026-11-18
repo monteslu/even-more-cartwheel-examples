@@ -74,6 +74,7 @@ for (const gpu of gpus) {
   const s = stats(on.p0), so = stats(off.p0);
   const cw = on.st['dt.ascii.cell_w'], ch = on.st['dt.ascii.cell_h'];
   check(on.st['dt.ascii.on'] === 1 && cw > 0 && ch > 0, `${gpu}: the pass runs (cell ${cw}x${ch}, ${on.st['dt.ascii.cols']}x${on.st['dt.ascii.rows']} characters)`);
+  check(Math.abs(on.st['dt.ascii.scene_scale'] - 0.35) < 1e-3 && ch === Math.round(1080 / 54), `${gpu}: the scene renders at ${on.st['dt.ascii.scene_scale']} of the output, the characters at the output's size (cell ${ch} px high)`);
   check(Math.abs(on.st['dt.ascii.cols'] - Math.ceil(1920 / cw)) <= 0 && Math.abs(on.st['dt.ascii.rows'] - Math.ceil(1080 / ch)) <= 0, `${gpu}: the grid covers the frame`);
   check(s.black >= 0.55 && s.lit >= 0.02 && s.lit <= 0.3, `${gpu}: characters on black: ${(s.black * 100).toFixed(1)}% black, ${(s.lit * 100).toFixed(1)}% lit (${on.f0})`);
   check(!(so.black >= 0.55 && so.lit >= 0.02 && so.lit <= 0.3), `${gpu}: control (pass off) fails the look: ${(so.black * 100).toFixed(1)}% black, ${(so.lit * 100).toFixed(1)}% lit`);
