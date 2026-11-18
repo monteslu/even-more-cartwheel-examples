@@ -1045,6 +1045,17 @@ static void block_box(const game *g, int bi, float lo[3], float hi[3], uint8_t o
 static void world_dim(t3_object *o, void *u) {
   (void)u;
   if (o->type != T3_MESH && o->type != T3_INSTANCED_MESH && o->type != T3_SKINNED_MESH) return;
+  if (o->type == T3_INSTANCED_MESH) { /* per-instance colours (autumn leaves, grass) to grey too: only the structure glows */
+    t3_attribute *ic = ((t3_instanced_mesh *)o)->instance_color;
+    if (ic && ic->type == T3_FLOAT32 && ic->item_size >= 3) {
+      float *c = (float *)ic->array;
+      for (int i = 0; i < ic->count; i++) {
+        float *q = c + i * ic->item_size, l = 0.3f * q[0] + 0.59f * q[1] + 0.11f * q[2];
+        q[0] = q[1] = q[2] = l;
+      }
+      ic->version++;
+    }
+  }
   static uint32_t done[1024];
   static int ndone;
   t3_mesh *me = (t3_mesh *)o;
