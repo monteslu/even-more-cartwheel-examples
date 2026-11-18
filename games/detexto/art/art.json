@@ -1,0 +1,13 @@
+{
+  "icon": "icon.png",
+  "cover": "cover.jpg",
+  "background": "background.jpg",
+  "logo": "logo.png",
+  "title": "title.jpg",
+  "screenshots": [
+    { "path": "shot-1.jpg", "label": "Iron Lady: the lattice tower topples, shedding girders and dust" },
+    { "path": "shot-2.jpg", "label": "Hoover Dam: a breach opens and the lake spills through" },
+    { "path": "shot-3.jpg", "label": "Mount Rushmore: a charge goes off at the foot of the carved faces" },
+    { "path": "shot-4.jpg", "label": "Taj Mahal: the dome opens and the white marble comes down in dust" }
+  ]
+}

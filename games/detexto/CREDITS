@@ -1,0 +1,73 @@
+Detexto: credits and licences
+
+Code: this repository (MIT, see LICENSE). The levels, every mesh, every texture of the blocks and the field, every
+sound and the HUD are made by code in this repository (src/levels.c, src/view.c, src/sound.c); no third-party art or
+audio is shipped. The landmarks' shapes below are the exception.
+
+- assets/fx/fire.png, fire_mv.png, smoke.png, smoke_mv.png, scorch.png (fire and smoke flipbooks with their
+  motion-vector sheets, the scorch shapes): baked by cartwheel-engine's tools/fx/bake-flipbooks.mjs (procedural, CC0,
+  listed in the engine's NOTICE): node <engine>/tools/fx/bake-flipbooks.mjs games/detexto/assets/fx
+- The explosion kit's particle settings follow hordeshooter's in more-cartwheel-examples (MIT, the same author).
+
+The launcher art (art/) is made from the game's own frames by tools/make-art.sh; its logo is set in Fira Sans Bold
+(SIL Open Font License 1.1, from cartwheel-engine's samples/ui_assets/fonts).
+
+Landmark shapes (src/lm_data.c). Some landmarks are laid from openly licensed 3D models: tools/voxelize.mjs turns
+each model into the cells the game builds in bricks (tools/landmark-models.json holds the settings; the models
+themselves are not in this repository). The brick layout made from a model is an adaptation of it, under the
+model's licence:
+
+- Eiffel Tower: "Eiffel Tower 3D simplified printable model" (EiffelTower_fixed.stl) by Newcandle, CC BY-SA 3.0,
+  https://commons.wikimedia.org/wiki/File:EiffelTower_fixed.stl (first published as Thingiverse thing:912478).
+  Share-alike: the Eiffel Tower's cells in src/lm_data.c (the block between "begin eiffel" and "end eiffel") are
+  under CC BY-SA 3.0 too, not MIT.
+- Leaning Tower of Pisa: "The Leaning Tower of Pisa" by Emmanouel Diaz Dominguez, Creative Commons Attribution
+  (CC BY, as Printables offers it), https://www.printables.com/model/1028451
+- Burj Khalifa: "Burj Khalifa (Burj Dubai)" by Emmanouel Diaz Dominguez, Creative Commons Attribution (CC BY, as
+  Printables offers it), https://www.printables.com/model/1028728
+- Moai: "Easter Island Head" by Microsoft, CC BY 4.0,
+  https://sketchfab.com/3d-models/easter-island-head-07818c9054494adca82a599a8d4a5de6
+- Statue of Liberty: "The Statue of Liberty" by The Kracken, Creative Commons Attribution (CC BY, as Printables
+  offers it), https://www.printables.com/model/31771
+- Five-storey pagoda: "Pagoda" by Poly by Google, CC BY 3.0, https://poly.pizza/m/1zS7ucaAd4J
+- Big Ben: "Big Ben" by Tobias Hronek, CC0, https://www.printables.com/model/433226
+- Chichen Itza: "Kukulcan-Pyramide 20220523" by PantheraLeo1359531, CC0,
+  https://commons.wikimedia.org/wiki/File:Kukulc%C3%A1n-Pyramide_20220523.stl
+- Taj Mahal: "Taj Mahal" by Julio Mendes, CC0, https://www.printables.com/model/1328502
+- Mount Rushmore: "Low Poly Mount Rushmore" by 3DPrintables, Creative Commons Attribution (CC BY, as Printables offers it); the rock and the four heads
+  are two grids of the one model, the heads in bricks of 12 cm per cell scaled to the game,
+  https://www.printables.com/model/1287390-low-poly-mount-rushmore
+- Notre-Dame: "Notre Dame de Paris" by Antonin Gazda, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/77766-notre-dame-de-paris
+- Pantheon: "Pantheon" by JohnnyTO, Creative Commons Attribution Share Alike (CC BY-SA, as Printables offers it),
+  https://www.printables.com/model/421804-pantheon. Share-alike: the Pantheon's cells in src/lm_data.c (the block
+  between "begin m_pantheon" and "end m_pantheon") are under CC BY-SA too, not MIT.
+- Arc de Triomphe: "arc de triomphe" by mooki, public domain (Printables "Creative Commons - Public Domain", CC0),
+  https://www.printables.com/model/1304387-arc-de-triomphe
+- Hagia Sophia: "Hagia Sophia Mosque (Ayasofya) Istanbul" by Ibisevic, Creative Commons Attribution (CC BY, as Printables
+  offers it), https://www.printables.com/model/838052-hagia-sophia-mosque-ayasofya-istanbul
+- Blue Mosque: "sultan ahmed mosque" by Mohamed Ali Bouslama, Creative Commons Attribution (CC BY, as Printables offers
+  it), https://www.printables.com/model/1011830-sultan-ahmed-mosque
+- Japanese Castle: "Japanese castle" by Kubkooo, Creative Commons Attribution Share Alike (CC BY-SA, as Printables offers
+  it), https://www.printables.com/model/1701161. Share-alike: its cells (between "begin m_himeji" and "end m_himeji") are
+  under CC BY-SA too, not MIT.
+- Stacked Tower (Taipei): "Taipei 101" by hellonearth311, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/1592292
+- Crown Tower (New York): "Chrysler Building New York City" by Dr. Skycat, public domain (Printables "Creative Commons -
+  Public Domain", CC0), https://www.printables.com/model/52633
+- Television Tower (Berlin): "Berlin tv tower" by Storm_wind, public domain (Printables "Creative Commons - Public
+  Domain", CC0), https://www.printables.com/model/920288
+- Sail Hotel (Dubai): "Burj Al Arab" by Kleiner Lateiner, Creative Commons Attribution (CC BY, as Printables offers it),
+  https://www.printables.com/model/183954
+- Mont Saint-Michel (held): "Mont Saint Michel enhanced" by ABitMoreAdventure, Creative Commons Attribution Share Alike
+  (CC BY-SA), https://www.printables.com/model/848389 (cells between "begin m_msm" and "end m_msm": CC BY-SA)
+- Machu Picchu (held): "Low Poly Machu Pichu" by 3DPrintables, Creative Commons Attribution (CC BY),
+  https://www.printables.com/model/1287394-low-poly-machu-pichu
+- Great Wall of China (held): "Great Wall of China" by Qing Zhang, public domain (Printables "Creative Commons - Public
+  Domain", CC0), https://www.printables.com/model/1872878-great-wall-of-china
+
+The other landmarks (the Great Sphinx, the Pyramids of Giza, the Space Needle, the Sydney Opera House, Neuschwanstein
+Castle, Willis Tower, the Empire State Building, the Colosseum, the Parthenon, Tower Bridge, Saint Basil's Cathedral,
+the Petronas Towers, Angkor Wat, the CN Tower, Stonehenge, the Golden Gate Bridge, the Brooklyn Bridge, the Gateway
+Arch, the Brandenburg Gate, the Kremlin, the Atomium, Petra's Treasury and the Tokyo Tower) are shaped in this
+repository's code (tools/landmark-procs.mjs, src/landmarks.c), MIT.
