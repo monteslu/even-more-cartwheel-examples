@@ -177,7 +177,7 @@ static const char *CELLS_GLSL_HEAD =
     "  int nm = int(u_ext.x); bool hidden = false;\n"
     "  vec4 ms[16] = vec4[16](u_m0, u_m1, u_m2, u_m3, u_m4, u_m5, u_m6, u_m7, u_m8, u_m9, u_m10, u_m11, u_m12, u_m13, u_m14, u_m15);\n"
     "  for (int k = 0; k < 16; k++) { if (k < nm && boxed(ms[k], base, base + cs, fsz)) hidden = true; }\n"
-    "  if (hidden) { o = vec4(0.0); return; }\n"
+    "  /* under a HUD box: drawn dim (the box is 70% black over it: a little of the scene shows through) */\n"
     "  float v[6]; float z[6]; vec3 csum = vec3(0.0); float far = 0.0; float zmax = 0.0;\n"
     "  for (int r = 0; r < 6; r++) {\n"
     "    float col = float(r - (r / 2) * 2), row = float(r / 2);\n"
@@ -229,7 +229,7 @@ static const char *CELLS_GLSL_HEAD =
     "  vec3 hue = clamp(mix(vec3(lum(c / mc)), c / mc, u_col.y), 0.0, 1.0);\n"
     "  hue /= max(max(hue.r, hue.g), max(hue.b, 1e-4));\n"
     "  hue = mix(vec3(0.2, 1.0, 0.45), hue, key);\n"
-    "  float bright = (u_col.w + (1.0 - u_col.w) * clamp(m * 1.4, 0.0, 1.0)) * (isflat ? u_ex2.x : 1.0) * mix(u_ex2.y, 1.0, key);\n"
+    "  float bright = (u_col.w + (1.0 - u_col.w) * clamp(m * 1.4, 0.0, 1.0)) * (isflat ? u_ex2.x : 1.0) * mix(u_ex2.y, 1.0, key) * (hidden ? u_ex2.w : 1.0);\n"
     "  o = vec4(g > 0.5 ? hue * bright : vec3(0.0), g);\n"
     "}\n";
 
@@ -265,7 +265,7 @@ static const char *CELLS_WGSL =
     "  let nm = i32(u.u_ext.x); var hidden = false;\n"
     "  let ms = array<vec4f, 16>(u.u_m0, u.u_m1, u.u_m2, u.u_m3, u.u_m4, u.u_m5, u.u_m6, u.u_m7, u.u_m8, u.u_m9, u.u_m10, u.u_m11, u.u_m12, u.u_m13, u.u_m14, u.u_m15);\n"
     "  for (var k = 0; k < 16; k++) { if (k < nm && boxed(ms[k], base, base + cs, fsz)) { hidden = true; } }\n"
-    "  if (hidden) { return vec4f(0.0); }\n"
+    "  /* under a HUD box: drawn dim */\n"
     "  var v: array<f32, 6>; var z: array<f32, 6>; var csum = vec3f(0.0); var far = 0.0; var zmax = 0.0;\n"
     "  for (var r = 0; r < 6; r++) {\n"
     "    let col = f32(r - (r / 2) * 2); let row = f32(r / 2);\n"
@@ -318,7 +318,7 @@ static const char *CELLS_WGSL =
     "  var hue = clamp(mix(vec3f(lum(c / mc)), c / mc, u.u_col.y), vec3f(0.0), vec3f(1.0));\n"
     "  hue = hue / max(max(hue.r, hue.g), max(hue.b, 1e-4));\n"
     "  hue = mix(vec3f(0.2, 1.0, 0.45), hue, key);\n"
-    "  let bright = (u.u_col.w + (1.0 - u.u_col.w) * clamp(m * 1.4, 0.0, 1.0)) * select(1.0, u.u_ex2.x, isflat) * mix(u.u_ex2.y, 1.0, key);\n"
+    "  let bright = (u.u_col.w + (1.0 - u.u_col.w) * clamp(m * 1.4, 0.0, 1.0)) * select(1.0, u.u_ex2.x, isflat) * mix(u.u_ex2.y, 1.0, key) * select(1.0, u.u_ex2.w, hidden);\n"
     "  return vec4f(select(vec3f(0.0), hue * bright, g > 0), f32(g));\n"
     "}\n";
 
@@ -465,7 +465,7 @@ static void cells_exec(cw_pass_ctx *ctx, void *u) {
                     optf("ASCII_BRIGHT_FLOOR", 0.35f));
   int nm = opt_on("ASCII_NO_HUD_BOXES") ? 0 : A.nmask;
   cw_pass_uniform4f(A.prog_cells, "u_ext", (float)nm, optf("ASCII_FLAT", 0.45f), (float)RAMP_N, optf("ASCII_RAMP_GAIN", 1.0f));
-  cw_pass_uniform4f(A.prog_cells, "u_ex2", optf("ASCII_FLAT_BRIGHT", 0.75f), optf("ASCII_WORLD_BRIGHT", 0.3f), optf("ASCII_PEAK", 0.5f), 0);
+  cw_pass_uniform4f(A.prog_cells, "u_ex2", optf("ASCII_FLAT_BRIGHT", 0.75f), optf("ASCII_WORLD_BRIGHT", 0.3f), optf("ASCII_PEAK", 0.5f), optf("ASCII_UNDER_BOX", 0.5f));
   for (int k = 0; k < MAXMASK; k++) {
     char nmk[8];
     snprintf(nmk, sizeof nmk, "u_m%d", k);
@@ -575,7 +575,7 @@ void ascii_hud_begin(cw_vec2 canvas, float u) {
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, 0.85f * r[4] });
+    cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
     border(rr, u, (cw_color){ r[5], r[6], r[7], 0.9f * r[4] });
   }
 }
@@ -642,7 +642,7 @@ void ascii_hud_draw(void) {
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, 0.85f * r[4] });
+    cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
     border(rr, H.u, (cw_color){ r[5], r[6], r[7], 0.9f * r[4] });
   }
 }

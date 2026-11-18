@@ -23,10 +23,10 @@ bool ascii_enabled(void);
 
 
 
-/* ── the HUD on clean black ──────────────────────────────────────────────
+/* ── the HUD in boxes ──────────────────────────────────────────────
  * Every HUD element records its rectangle (canvas units, top left origin) while it draws. ascii_hud_end merges
  * the rectangles that touch into boxes, draws each box's neon border, and hands the boxes to the pass: next frame
- * the cells under a box stay black, so HUD text never sits on characters. alpha: how visible the element is (a
+ * the cells under a box draw at half brightness under its 70% black plate, so the text stays clear and a little of the scene shows through. alpha: how visible the element is (a
  * faded title keeps no box). */
 #include <cartwheel/render2d.h>
 void ascii_hud_begin(cw_vec2 canvas, float u);

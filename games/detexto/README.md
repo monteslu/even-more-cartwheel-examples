@@ -6,7 +6,7 @@ taking turns) with every frame drawn as glowing characters on black: each landma
 material's colour (stone cyan, steel violet, glass pale mint, wood amber, red paint hot pink, gold yellow), the
 crystals glow magenta, the launcher's arc yellow, and the world round the field is a dim matrix green. When a charge
 goes off the characters tumble and scatter with the blocks. The HUD and the menus stay clear: they sit in boxes with
-a neon edge, on clean black.
+a neon edge, 70% black over the characters, which show through dimmed.
 
 ## Playing
 
@@ -83,7 +83,7 @@ the characters are chosen from. Two passes on the engine's render pipeline, the 
   the font rasterized at the cell's exact size (a pixel bolder) and adds it in the cell's colour over the glow. The
   characters never pass through a scaler, so they stay crisp at any output size.
 - **The HUD on black.** Every HUD element records its rectangle while it draws; touching rectangles merge into
-  boxes, which get a black plate and a neon edge, and the grid pass leaves the cells under them empty. The shell's
+  boxes, which get a 70% black plate and a neon edge, and the grid pass draws the cells under them at half brightness, so a little of the scene shows through and the text stays clear. The shell's
   screens (title, settings, pause) get boxes behind their menu column and prompt line.
 
 The world round the structure is dimmed and greyed at load (its materials), and each block takes its material's

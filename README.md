@@ -99,8 +99,8 @@ material's colour, the crystals magenta, the world a dim matrix green, and the
 characters tumbling with the blocks when a charge goes off. A pass picks a
 character for each cell from the 3D scene by its shape (the font's glyphs
 measured in six regions), holds it against shimmer, and draws it crisp at the
-output's full size over a soft glow; the HUD sits in neon-edged boxes on clean
-black.
+output's full size over a soft glow; the HUD sits in neon-edged boxes of 70%
+black, the characters showing faintly through.
 
 ### Ember Throne
 
