@@ -120,6 +120,34 @@ export async function writePackage(dir, p) {
     alignment[t] = { ...res, bytes: ogg[t].length, excerpt: { start, data: packExcerpt(src, start) } };
   }
 
+  return writeSongFiles(dir, p, files, { encode: { codec: 'vorbis', tracks: encode }, alignment });
+}
+
+/**
+ * Re-chart a package: write song.json, report.json and preview.wav from new analysis and charts, keeping the
+ * package's tracks as they are (their bytes are not touched) and the alignment proof and encoding facts from its
+ * report.json. The tracks must be the very audio analysed: the same length in samples as the package says.
+ * @param {string} dir
+ * @param {Parameters<typeof writePackage>[1]} p
+ */
+export function writeCharts(dir, p) {
+  const old = readSongJson(dir);
+  const oldReport = JSON.parse(readFileSync(join(dir, 'report.json'), 'utf8'));
+  const n = p.tracks.kick[0].length;
+  if (old.length_samples !== n) throw new Error(`${dir}: the package's tracks are ${old.length_samples} samples, the source ${n}: not the same audio, make the package again`);
+  if (old.sample_rate !== p.rate) throw new Error(`${dir}: the package is at ${old.sample_rate} Hz, the source ${p.rate}`);
+  return writeSongFiles(dir, p, old.tracks, { encode: oldReport.encode, alignment: oldReport.alignment });
+}
+
+/**
+ * song.json, preview.wav and report.json.
+ * @param {string} dir
+ * @param {Parameters<typeof writePackage>[1]} p
+ * @param {Record<string, string>} files the track files
+ * @param {{encode: object, alignment: object}} proof
+ */
+function writeSongFiles(dir, p, files, proof) {
+  const n = p.tracks.kick[0].length;
   const song = {
     format: 1, id: p.id, title: p.title, artist: p.artist ?? '', bpm: +p.bpm.toFixed(3), sample_rate: p.rate,
     length_s: +(n / p.rate).toFixed(4), length_samples: n, tracks: files,
@@ -127,7 +155,7 @@ export async function writePackage(dir, p) {
   };
   writeFileSync(join(dir, 'song.json'), formatSong(song));
   writePreview(join(dir, 'preview.wav'), p.rate, p.tracks, p.charts.hard);
-  const report = { ...(p.report ?? {}), encode: { codec: 'vorbis', tracks: encode }, alignment };
+  const report = { ...(p.report ?? {}), ...proof };
   writeFileSync(join(dir, 'report.json'), `${JSON.stringify(report, null, 1)}\n`);
   return { song, report };
 }

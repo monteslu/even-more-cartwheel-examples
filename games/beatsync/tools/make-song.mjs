@@ -2,19 +2,22 @@
 // Make a song package for the game from an NI Stems file (Loukai's .stem.mp4) or a directory of stem WAVs:
 //
 //   node tools/make-song.mjs "<file.stem.mp4 | stems-dir>" --out songs/<id> [--title ..] [--artist ..]
-//                            [--bpm-min 115] [--bpm-max 135] [--keep-vocals]
+//                            [--bpm-min 115] [--bpm-max 135] [--keep-vocals] [--charts-only]
 //
 // The pipeline (docs/DESIGN.md, "Charts"): decode, split the drum stem at 150 Hz into the kick and clap tracks,
 // track the tempo and beats, find each lane's onsets, quantize them to 16ths, pick the three difficulties, find the
 // sections; then write the four Ogg Vorbis tracks (proved sample-aligned), song.json, preview.wav and report.json.
 // The master and vocals stems are never written (--keep-vocals mixes the vocals stem into the other track, for a
-// split that filed an instrumental lead under vocals).
-import { basename, resolve } from 'node:path';
+// split that filed an instrumental lead under vocals). --charts-only re-charts an existing package from its source:
+// the analysis and charts run again and only song.json, report.json and preview.wav are rewritten; the Ogg tracks
+// and their alignment proof stay as they are (the source must be the same audio: same length in samples).
+import { readFileSync } from 'node:fs';
+import { basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { readStems } from './lib/stems.mjs';
 import { analyze, monoOf } from './lib/analyze.mjs';
-import { quantize, makeCharts } from './lib/chart.mjs';
-import { writePackage } from './lib/package.mjs';
+import { quantize, makeCharts, stepTime } from './lib/chart.mjs';
+import { writePackage, writeCharts, readSongJson } from './lib/package.mjs';
 
 /** "Late Night Deep House.stem.mp4" -> "late-night-deep-house" */
 export function slug(s) {
@@ -31,9 +34,18 @@ function dbfs(x) {
 /**
  * Analyse the stems and write the package.
  * @param {string} input
- * @param {{out: string, id?: string, title?: string, artist?: string, bpmMin?: number, bpmMax?: number, keepVocals?: boolean}} o
+ * @param {{out: string, id?: string, title?: string, artist?: string, bpmMin?: number, bpmMax?: number, keepVocals?: boolean,
+ *   chartsOnly?: boolean}} o
  */
 export async function makeSong(input, o) {
+  if (o.chartsOnly) {
+    // a re-chart keeps the package's title, artist and id, and the flags it was made with, unless told otherwise
+    const prev = readSongJson(resolve(o.out));
+    const rep = JSON.parse(readFileSync(join(resolve(o.out), 'report.json'), 'utf8'));
+    const range = rep.tempo?.bpm_range ?? [];
+    o = { ...o, id: o.id ?? prev.id, title: o.title ?? prev.title, artist: o.artist ?? prev.artist,
+      keepVocals: o.keepVocals ?? rep.source?.keep_vocals, bpmMin: o.bpmMin ?? range[0], bpmMax: o.bpmMax ?? range[1] };
+  }
   const stems = await readStems(input);
   if (o.keepVocals && stems.tracks.vocals) {
     // some splits file a lead line or chops under vocals: fold it into the other track instead of losing it
@@ -51,15 +63,24 @@ export async function makeSong(input, o) {
     for (const x of q) cands.push({ step: x.step, lane, strength: x.strength });
   });
   cands.sort((x, y) => x.step - y.step || x.lane - y.lane);
+  // fill-only onsets for the breaks (docs/DESIGN.md, "Charts" step 8): the hats the clap lane rejects, and the other
+  // stem's onsets (chords, stabs, synth lines) for where the drums and the bass are both silent
+  const extra = [];
+  for (const [src, list] of [['hat', a.lanes.clap.hats ?? []], ['other', a.lanes.other.onsets]]) {
+    for (const x of quantize(list, a.beats)) extra.push({ step: x.step, strength: x.strength, src });
+  }
   const playSeconds = a.beats[a.beats.length - 1] - a.beats[0];
-  const { charts, stats, patterns } = makeCharts(cands, a.beats, a.downbeat, playSeconds);
+  const { charts, stats, patterns, span } = makeCharts(cands, a.beats, a.downbeat, playSeconds, extra, 4 * a.beatsAdded);
   const id = o.id ?? basename(resolve(o.out));
   const title = o.title ?? stems.info?.title ?? basename(input).replace(/\.stem\.(mp4|m4a)$/i, '');
   const report = {
     source: { ...stems.info, keep_vocals: !!o.keepVocals, rate: stems.rate, length_s: +a.length.toFixed(3),
       levels_dbfs: Object.fromEntries(Object.entries(stems.tracks).map(([k, v]) => [k, dbfs(monoOf(v))])) },
-    tempo: { bpm: +a.bpm.toFixed(3), autocorr_bpm: +a.bpmAutocorr.toFixed(3), beats: a.beats.length, downbeat: a.downbeat },
+    tempo: { bpm: +a.bpm.toFixed(3), autocorr_bpm: +a.bpmAutocorr.toFixed(3), beats: a.beats.length, downbeat: a.downbeat,
+      beats_before_the_drums: a.beatsAdded, bpm_range: [o.bpmMin ?? 115, o.bpmMax ?? 135] },
     onsets: quant,
+    fill_onsets: { hats: a.lanes.clap.hats?.length ?? 0, other: a.lanes.other.onsets.length, other_on_grid: extra.filter((x) => x.src === 'other').length },
+    music_span: { first_step: span.first, last_step: span.last, first_s: +stepTime(a.beats, span.first).toFixed(4), last_s: +stepTime(a.beats, span.last).toFixed(4) },
     clap_rejected: { kick_clicks: a.lanes.clap.rejected?.length ?? 0, hats: a.lanes.clap.hats?.length ?? 0 },
     bass: { bleed_energy_removed: +a.lanes.bass.bleedRemoved.toFixed(4), attacks_rejected_as_kick: a.lanes.bass.rejected.length,
       pitch_change_notes: a.lanes.bass.onsets.filter((x) => x.how === 'pitch').length },
@@ -67,7 +88,8 @@ export async function makeSong(input, o) {
     charts: stats,
     patterns,
   };
-  const r = await writePackage(resolve(o.out), {
+  const write = o.chartsOnly ? writeCharts : writePackage;
+  const r = await write(resolve(o.out), {
     id, title, artist: o.artist ?? stems.info?.artist ?? '', rate: a.rate, tracks: a.tracks, bpm: a.bpm, beats: a.beats,
     downbeat: a.downbeat, sections: a.sections, charts, report,
   });
@@ -80,6 +102,7 @@ async function main() {
     options: {
       out: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, artist: { type: 'string' },
       'bpm-min': { type: 'string' }, 'bpm-max': { type: 'string' }, 'keep-vocals': { type: 'boolean' },
+      'charts-only': { type: 'boolean' },
     },
   });
   const input = positionals[0];
@@ -90,13 +113,15 @@ async function main() {
   const out = v.out ?? `songs/${slug(basename(input))}`;
   const t0 = Date.now();
   const { song, report } = await makeSong(input, {
-    out, id: v.id, title: v.title, artist: v.artist, keepVocals: v['keep-vocals'],
+    out, id: v.id, title: v.title, artist: v.artist, keepVocals: v['keep-vocals'], chartsOnly: v['charts-only'],
     bpmMin: v['bpm-min'] ? Number(v['bpm-min']) : undefined, bpmMax: v['bpm-max'] ? Number(v['bpm-max']) : undefined,
   });
   const bytes = Object.values(report.alignment).reduce((s, x) => s + x.bytes, 0);
   console.log(`${out}: ${song.title}, ${song.bpm} BPM, ${song.length_s} s, ${song.beats.length} beats, downbeat ${song.downbeat}`);
   console.log(`  sections: ${song.sections.map((s) => `${s.kind}@${s.t.toFixed(1)}`).join(' ')}`);
-  for (const [k, s] of Object.entries(report.charts)) console.log(`  ${k}: ${s.notes} notes, ${s.per_second}/s`);
+  for (const [k, s] of Object.entries(report.charts)) {
+    console.log(`  ${k}: ${s.notes} notes (${s.fill} in the breaks, ${s.other_steps.length} from the other stem), ${s.per_second}/s${s.holes_left.length ? `, ${s.holes_left.length} holes left` : ''}`);
+  }
   console.log(`  tracks ${(bytes / 1e6).toFixed(2)} MB (${((bytes / 1e6) * 60 / song.length_s).toFixed(2)} MB/min), aligned (0 lag, ${song.length_samples} samples each), ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 }
 

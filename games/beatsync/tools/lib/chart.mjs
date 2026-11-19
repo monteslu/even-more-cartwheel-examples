@@ -1,6 +1,7 @@
 // From onsets to charts: the 16th grid from the tracked beats, quantizing with the outlier drop, the candidate
 // scores (strength, place in the bar, the lane that owns that place, novelty), bar-pattern reuse, and the dynamic
-// program that picks each difficulty's notes under its gap rules (docs/DESIGN.md, "Charts").
+// program that picks each difficulty's notes under its gap rules, and the break fill that keeps a chart from going
+// quiet for more than two bars where the song still plays (docs/DESIGN.md, "Charts").
 
 export const LANES = ['kick', 'clap', 'bass'];
 
@@ -13,6 +14,26 @@ export const LEVELS = {
   medium: { grid: 2, same: 2, change: 4, lambda: 0.5, density: 3.5 },
   hard: { grid: 1, same: 1, change: 2, lambda: 0.25, density: 6.0 },
 };
+
+/** The longest gap between two notes a chart keeps where the song has something to play: two bars, in 16ths. */
+export const MAX_GAP = 32;
+
+/** How far after the song's first onset (and before its last) a chart's first (and last) note may be: a bar. */
+export const LEAD = 16;
+
+/**
+ * The break fill per level: where the main chart leaves more than MAX_GAP, notes are added on `grid` at least
+ * `gap` 16ths apart (from each other and from the notes around them). Each level's fill is one step coarser than
+ * its drops (Easy half notes, Medium quarters, Hard 8ths), so a break is sparser and still breathes.
+ */
+export const FILL = {
+  easy: { grid: 4, gap: 8 },
+  medium: { grid: 4, gap: 4 },
+  hard: { grid: 2, gap: 2 },
+};
+
+/** The lane each kind of fill onset plays on: hats on the clap lane, the other stem's onsets on the bass lane. */
+export const FILL_LANE = { hat: 1, other: 2 };
 
 /**
  * The time of a 16th step from the beat list (linear between beats, the last interval extended past the end).
@@ -65,8 +86,9 @@ const OWNER = (lane, pos) => {
  * candidate's lane and place in the bar are across the song (a fill beats the hundredth plain kick).
  * @param {{step: number, lane: number, strength: number}[]} cands
  * @param {number} barStep the step of the first bar's downbeat
+ * @param {number} [from] the step the drums start on (bars for novelty are counted from the first bar line there)
  */
-export function scoreCandidates(cands, barStep) {
+export function scoreCandidates(cands, barStep, from = 0) {
   const byLane = [[], [], []];
   for (const c of cands) byLane[c.lane].push(c.strength);
   const mid = byLane.map((a) => {
@@ -77,7 +99,10 @@ export function scoreCandidates(cands, barStep) {
   const pos = (s) => (((s - barStep) % 16) + 16) % 16;
   const count = new Map();
   for (const c of cands) { const k = c.lane * 16 + pos(c.step); count.set(k, (count.get(k) ?? 0) + 1); }
-  const bars = Math.max(2, (Math.max(0, ...cands.map((c) => c.step)) - barStep) / 16 + 1);
+  // counted from the first bar line at or after the drums' first beat, so beats added in front of the drums (an
+  // intro charted by the break fill) do not change how rare a drum candidate is
+  const bar0 = barStep + 16 * Math.max(0, Math.ceil((from - barStep) / 16));
+  const bars = Math.max(2, (Math.max(0, ...cands.map((c) => c.step)) - bar0) / 16 + 1);
   return cands.map((c) => {
     const p = pos(c.step);
     const strength = Math.min(1, c.strength / mid[c.lane]);
@@ -258,16 +283,90 @@ export function chartDensity(notes, beats, downbeat) {
 }
 
 /**
- * All three charts. Lambda starts at the level's value and rises until the density cap holds.
+ * Score fill candidates (hats, the other stem's onsets): strength against the source's own median, saturating
+ * there, and the place in the bar, so the fill prefers notes on the beat.
+ * @param {{step: number, lane: number, strength: number, src: string}[]} cands
+ * @param {number} barStep
+ */
+export function scoreFill(cands, barStep) {
+  const mid = new Map();
+  for (const src of new Set(cands.map((c) => c.src))) {
+    const a = cands.filter((c) => c.src === src).map((c) => c.strength).sort((x, y) => x - y);
+    mid.set(src, a[Math.floor(0.5 * (a.length - 1))] || 1);
+  }
+  return cands.map((c) => {
+    const pos = (((c.step - barStep) % 16) + 16) % 16;
+    return { ...c, pos, score: 0.25 + 0.3 * Math.min(1, c.strength / mid.get(c.src)) + 0.35 * METRIC(pos) };
+  });
+}
+
+/**
+ * The holes in a chart: stretches between two notes longer than MAX_GAP 16ths, the song's first onset counting as
+ * a note LEAD 16ths before itself and its last one LEAD after itself (so the first and last notes come within a
+ * bar of the music). `a`/`b` are the bounding steps; `real` says whether each is a note (which the fill must keep
+ * its gap from) or the song's edge.
+ * @param {{step: number}[]} notes sorted
+ * @param {{first: number, last: number}} span the steps of the song's first and last onsets
+ * @param {number} [maxGap]
+ */
+export function chartHoles(notes, span, maxGap = MAX_GAP) {
+  const pts = [{ step: span.first - LEAD, real: false }, ...notes.map((n) => ({ step: n.step, real: true })), { step: span.last + LEAD, real: false }];
+  const holes = [];
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (b.step - a.step > maxGap) holes.push({ a: a.step, b: b.step, aReal: a.real, bReal: b.real });
+  }
+  return holes;
+}
+
+/**
+ * Fill a chart's holes, in stages: the first pool (the lanes' own unchosen onsets and the hats) wherever it can,
+ * then the next (the other stem) in whatever is still a hole. In each hole the dynamic program picks the best notes
+ * under the fill's grid and gap (strong onsets on the beat first). A hole with nothing in it stays.
+ * @param {{step: number, lane: number, score: number}[]} notes the level's chart, sorted
+ * @param {{step: number, lane: number, score: number, src: string}[][]} stages
+ * @param {{grid: number, gap: number}} fill
+ * @param {{first: number, last: number}} span
+ * @returns {{notes: typeof notes, added: {step: number, lane: number, score: number, src: string}[]}}
+ */
+export function fillGaps(notes, stages, fill, span) {
+  let out = [...notes];
+  const added = [];
+  const lv = { grid: fill.grid, same: fill.gap, change: fill.gap };
+  for (const pool of stages) {
+    for (const h of chartHoles(out, span)) {
+      const lo = h.aReal ? h.a + fill.gap : Math.max(h.a + 1, span.first);
+      const hi = h.bReal ? h.b - fill.gap : Math.min(h.b - 1, span.last);
+      const cands = pool.filter((c) => c.step >= lo && c.step <= hi && c.step % fill.grid === 0).sort((x, y) => x.step - y.step);
+      if (!cands.length) continue;
+      const pick = selectNotes(cands, lv, 0);
+      added.push(...pick);
+      out = [...out, ...pick].sort((x, y) => x.step - y.step);
+    }
+  }
+  return { notes: out, added: added.sort((x, y) => x.step - y.step) };
+}
+
+/**
+ * All three charts. The main chart is made from the drums' first beat on (`drumStart`): lambda starts at the
+ * level's value and rises until the density cap holds. Then the break fill (fillGaps) fills what is still a hole:
+ * first from the lanes' unchosen onsets (those before the drums start included) and the hats, then from the other
+ * stem.
  * @param {{step: number, lane: number, strength: number}[]} cands
  * @param {number[]} beats
  * @param {number} downbeat
  * @param {number} playSeconds the seconds the charts span (reported as notes per second of the song)
+ * @param {{step: number, strength: number, src: 'hat' | 'other'}[]} [extra] fill-only onsets, quantized
+ * @param {number} [drumStart] the step of the drums' first beat (beats before it carry a drumless intro)
  */
-export function makeCharts(cands, beats, downbeat, playSeconds) {
+export function makeCharts(cands, beats, downbeat, playSeconds, extra = [], drumStart = 0) {
   const barStep = downbeat * 4;
-  const scored = scoreCandidates(cands, barStep);
+  const scored = scoreCandidates(cands.filter((c) => c.step >= drumStart), barStep, drumStart);
   const pats = barPatterns(scored, barStep);
+  const intro = cands.filter((c) => c.step < drumStart).map((c) => ({ ...c, src: LANES[c.lane] }));
+  const fillScored = scoreFill([...intro, ...extra.map((c) => ({ ...c, lane: FILL_LANE[c.src] }))], barStep);
+  const all = [...cands, ...extra];
+  const span = all.length ? { first: Math.min(...all.map((c) => c.step)), last: Math.max(...all.map((c) => c.step)) } : { first: 0, last: 0 };
   /** @type {Record<string, {t: number, step: number, lane: number}[]>} */
   const charts = {};
   const stats = {};
@@ -277,9 +376,17 @@ export function makeCharts(cands, beats, downbeat, playSeconds) {
       lambda += 0.05;
       notes = chartLevel(scored, pats, barStep, lv, lambda);
     }
+    const main = notes.length;
+    const taken = new Set(notes.map((n) => n.step));
+    const lanesPool = [...scored.filter((c) => !taken.has(c.step)).map((c) => ({ ...c, src: LANES[c.lane] })), ...fillScored.filter((c) => c.src !== 'other')];
+    const filled = fillGaps(notes, [lanesPool, fillScored.filter((c) => c.src === 'other')], FILL[name], span);
+    notes = filled.notes;
     charts[name] = notes.map((n) => ({ t: +stepTime(beats, n.step).toFixed(4), step: n.step, lane: n.lane }));
-    stats[name] = { lambda: +lambda.toFixed(2), notes: notes.length, per_second: +(notes.length / playSeconds).toFixed(2),
-      per_second_playing: +chartDensity(notes, beats, downbeat).toFixed(2) };
+    const bySrc = (src) => filled.added.filter((c) => c.src === src).map((c) => c.step);
+    stats[name] = { lambda: +lambda.toFixed(2), notes: notes.length, main, fill: filled.added.length,
+      per_second: +(notes.length / playSeconds).toFixed(2), per_second_playing: +chartDensity(notes, beats, downbeat).toFixed(2),
+      holes_left: chartHoles(notes, span).map((h) => [h.a, h.b]),
+      fill_steps: filled.added.map((c) => c.step), hat_steps: bySrc('hat'), other_steps: bySrc('other') };
   }
-  return { charts, stats, patterns: { bars: pats.barCluster.size, distinct: pats.patterns.length } };
+  return { charts, stats, patterns: { bars: pats.barCluster.size, distinct: pats.patterns.length }, span };
 }
