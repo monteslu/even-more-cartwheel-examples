@@ -13,9 +13,19 @@ needs something different.
   three wide zones across the bottom of the screen, in the same order.
 - **Never two notes at once.** A chart never asks for two buttons in the same moment, at any difficulty.
 - **The song reacts.** The "other" stem (chords, pads, stabs, the rest of the drums) plays at full volume all the
-  time. The kick, clap and bass tracks play at full volume while the player keeps hitting them; a miss ducks that
-  track (a short fade down, about 40 ms, with a low-pass sweep if the engine's bus effects allow it) until the next hit
-  in its lane brings it back. A wrong button is a miss of the note it was meant for.
+  time and never changes. In play the kick, clap and bass tracks sit a little under the record between the player's
+  hits (about -4.4 dB, the top above 7 kHz softened), and a hit punches its track to full and opens its top: the drum
+  or bass note just played stands out, then falls back over about a quarter second (on Easy, whose kicks are on 1 and
+  3, the kicks the player plays stand about 4 dB over the ones on 2 and 4). A miss drops only that track (to about
+  -13 dB, with a low-pass at 700 Hz) and it comes back by itself over one beat, or at once on the next hit in its
+  lane, so a few misses across the lanes never empty the mix. A wrong button is a miss of the note it was meant for.
+  The song's own level changes only when the crowd leaves (the failed song fades out); the title and the song
+  select's preview play every track at full.
+- **No waiting.** Play starts 8 beats before the first note of the level chosen (on the song's beats; from the top
+  when that note is within about 8 beats and two seconds of it), after the 4 s count-in; the intro is still heard in
+  the song select's preview. The charts leave no long holes (see Charts). If a wait of more than 12 beats remains
+  between two notes, the rivers' banks fill with light from the gate up as it passes, and over its last four bars a
+  countdown (bars, then the last bar's beats) says when the notes come back onto the rivers; it fades out as they do.
 - **Judgement.** A hit is judged against the note's time in the song, not the frame: Perfect within 35 ms, Good within
   70 ms, else Miss. A per-device offset from the calibration screen is added (saved).
 - **Scoring.** Points per Perfect and Good, a combo, a multiplier that grows with the combo, a grade at the end, the
@@ -39,22 +49,27 @@ needs something different.
     icon stays on screen in play (the count-in shows each button under its river, then they go).
   - **The current and the gate.** Each river is a current of dim characters streaming down at the notes' speed between
     two banks, crossed by a faint line on every beat (brighter on the bar). A gate, a bright bar across the river, marks
-    the hit line near the bottom of the screen. The highway recedes a little: a river narrows toward the top, so a note
-    far off is small and grows as it comes.
+    the hit line near the bottom of the screen. The highway recedes in true perspective toward a vanishing point
+    above the screen: a river's far end is a quarter of its width at the gate, high up the screen, and the current,
+    banks and beat lines fade into a haze there, so the road reads as going away into the dark.
   - **The notes** ride the current down and reach the gate exactly on their beat (kick round, clap a diamond, bass a
-    bar across its river). Over the last beat a note condenses: denser characters (`+` to `#` to `@`) on a smaller
-    block, its light (area times brightness) the same, so a run of notes riding down is a steady light, never a regular
-    flicker. How far ahead a river shows notes is set per difficulty so a newcomer reads Easy comfortably: four beats
-    on Easy, 3.2 on Medium, 2.6 on Hard (about two seconds, 1.6 and 1.3 at 120 BPM). The timing windows do not change.
-    Easy's notes are drawn brighter too: its quarter notes pass any point of a river at most about twice a second, so
-    they can stand out more than Medium's and Hard's eighths and sixteenths without a regular flicker over 3 Hz.
+    bar across its river). A note takes the river's perspective: a quarter of its gate size at the far end, growing
+    all the way to the gate. Its brightness is a little higher far off (there it is smaller than a character and needs
+    the light to show) and steady over its last beat, so its light near the gate grows only with its size, never in a
+    burst on the beat: a run of notes riding down stays a steady light, not a regular flicker. How far ahead a river
+    shows notes is set per difficulty: 8 beats on Easy, 6.4 on Medium, 5.2 on Hard (4, 3.2 and 2.6 seconds at 120
+    BPM), twice what a flat river showed. The perspective packs the far beats toward the horizon, so the near part
+    reads as it did: a note covers its last beat within about 10% of the distance it did before (what the player
+    times against) and crosses the gate about 14% faster. The timing windows do not change. Easy's notes are drawn brighter too: its quarter notes pass any point of a
+    river at most about twice a second, so they can stand out more than Medium's and Hard's eighths and sixteenths
+    without a regular flicker over 3 Hz.
   - **The music drives the field.** Each kick sends a shockwave of characters across the field from below the gates,
     faint behind the rivers, so the screen breathes on four-on-the-floor; a clap throws sparks (`' * +`) off the clap's
     gate that drift and fall; the bass is a waveform of characters along the bottom, under the gates, that thickens
     while the bass plays and thins when it is missed out; the other stem's energy sets a slow field of faint glyphs
     behind everything, sparse in a break and dense in a drop.
   - **Playing well or badly.** A hit blooms the gate and surges its river around and below it (the current brightens
-    and widens, swelling and fading). A miss dims that instrument's river to dots until a hit brings it back. A streak
+    and widens, swelling and fading). A miss dims that instrument's river for the beat its track is down. A streak
     brightens the rivers and the field; a long streak in a drop fills the screen dense and bright. Each section has its
     own palette (break cool cyan, build warming, drop hot magenta and orange), crossfading over a bar.
   - **The title** has the rivers spread wide round the title's box, the first song playing itself on them.

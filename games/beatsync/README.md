@@ -7,19 +7,22 @@ characters.
 - **Three buttons, one thumb**: the kick, the clap and the bass on the three lower face buttons (left, bottom,
   right). Never two notes at once. In a cart the host's on-screen pad shows those three buttons on a phone; a native
   build has three touch zones across the bottom of the screen; J K L on a keyboard.
-- **The song reacts**: each part plays at full volume while you hit it; a miss ducks that part (a short fade with a
-  low-pass sweep) until your next hit in it. Too many misses and the floor empties.
+- **The song reacts**: each part sits a little under the record until you play it; every note you hit punches its
+  part to full and opens its top. A miss drops only that part (a short dip with a low-pass) and it comes back by
+  itself over a beat. Too many misses and the floor empties.
 - **On the audio clock**: notes are placed and judged on the song's own position (the mixer's frames played), not on
   frames: Perfect within 35 ms, Good within 70. A calibration screen (tap along to a click) saves the offset of this
   screen and speaker.
 - **The look**: a note highway of three rivers side by side, laid out as the buttons are: kick on the left (west),
   clap in the middle (south), bass on the right (east), so which button a note wants is where its river is. Each river
-  is a current of characters streaming down to a gate near the bottom; a note rides it down, nearer and larger as it
-  comes, and reaches the gate exactly on its beat, condensing from `+` to `#` to `@`. A hit blooms the gate and surges
-  the river; a miss dims the river until the next hit. Each kick sends a shockwave of characters across the field,
+  is a road of characters receding toward a horizon near the top of the screen, a current streaming down it to a gate
+  near the bottom; a note rides it down, small far off and growing all the way, and reaches the gate exactly on its
+  beat. A hit blooms the gate and surges the river; a miss dims the river for a beat. Each kick sends a shockwave of characters across the field,
   claps throw sparks off their gate, the bass is a waveform along the bottom, and a field of glyphs behind it all
-  follows the song's energy; each section has its palette. Easy shows four beats of each river, Medium a little over
-  three, Hard a little over two and a half, so Easy is the slowest to read. The ASCII pass is Detexto's.
+  follows the song's energy; each section has its palette. Easy shows eight beats of each river, Medium 6.4, Hard
+  5.2 (twice what they showed before, with the notes' last beat as fast as it was), so Easy is the slowest to read.
+- **No waiting**: play starts 8 beats before the level's first note, and the charts leave no long holes; if a wait of
+  more than three bars remains, the banks fill as it passes and a countdown says when the notes come back. The ASCII pass is Detexto's.
 - **Songs**: six built in (`songs/<id>/`: four sample-aligned Ogg Vorbis stems and their charts), from a short
   synthetic warm-up to Acid House Rave at 129 BPM; Easy, Medium and Hard each; scores, grades and bests saved per song
   and level. `songs/order.txt` sets the order (slowest and sparsest first).
@@ -68,6 +71,9 @@ each has a control that must fail:
 | `tests/beatsync-newcomer.mjs` | a bot that reads only the next note on the rivers, with a human's timing error, reaches the song through the menus on a pad and clears it on Easy | the same bot ignoring the cue |
 | `tests/beatsync-look.mjs` | the play field is neon characters on black, drawn as strokes, the grid covering the frame | the ASCII pass off |
 | `tests/beatsync-layout.mjs` | each button's press lights its own river, west's left of south's left of east's (from the picture) | the rivers swapped (`lanes 2 1 0`) |
+| `tests/beatsync-depth.mjs` | the rivers in perspective: in every lane each note is wider than the one behind it, a note at the gate at least three times as wide as at the far end, at least 1.9 times 0.31.0's beats ahead on screen, and the speed at the gate within 10% of 0.31.0's (Easy, Medium, Hard, GL and WebGPU) | every note one size (`notescale flat`); notes shrinking as they come (`notescale reverse`) |
+| `tests/beatsync-mix.mjs` | from the recorded sound (GL): a kick miss dips the kick at least 6 dB and it is back within 1 dB a beat and a half later, while clap, bass and other stay within 0.5 dB; on Easy a kick the player hit stands at least 3 dB over one nobody played | a miss that ducks every lane (`missall 1`); the reward off (`reward 0`) |
+| `tests/beatsync-wait.mjs` | every song and level starts within 8 beats of its first note; with a 20 s hole cut into a chart, the wait indicator is on screen in the wait and gone (the same frame as without it) two beats after the notes come back (GL and WebGPU) | every song from its top (`fromzero 1`); the indicator always up (`gap force`) |
 | `tests/beatsync-flash.mjs` | every effect's flash meter reads at most 3 flashes a second over a whole song, and romdev's picture check (WCAG 2.3.1, Harding) passes over the densest songs played whole on Hard (Test Groove, the most notes a second, and Acid House Rave, the most notes) and Test Groove on Easy (brighter notes) | every effect strobing; the picture with an 8 Hz strobe mixed in |
 | `tests/beatsync-programs.mjs` | the program table has every draw state the game asks for, at every preset and in a player's first frames | a sphere in a material no table has |
 | `tests/beatsync-text.mjs` | text at least the engine's size floor on every screen | the same screens at half text size |

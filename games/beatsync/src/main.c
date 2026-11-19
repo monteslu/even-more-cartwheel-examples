@@ -2,7 +2,8 @@
  *
  * Instrumental house songs split into stems. The player plays the kick, the clap and the bass: three lanes, left to
  * right, on the three lower face buttons (west, south, east; J K L on a keyboard; three zones across the bottom of
- * a touch screen in a native build, the host's on-screen pad in a cart). A hit keeps that part of the song playing; a miss ducks its track until the next hit in its lane.
+ * a touch screen in a native build, the host's on-screen pad in a cart). A hit punches that part of the song up; a miss
+ * dips its track alone, which comes back by itself over a beat.
  *
  * The map of this file:
  *   - init(): songs, input, the shell (title, pause, settings, saves), sounds, the debug fields the checks read.
@@ -62,8 +63,11 @@
 enum { SCR_NONE, SCR_SELECT, SCR_DIFF, SCR_PLAY, SCR_RESULTS, SCR_CALIB };
 enum { J_NONE, J_PERFECT, J_GOOD, J_MISS };
 static const char *const GRADES[] = { "S", "A", "B", "C", "D", "F" };
-/* beats of notes a river shows per difficulty: Easy slowest, so a newcomer reads a note about two seconds ahead */
-static const float AHEAD_BEATS[DIFFS] = { 4.0f, 3.2f, 2.6f };
+/* beats of notes a river shows per difficulty: Easy slowest, so a newcomer reads a note about four seconds ahead. Twice
+ * what a flat river showed (4, 3.2, 2.6): the perspective packs the far beats toward the horizon, so a note still
+ * covers its last beat within about 10% of the distance it did (what the player times against), crossing the gate a
+ * little faster (club.c: the speed at the gate is 45.2 units / ahead a beat) */
+static const float AHEAD_BEATS[DIFFS] = { 8.0f, 6.4f, 5.2f };
 /* a note's light per difficulty: Easy's quarter notes pass a point of a river at most twice a second, so they can be
  * brighter (easier to read) than Medium's and Hard's, whose eighths would pass as a 4 Hz flicker */
 static const float NOTE_LIGHT[DIFFS] = { 1.8f, 1.0f, 1.0f };
@@ -91,11 +95,12 @@ static struct {
   int32_t song_ms, raw_ms, done, failed, ended_ticks;
   int32_t total, hit, perfect, good, miss, combo, max_combo, score, best_score, new_best;
   float energy;
-  float level[LANES];
+  float level[LANES], gain[LANES];
   int32_t cue_lane, cue_ms;
   float err_sum, err_sq;
   int32_t err_max, err_n;
   int32_t bot_late_ms;
+  int32_t bot_skip[LANES], bot_skip_after, bot_skipped_ms; /* the `skip` request (the mix gate) */
   int32_t ticks, screen_ticks, miss_streak;
   /* the field's pulses: the song's own kicks, claps and bass notes (Hard's chart, the fullest), each a swell and fade */
   int32_t pulse_next[LANES], pulse_last[LANES];
@@ -114,6 +119,11 @@ static struct {
   float streak; /* the streak as the field shows it: follows the combo, at most a third of the way a second (a
                  * broken streak dims the field over seconds, never in a frame) */
   bool leave; /* the `leave` debug request: the crowd leaves (the flash check shows the dip) */
+  int32_t from_ms, from_zero; /* where play started in the song; the `fromzero` request (the start gate's control) */
+  /* a long wait for notes (more than GAP_BEATS between two): state 0 none, 1 the banks filling, 2 the countdown too;
+   * count the bars (unit 1) or, in the last bar, the beats (unit 0) until the notes come onto the rivers */
+  int32_t gap_state, gap_count, gap_unit, gap_mode, gap_shown, gap_overlap, gap_count_ticks;
+  float gap_fill, gap_alpha;
 } G;
 
 static cw_action lane_act[LANES], acc, back, up, down;
@@ -168,15 +178,17 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   G.err_sum = G.err_sq = 0;
   G.err_max = G.err_n = G.miss_streak = 0;
   G.fade = 0;
+  G.gap_state = G.gap_count = G.gap_shown = G.gap_overlap = 0;
+  G.gap_alpha = G.gap_fill = 0;
   for (int l = 0; l < LANES; l++) {
     G.pulse_next[l] = 0;
     G.pulse_last[l] = -100000;
     G.judge_ticks[l] = 0;
-    music_duck(l, false);
   }
   const note *h = s->chart[DIFF_HARD];
   for (int l = 0; l < LANES; l++)
     while (G.pulse_next[l] < s->notes[DIFF_HARD] && h[G.pulse_next[l]].ms < from_ms) G.pulse_next[l]++;
+  music_set_player(!G.demo);
   music_play(s, from_ms, lead_ms, volume);
 }
 
@@ -193,20 +205,24 @@ static void start_preview(void) {
   begin_song(s, DIFF_HARD, s->preview_ms, 0, 0.75f);
 }
 
-/* Where play starts: a song whose drums come in late (a long intro of pads alone, 40 s in one song) starts 8 beats
- * before its first beat, so there is never long to wait with nothing to play; the intro is still heard in the song
- * select's preview and the title */
-static int32_t play_from_ms(const song *s) {
-  if (!s || s->beats < 2 || s->beat_ms[0] < 10000) return 0;
-  int32_t beat = (s->beat_ms[s->beats - 1] - s->beat_ms[0]) / (s->beats - 1);
-  int32_t from = s->beat_ms[0] - 8 * beat;
-  return from > 0 ? from : 0;
+/* Where play starts: 8 beats before the first note of the level chosen (on the song's own beats), so there is never
+ * long to wait with nothing to play; a song whose first note is near its start plays from the top. The intro is still
+ * heard in the song select's preview and the title. (`fromzero 1`, the start gate's control, plays from the top.) */
+#define START_BEATS 8
+static int32_t play_from_ms(const song *s, int d) {
+  if (!s || s->beats < 2 || !s->notes[d] || G.from_zero) return 0;
+  const note *first = &s->chart[d][0];
+  int b = first->step / 4 - START_BEATS;
+  /* on the song's own beats; before its first tracked beat (a long intro with no drums) the tempo carries on back */
+  int32_t from = b >= 0 && b < s->beats ? s->beat_ms[b] : first->ms - (int32_t)lroundf(START_BEATS * 60000.0f / fmaxf(s->bpm, 1));
+  return from > 2000 ? from : 0; /* a couple of seconds in: from the top */
 }
 
 static void play_song(void) {
   G.demo = false;
   const song *s = song_get(G.sel);
-  begin_song(s, G.pick, play_from_ms(s), LEAD_MS, 1);
+  G.from_ms = play_from_ms(s, G.pick);
+  begin_song(s, G.pick, G.from_ms, LEAD_MS, 1);
   to_screen(SCR_PLAY);
 }
 
@@ -227,7 +243,7 @@ static void judged(int i, int j, int32_t err) {
     G.miss++;
     G.combo = 0;
     G.miss_streak++;
-    music_duck(lane, true);
+    music_miss(lane);
     if (!G.demo) {
       G.energy -= G.diff == DIFF_EASY ? 0.05f : 0.075f;
       cw_input_rumble(0, 0.35f, 0.15f, 90); /* a miss is felt in the pad, never a shake */
@@ -247,7 +263,7 @@ static void judged(int i, int j, int32_t err) {
   G.err_sq += (float)err * err;
   G.err_n++;
   if (abs(err) > G.err_max) G.err_max = abs(err);
-  music_duck(lane, false);
+  music_hit(lane);
   G.flare[lane] = fminf(1, G.flare[lane] + 0.09f); /* each hit adds a little: a run of hits builds the glow up */
   if (!G.demo && lane == LANE_KICK) cw_input_rumble(0, 0.12f, 0, 40); /* feel the kick */
 }
@@ -317,7 +333,7 @@ static void tick_room(float dt) {
 /* one tick of a song on the sequencer: the clock, the misses, the bot, the end */
 static void tick_song(float dt, bool player) {
   music_tick(dt);
-  for (int l = 0; l < LANES; l++) G.level[l] = music_lane_level(l);
+  for (int l = 0; l < LANES; l++) G.level[l] = music_lane_level(l), G.gain[l] = music_lane_gain(l);
   G.song_ms = (int32_t)lround(music_ms());
   G.raw_ms = (int32_t)lround(music_raw_ms());
   int32_t t = G.song_ms - (player ? G.offset_ms : 0);
@@ -327,7 +343,15 @@ static void tick_song(float dt, bool player) {
 #ifdef GAME_AUTOPILOT
     /* the bot: a note is pressed on the tick nearest its time (plus bot.late_ms) */
     for (int i = G.next; i < n && c[i].ms + G.bot_late_ms <= t + 8; i++)
-      if (G.state[i] == NOTE_PENDING) press(c[i].lane, t);
+      if (G.state[i] == NOTE_PENDING) {
+        if (G.bot_skip[c[i].lane] > 0 && c[i].ms > G.bot_skip_after) { /* the `skip` request: let this one go by */
+          G.bot_skip[c[i].lane]--;
+          G.bot_skipped_ms = c[i].ms;
+          G.state[i] = NOTE_SKIPPED;
+          continue;
+        }
+        press(c[i].lane, t);
+      }
 #else
     for (int l = 0; l < LANES; l++)
       if (cw_action_just_pressed(0, lane_act[l])) press(l, t);
@@ -337,8 +361,8 @@ static void tick_song(float dt, bool player) {
       if (G.state[i] == NOTE_PENDING) { G.state[i] = NOTE_HIT; G.flare[c[i].lane] = fminf(1, G.flare[c[i].lane] + 0.09f); }
   /* notes past the Good window are missed */
   for (int i = G.next; i < n && c[i].ms < t - GOOD_MS; i++)
-    if (G.state[i] == NOTE_PENDING) judged(i, J_MISS, 0);
-  while (G.next < n && G.state[G.next] != NOTE_PENDING) G.next++;
+    if (G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) judged(i, J_MISS, 0);
+  while (G.next < n && G.state[G.next] != NOTE_PENDING && G.state[G.next] != NOTE_SKIPPED) G.next++;
   G.cue_lane = G.next < n ? c[G.next].lane : -1;
   G.cue_ms = G.next < n ? c[G.next].ms : -1;
   pulses(G.song_ms);
@@ -481,8 +505,41 @@ static void finish_song(void) {
   to_screen(SCR_RESULTS);
 }
 
+/* the wait's indicator: while the next note is more than GAP_BEATS after the last one and not yet on its river, the
+ * banks fill as the wait passes and, over its last four bars, a countdown to the notes coming on (bars, then the last
+ * bar's beats); it fades out over half a second once they are on. gap_mode 1 never shows it, 2 always (the wait
+ * gate's controls). gap.shown counts frames it is fully up, gap.overlap frames it still shows 0.6 s after the notes
+ * came on (must stay 0) */
+#define GAP_BEATS 12
+static void gap_tick(float dt) {
+  const note *c = chart();
+  float beat = G.s && G.s->bpm > 0 ? 60000.0f / G.s->bpm : 500;
+  float t = (float)(G.song_ms - G.offset_ms);
+  int last = G.next - 1;
+  while (last >= 0 && G.state[last] == NOTE_GONE) last--;
+  float prev = last >= 0 ? (float)c[last].ms : (float)G.from_ms, next = (float)G.cue_ms;
+  float appear = next - AHEAD_BEATS[G.diff] * beat; /* when the next note comes onto the far end of its river */
+  bool on = G.cue_ms >= 0 && next - prev > GAP_BEATS * beat && t < appear && !G.failed;
+  if (G.gap_mode == 1) on = false;
+  if (G.gap_mode == 2) on = !G.failed;
+  int state = 0, count = 0, unit = 0;
+  if (on) {
+    float rem = (appear - t) / beat;
+    state = rem <= 16 ? 2 : 1;
+    if (state == 2) unit = rem > 4, count = rem > 4 ? (int)ceilf(rem / 4) : (int)ceilf(fmaxf(rem, 0.01f));
+    G.gap_fill = G.gap_mode == 2 ? fminf(1, fmaxf(0, t / (G.s->length_s * 1000))) : fminf(1, fmaxf(0, (t - prev) / fmaxf(1, appear - prev)));
+  }
+  if (count != G.gap_count || unit != G.gap_unit) G.gap_count_ticks = 0;
+  G.gap_count_ticks++;
+  G.gap_state = state, G.gap_count = count, G.gap_unit = unit;
+  G.gap_alpha = on ? fminf(1, G.gap_alpha + dt / 0.5f) : fmaxf(0, G.gap_alpha - dt / 0.5f);
+  if (G.gap_alpha >= 0.99f) G.gap_shown++;
+  if (G.gap_alpha > 0.01f && G.cue_ms >= 0 && t > appear + 600) G.gap_overlap++;
+}
+
 static void play_tick(float dt) {
   tick_song(dt, true);
+  gap_tick(dt);
   if ((G.energy <= 0 || G.leave) && !G.failed && (G.leave || !AUTOPILOT)) { /* the floor empties: the song fades out */
     G.energy = 0;
     G.failed = 1;
@@ -709,6 +766,13 @@ static void draw_play(cw_vec2 cv, float size) {
   if (cw_touch_overlay_visible()) /* on a touch screen: the three zones across the bottom */
     for (int l = 0; l < LANES; l++)
       cw_r2d_round_rect_lines((cw_rect){ cv.x * (float)l / 3.0f + size * 0.3f, cv.y * 0.62f, cv.x / 3.0f - size * 0.6f, cv.y * 0.36f }, size * 0.5f, size * 0.08f, 8, lane_color(l, 0.35f + 0.5f * G.press[l]));
+  if (G.gap_state == 2 && G.gap_alpha > 0 && G.song_ms >= 0) { /* a long wait's last four bars: the countdown */
+    float x, y, r, a = G.gap_alpha; /* the whole countdown swells in and fades out; the number just changes */
+    club_center_screen(cv.x, cv.y, &x, &y, &r);
+    snprintf(b, sizeof b, G.gap_unit ? "%d bars" : "%d", G.gap_count);
+    text_at("get ready", x, y - size * 2.4f, size * 0.9f, cw_rgba(0.75f, 0.7f, 0.95f, a), 0);
+    text_at(b, x, y - size * 0.9f, size * 1.6f, cw_rgba(1, 1, 1, a), 0);
+  }
   if (G.song_ms < 0) { /* the count in */
     int beats = (int)ceilf((float)-G.song_ms / 500.0f);
     snprintf(b, sizeof b, beats > 3 ? "Get ready" : "%d", beats);
@@ -815,6 +879,7 @@ static void render(void *user, double alpha) {
     .kick = G.pulse_drawn[LANE_KICK], .clap = G.pulse_drawn[LANE_CLAP], .bass = G.pulse_drawn[LANE_BASS],
     .kick_ms = G.pulse_last[LANE_KICK], .clap_ms = G.pulse_last[LANE_CLAP],
     .streak = G.streak, .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .note_light = NOTE_LIGHT[G.diff], .t = G.vis_t,
+    .gap_fill = G.screen == SCR_PLAY ? G.gap_fill : 0, .gap_alpha = G.screen == SCR_PLAY ? G.gap_alpha : 0,
   };
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];
@@ -864,7 +929,35 @@ static void cmd_lanes(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"kick\":%d,\"clap\":%d,\"bass\":%d}", club_place(0), club_place(1), club_place(2));
 }
 
+/* `hole <from_ms> <to_ms>`: cuts the notes between those song times out of the chart being played (a long wait to
+ * test the wait indicator on, tests/beatsync-wait.mjs) */
+static void cmd_hole(int argc, const char **argv, cw_reply *r) {
+  if (argc < 3 || G.screen != SCR_PLAY) { cw_reply_error(r, "hole <from_ms> <to_ms> (while a song plays)"); return; }
+  int32_t a = atoi(argv[1]), b = atoi(argv[2]), n = 0;
+  const note *c = chart();
+  for (int i = G.next; i < chart_count(); i++)
+    if (c[i].ms >= a && c[i].ms < b && G.state[i] == NOTE_PENDING) G.state[i] = NOTE_GONE, n++;
+  cw_reply_printf(r, "{\"cut\":%d}", n);
+}
+static void cmd_gap(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "gap game|off|force"); return; }
+  G.gap_mode = !strcmp(argv[1], "off") ? 1 : !strcmp(argv[1], "force") ? 2 : 0;
+  cw_reply_printf(r, "{\"gap\":%d}", G.gap_mode);
+}
+static void cmd_fromzero(int argc, const char **argv, cw_reply *r) {
+  G.from_zero = argc > 1 && atoi(argv[1]) != 0;
+  cw_reply_printf(r, "{\"fromzero\":%d}", G.from_zero);
+}
+
 #ifdef GAME_AUTOPILOT
+static void cmd_skip(int argc, const char **argv, cw_reply *r) {
+  int l = argc > 1 ? atoi(argv[1]) : -1;
+  if (argc < 3 || l < 0 || l >= LANES) { cw_reply_error(r, "skip <lane 0..2> <n> [after_ms]"); return; }
+  G.bot_skip[l] = atoi(argv[2]);
+  G.bot_skip_after = argc > 3 ? atoi(argv[3]) : G.song_ms;
+  cw_reply_printf(r, "{\"lane\":%d,\"n\":%d,\"after\":%d}", l, G.bot_skip[l], G.bot_skip_after);
+}
+
 /* song <index|id> [easy|medium|hard]: the autopilot plays that song from its start (the flash sweep's densest song) */
 static void cmd_song(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "song <index|id> [easy|medium|hard]"); return; }
@@ -935,6 +1028,7 @@ static void init(void *user) {
   cw_debug_i32("game.score", &G.score);
   cw_debug_f32("game.energy", &G.energy);
   cw_debug_f32_array("lane.level", G.level, LANES);
+  cw_debug_f32_array("lane.gain", G.gain, LANES);
   cw_debug_i32("cue.lane", &G.cue_lane);
   cw_debug_i32("cue.ms", &G.cue_ms);
   cw_debug_f32("judge.err_sum", &G.err_sum);
@@ -942,14 +1036,29 @@ static void init(void *user) {
   cw_debug_i32("judge.err_n", &G.err_n);
   cw_debug_i32("judge.err_max", &G.err_max);
   cw_debug_i32("bot.late_ms", &G.bot_late_ms);
+  cw_debug_i32("bot.skipped_ms", &G.bot_skipped_ms);
   cw_debug_i32("game.offset_ms", &G.offset_ms);
   cw_debug_i32("game.ticks", &G.ticks);
   (void)lane_level_dbg, (void)lane_level_f;
   music_register_debug();
+  club_register_debug();
   cw_debug_command("leave", "leave: the crowd leaves the song now (the failed song, for the flash check)", cmd_leave);
   cw_debug_command("lanes", "lanes <kick> <clap> <bass>: the river each lane is drawn as, 0 left 1 middle 2 right (the layout gate's control)", cmd_lanes);
   cw_debug_i32("song.pick", &G.pick);
+  cw_debug_i32("song.from_ms", &G.from_ms);
+  cw_debug_i32("gap.state", &G.gap_state);
+  cw_debug_i32("gap.count", &G.gap_count);
+  cw_debug_i32("gap.unit", &G.gap_unit);
+  cw_debug_f32("gap.fill", &G.gap_fill);
+  cw_debug_f32("gap.alpha", &G.gap_alpha);
+  cw_debug_i32("gap.shown", &G.gap_shown);
+  cw_debug_i32("gap.overlap", &G.gap_overlap);
+  cw_debug_i32("gap.mode", &G.gap_mode);
+  cw_debug_command("hole", "hole <from_ms> <to_ms>: cut the notes between those song times out of the chart playing (the wait gate's long wait)", cmd_hole);
+  cw_debug_command("gap", "gap game|off|force: the wait indicator as the game shows it, never, or always (the wait gate's controls)", cmd_gap);
+  cw_debug_command("fromzero", "fromzero 1|0: play every song from its top, not 8 beats before its first note (the start gate's control)", cmd_fromzero);
 #ifdef GAME_AUTOPILOT
+  cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
   cw_debug_command("song", "song <index|id> [easy|medium|hard]: the autopilot plays that song from its start", cmd_song);
 #endif
   flash_meter_init(&fl_kick, "kick");

@@ -8,13 +8,15 @@
  * the top of the screen down to a gate near the bottom. A river is a current of dim characters streaming down at the
  * notes' speed, between two banks, crossed by a faint line on every beat (brighter on the bar). A note b beats ahead
  * of now sits b beats up its river and rides the current down to the gate, reaching it exactly on its beat. The
- * highway recedes a little: a river narrows toward the top, so a note far off is small and grows as it comes, and it
- * brightens over its last beat, so its characters grow denser (+ # @) on the beat. How many beats a river shows is
- * the view's `ahead`: more on Easy (slower, readable well ahead), fewer on Hard.
+ * highway recedes in true perspective, a road going away toward a horizon: a river's far end, high up the screen, is
+ * a quarter of its width at the gate, and a note far off is that small and grows all the way to the gate. How many
+ * beats a river shows is the view's `ahead`: more on Easy (slower, readable well ahead), fewer on Hard; a note
+ * crosses the gate at (TOP_Y - GATE_Y) / (1 - FAR) * (1 / FAR - 1) / ahead units a beat.
  *
- * The mapping: d beats ahead is a scale s = 1 / (1 + c d), 1 at the gate and FAR at the top (c from `ahead`); the
- * height on screen follows (1 - s), so the rivers converge toward a point above the screen, and x and sizes scale by
- * s. Past the gate (d < 0) the same mapping carries the outflow on down.
+ * The mapping: d beats ahead is a scale s = 1 / (1 + c d), 1 at the gate and FAR at the top (c from `ahead`): the
+ * depth of a point on a ground plane seen from above it. The height on screen follows (1 - s), so the rivers converge
+ * toward a vanishing point above the screen, and x and sizes scale by s. Past the gate (d < 0) the same mapping
+ * carries the outflow on down.
  *
  * Grounding: nothing here stands on anything (it is a picture of light): the Field node is in the group airborne. */
 #include "club.h"
@@ -23,28 +25,32 @@
 #include <string.h>
 
 #include "cartwheel/core.h"
+#include "cartwheel/debug.h"
 #include "cartwheel/scene.h"
 #include "cartwheel/scene_file.h"
 
 #define VIEW_HALF_H 8.0f /* camera at z 22, 40 degrees */
 #define GATE_Y (-4.7f)   /* the gate line */
-#define TOP_Y 7.6f       /* where a river starts (its far end, `ahead` beats up) */
-#define LANE_DX 4.5f     /* the rivers' centres at the gate: -LANE_DX, 0, LANE_DX */
-#define RIVER_W 3.0f     /* a river's width at the gate (a gap of 1.5 between rivers) */
-#define FAR 0.62f        /* a river's scale at its far end */
+#define TOP_Y 6.6f       /* where a river starts (its far end, `ahead` beats up), under the horizon */
+#define LANE_DX 4.9f     /* the rivers' centres at the gate: -LANE_DX, 0, LANE_DX */
+#define RIVER_W 2.8f     /* a river's width at the gate (a gap of about 2 between rivers, a character at the far end) */
+#define FAR 0.25f        /* a river's scale at its far end: a quarter of its size at the gate */
 #define PAST 0.7f        /* beats a river runs on below the gate */
 #define MAX_NOTES_SHOWN 64
-#define FLOW 70          /* current streaks a river */
+#define PROBE_MAX 96
+#define FLOW 140         /* current streaks a river */
 #define BANK_SEGS 22     /* segments in each bank */
-#define TICKS 12         /* beat lines a river */
+#define TICKS 14         /* beat lines a river */
 #define WAVES 6
 #define SPARKS 120
 #define WAVE_COLS 72
 #define FIELD_W 54
 #define FIELD_H 28
-/* a note's brightness far off (NB0, times the view's note_light) and what it gains by its beat (NB1) */
-#define NB0 0.6f
-#define NB1 2.0f
+/* a note's size at the gate (times its shape), and its brightness there (NB0, times the view's note_light) and what
+ * it adds at the far end (NB_FAR), where it is smaller than a character and needs the light to show */
+#define NOTE_SIZE 0.85f
+#define NB0 1.0f
+#define NB_FAR 0.6f
 
 typedef struct pal { t3_color lane[LANES], bg; } pal;
 /* a palette per section: intro violet, build warming, drop hot magenta and orange, break cool cyan, outro blue */
@@ -61,7 +67,7 @@ static const float FIELD_DENSITY[6] = { [SEC_INTRO] = 0.35f, [SEC_BUILD] = 0.55f
 
 static struct {
   t3_object *root;
-  t3_instanced_mesh *notes[LANES], *flow, *banks, *ticks, *gates, *waves, *sparks, *wave_cols, *field, *flare;
+  t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *waves, *sparks, *wave_cols, *field, *flare;
   cw_node camera;
   float zoom, spread, ahead;
   int place[LANES]; /* the river each lane is drawn as: 0 left, 1 middle, 2 right (the layout gate swaps it) */
@@ -75,8 +81,13 @@ static struct {
   float field_phase[FIELD_W * FIELD_H];
   float flow_u[FLOW], flow_ph[FLOW], flow_len[FLOW];
   float bass_amp;
+  int notescale; /* 0 the game; 1 flat, 2 reversed: the size gate's controls */
+  struct probe { uint8_t lane; float ahead, y, px, bright; } probe[PROBE_MAX];
+  int probe_n;
   bool built;
 } C;
+/* each note shape's width in units at scale 1 (the geometries in club_build) */
+static const float NOTE_W[LANES] = { 1.44f, 1.76f, 2.0f };
 
 static uint32_t hash(uint32_t a, uint32_t b) {
   uint32_t h = a * 374761393u + b * 668265263u;
@@ -92,6 +103,15 @@ static t3_color mix(t3_color a, t3_color b, float t) { return (t3_color){ a.r + 
 static t3_color even(t3_color c) {
   float l = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
   return scale(c, 0.42f / fmaxf(l, 0.05f));
+}
+
+static void to_canvas(t3_vec3 p, float cw, float ch, float *x, float *y);
+/* a note's scale at a river scale s: the river's own perspective, so a note far off is small and grows as it comes
+ * (the size gate, tests/beatsync-depth.mjs, holds it to that; `notescale flat|reverse` is its control) */
+static float note_size(float s) {
+  if (C.notescale == 1) return NOTE_SIZE * 0.6f;
+  if (C.notescale == 2) return NOTE_SIZE * (1.25f - s);
+  return NOTE_SIZE * s;
 }
 
 static t3_material *unlit(void) { return t3_mesh_basic_material_new(0xffffff); }
@@ -128,6 +148,9 @@ static float persp(float d) {
   float c = (1 / FAR - 1) / fmaxf(C.ahead, 0.5f);
   return 1 / fmaxf(0.2f, 1 + c * d);
 }
+/* the haze: a river's current, banks and beat lines fade toward the far end (the banks keep more of theirs, the outline of the road), so the
+ * highway recedes into the dark instead of bunching into a bright knot where it converges */
+static float haze(float s, float lo) { return lo + (1 - lo) * fminf(1, fmaxf(0, (s - FAR) / (1 - FAR))); }
 static t3_vec3 on_river(int lane, float d, float u, float z) {
   float s = persp(d), p = (1 - s) / (1 - FAR);
   float cx = (float)(C.place[lane] - 1) * LANE_DX * C.spread;
@@ -151,6 +174,7 @@ void club_build(void) {
   C.flow = instanced(t3_plane_geometry_new(0.55f, 0.12f, 1, 1), FLOW * LANES);
   C.banks = instanced(t3_plane_geometry_new(0.14f, 1.0f, 1, 1), BANK_SEGS * 2 * LANES);
   C.ticks = instanced(t3_plane_geometry_new(1.0f, 0.1f, 1, 1), TICKS * LANES);
+  C.front = instanced(t3_plane_geometry_new(1.0f, 0.2f, 1, 1), LANES);
   C.gates = instanced(t3_plane_geometry_new(1.0f, 0.34f, 1, 1), LANES);
   C.flare = instanced(t3_circle_geometry_new(1.0f, 32), LANES);
   C.waves = instanced(t3_ring_geometry_new(0.9f, 1.0f, 72, 1), WAVES);
@@ -212,7 +236,7 @@ void club_update(const club_view *v) {
       float near_gate = expf(-fabsf(d) * 1.8f), surge = 1 + 2.4f * fl * near_gate;
       u *= 1 + 0.25f * fl * near_gate;
       float s = persp(d), in = fminf(1, (C.ahead - d) / 0.6f), out = d < 0 ? fmaxf(0, 1 + d / PAST) : 1;
-      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out;
+      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out * haze(s, 0.3f);
       set_inst(C.flow, l * FLOW + i, on_river(l, d, u, -0.2f), 0, (t3_vec3){ C.flow_len[i] * s, s, 1 });
       t3_instanced_mesh_set_color_at(C.flow, l * FLOW + i, scale(C.p.lane[l], b));
     }
@@ -224,9 +248,13 @@ void club_update(const club_view *v) {
         t3_vec3 a = on_river(l, d0, u, -0.1f), b2 = on_river(l, d1, u, -0.1f);
         float dx = b2.x - a.x, dy = b2.y - a.y, len = sqrtf(dx * dx + dy * dy), dm = 0.5f * (d0 + d1);
         float fade = fminf(1, (C.ahead - dm) / 0.8f) * (dm < 0 ? fmaxf(0, 1 + dm / PAST) : 1);
+        /* a long wait for notes: the banks fill with light from the gate up toward the far end as it passes, a soft
+         * front moving at the wait's pace (seconds a river), swelling in and fading out */
+        float q = dm / C.ahead, lit = fminf(1, fmaxf(0, (v->gap_fill - q) / 0.08f + 0.5f)) * (dm >= -0.2f);
+        fade += 1.6f * v->gap_alpha * lit;
         int idx = (l * 2 + side) * BANK_SEGS + j;
         set_inst(C.banks, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.1f }, -atan2f(dx, dy), (t3_vec3){ 1, len * 1.04f, 1 });
-        t3_instanced_mesh_set_color_at(C.banks, idx, scale(C.p.lane[l], 0.36f * lv * fade));
+        t3_instanced_mesh_set_color_at(C.banks, idx, scale(C.p.lane[l], 0.48f * lv * fade * haze(persp(dm), 0.6f)));
       }
 
     /* the beat lines: across the river on every beat, brighter on the bar's first, riding down with the notes */
@@ -239,8 +267,15 @@ void club_update(const club_view *v) {
       int bb = (((int)bt - down) % 4 + 4) % 4;
       float s = persp(d), fade = fminf(1, (C.ahead - d) / 0.6f) * (d < 0 ? fmaxf(0, 1 + d / PAST) : 1);
       set_inst(C.ticks, idx, on_river(l, d, 0, -0.15f), 0, (t3_vec3){ RIVER_W * s, s, 1 });
-      t3_instanced_mesh_set_color_at(C.ticks, idx, scale(C.p.lane[l], (bb == 0 ? 0.5f : 0.26f) * lv * fade));
+      t3_instanced_mesh_set_color_at(C.ticks, idx, scale(C.p.lane[l], (bb == 0 ? 0.5f : 0.26f) * lv * fade * haze(s, 0.45f)));
     }
+
+    /* a long wait's front: a line across the river where the banks' light has reached, climbing as the wait passes */
+    if (v->gap_alpha > 0) {
+      float fd = v->gap_fill * C.ahead, s = persp(fd);
+      set_inst(C.front, l, on_river(l, fd, 0, -0.12f), 0, (t3_vec3){ RIVER_W * 1.06f * s, s, 1 });
+      t3_instanced_mesh_set_color_at(C.front, l, scale(C.p.lane[l], 0.8f * v->gap_alpha * dim));
+    } else hide(C.front, l);
 
     /* the gate: a bar across the river at the hit line, lit while the river plays; it blooms on a hit and a press
      * lifts it a little; behind it the flare, a soft glow that swells and fades */
@@ -255,31 +290,39 @@ void club_update(const club_view *v) {
   changed(C.flow);
   changed(C.banks);
   changed(C.ticks);
+  changed(C.front);
   changed(C.gates);
   changed(C.flare);
 
-  /* the notes: up their river by how many beats away they are, nearer and larger as they come, and over the last beat
-   * they condense: denser characters (+ # @ on the beat) on a smaller block, the light (area times brightness) the
-   * same, so a run of notes riding down is a steady light, never a flicker (the flash check's regular-flicker bound);
-   * a played note opens out at the gate and fades, a missed one greys and drifts on down */
+  /* the notes: up their river by how many beats away they are, in the river's perspective (small far off, growing all
+   * the way to the gate), a little brighter far off where they are smaller than a character, and no brighter as they
+   * near the gate: their light there grows only with their size, so a run of notes riding down is a steady light,
+   * never a burst on each beat (the flash check's regular-flicker bound); a played note opens out at the gate and
+   * fades, a missed one greys and drifts on down */
   int cnt[LANES] = { 0 };
+  C.probe_n = 0;
   for (int i = 0; v->notes && i < v->count; i++) {
     float nb = song_beat_at(v->s, (float)v->notes[i].ms), ahead = nb - beat;
     if (ahead > C.ahead) break;
     uint8_t st = v->state ? v->state[i] : NOTE_PENDING;
+    if (st == NOTE_SKIPPED) st = NOTE_PENDING;
     float since = now - (float)v->notes[i].ms; /* a played note fades over 400 ms: never gone in a frame */
-    if ((st == NOTE_HIT && since > 400) || ahead < -PAST) continue;
+    if ((st == NOTE_HIT && since > 400) || st == NOTE_GONE || ahead < -PAST) continue;
     int l = v->notes[i].lane;
     if (cnt[l] >= MAX_NOTES_SHOWN) continue;
     float in = fminf(1, (C.ahead - ahead) / 0.5f);    /* they fade in at the far end */
-    float near = ahead > 0 ? fmaxf(0, 1 - ahead) : 1; /* 0 a beat away .. 1 on the beat */
     float nl = v->note_light > 0 ? v->note_light : 1, nb0 = NB0 * nl;
-    float d = ahead, s = persp(ahead), size = s * sqrtf(nb0 / (nb0 + NB1 * near * near));
-    float bright = (nb0 + NB1 * near * near) * in;
-    if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = s * 0.8f;
+    float d = ahead, s = persp(ahead), far = fminf(1, fmaxf(0, (1 - s) / (1 - FAR)));
+    float size = note_size(s), bright = nb0 * (1 + NB_FAR * far) * in;
+    if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = note_size(s) * 0.8f;
     if (st == NOTE_HIT) { /* played: it stays at the gate, opens out and fades */
       float f = fmaxf(0, 1 - since / 400.0f);
-      d = 0, bright = (nb0 + NB1) * f, size = sqrtf(nb0 / (nb0 + NB1)) + 0.5f * (1 - f); /* from the size it had */
+      d = 0, bright = nb0 * f, size = note_size(1) * (1 + 0.5f * (1 - f)); /* from the size it had */
+    }
+    if (st == NOTE_PENDING && C.probe_n < PROBE_MAX) { /* what the size gate reads: where the note is and how big */
+      float cx, cy, k = 1080.0f * 0.5f / VIEW_HALF_H * (C.zoom > 0 ? C.zoom : 1);
+      to_canvas(on_river(l, d, 0, 0), 1920, 1080, &cx, &cy);
+      C.probe[C.probe_n++] = (struct probe){ (uint8_t)l, ahead, cy, size * NOTE_W[l] * k, bright };
     }
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
     set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });
@@ -395,4 +438,26 @@ void club_lane_rgb(int lane, float rgb[3]) {
   if (m <= 0) m = 1;
   /* a little lighter than the river, so the HUD's text reads on its box */
   rgb[0] = 0.25f + 0.75f * c.r / m, rgb[1] = 0.25f + 0.75f * c.g / m, rgb[2] = 0.25f + 0.75f * c.b / m;
+}
+
+/* `notes`: the notes on the rivers as last drawn ({lane, ahead in beats, y and width in pixels of a 1920 x 1080 frame,
+ * brightness}); `notescale game|flat|reverse`: how a note's size follows its distance (flat and reverse are the size
+ * gate's controls, tests/beatsync-depth.mjs) */
+static void cmd_notes(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  float gx, gy;
+  to_canvas(on_river(0, 0, 0, 0), 1920, 1080, &gx, &gy);
+  cw_reply_printf(r, "{\"notescale\":%d,\"ahead\":%.3f,\"gate_y\":%.1f,\"notes\":[", C.notescale, C.ahead, gy);
+  for (int i = 0; i < C.probe_n; i++)
+    cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"y\":%.1f,\"px\":%.2f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].y, C.probe[i].px, C.probe[i].bright);
+  cw_reply_printf(r, "]}");
+}
+static void cmd_notescale(int argc, const char **argv, cw_reply *r) {
+  if (argc < 2) { cw_reply_error(r, "notescale game|flat|reverse"); return; }
+  C.notescale = !strcmp(argv[1], "flat") ? 1 : !strcmp(argv[1], "reverse") ? 2 : 0;
+  cw_reply_printf(r, "{\"notescale\":%d}", C.notescale);
+}
+void club_register_debug(void) {
+  cw_debug_command("notes", "notes: the notes on the rivers as last drawn (lane, beats ahead, y and width in pixels) (src/club.c)", cmd_notes);
+  cw_debug_command("notescale", "notescale game|flat|reverse: how a note's size follows its distance (the size gate's controls)", cmd_notescale);
 }

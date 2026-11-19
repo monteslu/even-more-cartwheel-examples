@@ -5,11 +5,12 @@
  * denser character (` .:-=+*#%@`). What the scene shows:
  *   - three rivers side by side, as the buttons are: kick left (west), clap middle (south), bass right (east); each a
  *     current of characters streaming down to a gate near the bottom, the notes riding it down to reach the gate
- *     exactly on their time, growing and brightening as they come (+ to # to @);
+ *     exactly on their time, small far off and growing as they come, on a highway receding toward a horizon;
  *   - the music in the field: a shockwave on every kick, sparks thrown off the clap's gate by every clap, a bass
  *     waveform along the bottom, a slow field of faint glyphs behind everything from the song's energy;
- *   - how the player is doing: a hit blooms the gate and surges its river, a missed instrument's river dims until it
- *     is back, a streak brightens everything. */
+ *   - how the player is doing: a hit blooms the gate and surges its river, a missed instrument's river dims for the
+ *     beat its track is down, a streak brightens everything;
+ *   - a long wait for notes: the banks fill with light as it passes. */
 #ifndef BEATSYNC_CLUB_H
 #define BEATSYNC_CLUB_H
 
@@ -18,7 +19,8 @@
 
 #include "song.h"
 
-enum { NOTE_PENDING, NOTE_HIT, NOTE_MISSED };
+enum { NOTE_PENDING, NOTE_HIT, NOTE_MISSED, NOTE_SKIPPED /* the autopilot lets it go by (drawn as pending) */,
+       NOTE_GONE /* cut out of the chart (the `hole` request: the wait gate's long wait) */ };
 
 typedef struct club_view {
   const song *s;
@@ -39,6 +41,8 @@ typedef struct club_view {
   float note_light;       /* a note's light, 1 the default: brighter where notes come at most once a beat a river (Easy),
                            * so their passing is never a regular flicker over 3 Hz */
   float t;                /* seconds since start (slow motion) */
+  float gap_fill;         /* 0..1: how far through a long wait for notes (the banks fill from the gate up as it passes) */
+  float gap_alpha;        /* 0..1: the wait's indicator, swelling in and fading out */
 } club_view;
 
 void club_build(void);         /* once the scene is up (the first render) */
@@ -51,6 +55,7 @@ void club_center_screen(float canvas_w, float canvas_h, float *x, float *y, floa
  * layout gate's control (the `lanes` debug request) changes it, to prove the gate can see a wrong layout */
 void club_set_place(const int place[LANES]);
 int club_place(int lane);
+void club_register_debug(void); /* the `notes` and `notescale` debug requests (the size gate) */
 /* the instrument's colour in the palette showing now (the HUD's prompts and judgements match the river) */
 void club_lane_rgb(int lane, float rgb[3]);
 

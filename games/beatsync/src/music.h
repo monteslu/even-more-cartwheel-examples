@@ -1,5 +1,5 @@
 /* The song playing: its four tracks started on one mixer frame, the song clock read from the audio, and the
- * kick, clap and bass tracks ducked on a miss (docs/DESIGN.md "Timing in the game"). */
+ * kick, clap and bass tracks punched by a hit and dipped by a miss (docs/DESIGN.md "Timing in the game"). */
 #ifndef BEATSYNC_MUSIC_H
 #define BEATSYNC_MUSIC_H
 
@@ -23,9 +23,13 @@ double music_raw_ms(void); /* the audio's position as of the last mixed block (f
 bool music_playing(void);
 bool music_ended(void);    /* every track has played to its end */
 const song *music_song(void);
-/* A miss ducks the lane's track (a short fade down with a low-pass sweep) until a hit brings it back. */
-void music_duck(int lane, bool ducked);
-float music_lane_level(int lane); /* 0..1, the track's level as it is heard (debug field, visuals) */
+/* The lanes in play (player true, from the next music_play): a little under the record between hits, punched to full
+ * by a hit; a miss drops that lane alone and it recovers over a beat. false (the demo): every lane at full. */
+void music_set_player(bool player);
+void music_hit(int lane);
+void music_miss(int lane);
+float music_lane_level(int lane); /* 0..1, how far a lane is from a miss (1 none): the river's light */
+float music_lane_gain(int lane);  /* the lane's level as it is heard, 0..1 (debug field lane.gain) */
 void music_set_fade(float level, float seconds); /* the whole song (the failed song's fade out) */
 void music_register_debug(void); /* the `solo` debug command */
 

@@ -142,12 +142,13 @@ game.
 A house-music rhythm game for one player on three buttons: you are the rhythm
 section of an instrumental house track, playing the kick, the clap and the
 bass on the three lower face buttons, and the song plays the way you play it.
-Each part sounds at full volume while you hit it; a miss ducks it until your
-next hit. Notes are placed and judged on the song's own audio clock (Perfect
+Each note you hit punches its part up; a miss drops only that part, which
+comes back by itself over a beat. Notes are placed and judged on the song's own audio clock (Perfect
 within 35 ms), with a calibration screen for the screen and speaker. Every
 frame is a note highway drawn in neon characters, Detexto's ASCII pass: three
 rivers side by side as the buttons sit (kick left, clap middle, bass right),
-each note riding its river down to the gate on its beat; a hit blooms the gate
+each a road receding toward a horizon, its notes small far off and growing as
+they ride down to the gate on their beat; a hit blooms the gate
 and surges the river, kicks send shockwaves of characters across the field,
 claps throw sparks, and the bass is a waveform along the bottom. Six songs from 121 to 129
 BPM on Easy, Medium and Hard, with scores, grades and bests saved. The song
