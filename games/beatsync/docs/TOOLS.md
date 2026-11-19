@@ -21,7 +21,6 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 ## Adding a song
 
 1. **Make the track**: an instrumental house track (no vocals, or the vocals are thrown away).
-  
 2. **Split it in Loukai**: it writes an NI Stems `.stem.mp4` (master, drums, bass, other, vocals; AAC). Keep that file
    outside the repository; it is never committed.
 3. **Make the package**: `node tools/make-song.mjs "/path/Song Name.stem.mp4" --out songs/song-id --title "Song
