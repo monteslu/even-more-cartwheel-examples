@@ -65,7 +65,7 @@ for (const gpu of GPUS) {
   // frame, box-filtered, WCAG 2.3.1 and Harding), with its own control (an 8 Hz strobe mixed in) that must fail
   if (CFG.picture && !argv.includes('--no-picture')) {
     const all = songs(), most = all.reduce((a, b) => (b.charts.hard.length > a.charts.hard.length ? b : a));
-    const songsHard = argv.includes('--song') ? [all.find((x) => x.id === argv[argv.indexOf('--song') + 1])] : [...new Set([densest().song, most])];
+    const songsHard = argv.includes('--song') ? [all.find((x) => x.id === argv[argv.indexOf('--song') + 1])] : [densest().song, most].filter((s, i, a) => a.findIndex((x) => x.id === s.id) === i);
     const diffs = argv.includes('--diff') ? [argv[argv.indexOf('--diff') + 1]] : ['hard', 'easy'];
     const pick = diffs.flatMap((diff) => (diff === 'hard' ? songsHard : songsHard.slice(0, 1)).map((song) => ({ song, diff })));
     for (const { song, diff } of pick) {

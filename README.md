@@ -137,7 +137,7 @@ game.
 
 ### beatsync
 
-![beatsync: three rivers of neon characters side by side, the notes riding down to the gates, a Perfect under the kick gate](docs/screenshots/beatsync.jpg)
+![beatsync: three rivers of neon characters receding toward a horizon, the notes small far off and growing as they ride down to the gates, a Perfect under the bass gate](docs/screenshots/beatsync.jpg)
 
 A house-music rhythm game for one player on three buttons: you are the rhythm
 section of an instrumental house track, playing the kick, the clap and the

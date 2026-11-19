@@ -15,7 +15,7 @@
 // The CONTROL must fail: the same bot ignoring the cue (it presses a lane at random on a steady pulse of its own, as
 // a player who cannot read the rivers would). A control that clears the song means the song clears itself.
 //
-//   node tests/beatsync-newcomer.mjs [--gpu gl|webgpu|both] [--input pad|keys] [--seed N] [--no-control]
+//   node tests/beatsync-newcomer.mjs [--gpu gl|webgpu|both] [--input pad|keys] [--seed N] [--no-control] [--song <index>] [--max-seconds N]
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ROOT } from './lib/romdev.mjs';
@@ -46,8 +46,8 @@ async function play(gpu, input, seed, blind) {
   const idle = (frames) => ({ pads: [{ buttons: [] }], frames });
   const stopWhen = { field: 'game.screen', equals: SCREEN.results };
   try {
-    let f = await enterSong(r, { song: CFG.song ?? 0, diff: CFG.difficulty ?? 0 }, LOOK);
-    const t0 = r.now(), limit = t0 + Math.round((CFG.maxSeconds || 240) * 60);
+    let f = await enterSong(r, { song: +opt('song', CFG.song ?? 0), diff: CFG.difficulty ?? 0 }, LOOK);
+    const t0 = r.now(), limit = t0 + Math.round(+opt('max-seconds', CFG.maxSeconds || 240) * 60);
     const pressF = Math.max(2, Math.round(HUMAN.pressMs / FRAME_MS));
     while (r.now() < limit && f['game.screen'] === SCREEN.play) {
       let segs;

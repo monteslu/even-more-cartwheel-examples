@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.32.0
+
+- **beatsync**'s rivers recede in true perspective: each is a road going away toward a horizon above the screen, its
+  far end high up and a quarter of its width at the gate, the current, banks and beat lines fading into a haze there.
+  A river shows twice the beats it did (Easy 8, Medium 6.4, Hard 5.2), packed toward the horizon, while a note covers
+  its last beat within about 10% of the distance it did, so the timing reads as before. Notes take the road's
+  perspective: small far off and growing all the way to the gate, with no brighter burst on the beat (their light
+  near the gate grows only with their size), and the flash checks pass on the densest songs.
+- **beatsync**'s mix answers the player: between hits the kick, clap and bass sit a little under the record with
+  their top softened, and every hit punches its part to full and opens it, falling back over a quarter second (on
+  Easy the kicks you play stand about 4 dB over the ones you do not). A miss now drops only the part missed, about
+  13 dB with a low-pass, and it comes back by itself over a beat or at the next hit, so a few misses never empty the
+  mix; the other track and the song's level never move in play.
+- **beatsync** never keeps a player waiting: play starts 8 beats before the first note of the level chosen (after the
+  count-in), and the five songs are re-charted so no level leaves more than two bars without a note: in breaks
+  and intros the charts play what is there (claps and hats on the clap lane, bass onsets, and where the drums and bass
+  are silent the other track's chords and onsets on the bass lane), and every level's first note comes within a beat
+  of the song's first sound. The song tooling enforces it (`make-song --charts-only` re-charts a package without
+  touching its tracks; `check-songs` holds the longest gap and the first note, a chart with a 30 s hole as its
+  control). If a wait of more than three bars remains, the banks fill with light as it passes
+  and a countdown over its last four bars says when the notes come back.
+- New beatsync gates through romdev, each with a control that must fail: `tests/beatsync-depth.mjs` (notes grow from
+  the far end to the gate in every lane, twice the beats on screen, the last beat's distance; controls: every note one
+  size, notes shrinking as they come), `tests/beatsync-mix.mjs` (from the recorded sound: a kick miss dips only the
+  kick and it recovers, the clap, bass and other tracks within 0.5 dB; a hit kick stands 3 dB over an unplayed one;
+  controls: a miss that ducks every lane, the reward off), `tests/beatsync-wait.mjs` (every song and level starts
+  within 8 beats of its first note; the wait indicator shows in a long wait and is gone once notes are back;
+  controls: songs played from the top, the indicator always up). New launcher art and README picture.
+
 ## 0.31.0
 
 - **beatsync** plays on a note highway: three rivers of neon characters side by side, laid out as the buttons sit, the

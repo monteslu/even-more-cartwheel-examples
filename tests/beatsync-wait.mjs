@@ -46,7 +46,7 @@ async function starts(control) {
         const f = (await r.run([{ pads: [{ buttons: [] }], frames: 2 }], { fields: ['song.from_ms', 'cue.ms', 'notes.total'] })).fields;
         const beat = 60000 / s.bpm, first = s.charts[d][0].t * 1000;
         const wait = f['cue.ms'] - f['song.from_ms'];
-        const allowed = 8 * beat + (f['song.from_ms'] === 0 ? 2000 : 0) + 30;
+        const allowed = 8.25 * beat + (f["song.from_ms"] === 0 ? 2000 : 0); // the song's own beats run a little long or short of its BPM
         out.push({ id: s.id, d, from: f['song.from_ms'], cue: f['cue.ms'], first, wait, allowed, ok: wait <= allowed && Math.abs(f['cue.ms'] - first) < 2 });
       }
   } finally {
