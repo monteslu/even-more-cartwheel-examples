@@ -1,8 +1,10 @@
 // beatsync's look, on romdev, GL and WebGPU: the frame is neon characters on black (the ASCII pass, src/ascii.c), not the
 // shapes under them (the measure of tests/detexto-look.mjs, with a stroke test added). beatsync_auto plays the first
-// song on Hard; in the drop (frame 900) the screenshot must be mostly black (at least 50% of the pixels under luma
-// 14), carry lit characters (at least 3% of the pixels, at most 40%) drawn as strokes (at most 15% of the bright pixels
-// inside a fully lit 9 x 9 box: characters are lines, not filled shapes), and the character grid must cover the frame.
+// song on Hard; in the drop (frame 900) the play field (the middle 60% of the width, between the HUD's columns: the
+// score, the song and the crowd meter are text and bars, not characters) must be mostly black (at least 50% of the
+// pixels under luma 14), carry lit characters (at least 3% of the pixels, at most 40%) drawn as strokes (at most 15%
+// of the bright pixels inside a fully lit 9 x 9 box: characters are lines, not filled shapes), and the character grid
+// must cover the frame.
 // The CONTROL must fail: the same frame with the pass off (the `ascii off` request) is the plain picture of filled
 // shapes, which the same measure must reject.
 //   node tests/beatsync-look.mjs [--gpu gl|webgpu|both]
@@ -19,7 +21,10 @@ mkdirSync(OUT, { recursive: true });
 const AT = 900;
 
 function stats(path) {
-  const { w, h, rgba } = readImage(path);
+  const img = readImage(path);
+  const { h } = img, x0 = Math.round(img.w * 0.2), w = Math.round(img.w * 0.6);
+  const rgba = new Uint8Array(w * h * 4);
+  for (let y = 0; y < h; y++) rgba.set(img.rgba.subarray((y * img.w + x0) * 4, (y * img.w + x0 + w) * 4), y * w * 4);
   const L = new Float32Array(w * h);
   let black = 0, lit = 0, edge = 0, bright = 0;
   for (let i = 0; i < w * h; i++) {

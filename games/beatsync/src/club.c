@@ -43,8 +43,8 @@
 #define FIELD_W 54
 #define FIELD_H 28
 /* a note's brightness far off (NB0) and what it gains by its beat (NB1) */
-#define NB0 1.1f
-#define NB1 1.4f
+#define NB0 0.6f
+#define NB1 2.0f
 
 typedef struct pal { t3_color lane[LANES], bg; } pal;
 /* a palette per section: intro violet, build warming, drop hot magenta and orange, break cool cyan, outro blue */
@@ -145,9 +145,9 @@ void club_build(void) {
   C.zoom = 1, C.spread = 1, C.ahead = 3;
   for (int l = 0; l < LANES; l++) C.place[l] = l;
   /* the notes: kick round, clap a diamond, bass a long bar across its river */
-  C.notes[LANE_KICK] = instanced(t3_circle_geometry_new(0.85f, 24), MAX_NOTES_SHOWN);
-  C.notes[LANE_CLAP] = instanced(t3_circle_geometry_new(1.0f, 4), MAX_NOTES_SHOWN);
-  C.notes[LANE_BASS] = instanced(t3_plane_geometry_new(2.3f, 0.75f, 1, 1), MAX_NOTES_SHOWN);
+  C.notes[LANE_KICK] = instanced(t3_circle_geometry_new(0.72f, 24), MAX_NOTES_SHOWN);
+  C.notes[LANE_CLAP] = instanced(t3_circle_geometry_new(0.88f, 4), MAX_NOTES_SHOWN);
+  C.notes[LANE_BASS] = instanced(t3_plane_geometry_new(2.0f, 0.66f, 1, 1), MAX_NOTES_SHOWN);
   C.flow = instanced(t3_plane_geometry_new(0.55f, 0.12f, 1, 1), FLOW * LANES);
   C.banks = instanced(t3_plane_geometry_new(0.14f, 1.0f, 1, 1), BANK_SEGS * 2 * LANES);
   C.ticks = instanced(t3_plane_geometry_new(1.0f, 0.1f, 1, 1), TICKS * LANES);
@@ -247,10 +247,10 @@ void club_update(const club_view *v) {
     float pr = v->press[l];
     t3_vec3 g = on_river(l, 0, 0, 0.06f);
     set_inst(C.gates, l, g, 0, (t3_vec3){ (RIVER_W + 0.5f) * (1 + 0.08f * fl), 1 + 0.5f * fl + 0.2f * pr, 1 });
-    t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * dim + 1.1f * fl * dim));
+    t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * dim + 0.55f * fl * dim));
     float fs = 0.6f + 1.0f * fl + 0.15f * pr;
     set_inst(C.flare, l, (t3_vec3){ g.x, g.y, 0.04f }, 0, (t3_vec3){ fs * 1.7f, fs * 0.8f, 1 });
-    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.9f * fl + 0.12f * pr) * dim));
+    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * dim));
   }
   changed(C.flow);
   changed(C.banks);
@@ -258,8 +258,10 @@ void club_update(const club_view *v) {
   changed(C.gates);
   changed(C.flare);
 
-  /* the notes: up their river by how many beats away they are, growing as they come and brightening over the last
-   * beat (+ # @ on the beat); a played note opens out at the gate and fades, a missed one greys and drifts on down */
+  /* the notes: up their river by how many beats away they are, nearer and larger as they come, and over the last beat
+   * they condense: denser characters (+ # @ on the beat) on a smaller block, the light (area times brightness) the
+   * same, so a run of notes riding down is a steady light, never a flicker (the flash check's regular-flicker bound);
+   * a played note opens out at the gate and fades, a missed one greys and drifts on down */
   int cnt[LANES] = { 0 };
   for (int i = 0; v->notes && i < v->count; i++) {
     float nb = song_beat_at(v->s, (float)v->notes[i].ms), ahead = nb - beat;
@@ -271,12 +273,12 @@ void club_update(const club_view *v) {
     if (cnt[l] >= MAX_NOTES_SHOWN) continue;
     float in = fminf(1, (C.ahead - ahead) / 0.5f);    /* they fade in at the far end */
     float near = ahead > 0 ? fmaxf(0, 1 - ahead) : 1; /* 0 a beat away .. 1 on the beat */
-    float d = ahead, s = persp(ahead), size = s;
+    float d = ahead, s = persp(ahead), size = s * sqrtf(NB0 / (NB0 + NB1 * near * near));
     float bright = (NB0 + NB1 * near * near) * in;
     if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = s * 0.8f;
     if (st == NOTE_HIT) { /* played: it stays at the gate, opens out and fades */
       float f = fmaxf(0, 1 - since / 400.0f);
-      d = 0, bright = (NB0 + NB1) * f, size = 1 + 0.5f * (1 - f);
+      d = 0, bright = (NB0 + NB1) * f, size = sqrtf(NB0 / (NB0 + NB1)) + 0.5f * (1 - f); /* from the size it had */
     }
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
     set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });
@@ -325,7 +327,7 @@ void club_update(const club_view *v) {
     if (age < 0 || age > 0.9f) { hide(C.sparks, i); continue; }
     float x = C.spark[i].x + C.spark[i].vx * age, y = C.spark[i].y + C.spark[i].vy * age - 4.5f * age * age;
     set_inst(C.sparks, i, (t3_vec3){ x, y, 0.1f }, age * 3, (t3_vec3){ 1, 1, 1 });
-    float b = (1 - age / 0.9f) * 1.4f * dim;
+    float b = (1 - age / 0.9f) * 0.6f * dim;
     t3_instanced_mesh_set_color_at(C.sparks, i, scale(mix(C.p.lane[LANE_CLAP], (t3_color){ 1, 1, 0.9f }, 0.3f), b));
   }
   changed(C.sparks);

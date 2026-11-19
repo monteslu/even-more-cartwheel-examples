@@ -2,9 +2,9 @@
 //
 // A bot plays the real cart through romdev, on GL and WebGPU, as a newcomer would:
 //   - it reaches the song through the menus with presses (Play on the title, the first song, Easy);
-//   - it knows only the on-screen cue: the next note on the sequencer ring (which ring it is on, and how far round
-//     it still has to go to 12 o'clock, as the debug fields cue.lane, cue.ms and song.ms give them: what the ring
-//     draws) and the how-to of the count-in (each button beside its ring). Never the chart;
+//   - it knows only the on-screen cue: the next note on the rivers (which river it rides, and how far it still has to
+//     come down to the gate, as the debug fields cue.lane, cue.ms and song.ms give them: what the rivers draw) and the
+//     how-to of the count-in (each button under its river). Never the chart;
 //   - it is a human, not a machine: it presses each note with a timing error (human.sigmaMs about a late bias,
 //     human.biasMs) and holds the button about human.pressMs; one romdev request a note (the frames up to and through
 //     the press, returning the next cue);
@@ -13,7 +13,7 @@
 // It passes when the song is cleared (tests/beatsync-game.json newcomer.goal: the crowd never left) within maxSeconds.
 //
 // The CONTROL must fail: the same bot ignoring the cue (it presses a lane at random on a steady pulse of its own, as
-// a player who cannot read the rings would). A control that clears the song means the song clears itself.
+// a player who cannot read the rivers would). A control that clears the song means the song clears itself.
 //
 //   node tests/beatsync-newcomer.mjs [--gpu gl|webgpu|both] [--input pad|keys] [--seed N] [--no-control]
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -83,7 +83,7 @@ for (const gpu of GPUS) {
   }
   if (!argv.includes('--no-control')) {
     const res = await play(gpu, "pad", seed0, true); // the cue-ignoring control is the same on any device
-    if (res.done) { console.log(`FAIL newcomer control (${gpu}, cue ignored) cleared the song: the gate cannot tell a player who reads the rings from one who does not`); failed++; }
+    if (res.done) { console.log(`FAIL newcomer control (${gpu}, cue ignored) cleared the song: the gate cannot tell a player who reads the rivers from one who does not`); failed++; }
     else console.log(`ok   newcomer control (${gpu}, cue ignored): did not clear the song, as it must (${res.failed ? 'the crowd left' : 'not finished'}, ${res.hit} hit, ${res.miss} missed)`);
   }
 }

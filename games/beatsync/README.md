@@ -12,10 +12,14 @@ characters.
 - **On the audio clock**: notes are placed and judged on the song's own position (the mixer's frames played), not on
   frames: Perfect within 35 ms, Good within 70. A calibration screen (tap along to a click) saves the offset of this
   screen and speaker.
-- **The look**: a ring per instrument (kick inner, clap middle, bass outer) turns with the song, so each note reaches
-  12 o'clock exactly on its beat, growing from `+` to `#` to `@` as it comes. Each kick sends a shockwave of characters
-  out from the centre, claps throw sparks, the bass is a waveform along the bottom, and a field of glyphs behind it all
-  follows the song's energy; each section has its palette. The ASCII pass is Detexto's.
+- **The look**: a note highway of three rivers side by side, laid out as the buttons are: kick on the left (west),
+  clap in the middle (south), bass on the right (east), so which button a note wants is where its river is. Each river
+  is a current of characters streaming down to a gate near the bottom; a note rides it down, nearer and larger as it
+  comes, and reaches the gate exactly on its beat, condensing from `+` to `#` to `@`. A hit blooms the gate and surges
+  the river; a miss dims the river until the next hit. Each kick sends a shockwave of characters across the field,
+  claps throw sparks off their gate, the bass is a waveform along the bottom, and a field of glyphs behind it all
+  follows the song's energy; each section has its palette. Easy shows four beats of each river, Medium a little over
+  three, Hard a little over two and a half, so Easy is the slowest to read. The ASCII pass is Detexto's.
 - **Songs**: six built in (`songs/<id>/`: four sample-aligned Ogg Vorbis stems and their charts), from a short
   synthetic warm-up to Acid House Rave at 129 BPM; Easy, Medium and Hard each; scores, grades and bests saved per song
   and level. `songs/order.txt` sets the order (slowest and sparsest first).
@@ -61,8 +65,9 @@ each has a control that must fail:
 | Gate | Passes when | Its control (must fail) |
 |---|---|---|
 | `tests/beatsync-sync.mjs` | a bot that reads the song clock once, then presses every note of Test Groove on Hard by the wall clock, gets every note Perfect; the recorded kick (romdev's audio record, GL) lands on the game's clock | every press 50 ms late (no Perfect); the chart moved 80 ms against the recording |
-| `tests/beatsync-newcomer.mjs` | a bot that reads only the next note on the rings, with a human's timing error, reaches the song through the menus on a pad and clears it on Easy | the same bot ignoring the cue |
-| `tests/beatsync-look.mjs` | the frame is neon characters on black, drawn as strokes, the grid covering the frame | the ASCII pass off |
+| `tests/beatsync-newcomer.mjs` | a bot that reads only the next note on the rivers, with a human's timing error, reaches the song through the menus on a pad and clears it on Easy | the same bot ignoring the cue |
+| `tests/beatsync-look.mjs` | the play field is neon characters on black, drawn as strokes, the grid covering the frame | the ASCII pass off |
+| `tests/beatsync-layout.mjs` | each button's press lights its own river, west's left of south's left of east's (from the picture) | the rivers swapped (`lanes 2 1 0`) |
 | `tests/beatsync-flash.mjs` | every effect's flash meter reads at most 3 flashes a second over a whole song, and romdev's picture check (WCAG 2.3.1, Harding) passes over the densest songs played whole on Hard (Test Groove, the most notes a second, and Acid House Rave, the most notes) | every effect strobing; the picture with an 8 Hz strobe mixed in |
 | `tests/beatsync-programs.mjs` | the program table has every draw state the game asks for, at every preset and in a player's first frames | a sphere in a material no table has |
 | `tests/beatsync-text.mjs` | text at least the engine's size floor on every screen | the same screens at half text size |

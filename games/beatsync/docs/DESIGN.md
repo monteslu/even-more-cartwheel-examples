@@ -29,24 +29,37 @@ needs something different.
   a lead part. The groove is the content: house loops in 1, 2 and 4 bars that change at the builds, drops and breaks,
   so the fun is locking into a loop and adapting when the section changes. Doing well sounds like the track getting
   fuller; a miss thins the mix, never a harsh error sound.
-- **Look: a step sequencer in neon ASCII.** Every frame is drawn as glowing characters on black (the ASCII pass from
-  Detexto, `games/detexto/src/ascii.c`, copied in and adapted): the game draws a bold
-  scene of shapes, glow and colour to an offscreen target and the pass turns each cell into a character by brightness
-  (` .:-=+*#%@`), tinted neon. The effects are the point: make them really cool.
-  - **The sequencer ring.** 16 steps a bar round a circle, one ring per instrument (kick inner, clap middle, bass
-    outer); upcoming notes are dense glowing blocks; a playhead sweeps round with a fading tail. The hit point is 12
-    o'clock, where a note swells from `+` to `#` to `@` exactly on its beat (the cue is the character growing denser,
-    not only its place). The next section's pattern fades in a bar ahead.
-  - **The music drives the field.** Each kick sends a shockwave of characters out from the centre (`@ # * .`), so the
-    screen breathes on four-on-the-floor; a clap throws sparks (`' * +`) that drift off; the bass is a waveform of
-    characters along the bottom that thickens while the bass plays and thins when it is missed out; the other stem's
-    energy sets a slow field of faint glyphs behind everything, sparse in a break and dense in a drop.
-  - **Playing well or badly.** A miss dims that instrument's ring to `.` until it is back. A streak climbs the
-    character set and the brightness; a long streak in a drop fills the screen dense and bright. Each section has its
+- **Look: a note highway in neon ASCII.** Every frame is drawn as glowing characters on black (the ASCII pass from
+  Detexto, `games/detexto/src/ascii.c`, copied in and adapted): the game draws a bold scene of shapes, glow and colour
+  to an offscreen target and the pass turns each cell into a character by brightness (` .:-=+*#%@`), tinted neon. The
+  effects are the point: make them really cool.
+  - **Three rivers, laid out as the buttons.** One river per instrument, side by side with clear gaps between them and
+    centred, the HUD to the sides: **kick on the left** (the west button), **clap in the middle** (south), **bass on the
+    right** (east). Which button a note wants is where its river is: position alone carries the mapping, so no button
+    icon stays on screen in play (the count-in shows each button under its river, then they go).
+  - **The current and the gate.** Each river is a current of dim characters streaming down at the notes' speed between
+    two banks, crossed by a faint line on every beat (brighter on the bar). A gate, a bright bar across the river, marks
+    the hit line near the bottom of the screen. The highway recedes a little: a river narrows toward the top, so a note
+    far off is small and grows as it comes.
+  - **The notes** ride the current down and reach the gate exactly on their beat (kick round, clap a diamond, bass a
+    bar across its river). Over the last beat a note condenses: denser characters (`+` to `#` to `@`) on a smaller
+    block, its light (area times brightness) the same, so a run of notes riding down is a steady light, never a regular
+    flicker. How far ahead a river shows notes is set per difficulty so a newcomer reads Easy comfortably: four beats
+    on Easy, 3.2 on Medium, 2.6 on Hard (about two seconds, 1.6 and 1.3 at 120 BPM). The timing windows do not change.
+  - **The music drives the field.** Each kick sends a shockwave of characters across the field from below the gates,
+    faint behind the rivers, so the screen breathes on four-on-the-floor; a clap throws sparks (`' * +`) off the clap's
+    gate that drift and fall; the bass is a waveform of characters along the bottom, under the gates, that thickens
+    while the bass plays and thins when it is missed out; the other stem's energy sets a slow field of faint glyphs
+    behind everything, sparse in a break and dense in a drop.
+  - **Playing well or badly.** A hit blooms the gate and surges its river around and below it (the current brightens
+    and widens, swelling and fading). A miss dims that instrument's river to dots until a hit brings it back. A streak
+    brightens the rivers and the field; a long streak in a drop fills the screen dense and bright. Each section has its
     own palette (break cool cyan, build warming, drop hot magenta and orange), crossfading over a bar.
+  - **The title** has the rivers spread wide round the title's box, the first song playing itself on them.
   - **Rules.** Every pulse swells and fades and the field brightens over several frames, never a whole-screen flick
-    (the flash rules hold at 128 BPM). Characters large enough to read on a TV across a room. The HUD and menus in
-    boxes over the field, like Detexto's. No screen shake (a hit or a miss rumbles the pad).
+    (the flash rules hold at 128 BPM, and romdev's picture check over whole songs on Hard). Characters large enough to
+    read on a TV across a room. The HUD and menus in boxes over the field, like Detexto's. No screen shake (a hit or a
+    miss rumbles the pad).
 
 ## The song package
 
