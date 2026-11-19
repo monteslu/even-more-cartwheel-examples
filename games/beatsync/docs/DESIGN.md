@@ -46,6 +46,8 @@ needs something different.
     block, its light (area times brightness) the same, so a run of notes riding down is a steady light, never a regular
     flicker. How far ahead a river shows notes is set per difficulty so a newcomer reads Easy comfortably: four beats
     on Easy, 3.2 on Medium, 2.6 on Hard (about two seconds, 1.6 and 1.3 at 120 BPM). The timing windows do not change.
+    Easy's notes are drawn brighter too: its quarter notes pass any point of a river at most about twice a second, so
+    they can stand out more than Medium's and Hard's eighths and sixteenths without a regular flicker over 3 Hz.
   - **The music drives the field.** Each kick sends a shockwave of characters across the field from below the gates,
     faint behind the rivers, so the screen breathes on four-on-the-floor; a clap throws sparks (`' * +`) off the clap's
     gate that drift and fall; the bass is a waveform of characters along the bottom, under the gates, that thickens

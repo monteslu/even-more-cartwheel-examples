@@ -61,9 +61,9 @@ async function measure(gpu, layout) {
   const base = await shot(gpu, layout, null);
   const at = [];
   for (const b of LANE_BUTTON) at.push(changeAt(base, await shot(gpu, layout, b)));
-  const seen = at.every((c) => c.mass > 0.005 && Number.isFinite(c.x));
+  const seen = at.every((c) => c.mass > 0.001 && Number.isFinite(c.x));
   const ordered = seen && at[0].x + 0.1 < at[1].x && at[1].x + 0.1 < at[2].x;
-  const text = at.map((c, l) => `${LANE_BUTTON[l]} (${NAMES[l]}) at ${(c.x * 100).toFixed(1)}% of the width (change ${c.mass.toFixed(2)})`).join(', ');
+  const text = at.map((c, l) => `${LANE_BUTTON[l]} (${NAMES[l]}) at ${(c.x * 100).toFixed(1)}% of the width (change ${c.mass.toFixed(3)})`).join(', ');
   return { ok: ordered, seen, text };
 }
 

@@ -7,11 +7,13 @@
   wants is where its river is. Each river is a current streaming down to a gate near the bottom; a note rides it down,
   nearer and larger as it comes, and reaches the gate on its beat, condensing from `+` to `#` to `@`. A hit blooms the
   gate and surges the river, a miss dims the river until the next hit, and a streak brightens the scene. Easy shows
-  four beats of each river, Medium 3.2 and Hard 2.6, so Easy reads furthest ahead; the timing windows are unchanged.
+  four beats of each river, Medium 3.2 and Hard 2.6, so Easy reads furthest ahead, and draws its notes brighter; the
+  timing windows are unchanged.
   The count-in shows each button under its river, and no button stays on screen in play. The title spreads the rivers
   round its box. A new gate, `tests/beatsync-layout.mjs`, presses each button alone and finds from the picture which
   river lit, on GL and WebGPU: west's left of south's left of east's, with the rivers swapped as the control that must
-  fail. The look gate measures the play field between the HUD's columns. New launcher art and README picture.
+  fail. The look gate measures the play field between the HUD's columns, and the flash gate's picture check adds the
+  densest song played whole on Easy. New launcher art and README picture.
 
 ## 0.30.0
 

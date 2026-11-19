@@ -42,7 +42,7 @@
 #define WAVE_COLS 72
 #define FIELD_W 54
 #define FIELD_H 28
-/* a note's brightness far off (NB0) and what it gains by its beat (NB1) */
+/* a note's brightness far off (NB0, times the view's note_light) and what it gains by its beat (NB1) */
 #define NB0 0.6f
 #define NB1 2.0f
 
@@ -226,7 +226,7 @@ void club_update(const club_view *v) {
         float fade = fminf(1, (C.ahead - dm) / 0.8f) * (dm < 0 ? fmaxf(0, 1 + dm / PAST) : 1);
         int idx = (l * 2 + side) * BANK_SEGS + j;
         set_inst(C.banks, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.1f }, -atan2f(dx, dy), (t3_vec3){ 1, len * 1.04f, 1 });
-        t3_instanced_mesh_set_color_at(C.banks, idx, scale(C.p.lane[l], 0.42f * lv * fade));
+        t3_instanced_mesh_set_color_at(C.banks, idx, scale(C.p.lane[l], 0.36f * lv * fade));
       }
 
     /* the beat lines: across the river on every beat, brighter on the bar's first, riding down with the notes */
@@ -239,7 +239,7 @@ void club_update(const club_view *v) {
       int bb = (((int)bt - down) % 4 + 4) % 4;
       float s = persp(d), fade = fminf(1, (C.ahead - d) / 0.6f) * (d < 0 ? fmaxf(0, 1 + d / PAST) : 1);
       set_inst(C.ticks, idx, on_river(l, d, 0, -0.15f), 0, (t3_vec3){ RIVER_W * s, s, 1 });
-      t3_instanced_mesh_set_color_at(C.ticks, idx, scale(C.p.lane[l], (bb == 0 ? 0.7f : 0.38f) * lv * fade));
+      t3_instanced_mesh_set_color_at(C.ticks, idx, scale(C.p.lane[l], (bb == 0 ? 0.5f : 0.26f) * lv * fade));
     }
 
     /* the gate: a bar across the river at the hit line, lit while the river plays; it blooms on a hit and a press
@@ -273,12 +273,13 @@ void club_update(const club_view *v) {
     if (cnt[l] >= MAX_NOTES_SHOWN) continue;
     float in = fminf(1, (C.ahead - ahead) / 0.5f);    /* they fade in at the far end */
     float near = ahead > 0 ? fmaxf(0, 1 - ahead) : 1; /* 0 a beat away .. 1 on the beat */
-    float d = ahead, s = persp(ahead), size = s * sqrtf(NB0 / (NB0 + NB1 * near * near));
-    float bright = (NB0 + NB1 * near * near) * in;
+    float nl = v->note_light > 0 ? v->note_light : 1, nb0 = NB0 * nl;
+    float d = ahead, s = persp(ahead), size = s * sqrtf(nb0 / (nb0 + NB1 * near * near));
+    float bright = (nb0 + NB1 * near * near) * in;
     if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = s * 0.8f;
     if (st == NOTE_HIT) { /* played: it stays at the gate, opens out and fades */
       float f = fmaxf(0, 1 - since / 400.0f);
-      d = 0, bright = (NB0 + NB1) * f, size = sqrtf(NB0 / (NB0 + NB1)) + 0.5f * (1 - f); /* from the size it had */
+      d = 0, bright = (nb0 + NB1) * f, size = sqrtf(nb0 / (nb0 + NB1)) + 0.5f * (1 - f); /* from the size it had */
     }
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
     set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });

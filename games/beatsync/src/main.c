@@ -64,6 +64,9 @@ enum { J_NONE, J_PERFECT, J_GOOD, J_MISS };
 static const char *const GRADES[] = { "S", "A", "B", "C", "D", "F" };
 /* beats of notes a river shows per difficulty: Easy slowest, so a newcomer reads a note about two seconds ahead */
 static const float AHEAD_BEATS[DIFFS] = { 4.0f, 3.2f, 2.6f };
+/* a note's light per difficulty: Easy's quarter notes pass a point of a river at most twice a second, so they can be
+ * brighter (easier to read) than Medium's and Hard's, whose eighths would pass as a 4 Hz flicker */
+static const float NOTE_LIGHT[DIFFS] = { 1.8f, 1.0f, 1.0f };
 
 typedef struct best_entry {
   uint32_t hash;
@@ -811,7 +814,7 @@ static void render(void *user, double alpha) {
     .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : G.offset_ms) : 0,
     .kick = G.pulse_drawn[LANE_KICK], .clap = G.pulse_drawn[LANE_CLAP], .bass = G.pulse_drawn[LANE_BASS],
     .kick_ms = G.pulse_last[LANE_KICK], .clap_ms = G.pulse_last[LANE_CLAP],
-    .streak = G.streak, .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .t = G.vis_t,
+    .streak = G.streak, .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .note_light = NOTE_LIGHT[G.diff], .t = G.vis_t,
   };
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];

@@ -36,6 +36,8 @@ typedef struct club_view {
   float zoom;             /* 1 in play; more brings the camera closer */
   float spread;           /* 1 in play; more moves the rivers apart (the title stands them round its box) */
   float ahead;            /* beats of notes a river shows: more is slower and read further ahead (Easy) */
+  float note_light;       /* a note's light, 1 the default: brighter where notes come at most once a beat a river (Easy),
+                           * so their passing is never a regular flicker over 3 Hz */
   float t;                /* seconds since start (slow motion) */
 } club_view;
 
