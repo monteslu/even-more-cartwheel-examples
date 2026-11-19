@@ -6,15 +6,15 @@
  *
  * The map of this file:
  *   - init(): songs, input, the shell (title, pause, settings, saves), sounds, the debug fields the checks read.
- *   - the screens of the game's own, inside the shell's play: song select (a preview of the song on the sequencer),
- *     the difficulty, play, results, and the timing calibration (tap along to a click). The title has the sequencer
+ *   - the screens of the game's own, inside the shell's play: song select (a preview of the song on the rivers),
+ *     the difficulty, play, results, and the timing calibration (tap along to a click). The title has the rivers
  *     behind it with the first song playing itself.
  *   - fixed_update(): one tick (60 a second). The song clock (music.c) is the audio's own position, so notes are
  *     drawn and judged on what is heard, not on frames.
  *   - render(): the HUD and the screens' panels, then the shell's menus.
  *
- * The picture (club.c) is a step sequencer in neon ASCII: a ring per instrument turning with the song, the notes
- * arriving at 12 o'clock on their beat, the music in the field around it; the ASCII pass (ascii.c, Detexto's) turns it
+ * The picture (club.c) is a note highway in neon ASCII: three rivers side by side as the buttons are (kick left,
+ * clap middle, bass right), the notes riding each down to its gate on their beat, the music in the field around them; the ASCII pass (ascii.c, Detexto's) turns it
  * into characters. Every pulse it shows comes from here, shaped to swell and fade and fed through a flash meter
  * (src/flash_meter.c). The HUD and the screens sit in boxes over the field.
  *
@@ -62,7 +62,8 @@
 enum { SCR_NONE, SCR_SELECT, SCR_DIFF, SCR_PLAY, SCR_RESULTS, SCR_CALIB };
 enum { J_NONE, J_PERFECT, J_GOOD, J_MISS };
 static const char *const GRADES[] = { "S", "A", "B", "C", "D", "F" };
-static const float TRAVEL_MS[DIFFS] = { 2100, 1800, 1550 };
+/* beats of notes a river shows per difficulty: Easy slowest, so a newcomer reads a note about two seconds ahead */
+static const float AHEAD_BEATS[DIFFS] = { 4.0f, 3.2f, 2.6f };
 
 typedef struct best_entry {
   uint32_t hash;
@@ -632,7 +633,7 @@ static void draw_diff(cw_vec2 cv, float size) {
   best_entry *be = best_of(s);
   static const char *const HINT[DIFFS] = { "on the beat", "eighths", "sixteenths" };
   char b[64];
-  /* three cards down the left and right of the ring: Easy and Medium left, Hard right */
+  /* three cards down the left and right of the rivers: Easy and Medium left, Hard right */
   for (int d = 0; d < DIFFS; d++) {
     float w = cv.x * 0.22f, h = cv.y * 0.22f;
     cw_rect r = { d < 2 ? cv.x * 0.04f : cv.x * 0.74f, d == 1 ? cv.y * 0.45f : cv.y * 0.18f, w, h };
@@ -675,28 +676,29 @@ static void draw_play(cw_vec2 cv, float size) {
   cw_text_style cst = ts(size * 0.75f, DIM);
   float cw_ = cw_font_measure(font(), "crowd", &cst).width;
   cw_r2d_text(font(), "crowd", cw_v2(m.x + m.w * 0.5f - cw_ * 0.5f, m.y + m.h + size * 0.3f), &cst);
-  /* the latest judgement in the middle of the ring, in its instrument's colour, rising and fading */
+  /* the latest judgement under its river's gate, in its instrument's colour, rising and fading */
   static const char *const JN[] = { "", "Perfect", "Good", "Miss" };
   int jl = -1;
   for (int l = 0; l < LANES; l++)
     if (G.judge_ticks[l] && (jl < 0 || G.judge_ticks[l] > G.judge_ticks[jl])) jl = l;
   if (jl >= 0 && !G.failed) {
-    float x, y, r, t = (float)G.judge_ticks[jl] / 40.0f;
-    club_center_screen(cv.x, cv.y, &x, &y, &r);
+    float x, y, t = (float)G.judge_ticks[jl] / 40.0f;
+    club_gate_screen(jl, cv.x, cv.y, &x, &y);
+    y += size * 1.5f;
     cw_color c = G.judge[jl] == J_MISS ? cw_rgba(1, 0.45f, 0.45f, 1) : lane_color(jl, 1);
     c.a = fminf(1, t * 2.5f);
     text_at(JN[G.judge[jl]], x, y - size * 0.7f - (1 - t) * size * 0.4f, size * (G.judge[jl] == J_PERFECT ? 1.1f : 0.95f), c, 0);
   }
-  /* how to play, in the count-in only: each button beside the ring it plays (kick inner, clap middle, bass outer).
-   * Once the song is going the rings and their notes are the only cue: no button stays on screen in play */
+  /* how to play, in the count-in only: each button under the river it plays (kick left, clap middle, bass right, as
+   * the buttons sit). Once the song is going the rivers' places are the only cue: no button stays on screen in play */
   static const char *const LP[LANES] = { "{lane_kick} kick", "{lane_clap} clap", "{lane_bass} bass" };
   if (G.song_ms < 0 && !G.failed) {
     float fade = fminf(1, (float)-G.song_ms / 300.0f);
     for (int l = 0; l < LANES; l++) {
       float hx, hy, sz = size * 0.95f;
-      club_hit_screen(l, cv.x, cv.y, &hx, &hy);
+      club_gate_screen(l, cv.x, cv.y, &hx, &hy);
       cw_vec2 ps = cw_prompt_text_size(font(), LP[l], 0, sz);
-      float x = hx + size * 3.2f + ps.x * 0.5f + (float)l * size * 1.2f, y = hy - ps.y * 0.5f;
+      float x = hx, y = hy + size * 1.0f;
       ascii_hud_rect_edge(x - ps.x * 0.5f, y, ps.x, ps.y, fade, lane_color(l, fade));
       cw_prompt_text(font(), LP[l], 0, cw_v2(x, y), sz, lane_color(l, fade), CW_ALIGN_CENTER);
     }
@@ -809,7 +811,7 @@ static void render(void *user, double alpha) {
     .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : G.offset_ms) : 0,
     .kick = G.pulse_drawn[LANE_KICK], .clap = G.pulse_drawn[LANE_CLAP], .bass = G.pulse_drawn[LANE_BASS],
     .kick_ms = G.pulse_last[LANE_KICK], .clap_ms = G.pulse_last[LANE_CLAP],
-    .streak = G.streak, .dim = menu ? 1 : 0, .zoom = G.screen == SCR_NONE ? 1.75f : 1, .t = G.vis_t,
+    .streak = G.streak, .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .t = G.vis_t,
   };
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];
@@ -847,6 +849,16 @@ static void cmd_leave(int argc, const char **argv, cw_reply *r) {
   if (G.screen != SCR_PLAY) { cw_reply_error(r, "leave: only while a song plays"); return; }
   G.leave = true;
   cw_reply_printf(r, "{\"leave\":1}");
+}
+
+/* lanes <kick> <clap> <bass>: the river each lane is drawn as (0 left, 1 middle, 2 right; the game is 0 1 2). The
+ * layout gate (tests/beatsync-layout.mjs) swaps it for its control, a layout that must fail */
+static void cmd_lanes(int argc, const char **argv, cw_reply *r) {
+  if (argc != 1 + LANES) { cw_reply_error(r, "lanes <kick> <clap> <bass> (each 0 left, 1 middle, 2 right)"); return; }
+  int p[LANES];
+  for (int l = 0; l < LANES; l++) p[l] = atoi(argv[1 + l]);
+  club_set_place(p);
+  cw_reply_printf(r, "{\"kick\":%d,\"clap\":%d,\"bass\":%d}", club_place(0), club_place(1), club_place(2));
 }
 
 #ifdef GAME_AUTOPILOT
@@ -932,6 +944,7 @@ static void init(void *user) {
   (void)lane_level_dbg, (void)lane_level_f;
   music_register_debug();
   cw_debug_command("leave", "leave: the crowd leaves the song now (the failed song, for the flash check)", cmd_leave);
+  cw_debug_command("lanes", "lanes <kick> <clap> <bass>: the river each lane is drawn as, 0 left 1 middle 2 right (the layout gate's control)", cmd_lanes);
   cw_debug_i32("song.pick", &G.pick);
 #ifdef GAME_AUTOPILOT
   cw_debug_command("song", "song <index|id> [easy|medium|hard]: the autopilot plays that song from its start", cmd_song);
