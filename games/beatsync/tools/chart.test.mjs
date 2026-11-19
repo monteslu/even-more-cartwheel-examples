@@ -1,9 +1,11 @@
-// Unit tests of the chart half: quantizing, the gap rules, bar patterns, and the checks with their controls.
+// Unit tests of the chart half: quantizing, the gap rules, bar patterns, the break fill, the beat grid carried back
+// over a drumless intro, and the checks with their controls.
 // Run: node --test tools/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { quantize, stepTime, selectNotes, enforceGaps, makeCharts, LEVELS, chartDensity } from './lib/chart.mjs';
-import { chartProblems, onsetShare } from './check-songs.mjs';
+import { quantize, stepTime, selectNotes, enforceGaps, makeCharts, LEVELS, chartDensity, MAX_GAP, fillGaps, FILL, chartHoles } from './lib/chart.mjs';
+import { chartProblems, onsetShare, gapProblems, firstNoteProblem } from './check-songs.mjs';
+import { extendBeats } from './lib/analyze.mjs';
 import { rng } from './lib/dsp.mjs';
 import { makeSong } from './lib/synth.mjs';
 import { excerptLag, unpackExcerpt } from './lib/package.mjs';
@@ -93,4 +95,96 @@ test('excerptLag: 0 for the source, the shift for a shifted copy', () => {
   const moved = new Float32Array(x.length);
   moved.set(x.subarray(0, x.length - 64), 64);
   assert.equal(excerptLag(moved, data, start).lag, 64);
+});
+
+const longest = (notes) => notes.reduce((m, n, i) => (i ? Math.max(m, n.step - notes[i - 1].step) : 0), 0);
+
+test('fillGaps: a 12-bar hole is filled from the lanes first, the other stem only where they are silent', () => {
+  const notes = [0, 4, 8, 12, 208, 212].map((step) => ({ step, lane: 0, score: 1 }));
+  // hats over bars 2 to 6, the other stem on every 16th from bar 1 to bar 13
+  const hats = [];
+  for (let st = 32; st < 96; st += 8) hats.push({ step: st, lane: 1, score: 0.6, src: 'hat' });
+  const other = [];
+  for (let st = 16; st < 208; st++) other.push({ step: st, lane: 2, score: st % 4 ? 0.3 : 0.7, src: 'other' });
+  const span = { first: 0, last: 212 };
+  for (const [name, fill] of Object.entries(FILL)) {
+    const r = fillGaps(notes, [hats, other], fill, span);
+    assert.ok(longest(r.notes) <= MAX_GAP, name);
+    assert.equal(chartHoles(r.notes, span).length, 0, name);
+    const lv = LEVELS[name];
+    assert.deepEqual(chartProblems(r.notes.map((n) => ({ ...n, t: stepTime(beats, n.step) })), lv, beats), [], name);
+    // the other stem never plays where the hats do, and the fill keeps its own spacing
+    assert.ok(!r.added.some((c) => c.src === 'other' && c.step >= 32 + fill.gap && c.step <= 88 - fill.gap), name);
+    assert.ok(r.added.some((c) => c.src === 'hat'), name);
+    for (let i = 1; i < r.added.length; i++) assert.ok(r.added[i].step - r.added[i - 1].step >= fill.gap, name);
+    assert.ok(r.added.every((c) => c.step % fill.grid === 0), name);
+  }
+});
+
+test('fillGaps: a hole with nothing in it stays, a chart without holes is left as it is', () => {
+  const notes = [{ step: 0, lane: 0, score: 1 }, { step: 100, lane: 0, score: 1 }];
+  const r = fillGaps(notes, [[], []], FILL.hard, { first: 0, last: 100 });
+  assert.equal(r.added.length, 0);
+  const dense = Array.from({ length: 20 }, (_, i) => ({ step: 8 * i, lane: 0, score: 1 }));
+  assert.equal(fillGaps(dense, [[{ step: 4, lane: 1, score: 1, src: 'hat' }]], FILL.hard, { first: 0, last: 152 }).added.length, 0);
+});
+
+test('fillGaps: the first note comes within a bar of the song\'s first onset', () => {
+  const notes = [{ step: 200, lane: 0, score: 1 }];
+  const other = Array.from({ length: 50 }, (_, i) => ({ step: 4 * i, lane: 2, score: 0.6, src: 'other' }));
+  const r = fillGaps(notes, [[], other], FILL.easy, { first: 0, last: 200 });
+  assert.ok(r.notes[0].step <= 16);
+});
+
+test('makeCharts: a drumless intro is charted by the fill, the drums\' chart is the same as without it', () => {
+  const s = makeSong({ length: 40, rate: 8000 });
+  const t = s.truth;
+  const cands = t.notes.map((n) => ({ step: n.step, lane: n.lane, strength: 1 }));
+  const plain = makeCharts(cands, t.beats, 0, 1);
+  // the same song with 8 bars of other-stem quarter notes in front of the drums
+  const pre = 128, period = t.beats[1] - t.beats[0];
+  const beats2 = [...Array.from({ length: 32 }, (_, i) => t.beats[0] - (32 - i) * period), ...t.beats];
+  const shifted = cands.map((c) => ({ ...c, step: c.step + pre }));
+  const extra = Array.from({ length: 32 }, (_, i) => ({ step: 4 * i, strength: 1, src: 'other' }));
+  const r = makeCharts(shifted, beats2, 0, 1, extra, pre);
+  for (const name of Object.keys(LEVELS)) {
+    const main = r.charts[name].filter((n) => n.step >= pre).map((n) => `${n.step - pre}:${n.lane}`);
+    assert.deepEqual(main, plain.charts[name].map((n) => `${n.step}:${n.lane}`), name);
+    assert.ok(r.charts[name][0].step < 16, name);
+    assert.ok(longest(r.charts[name]) <= MAX_GAP, name);
+    assert.ok(r.stats[name].other_steps.length > 0 && r.stats[name].other_steps.every((st) => st < pre), name);
+    assert.ok(r.charts[name].filter((n) => n.step < pre).every((n) => n.lane === 2), name);
+  }
+});
+
+test('extendBeats: carries the grid back over a drumless intro and follows onsets that sit off a straight line', () => {
+  const p = 0.5, drums = Array.from({ length: 40 }, (_, i) => 20 + i * p);
+  // the intro's 16ths drift: 12 ms late by its start
+  const onsets = [];
+  for (let k = 1; k <= 160; k++) onsets.push({ t: 20 - k * (p / 4) + 0.012 * (k / 160) });
+  const b = extendBeats(drums, onsets);
+  assert.equal(b.length - drums.length, 40);
+  assert.deepEqual(b.slice(40), drums);
+  assert.ok(Math.abs(b[0] - (0 + 0.012)) < 0.004, `first beat ${b[0]}`);
+  // nothing before the drums: no change
+  assert.deepEqual(extendBeats(drums, [{ t: 25 }]), drums);
+});
+
+test('gapProblems and firstNoteProblem: the chart rules, and the controls they must catch', () => {
+  const quarter = (steps) => steps.map((step) => ({ step, t: stepTime(beats, step), lane: 0 }));
+  const steady = quarter(Array.from({ length: 60 }, (_, i) => 4 * i));
+  const never = () => false, always = () => true;
+  for (const name of Object.keys(LEVELS)) assert.deepEqual(gapProblems(steady, name, never), [], name);
+  // control: a hole cut into the chart is caught at every level
+  const holed = steady.filter((n) => n.step < 40 || n.step > 120);
+  for (const name of Object.keys(LEVELS)) assert.ok(gapProblems(holed, name, never).length > 0, name);
+  // Easy may go four bars over silence, never more; the other levels never past two
+  const three = steady.filter((n) => n.step < 40 || n.step >= 88);
+  assert.deepEqual(gapProblems(three, 'easy', always), []);
+  assert.ok(gapProblems(three, 'easy', never).length > 0);
+  assert.ok(gapProblems(three, 'hard', always).length > 0);
+  assert.ok(gapProblems(holed, 'easy', always).length > 0);
+  // the first note
+  assert.equal(firstNoteProblem(steady, steady[0].t, 4), null);
+  assert.ok(firstNoteProblem(steady.filter((n) => n.t > 10), steady[0].t, 4));
 });

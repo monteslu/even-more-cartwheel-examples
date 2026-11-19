@@ -7,13 +7,17 @@
 // each, and each is at 0 samples' lag against the excerpt of its source kept in report.json; every chart sorted, at
 // most one note per step, on its level's grid, every gap of its level held, note times on the beat grid, notes per
 // second under the level's cap; the share of each chart's notes that land on an onset found again in the decoded
-// track of its lane (within 50 ms). Two controls must fail, or the check that should catch them is reported broken:
-// the Hard chart moved by an 8th scores badly against the audio, and a track shifted by 64 samples is caught by the
-// alignment check. Exits 1 on any failure.
+// track of its lane (within 50 ms; a break note made from the other stem is looked for in the other track); no gap
+// between notes longer than two bars (Easy may go to four bars only over a stretch where no track has an onset), and
+// the first note within two bars of the song's first onset in any track. The controls must fail, or the check that
+// should catch them is reported broken: the Hard chart moved by an 8th scores badly against the audio, a track
+// shifted by 64 samples is caught by the alignment check, a chart with a 30 s hole cut into it (every level) is
+// caught by the gap check, and a Hard chart missing its first 30 s of notes is caught by the first-note check.
+// Exits 1 on any failure.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEVELS, stepTime, chartDensity } from './lib/chart.mjs';
+import { LEVELS, MAX_GAP, stepTime, chartDensity } from './lib/chart.mjs';
 import { decodeVorbisLib } from './lib/ogg.mjs';
 import { stbAvailable, decodeVorbisStb } from './lib/stbvorbis.mjs';
 import { excerptLag, unpackExcerpt, TRACKS } from './lib/package.mjs';
@@ -43,6 +47,37 @@ export function chartProblems(notes, lv, beats) {
     if (gap < need) bad.push(`note ${i}: ${gap}/16 after note ${i - 1} (${p.lane === n.lane ? 'same lane' : 'lane change'} needs ${need})`);
   }
   return bad;
+}
+
+/**
+ * The gap rule: no two consecutive notes more than MAX_GAP 16ths (two bars) apart; on Easy up to twice that where
+ * `silent(t0, t1)` says no track has an onset between the two notes.
+ * @param {{t: number, step: number}[]} notes
+ * @param {string} level
+ * @param {(t0: number, t1: number) => boolean} silent
+ * @returns {string[]} problems
+ */
+export function gapProblems(notes, level, silent) {
+  const bad = [];
+  for (let i = 1; i < notes.length; i++) {
+    const p = notes[i - 1], n = notes[i], gap = n.step - p.step;
+    if (gap <= MAX_GAP) continue;
+    if (level === 'easy' && gap <= 2 * MAX_GAP && silent(p.t, n.t)) continue;
+    bad.push(`${(gap / 16).toFixed(1)} bars without a note from ${p.t.toFixed(2)} s to ${n.t.toFixed(2)} s (the most is 2${level === 'easy' ? ', 4 over silence' : ''})`);
+  }
+  return bad;
+}
+
+/**
+ * The first-note rule: the chart's first note within `maxDelay` seconds of the song's first onset in any track.
+ * @param {{t: number}[]} notes
+ * @param {number} firstOnset seconds
+ * @param {number} maxDelay seconds
+ */
+export function firstNoteProblem(notes, firstOnset, maxDelay) {
+  if (!notes.length) return 'no notes';
+  const d = notes[0].t - firstOnset;
+  return d > maxDelay ? `first note at ${notes[0].t.toFixed(2)} s, ${d.toFixed(2)} s after the song's first onset at ${firstOnset.toFixed(2)} s (the most is ${maxDelay.toFixed(2)} s, two bars)` : null;
 }
 
 /**
@@ -136,16 +171,58 @@ export async function checkSong(dir) {
     const kick = bandOnsets(decoded.kick, rate, { fLo: 20, fHi: 160, gap: 0.05, k: 2, envMs: 8 }).onsets;
     const clap = bandOnsets(decoded.clap, rate, { fLo: 1000, fHi: 5000, gap: 0.05, k: 2, refineBand: clapBand }).onsets;
     const bass = bassOnsets(decoded.bass, rate, kick).onsets;
-    const onsets = [kick, clap, bass].map((l) => l.map((o) => o.t).sort((a, b) => a - b));
-    const eighth = (song.beats[song.beats.length - 1] - song.beats[0]) / (song.beats.length - 1) / 2;
+    const other = decoded.other ? bandOnsets(decoded.other, rate, { fLo: 80, fHi: 4000, gap: 0.1, k: 2 }).onsets : [];
+    // lane 3 here is the other track: a break note the chart made from the other stem (report.json lists their steps)
+    const onsets = [kick, clap, bass, other].map((l) => l.map((o) => o.t).sort((a, b) => a - b));
+    const beat = (song.beats[song.beats.length - 1] - song.beats[0]) / (song.beats.length - 1), eighth = beat / 2;
+    const bySource = (name) => {
+      const fromOther = new Set(report.charts?.[name]?.other_steps ?? []);
+      return (song.charts?.[name] ?? []).map((n) => (fromOther.has(n.step) ? { ...n, lane: 3 } : n));
+    };
     for (const name of Object.keys(LEVELS)) {
-      const notes = song.charts?.[name] ?? [];
+      const notes = bySource(name);
       const share = onsetShare(notes, onsets);
       info[`${name}_onset_share`] = +share.toFixed(3);
       if (share < MIN_ONSET_SHARE) fails.push(`${name}: only ${(100 * share).toFixed(1)}% of notes on an onset (need ${100 * MIN_ONSET_SHARE}%)`);
+      // the break notes on their own: they must land on real onsets as well as the rest
+      const fill = new Set(report.charts?.[name]?.fill_steps ?? []);
+      if (fill.size) {
+        const fillShare = onsetShare(notes.filter((n) => fill.has(n.step)), onsets);
+        info[`${name}_fill_notes`] = fill.size;
+        info[`${name}_fill_onset_share`] = +fillShare.toFixed(3);
+        if (fillShare < MIN_ONSET_SHARE) fails.push(`${name}: only ${(100 * fillShare).toFixed(1)}% of the break notes on an onset (need ${100 * MIN_ONSET_SHARE}%)`);
+        const fromOther = notes.filter((n) => n.lane === 3);
+        if (fromOther.length) info[`${name}_other_onset_share`] = +onsetShare(fromOther, onsets).toFixed(3);
+      }
     }
+
+    // gaps and the first note, against the onsets of all four tracks
+    const any = onsets.flat().sort((a, b) => a - b);
+    const silent = (t0, t1) => !any.some((t) => t > t0 + 0.05 && t < t1 - 0.05);
+    const firstOnset = any[0] ?? 0, maxDelay = (2 * 16 * beat) / 4;
+    info.first_onset_s = +firstOnset.toFixed(3);
+    for (const name of Object.keys(LEVELS)) {
+      const notes = song.charts?.[name] ?? [];
+      let longest = 0;
+      for (let i = 1; i < notes.length; i++) longest = Math.max(longest, notes[i].step - notes[i - 1].step);
+      info[`${name}_first_note_s`] = notes[0]?.t;
+      info[`${name}_longest_gap_bars`] = +(longest / 16).toFixed(2);
+      for (const p of gapProblems(notes, name, silent).slice(0, 3)) fails.push(`${name}: ${p}`);
+      const fp = firstNoteProblem(notes, firstOnset, maxDelay);
+      if (fp) fails.push(`${name}: ${fp}`);
+      // control: the same chart with a 30 s hole cut into its middle (notes left on both sides) must fail the gap check
+      const mid = notes.length ? (notes[0].t + notes[notes.length - 1].t - 30) / 2 : 0;
+      const holed = notes.filter((n) => n.t < mid || n.t > mid + 30);
+      info[`control_${name}_30s_hole_problems`] = gapProblems(holed, name, silent).length;
+      if (!gapProblems(holed, name, silent).length) fails.push(`CONTROL: the ${name} chart with a 30 s hole at ${mid.toFixed(1)} s passed the gap check`);
+    }
+    // control: the Hard chart without its first 30 s of notes must fail the first-note check
+    const late = (song.charts?.hard ?? []).filter((n) => n.t > firstOnset + 30);
+    info.control_hard_late_first_note_s = late[0]?.t;
+    if (!firstNoteProblem(late, firstOnset, maxDelay)) fails.push('CONTROL: the Hard chart missing its first 30 s passed the first-note check');
+
     // control: the Hard chart moved by an 8th must score badly
-    const hard = song.charts?.hard ?? [];
+    const hard = bySource('hard');
     const moved = onsetShare(hard.map((n) => ({ ...n, t: n.t + eighth })), onsets);
     info.control_hard_shifted_8th_share = +moved.toFixed(3);
     if (moved > CONTROL_MAX_RATIO * (info.hard_onset_share ?? 1)) {
