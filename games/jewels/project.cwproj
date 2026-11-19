@@ -12,3 +12,5 @@ export.android-arm64.platform = "android-arm64"
 art = art
 description = "A calm, untimed match-three of six cut stones, each its own shape and colour, light traced through their facets: no clock, a free hint, cascades that resolve slowly enough to follow. Pad, touch or mouse."
 author = "Luis Montes"
+# the manifest's controls: none, so the host draws no on-screen pad (touch plays the board itself; cartwheel input guide, Touch controls)
+controls = none

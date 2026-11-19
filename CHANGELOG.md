@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.29.0
+
+- On a phone or tablet the wasmcart host now draws the on-screen pad, from each cart's manifest `controls`, which the
+  build works out from the game's bindings: Emberthrone, Lanternfall, Pinball, Skate and Towers list the pad parts
+  they read. **Jewels**, **Destructo** and **Detexto** play by touch alone (tap or drag a jewel; drag to aim, tap to
+  fire), so they declare `controls = none` and the host draws no pad over the board or the field.
+- Engine v0.50.3 (in a cart the host draws every on-screen control and the engine claims no touch; a touch player's
+  prompts show pad buttons; manifest controls from the input map; a level loaded in play under the loading screen).
+  Every game builds and passes the smoke, art, version and prompt checks on it; through romdev a finger tap starts a
+  Jewels game with no engine controls drawn, and Detexto renders on GL.
+
 ## 0.28.0
 
 - **Detexto**, a new game: Destructo drawn as neon text. The same landmarks, launcher, ammunition, physics and modes
