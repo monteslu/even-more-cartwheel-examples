@@ -121,7 +121,8 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
    onsets are found in about 1 to 5 kHz so hats do not count).
 3. Tempo and beats: an onset-strength envelope (spectral flux) of the kick band, autocorrelated over 115 to 135 BPM;
    the phase that lines the grid up with the most kick energy; a dynamic-programming beat tracker that follows the
-   audio near the predicted beats. Bars from the claps on 2 and 4.
+   audio near the predicted beats. Bars from the claps on 2 and 4. Where the song starts before the drums (an intro
+   of bass, hats or chords), the grid is carried back over it, locked to those onsets, so the intro can be charted.
 4. Onsets per lane: spectral flux with an adaptive threshold (moving median plus a multiple of the deviation), peak
    picking with a minimum gap; for the bass also pitch changes (YIN), since legato notes have no attack.
 5. Quantize to 16ths; an onset more than about 40% of a 16th from the grid is dropped.
@@ -136,9 +137,22 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
    Each candidate note scores its strength, its place in the bar (downbeat, beat, 8th, 16th) and how unusual it is
    (a fill beats the hundredth plain kick); a dynamic program picks the best set that keeps the level's gaps.
 7. Bars that sound alike share one chart pattern, so a groove repeats and can be learned.
-8. Checks (`tools/check-songs.mjs`, also in the repository's CI): notes per second per level, no two notes in a step, the gaps held,
-   the share of notes on real onsets, the tracks aligned; a control that must fail: the chart moved by an 8th scores
-   badly against the audio.
+8. **No long silences in a chart.** On every level, no gap between two notes is longer than two bars, and the first
+   note comes within a bar of the song's first onset (the game starts play a few beats before the first note, so an
+   intro is played from where it starts). Where the chart above leaves a longer gap (a break, a drumless intro), a
+   break fill adds notes from what plays there, in this order: the lanes' own onsets the chart left out (claps,
+   bass), then the hats on the clap lane, then, only where the drums and the bass are both silent, the onsets of the
+   other stem (chord changes, stabs, synth lines) on the **bass lane**. The bass lane is the song's pitched lane, and
+   the other stem's chords and lines are pitched parts that move with it; the kick lane stays the four on the floor
+   and the clap lane the backbeat, so a drop still reads as the drums coming in. A break is sparser than a drop: the
+   fill uses one grid step coarser than its level (Easy half notes, Medium quarters, Hard 8ths), keeps the level's
+   gap rules and one note per step, and only places a note where an onset really is. Easy may leave up to four bars
+   only where no track has an onset at all.
+9. Checks (`tools/check-songs.mjs`, also in the repository's CI): notes per second per level, no two notes in a step, the gaps held,
+   the share of notes on real onsets (break notes from the other stem against the other track, and the break notes
+   on their own), no gap over two bars and the first note within two bars of the first onset, the tracks aligned;
+   controls that must fail: the chart moved by an 8th scores badly against the audio, a chart with a 30 s hole cut
+   into it fails the gap rule, a chart without its first 30 s fails the first-note rule.
 
 `tools/make-test-song.mjs` makes a synthetic house song with known notes (a kick, a clap, a bass line, a pad) as a
 `.stem.mp4` or a stems directory, so the tooling is measured against ground truth and the game has a song before any

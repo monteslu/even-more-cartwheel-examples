@@ -12,6 +12,7 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 | Command | What it does |
 |---|---|
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> [--title ..] [--artist ..]` | the whole pipeline: a song package |
+| `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> --charts-only` | re-chart a package from its source: only `song.json`, `report.json` and `preview.wav` are written, the tracks stay byte for byte |
 | `node tools/check-songs.mjs [songs/<id> ...]` | the checks over every package (or the ones named), with their controls; exits 1 on a failure |
 | `node tools/make-test-song.mjs [--variants]` | the synthetic house song with known notes (stems, `.stem.mp4`, `truth.json`) |
 | `node tools/eval-accuracy.mjs [--source mp4\|wav]` | the analysis measured against the synthetic songs' ground truth |
@@ -34,6 +35,15 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 6. **Build and commit**: `scripts/build.sh beatsync` from the repository root lists the new song in the game
    (`songs/order.txt` sets the order); commit `songs/song-id/` (`preview.wav` is ignored by git and never shipped).
 
+## Re-charting a song
+
+When the chart rules change, `node tools/make-song.mjs "/path/Song Name.stem.mp4" --out songs/song-id --charts-only`
+runs the analysis and the charts again from the source and rewrites `song.json`, `report.json` and `preview.wav`
+only. The Ogg tracks and their alignment proof are kept as they are (`git diff --stat` shows no track changed); the
+source must be the very audio the package was made from (it refuses a source of another length). The title, artist
+and id, and the flags the package was made with (`--keep-vocals`, the BPM range, kept in `report.json`), carry over
+unless given again.
+
 ## The pipeline
 
 1. **Read**: the NI Stems container is read with [stem-mp4](https://www.npmjs.com/package/stem-mp4) (the same library
@@ -53,7 +63,12 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
      it brings a new pitch or a steady pitch out of quiet.
 4. **Tempo and beats**: autocorrelation of the kick (plus half the clap) onset envelope over 115-135 BPM, the
    Ellis dynamic-programming beat tracker, then each beat fitted to the kick (or clap) onsets around it by a local
-   straight line over +-8 beats, which follows a drifting tempo and holds steady where a beat has no onset.
+   straight line over +-8 beats, which follows a drifting tempo and holds steady where a beat has no onset. Where
+   the song starts before the drums (bass, hats or the other stem only), the grid is carried back over that intro
+   beat by beat, each beat predicted one period back and pulled toward the onsets around its four 16ths (half the
+   median residual on the phase, a tenth on the period, at most 15 ms a beat, the period within 3% of the drums'
+   own). On the measured songs the intro's onsets then sit a median 5% (Tech House Groove, a 39 s intro) and 11%
+   (Acid House Rave) of a 16th off the grid, against 28% and 31% for a straight line from the drums.
 5. **Bars**: claps on 2 and 4 fix the beat's place in the bar; the other stem's changes (chords) choose between the
    two phases left.
 6. **Quantize** to 16ths; an onset more than 40% of a 16th from its step is dropped.
@@ -62,7 +77,16 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
    hundredth plain kick). Bars with alike onsets share a pattern; each pattern is chosen once by the dynamic program
    (the level's grid and gaps, one note per step) and laid into its bars, only where a bar really has that onset.
    A density cap per level (notes a second over the bars that have notes: Easy 1.6, Medium 3.5, Hard 6) raises the
-   cost of a note until it holds.
+   cost of a note until it holds. This main chart starts where the drums do.
+   **Break fill**: where the main chart leaves more than two bars without a note (or its first note is more than a
+   bar after the song's first onset in any stem), notes are added from what plays there, in stages: first the
+   lanes' own onsets the main chart left out (an intro's bass included) and the hats (the onsets the clap lane
+   rejects, on the clap lane); then, in whatever is still a hole, the other stem's onsets (80 Hz-4 kHz flux: chord
+   changes, stabs, synth lines) on the bass lane. The fill's grid is one step coarser than its level (Easy half
+   notes, Medium quarters, Hard 8ths: `FILL` in `tools/lib/chart.mjs`), its notes keep that spacing from each
+   other and the notes around them, and the dynamic program picks the strongest on the beat. `report.json` lists
+   each level's fill notes (`fill_steps`, `hat_steps`, `other_steps`) so the checks can look for a note made from
+   the other stem in the other track.
 8. **Sections** from onset counts per bar: drop (kick and bass), break (no kick), build (the end of a break where the
    claps thicken), intro and outro (kick without bass before the first and after the last drop).
 9. **Write**: the four tracks as Ogg Vorbis (kick 48 kb/s, clap and bass 56 kb/s, mono; other 96 kb/s stereo),
@@ -119,11 +143,33 @@ easy; the real songs below are the other half of the evidence.
 
 | Song | Prompted | Found | Notes easy / medium / hard | Notes a second (bars with notes) | On a re-found onset (easy / medium / hard) | Hard moved an 8th (control) | Size |
 |---|---|---|---|---|---|---|---|
-| Chicago Jack (171 s) | 124 | 126.11 | 220 / 294 / 456 | 1.38 / 1.8 / 2.79 | 1 / 1 / 0.987 | 0.377 | 4.45 MB (1.56 MB/min) |
-| Late Night (210 s) | 120 | 121.01 | 192 / 336 / 430 | 1.31 / 1.84 / 2.36 | 1 / 0.997 / 0.986 | 0.063 | 5.08 MB (1.46 MB/min) |
+| Chicago Jack (171 s) | 124 | 126.11 | 232 / 314 / 491 | 1.37 / 1.83 / 2.87 | 1 / 1 / 0.986 | 0.397 | 4.45 MB (1.56 MB/min) |
+| Late Night (210 s) | 120 | 121.01 | 248 / 376 / 506 | 1.2 / 1.81 / 2.43 | 0.992 / 0.995 / 0.982 | 0.148 | 5.08 MB (1.46 MB/min) |
 
-Chicago Jack is not at a steady 124: its beats run from about 125.2 BPM at the start to 127.0 at the end (the track
-drifts), and the beat fit follows it (median kick-to-beat distance 1.8 ms). Late Night holds 121.0.
+The counts include the break fill (Chicago Jack 12 / 20 / 35 notes, Late Night 56 / 40 / 76). Chicago Jack is not at
+a steady 124: its beats run from about 125.2 BPM at the start to 127.0 at the end (the track drifts), and the beat
+fit follows it (median kick-to-beat distance 1.8 ms). Late Night holds 121.0.
+
+### The break fill on the real songs
+
+Before and after the break fill (`--charts-only`, the tracks unchanged): the first note and the longest gap between
+two notes per level (Easy / Medium / Hard), and the notes the fill added (of them, from the other stem).
+
+| Song | First note before | First note after | Longest gap before (s) | Longest gap after (s) | Fill notes (other stem) |
+|---|---|---|---|---|---|
+| Acid House Rave | 23.4 / 10.3 / 9.8 | 0.4 / 0.4 / 0.4 | 18.2 / 13.5 / 13.5 | 3.7 / 2.1 / 3.6 | 62 (33) / 68 (63) / 118 (109) |
+| Chicago Jack | 0.1 / 0.1 / 0.1 | 0.1 / 0.1 / 0.1 | 8.1 / 8.1 / 8.1 | 3.3 / 3.3 / 3.3 | 12 (10) / 20 (20) / 35 (35) |
+| Filter Disco House | 0.5 / 0.0 / 0.0 | 0.5 / 0.0 / 0.0 | 15.5 / 15.0 / 14.8 | 3.3 / 1.9 / 1.6 | 14 (14) / 28 (28) / 56 (56) |
+| Late Night | 31.3 / 0.6 / 0.6 | 0.6 / 0.6 / 0.6 | 32.7 / 14.4 / 14.4 | 3.0 / 2.0 / 2.0 | 56 (24) / 40 (40) / 76 (76) |
+| Tech House Groove | 39.5 / 39.5 / 39.5 | 0.1 / 0.1 / 0.1 | 15.5 / 14.1 / 14.1 | 1.4 / 0.9 / 0.9 | 71 (53) / 111 (110) / 221 (220) |
+
+The breaks of these songs are mostly the other stem alone (a synth line or chords with no drums or bass), so most of
+the fill comes from it. Its notes land on onsets found again in the decoded other track (`check-songs`: 96 to 100%
+within 50 ms per level), and an attack measure independent of that onset finder (the steepest rise of the other
+track's 5 ms envelope within 60 ms of the note) puts the Hard break notes a median -8 to +10 ms from their attack,
+74 to 94% within 20 ms, as close as the kick notes are to the kick's own attack (63 to 86%); the same measure at
+the drop's kick notes, where the other stem need not start anything, finds an attack within 20 ms only 26 to 51% of
+the time.
 
 ## Dependencies (all in `tools/package.json`, development only: nothing here ships in the cart)
 
