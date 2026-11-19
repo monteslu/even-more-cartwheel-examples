@@ -1,0 +1,19 @@
+beatsync: credits and licences
+
+Code: this repository (MIT, see LICENSE). The sequencer rings, the field, every effect and the menu tones are made by
+code in this repository (src/club.c, src/main.c); the ASCII pass (src/ascii.c) is Detexto's (games/detexto), adapted.
+
+Music: the six songs in songs/ (Test Groove, Late Night, Chicago Jack, Filter Disco House, Tech House Groove, Acid
+House Rave) are by the author. Test Groove is synthesised by
+tools/make-test-song.mjs. The other five were made with Suno and split into stems with Loukai; each package (its Ogg
+Vorbis tracks, song.json with its charts, report.json) is written by tools/make-song.mjs (docs/TOOLS.md). The stem
+files they were made from are not in this repository.
+
+Font: Fira Mono (fonts/FiraMono-Regular.ttf), digitized data copyright 2012-2015 The Mozilla Foundation and
+Telefonica S.A., SIL Open Font License 1.1 (fonts/FiraMono-OFL.txt). The game's characters are drawn in it.
+
+Song tooling (tools/, development only, never linked into the game or shipped in its cart; docs/TOOLS.md lists the
+versions): @ffmpeg/core (GPL-2.0-or-later), stem-mp4 (MIT), @wasm-audio-decoders/ogg-vorbis (MIT; libvorbis BSD;
+codec-parser LGPL-3.0-or-later).
+
+The launcher art (art/) is made from the game's own frames by tools/make-art.sh; its logo is set in Fira Mono.

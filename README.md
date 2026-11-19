@@ -135,6 +135,24 @@ grow with the size of a clear and each step of a cascade. Pad, touch and mouse
 are equal paths. The rules are checked move for move against the original Lua
 game.
 
+### beatsync
+
+![beatsync: the three sequencer rings in neon characters, a Perfect hit at the centre, the bass waveform along the bottom](docs/screenshots/beatsync.jpg)
+
+A house-music rhythm game for one player on three buttons: you are the rhythm
+section of an instrumental house track, playing the kick, the clap and the
+bass on the three lower face buttons, and the song plays the way you play it.
+Each part sounds at full volume while you hit it; a miss ducks it until your
+next hit. Notes are placed and judged on the song's own audio clock (Perfect
+within 35 ms), with a calibration screen for the screen and speaker. Every
+frame is a step sequencer drawn in neon characters, Detexto's ASCII pass: a
+ring per instrument turns with the song so each note reaches 12 o'clock on its
+beat, kicks send shockwaves of characters out from the centre, claps throw
+sparks, and the bass is a waveform along the bottom. Six songs from 121 to 129
+BPM on Easy, Medium and Hard, with scores, grades and bests saved. The song
+tooling that makes a song from a stems file (tempo, beats, bars, onsets per
+lane and the three charts) is in the game's folder.
+
 More games are on the way.
 
 ## Building

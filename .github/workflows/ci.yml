@@ -17,11 +17,11 @@ concurrency:
 
 env:
   # every game in the repo (the release ships one cart each)
-  GAMES: "destructo detexto emberthrone jewels lanternfall pinball skate towers"
+  GAMES: "beatsync destructo detexto emberthrone jewels lanternfall pinball skate towers"
   # games with a self-playing <game>_auto cart (the others smoke-test their own cart)
-  AUTO_GAMES: "destructo detexto emberthrone jewels lanternfall pinball skate towers"
+  AUTO_GAMES: "beatsync destructo detexto emberthrone jewels lanternfall pinball skate towers"
   # games whose text passes the engine's prompt check (tools/check-prompts.mjs)
-  PROMPT_GAMES: "destructo detexto emberthrone jewels lanternfall pinball skate towers"
+  PROMPT_GAMES: "beatsync destructo detexto emberthrone jewels lanternfall pinball skate towers"
 
 # The games ship as dual GL + WebGPU carts (.wasc), built against the prebuilt
 # cart SDK pinned in scripts/deps.lock (cartwheel-engine's release asset):
@@ -141,6 +141,14 @@ jobs:
             cmd: |
               TARGETS=native scripts/build.sh lanternfall_worldgen lanternfall_check
               node tests/lanternfall-world.mjs --part controls-C
+          # beatsync's song tooling (development only, nothing of it ships in the cart): the DSP pieces against known
+          # signals and the chart rules, then every song package checked (notes a second per level, one note a step,
+          # the gaps, notes on real onsets, the tracks sample-aligned), each check with a control that must fail
+          - name: beatsync songs
+            cmd: |
+              npm ci --prefix games/beatsync/tools
+              npm test --prefix games/beatsync/tools
+              node games/beatsync/tools/check-songs.mjs
           # the movement's feel stays in its bounds
           - name: lanternfall feel
             cmd: |

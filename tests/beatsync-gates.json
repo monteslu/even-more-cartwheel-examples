@@ -1,0 +1,23 @@
+[
+  {
+    "name": "beatsync-song",
+    "note": "The autopilot plays Test Groove on Hard to the results: every note Perfect, the same state on GL and WebGPU (romdev), a real picture, the text floor, no missing program state. The control stops the same run at frame 3000, while the song still plays.",
+    "app": "beatsync_auto",
+    "frames": 3400,
+    "hosts": ["romdev"],
+    "webgpu": true,
+    "expect": { "game.screen": 4, "song.done": 1, "notes.perfect": 174, "notes.miss": 0 },
+    "controlFrames": 3000
+  },
+  {
+    "name": "beatsync-menus",
+    "note": "The menus from pad 0 (beatsync-menus.json): south on Play opens the song select, south picks the song, south plays it at the difficulty shown (Easy). The control is the same presses without the last (beatsync-menus-no-start.json), which stays on the difficulty.",
+    "app": "beatsync",
+    "frames": 240,
+    "input": "beatsync-menus.json",
+    "hosts": ["romdev"],
+    "webgpu": true,
+    "expect": { "shell.screen": 3, "game.screen": 3, "song.pick": 0 },
+    "controlInput": "beatsync-menus-no-start.json"
+  }
+]

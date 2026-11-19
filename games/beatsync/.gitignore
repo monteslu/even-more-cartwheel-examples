@@ -1,0 +1,7 @@
+# written by CMakeLists.txt at configure time (the songs' paths for the packer)
+/roots.gen.txt
+# tools/make-song.mjs writes a preview for listening while making a chart: never committed or shipped
+songs/*/preview.wav
+tools/node_modules/
+# the song tooling's scratch (tools/stb-vorbis/build.mjs, make-test-song.mjs, eval-accuracy.mjs)
+/out/

@@ -1,0 +1,9 @@
+# The song list's order (CMakeLists.txt): these first, in this order, then any other songs/<id>/ by name.
+# The synthetic test song is the warm-up: short, steady, every part clear. The rest run from slowest and sparsest
+# to fastest and densest.
+test-groove
+late-night
+chicago-jack
+filter-disco
+tech-house
+acid-house

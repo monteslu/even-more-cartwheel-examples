@@ -1,0 +1,4 @@
+project.cwproj
+main.cwscene
+fonts/FiraMono-Regular.ttf
+fonts/FiraMono-OFL.txt

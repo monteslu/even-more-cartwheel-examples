@@ -1,0 +1,25 @@
+[scene format=1]
+
+[node name="Level" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0, 0, 0, 1)
+use_background = true
+ambient_energy = 0
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+tonemap = NEUTRAL
+bloom = true
+bloom_intensity = 0.08
+bloom_threshold = 1.0
+aa = NONE
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 0, 22)
+fov = 40
+near = 1
+far = 60
+current = true
+
+[node name="Field" parent="." type="Node3D" groups="airborne"]

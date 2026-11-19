@@ -1,0 +1,16 @@
+{
+  "note": "Every screen a beatsync player reads, for the engine's text-size check (deps/cartwheel-engine/tools/check-text.mjs): each run ends on that screen.",
+  "app": "beatsync",
+  "screens": [
+    { "name": "title", "frames": 120 },
+    { "name": "songs", "frames": 170, "input": "beatsync-join.json" },
+    { "name": "difficulty", "frames": 200, "input": "beatsync-menus-no-start.json" },
+    { "name": "calibration", "frames": 260, "input": "beatsync-calib.json" },
+    { "name": "count-in", "app": "beatsync_auto", "frames": 120 },
+    { "name": "play", "app": "beatsync_auto", "frames": 900 },
+    { "name": "results", "app": "beatsync_auto", "frames": 3360 },
+    { "name": "pause", "app": "beatsync_auto", "frames": 240, "input": "beatsync-pause.json" },
+    { "name": "settings", "app": "beatsync_auto", "frames": 300, "input": "beatsync-settings.json" },
+    { "name": "graphics", "app": "beatsync_auto", "frames": 200, "startCmds": ["quality_menu 1"] }
+  ]
+}

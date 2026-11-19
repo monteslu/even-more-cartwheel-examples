@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.30.0
+
+- **beatsync**, a new game: a house-music rhythm game on three buttons. You play the kick, the clap and the bass of an
+  instrumental house track on the three lower face buttons, and the song plays the way you play it: each part sounds
+  at full volume while you hit it, and a miss ducks it with a short fade and low-pass sweep until your next hit. Notes
+  are placed and judged on the song's audio clock (Perfect within 35 ms, Good within 70), with a timing calibration
+  screen. Every frame is a step sequencer in neon characters (Detexto's ASCII pass): a ring per instrument turns with
+  the song so each note reaches 12 o'clock on its beat, kicks send shockwaves of characters out from the centre, claps
+  throw sparks and the bass is a waveform along the bottom. Six songs from 121 to 129 BPM, each on Easy, Medium and
+  Hard, with scores, grades and bests saved. On a phone the host's on-screen pad shows the three lane buttons, the
+  d-pad and Start. The song tooling (Node and WebAssembly, in `games/beatsync/tools`) makes a song from a stems file:
+  it splits the drums, finds the tempo, beats and bars, picks onsets per lane, writes the three charts and proves the
+  tracks sample-aligned; CI runs its unit tests and checks every song. Gates on GL and WebGPU through romdev, each with
+  a control that must fail: sync (an open-loop bot gets every note Perfect on Hard; 50 ms late gets none), newcomer
+  (a cue-reading bot with a human's timing error clears the first song on Easy on a pad), look, flash (the whole
+  densest song on Hard held to the photosensitive flash rules), programs, text, and the autopilot and menu gates;
+  flash sweep entry `beatsync-hard`.
+
 ## 0.29.0
 
 - On a phone or tablet the wasmcart host now draws the on-screen pad, from each cart's manifest `controls`, which the

@@ -1,4 +1,5 @@
 [
+  {"name": "beatsync-hard", "app": "beatsync_auto", "frames": 4200, "from": 300, "startCmds": ["song acid-house hard"], "note": "the densest song (Acid House Rave, 726 notes on Hard) played by the autopilot from the count-in through its first drop: every kick shockwave, clap spark, bass wave and hit flare, the field following the energy (characters on black, so a calm stretch moves little: its floor is 0.0005)", "minMotion": 0.0005},
   {"name": "destructo-play", "gate": "destructo-play", "frames": 600, "note": "a player's first shots: hits, breaks, the pieces flying"},
   {"name": "detexto-collapse", "app": "detexto_auto", "frames": 200, "from": 50, "startCmds": ["dm set LEVEL_NAME \"Taj Mahal\"", "dm set SCENE shot2", "dm restart"], "note": "a charge at the Taj Mahal's foot: the characters scattering in their glow, the dust (characters on black: the whole-frame motion of the collapse is about 0.0006, so its floor is 0.0005)", "minMotion": 0.0005},
   {"name": "emberthrone-journey", "gate": "emberthrone-journey", "frames": 1800, "note": "the bot's journey: fights, the hall's lights, transitions"},

@@ -1,0 +1,38 @@
+{
+  "note": "What beatsync's gates (tests/beatsync-*.mjs) need to know about the game.",
+  "autopilot": {
+    "note": "The frames of the autopilot cart (games/beatsync/src/main.c GAME_AUTOPILOT: the first song on Hard, every note hit) tests/beatsync-programs.mjs plays: through the first drop and the break.",
+    "frames": 1800
+  },
+  "newcomer": {
+    "note": "tests/beatsync-newcomer.mjs: the first song on Easy, played from the next note's cue (cue.lane, cue.ms against song.ms); cleared when song.done is 1 (the crowd stayed to the end).",
+    "song": 0,
+    "difficulty": 0,
+    "goal": {
+      "field": "song.done",
+      "equals": 1
+    },
+    "maxSeconds": 120
+  },
+  "flash": {
+    "note": "The room's pulses (kick: the floor; clap: the wall and booth; bass: the pillars, the wall and the wash lights), the receptors' hit glow, and the failed song's dip to dark, over the whole first song on Hard; the crowd is sent home (the `leave` request) after it, for the dip.",
+    "effects": [
+      "kick",
+      "clap",
+      "bass",
+      "hit",
+      "fail"
+    ],
+    "run": [
+      {
+        "frame": 3700,
+        "command": "leave"
+      }
+    ],
+    "frames": 3900,
+    "picture": {
+      "note": "frame({op:'flash'}): every frame of the densest song played whole by the autopilot on Hard, from the count-in to the results (tests/beatsync-flash.mjs works out the frames from the song)",
+      "tail": 120
+    }
+  }
+}
