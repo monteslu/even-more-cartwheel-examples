@@ -5,7 +5,7 @@ code in this repository (src/club.c, src/main.c); the ASCII pass (src/ascii.c) i
 
 Music: the six songs in songs/ (Test Groove, Late Night, Chicago Jack, Filter Disco House, Tech House Groove, Acid
 House Rave) are by the author. Test Groove is synthesised by
-tools/make-test-song.mjs. The other five were made with Suno and split into stems with Loukai; each package (its Ogg
+tools/make-test-song.mjs. The other five were split into stems with Loukai; each package (its Ogg
 Vorbis tracks, song.json with its charts, report.json) is written by tools/make-song.mjs (docs/TOOLS.md). The stem
 files they were made from are not in this repository.
 

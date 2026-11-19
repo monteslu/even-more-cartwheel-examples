@@ -127,7 +127,7 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
 
 `tools/make-test-song.mjs` makes a synthetic house song with known notes (a kick, a clap, a bass line, a pad) as a
 `.stem.mp4` or a stems directory, so the tooling is measured against ground truth and the game has a song before any
-real one exists. The real songs are made by the author with Suno and split into stems with Loukai.
+real one exists. The real songs are made by the author and split into stems with Loukai.
 
 ## Timing in the game
 

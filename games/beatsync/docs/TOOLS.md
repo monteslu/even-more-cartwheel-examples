@@ -20,8 +20,8 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 
 ## Adding a song
 
-1. **Make the track**: an instrumental house track (no vocals, or the vocals are thrown away). The songs here were
-   made with Suno.
+1. **Make the track**: an instrumental house track (no vocals, or the vocals are thrown away).
+  
 2. **Split it in Loukai**: it writes an NI Stems `.stem.mp4` (master, drums, bass, other, vocals; AAC). Keep that file
    outside the repository; it is never committed.
 3. **Make the package**: `node tools/make-song.mjs "/path/Song Name.stem.mp4" --out songs/song-id --title "Song
@@ -123,7 +123,7 @@ easy; the real songs below are the other half of the evidence.
 | Chicago Jack (171 s) | 124 | 126.11 | 220 / 294 / 456 | 1.38 / 1.8 / 2.79 | 1 / 1 / 0.987 | 0.377 | 4.45 MB (1.56 MB/min) |
 | Late Night (210 s) | 120 | 121.01 | 192 / 336 / 430 | 1.31 / 1.84 / 2.36 | 1 / 0.997 / 0.986 | 0.063 | 5.08 MB (1.46 MB/min) |
 
-Chicago Jack is not at a steady 124: its beats run from about 125.2 BPM at the start to 127.0 at the end (Suno
+Chicago Jack is not at a steady 124: its beats run from about 125.2 BPM at the start to 127.0 at the end (the track
 drifts), and the beat fit follows it (median kick-to-beat distance 1.8 ms). Late Night holds 121.0.
 
 ## Dependencies (all in `tools/package.json`, development only: nothing here ships in the cart)
