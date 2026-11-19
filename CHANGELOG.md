@@ -14,8 +14,8 @@
   it splits the drums, finds the tempo, beats and bars, picks onsets per lane, writes the three charts and proves the
   tracks sample-aligned; CI runs its unit tests and checks every song. Gates on GL and WebGPU through romdev, each with
   a control that must fail: sync (an open-loop bot gets every note Perfect on Hard; 50 ms late gets none), newcomer
-  (a cue-reading bot with a human's timing error clears the first song on Easy on a pad), look, flash (the whole
-  densest song on Hard held to the photosensitive flash rules), programs, text, and the autopilot and menu gates;
+  (a cue-reading bot with a human's timing error clears the first song on Easy on a pad), look, flash (the two
+  densest songs played whole on Hard held to the photosensitive flash rules), programs, text, and the autopilot and menu gates;
   flash sweep entry `beatsync-hard`.
 
 ## 0.29.0
