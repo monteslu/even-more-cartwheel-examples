@@ -20,3 +20,4 @@ standard+map+vcol+rep+fog2+l2001+xcluster_plain
 standard+vcol+fog2+l2001+xcluster_plain_rim
 standard+trans+fog2+l2001+xcluster_plain
 standard+trans+fog2+l2001+xcluster
+standard+vcol+instbig+fog2+icol+l2001+xcluster_plain_rim

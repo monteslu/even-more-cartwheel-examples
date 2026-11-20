@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.32.4
+
+- Engine v0.53.4 (from v0.50.3: reflection probes and probe grids captured with their own camera's light under
+  clustered lights and cascaded sun shadows, a probe captured once no longer dark on WebGPU, materials take up to 8
+  shading parts, a shell save that grows at its end keeps its old bytes, TAA on moving things, the first GL frame
+  drawn again). **Pinball**'s chrome ball now mirrors the lit table: its reflection probe (clustered lamps, captured
+  every third frame) was lit with the main camera's light data and showed a dark disc; on romdev the ball in the
+  plunger lane averages 115.1 levels where it was 103.6 (a disc 30 pixels across), GL and WebGPU within 0.01 of
+  each other, its lower half now showing the lit table where it was dark.
+- **Towers** on Very Low asks the new engine for one more draw state, its rim-lit instanced bodies under the plain
+  shading (`standard+vcol+instbig+fog2+icol+l2001+xcluster_plain_rim`); the table has it now (Tint accepts all 22
+  WebGPU programs), where without it those bodies would not be drawn. Through romdev the auto cart on Very Low reports
+  no missing state on GL or WebGPU; the old table reports that one.
+- Checks run on this pin: every game builds; the program survey of every app of every game (27 apps, GL and WebGPU,
+  every preset and the switches between them): towers gained the one state, every other table unchanged, and Skate's
+  and Towers' six apps surveyed again on v0.53.4 with no missing state; cart smoke of all nine games, cart art (its
+  no-cover control caught), cart version (its rewritten-version control caught) and the prompt check of every game;
+  towers' gates (towers-match, towers-build) on GL and WebGPU; pinball's probe-lit ball on romdev against v0.32.3's
+  cart on GL and WebGPU at native scale; the skinned characters of Skate and Ember Throne and Towers on Very Low
+  looked at on GL and WebGPU; Jewels, the one game with TAA, with its stones rocking and swapping: the board the same
+  as v0.32.3's on WebGPU pixel for pixel and on GL within one level on 9 pixels (its stones are traced in a pass and
+  carry no motion of their own, so the new TAA terms never apply).
+
 ## 0.32.3
 
 - **beatsync** hits feel like hits: every hit bursts at its gate in the river's colour, shards thrown up and out and a
