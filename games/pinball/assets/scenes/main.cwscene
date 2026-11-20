@@ -62,3 +62,11 @@ ssao = false
 vignette = true
 vignette_intensity = 0.35
 vignette_smoothness = 0.6
+; the chrome balls' lamp highlights and the flashers throw small four-ray stars (High and up; the engine leaves them off
+; on Low and Very Low)
+glints = true
+glint_threshold = 1.5
+glint_intensity = 0.16
+glint_length = 0.035
+glint_points = 4
+glint_rotation = 0.785
