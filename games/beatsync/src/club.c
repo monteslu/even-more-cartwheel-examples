@@ -43,6 +43,8 @@
 #define TICKS 14         /* beat lines a river */
 #define WAVES 6
 #define SPARKS 120
+#define SHARDS 192 /* the hit bursts' shards, shared by the three lanes */
+#define RINGS 6    /* the hit bursts' rings, two a lane */
 #define WAVE_COLS 72
 #define FIELD_W 54
 #define FIELD_H 28
@@ -67,7 +69,7 @@ static const float FIELD_DENSITY[6] = { [SEC_INTRO] = 0.35f, [SEC_BUILD] = 0.55f
 
 static struct {
   t3_object *root;
-  t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *waves, *sparks, *wave_cols, *field, *flare;
+  t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *waves, *sparks, *wave_cols, *field, *flare, *shards, *rings;
   cw_node camera;
   float zoom, spread, ahead;
   int place[LANES]; /* the river each lane is drawn as: 0 left, 1 middle, 2 right (the layout gate swaps it) */
@@ -76,6 +78,10 @@ static struct {
   int32_t last_kick, last_clap;
   struct { float x, y, vx, vy, born; } spark[SPARKS];
   int spark_next, claps;
+  struct { float x, y, vx, vy, born, size; uint8_t lane, perfect; } shard[SHARDS];
+  struct { float x, y, born; uint8_t lane, perfect; } ring[RINGS];
+  int shard_next, ring_next, bursts;
+  int32_t last_hit[LANES];
   pal p;
   float density;
   float field_phase[FIELD_W * FIELD_H];
@@ -179,6 +185,8 @@ void club_build(void) {
   C.flare = instanced(t3_circle_geometry_new(1.0f, 32), LANES);
   C.waves = instanced(t3_ring_geometry_new(0.9f, 1.0f, 72, 1), WAVES);
   C.sparks = instanced(t3_plane_geometry_new(0.22f, 0.22f, 1, 1), SPARKS);
+  C.shards = instanced(t3_plane_geometry_new(0.42f, 0.42f, 1, 1), SHARDS);
+  C.rings = instanced(t3_ring_geometry_new(0.72f, 1.0f, 64, 1), RINGS);
   C.wave_cols = instanced(t3_plane_geometry_new(0.3f, 1.0f, 1, 1), WAVE_COLS);
   C.field = instanced(t3_plane_geometry_new(0.2f, 0.2f, 1, 1), FIELD_W * FIELD_H);
   for (int i = 0; i < FIELD_W * FIELD_H; i++) C.field_phase[i] = hf(i, 77) * 6.2831853f;
@@ -190,6 +198,8 @@ void club_build(void) {
   for (int i = 0; i < WAVES; i++) C.wave_t[i] = -1e9f;
   for (int i = 0; i < SPARKS; i++) C.spark[i].born = -1e9f;
   C.last_kick = C.last_clap = -1;
+  for (int i = 0; i < SHARDS; i++) C.shard[i].born = -1e9f;
+  for (int i = 0; i < RINGS; i++) C.ring[i].born = -1e9f;
   for (int l = 0; l < LANES; l++) C.p.lane[l] = even(PALS[SEC_INTRO].lane[l]);
   C.p.bg = even(PALS[SEC_INTRO].bg);
 }
@@ -349,6 +359,48 @@ void club_update(const club_view *v) {
     t3_instanced_mesh_set_color_at(C.waves, i, scale(C.p.lane[LANE_KICK], b));
   }
   changed(C.waves);
+
+  /* the player's hits: a burst at the gate in the river's colour, shards thrown out (up and to the sides, falling a
+   * little) and a ring opening out; a Perfect throws more, faster and further, its ring wider and whiter. Each swells
+   * in over 40 ms and fades over half a second, so a run of hits keeps the gates alive without a flash */
+  for (int l = 0; l < LANES; l++) {
+    if (v->hit_seq[l] == C.last_hit[l]) continue;
+    C.last_hit[l] = v->hit_seq[l];
+    C.bursts++;
+    bool pf = v->hit_perfect[l];
+    t3_vec3 o = on_river(l, 0, 0, 0);
+    int n = pf ? 34 : 20;
+    for (int k2 = 0; k2 < n; k2++) {
+      int i = C.shard_next++ % SHARDS;
+      float ang = -1.35f + 2.7f * ((float)k2 + hf((uint32_t)C.bursts, (uint32_t)k2 * 5 + 1)) / (float)n; /* the upper half and a little below */
+      float sp = (pf ? 10.0f : 6.5f) * (0.55f + 0.6f * hf((uint32_t)C.bursts, (uint32_t)k2 * 5 + 2));
+      C.shard[i] = (typeof(C.shard[0])){ o.x, o.y, sinf(ang) * sp, cosf(ang) * sp * 0.8f, now, (pf ? 1.15f : 0.9f) * (0.7f + 0.6f * hf((uint32_t)C.bursts, (uint32_t)k2 * 5 + 3)), (uint8_t)l, pf };
+    }
+    int ri = C.ring_next++ % RINGS;
+    C.ring[ri].x = o.x, C.ring[ri].y = o.y, C.ring[ri].born = now, C.ring[ri].lane = (uint8_t)l, C.ring[ri].perfect = pf;
+  }
+  for (int i = 0; i < SHARDS; i++) {
+    float age = (now - C.shard[i].born) / 1000.0f;
+    if (age < 0 || age > 0.55f) { hide(C.shards, i); continue; }
+    float drag = (1 - expf(-age * 4.0f)) / 4.0f; /* the distance a shard covers, slowing as it goes */
+    float x = C.shard[i].x + C.shard[i].vx * drag, y = C.shard[i].y + C.shard[i].vy * drag - 2.2f * age * age;
+    float env = fminf(1, age / 0.04f) * (1 - age / 0.55f) * (1 - age / 0.55f);
+    float sz = C.shard[i].size * (1 - 0.5f * age / 0.55f);
+    set_inst(C.shards, i, (t3_vec3){ x, y, 0.14f }, age * 5 + (float)i, (t3_vec3){ sz, sz, 1 });
+    t3_color c = mix(C.p.lane[C.shard[i].lane], (t3_color){ 1, 1, 1 }, C.shard[i].perfect ? 0.4f : 0.15f);
+    t3_instanced_mesh_set_color_at(C.shards, i, scale(c, 1.9f * env * dim));
+  }
+  changed(C.shards);
+  for (int i = 0; i < RINGS; i++) {
+    float age = (now - C.ring[i].born) / 1000.0f, life = C.ring[i].perfect ? 0.5f : 0.4f;
+    if (age < 0 || age > life) { hide(C.rings, i); continue; }
+    float u = age / life, r = 0.8f + (C.ring[i].perfect ? 3.4f : 2.2f) * (1 - (1 - u) * (1 - u));
+    float env = fminf(1, age / 0.04f) * (1 - u) * (1 - u);
+    set_inst(C.rings, i, (t3_vec3){ C.ring[i].x, C.ring[i].y, 0.12f }, 0, (t3_vec3){ r, r * 0.55f, 1 });
+    t3_color c = mix(C.p.lane[C.ring[i].lane], (t3_color){ 1, 1, 1 }, C.ring[i].perfect ? 0.45f : 0.1f);
+    t3_instanced_mesh_set_color_at(C.rings, i, scale(c, 1.3f * env * dim));
+  }
+  changed(C.rings);
 
   /* the clap's sparks: thrown up and out from the clap's gate, falling and fading */
   if (v->clap_ms != C.last_clap) {

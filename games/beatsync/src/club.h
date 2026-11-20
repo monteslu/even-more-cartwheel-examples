@@ -31,6 +31,8 @@ typedef struct club_view {
   float kick, clap, bass; /* the music's pulses, 0..1, as drawn (through their flash meters) */
   int32_t kick_ms, clap_ms; /* song time of the latest kick and clap heard (the shockwave and the sparks start there) */
   float flare[LANES];     /* each instrument's hit bloom at its gate, 0..1 */
+  int32_t hit_seq[LANES]; /* counts the player's hits per lane: a new value bursts that gate (shards and a ring) */
+  uint8_t hit_perfect[LANES]; /* the latest hit in the lane was a Perfect (a bigger burst) */
   float press[LANES];     /* a button held down */
   float level[LANES];     /* each track's level (a ducked instrument's river dims) */
   float streak;           /* 0..1: the combo, filling the field */

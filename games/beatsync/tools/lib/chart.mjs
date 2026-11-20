@@ -404,7 +404,9 @@ export function makeCharts(cands, beats, downbeat, playSeconds, extra = [], drum
     const lanesPool = [...scored.filter((c) => !taken.has(c.step)).map((c) => ({ ...c, src: LANES[c.lane] })), ...fillScored.filter((c) => c.src !== 'other')];
     const filled = fillGaps(notes, [lanesPool, fillScored.filter((c) => c.src === 'other')], FILL[name], span);
     notes = filled.notes;
-    charts[name] = notes.map((n) => ({ t: +stepTime(beats, n.step).toFixed(4), step: n.step, lane: n.lane }));
+    // o: 1 marks a note the break fill made from the other stem (on the bass lane): the game plays its hit and miss on
+    // the other track, the sound it follows
+    charts[name] = notes.map((n) => ({ t: +stepTime(beats, n.step).toFixed(4), step: n.step, lane: n.lane, ...(n.src === 'other' ? { o: 1 } : {}) }));
     const bySrc = (src) => filled.added.filter((c) => c.src === src).map((c) => c.step);
     stats[name] = { lambda: +lambda.toFixed(2), notes: notes.length, main, fill: filled.added.length,
       per_second: +(notes.length / playSeconds).toFixed(2), per_second_playing: +chartDensity(notes, beats, downbeat).toFixed(2),

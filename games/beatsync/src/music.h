@@ -26,6 +26,10 @@ const song *music_song(void);
 /* The lanes in play (player true, from the next music_play): a little under the record between hits, punched to full
  * by a hit; a miss drops that lane alone and it recovers over a beat. false (the demo): every lane at full. */
 void music_set_player(bool player);
+/* a hit or a miss on a lane (LANE_*), or on MUSIC_OTHER: a note the chart made from the other track */
+#define MUSIC_OTHER 3
+/* the chart is playing notes made from the other track (a break): the other track sits lower between hits */
+void music_set_other_break(bool on);
 void music_hit(int lane);
 void music_miss(int lane);
 float music_lane_level(int lane); /* 0..1, how far a lane is from a miss (1 none): the river's light */

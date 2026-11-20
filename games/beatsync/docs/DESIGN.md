@@ -12,9 +12,13 @@ needs something different.
   Lanes from left to right: **kick** (west), **clap** (south), **bass** (east). Keyboard fallback: J, K, L. Touch:
   three wide zones across the bottom of the screen, in the same order.
 - **Never two notes at once.** A chart never asks for two buttons in the same moment, at any difficulty.
-- **The song reacts.** The "other" stem (chords, pads, stabs, the rest of the drums) plays at full volume all the
-  time and never changes. In play the kick, clap and bass tracks sit a little under the record between the player's
-  hits (about -4.4 dB, the top above 7 kHz softened), and a hit punches its track to full and opens its top: the drum
+- **The song reacts.** The "other" stem (chords, pads, stabs, the rest of the drums) plays at full volume, except
+  where the chart plays notes made from it (a break, below): there it sits about 6 dB down between hits (easing over
+  half a second), a hit on such a note punches the other track about 3 dB over the record and a miss dips it, so a
+  stab rings on a hit and is cut short on a miss. In play the kick and clap tracks sit a little under the record
+  between the player's hits (about -4.4 dB, the top above 7 kHz softened); the bass, 8 to 11 dB under the drums in
+  these songs, sits lower (about -8 dB) and a hit lifts it about 3.5 dB over the record, so a bass note hit or missed
+  is heard in the whole mix. A hit punches its track (kick and clap to full) and opens its top: the drum
   or bass note just played stands out, then falls back over about a quarter second (on Easy, whose kicks are on 1 and
   3, the kicks the player plays stand about 4 dB over the ones on 2 and 4). A miss drops only that track (to about
   -13 dB, with a low-pass at 700 Hz) and it comes back by itself over one beat, or at once on the next hit in its
@@ -71,8 +75,11 @@ needs something different.
     gate that drift and fall; the bass is a waveform of characters along the bottom, under the gates, that thickens
     while the bass plays and thins when it is missed out; the other stem's energy sets a slow field of faint glyphs
     behind everything, sparse in a break and dense in a drop.
-  - **Playing well or badly.** A hit blooms the gate and surges its river around and below it (the current brightens
-    and widens, swelling and fading). A miss dims that instrument's river for the beat its track is down. A streak
+  - **Playing well or badly.** A hit bursts at the gate in the river's colour: shards thrown up and out and a ring
+    opening out, swelling in over 40 ms and fading over half a second (a Perfect throws more, faster and further, its
+    ring wider and whiter); it blooms the gate and surges its river around and below it (the current brightens and
+    widens, swelling and fading). The judgement word keeps one colour on every river: Perfect green, Good turquoise,
+    Miss red (the results line too). A miss dims that instrument's river for the beat its track is down. A streak
     brightens the rivers and the field; a long streak in a drop fills the screen dense and bright. Each section has its
     own palette (break cool cyan, build warming, drop hot magenta and orange), crossfading over a bar.
   - **The title** has the rivers spread wide round the title's box, the first song playing itself on them.

@@ -19,7 +19,8 @@ characters.
   clap in the middle (south), bass on the right (east), so which button a note wants is where its river is. Each river
   is a road of characters receding toward a horizon near the top of the screen, a current streaming down it to a gate
   near the bottom; a note rides it down, small far off and growing all the way, and reaches the gate exactly on its
-  beat. A hit blooms the gate and surges the river; a miss dims the river for a beat. Each kick sends a shockwave of characters across the field,
+  beat. A hit bursts at the gate in shards and a ring (bigger on a Perfect), blooms the gate and surges the river; a
+  miss dims the river for a beat. Perfect shows green, Good turquoise, Miss red, on every river. Each kick sends a shockwave of characters across the field,
   claps throw sparks off their gate, the bass is a waveform along the bottom, and a field of glyphs behind it all
   follows the song's energy; each section has its palette. Easy shows eight beats of each river, Medium 6.4, Hard
   5.2 (twice what they showed before, with the notes' last beat as fast as it was), so Easy is the slowest to read.
@@ -79,6 +80,7 @@ each has a control that must fail:
 | `tests/beatsync-flash.mjs` | every effect's flash meter reads at most 3 flashes a second over a whole song, and romdev's picture check (WCAG 2.3.1, Harding) passes over the densest songs played whole on Hard (Test Groove, the most notes a second, and Acid House Rave, the most notes) and Test Groove on Easy (brighter notes) | every effect strobing; the picture with an 8 Hz strobe mixed in |
 | `tests/beatsync-programs.mjs` | the program table has every draw state the game asks for, at every preset and in a player's first frames | a sphere in a material no table has |
 | `tests/beatsync-text.mjs` | text at least the engine's size floor on every screen | the same screens at half text size |
+| `tests/beatsync-bass.mjs` | in the whole mix (GL): a missed bass note is at least 8 dB under a hit one under 250 Hz, bass notes hit stand at least 2 dB over the record, and a missed bass-lane note made from the other track (a break) is at least 3 dB under a hit one from 300 Hz to 4 kHz | the bass at the kick and clap's levels (`bassmix old`); break notes acting on the bass lane (`othersrc 0`) |
 | `tests/beatsync-forgiving.mjs` | a person on a living-room setup (pressing 50 ms late on average with a 50 ms spread, a slipped thumb every 15 notes) clears the first song on Easy at accuracy 0.70 or better and on Medium at 0.55 or better, from the on-screen cue (GL and WebGPU) | the same player under the old judgement (`rules old`: 35/70 ms everywhere, a wrong button misses); a masher pressing every button on every note must get no Perfect and no combo |
 | `node tests/gate.mjs --gates-file beatsync-gates.json --hosts romdev` | the autopilot plays Test Groove on Hard to the results with every note Perfect, and the menus reach play from the pad, the same state on GL and WebGPU | each run cut short |
 

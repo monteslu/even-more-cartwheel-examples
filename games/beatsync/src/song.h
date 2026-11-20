@@ -19,6 +19,7 @@ typedef struct note {
   int32_t ms;   /* its time in the song, milliseconds */
   int16_t step; /* its 16th from beat 0 */
   uint8_t lane; /* LANE_* */
+  uint8_t other; /* made from the other stem (a break note): its hit and miss act on the other track */
 } note;
 
 typedef enum { SEC_INTRO, SEC_BUILD, SEC_DROP, SEC_BREAK, SEC_OUTRO, SEC_OTHER } section_kind;

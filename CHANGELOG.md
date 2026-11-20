@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.32.3
+
+- **beatsync** hits feel like hits: every hit bursts at its gate in the river's colour, shards thrown up and out and a
+  ring opening out, bigger, faster and whiter on a Perfect. It swells in and fades over half a second (the flash
+  checks pass on the densest songs played whole).
+- **beatsync** shows each judgement in one colour on every river and on the results: Perfect green, Good turquoise,
+  Miss red (they took the river's colour before).
+- **beatsync**'s bass is heard: hitting or missing a bass-lane note changed nothing audible. A bass-lane note made from
+  the other track in a break (20 to 70% of them) acted on the silent bass track; it now acts on the other track, which
+  sits lower between hits in those stretches, so a stab rings on a hit and is cut short on a miss (7 dB in the mids).
+  The real bass, 8 to 11 dB under the drums, now sits lower between hits and a hit lifts it over the record, so a miss
+  is 10.5 dB under a hit in the low end (it was 6) and a hit stands 2.7 dB over the record (it was 0). New gate
+  `tests/beatsync-bass.mjs` measures the whole mix, with the old levels (`bassmix old`) and the old routing
+  (`othersrc 0`) as controls that must fail. song.json marks a note made from the other track with `o: 1`.
+
 ## 0.32.2
 
 - **beatsync** Medium plays the bass: every song's Medium chart had almost no notes on the bass river (Test Groove

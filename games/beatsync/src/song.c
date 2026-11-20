@@ -187,7 +187,7 @@ static bool load_one(const char *id, song *s) {
       int32_t last = -1000000;
       for (int i = a->first; i >= 0; i = j.v[i].next) {
         note n = { (int32_t)lround(jnum(jget(&j, &j.v[i], "t"), 0) * 1000), (int16_t)jnum(jget(&j, &j.v[i], "step"), 0),
-                   (uint8_t)jnum(jget(&j, &j.v[i], "lane"), 0) };
+                   (uint8_t)jnum(jget(&j, &j.v[i], "lane"), 0), (uint8_t)(jnum(jget(&j, &j.v[i], "o"), 0) != 0) };
         if (n.lane >= LANES || n.ms < last) { cw_error("%s: charts.%s note %d is out of order or has no lane", path, DN[d], s->notes[d]); ok = false; break; }
         last = n.ms;
         s->chart[d][s->notes[d]++] = n;

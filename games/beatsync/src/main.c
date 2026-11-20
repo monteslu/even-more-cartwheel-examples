@@ -89,7 +89,9 @@ static struct {
   int32_t screen, sel, diff, pick, item;      /* the game's own screen, the song and difficulty chosen, the menu item */
   const song *s;
   uint8_t state[MAX_NOTES];
-  uint8_t spoiled[MAX_NOTES]; /* a wrong button was pressed while this note was due: it scores Good at best */
+  uint8_t spoiled[MAX_NOTES];
+  int32_t hit_seq[LANES];     /* the player's hits per lane (the club bursts the gate on each) */
+  uint8_t hit_perfect[LANES]; /* a wrong button was pressed while this note was due: it scores Good at best */
   int32_t next;                         /* first note not judged yet */
   int32_t song_ms, raw_ms, done, failed, ended_ticks;
   int32_t total, hit, perfect, good, miss, combo, max_combo, score, best_score, new_best;
@@ -109,6 +111,7 @@ static struct {
   float fade; /* the failed song's dip, as drawn */
   int32_t preview_wait;
   bool demo;  /* the sequencer plays a song by itself (title, song select) */
+  bool other_on_bass; /* the `othersrc 0` request: a note made from the other track plays on the bass lane, as 0.32.2 did (the bass gate's control) */
   bool old_rules; /* the `rules old` request: 35/70 ms on every difficulty, a wrong button misses the note */
   /* calibration */
   int64_t cal_start;
@@ -253,7 +256,7 @@ static void judged(int i, int j, int32_t err) {
     G.miss++;
     G.combo = 0;
     G.miss_streak++;
-    music_miss(lane);
+    music_miss(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane); /* a note made from the other track dips that track */
     if (!G.demo) {
       G.energy -= G.diff == DIFF_EASY ? 0.05f : 0.075f;
       cw_input_rumble(0, 0.35f, 0.15f, 90); /* a miss is felt in the pad, never a shake */
@@ -261,6 +264,8 @@ static void judged(int i, int j, int32_t err) {
     return;
   }
   G.hit++;
+  G.hit_seq[lane]++;
+  G.hit_perfect[lane] = j == J_PERFECT;
   G.combo++;
   G.miss_streak = 0;
   if (G.combo > G.max_combo) G.max_combo = G.combo;
@@ -273,7 +278,7 @@ static void judged(int i, int j, int32_t err) {
   G.err_sq += (float)err * err;
   G.err_n++;
   if (abs(err) > G.err_max) G.err_max = abs(err);
-  music_hit(lane);
+  music_hit(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane);
   G.flare[lane] = fminf(1, G.flare[lane] + 0.09f); /* each hit adds a little: a run of hits builds the glow up */
   if (!G.demo && lane == LANE_KICK) cw_input_rumble(0, 0.12f, 0, 40); /* feel the kick */
 }
@@ -389,6 +394,12 @@ static void tick_song(float dt, bool player) {
   } else /* the demo plays every note itself */
     for (int i = G.next; i < n && c[i].ms <= t; i++)
       if (G.state[i] == NOTE_PENDING) { G.state[i] = NOTE_HIT; G.flare[c[i].lane] = fminf(1, G.flare[c[i].lane] + 0.09f); }
+  /* a stretch of notes made from the other track (a break): the next note is one, or the last one was within a beat */
+  if (player) {
+    int32_t beat = G.s->bpm > 0 ? (int32_t)(60000.0 / G.s->bpm) : 480;
+    bool brk = !G.other_on_bass && ((G.next < n && c[G.next].other) || (G.next > 0 && G.next <= n && c[G.next - 1].other && t - c[G.next - 1].ms < beat));
+    music_set_other_break(brk);
+  } else music_set_other_break(false);
   /* notes past the Good window are missed */
   for (int i = G.next; i < n && c[i].ms < t - GOOD_MS; i++)
     if (G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) judged(i, J_MISS, 0);
@@ -933,6 +944,8 @@ static void render(void *user, double alpha) {
   };
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];
+    v.hit_seq[l] = G.hit_seq[l];
+    v.hit_perfect[l] = G.hit_perfect[l];
     v.press[l] = G.press[l];
     v.level[l] = G.level[l];
   }
@@ -997,6 +1010,11 @@ static void cmd_gap(int argc, const char **argv, cw_reply *r) {
 static void cmd_fromzero(int argc, const char **argv, cw_reply *r) {
   G.from_zero = argc > 1 && atoi(argv[1]) != 0;
   cw_reply_printf(r, "{\"fromzero\":%d}", G.from_zero);
+}
+
+static void cmd_othersrc(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.other_on_bass = atoi(argv[1]) == 0;
+  cw_reply_printf(r, "{\"othersrc\":%d}", !G.other_on_bass);
 }
 
 static void cmd_rules(int argc, const char **argv, cw_reply *r) {
@@ -1112,6 +1130,7 @@ static void init(void *user) {
   cw_debug_command("hole", "hole <from_ms> <to_ms>: cut the notes between those song times out of the chart playing (the wait gate's long wait)", cmd_hole);
   cw_debug_command("gap", "gap game|off|force: the wait indicator as the game shows it, never, or always (the wait gate's controls)", cmd_gap);
   cw_debug_command("fromzero", "fromzero 1|0: play every song from its top, not 8 beats before its first note (the start gate's control)", cmd_fromzero);
+  cw_debug_command("othersrc", "othersrc 1|0: a note made from the other track plays its hit and miss on the other track (1, the game) or on the bass lane (0, the bass gate's control)", cmd_othersrc);
   cw_debug_command("rules", "rules old|new: the judgement as it was (35/70 ms everywhere, a wrong button misses the note; the forgiving gate's control) or as it is", cmd_rules);
 #ifdef GAME_AUTOPILOT
   cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
