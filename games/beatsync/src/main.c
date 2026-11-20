@@ -655,6 +655,9 @@ static void ptext(const char *s, float x, float y, float size, cw_color c) { /* 
 }
 static void panel(cw_rect r, cw_color edge) { ascii_hud_rect_edge(r.x, r.y, r.w, r.h, 1, edge); }
 static const cw_color PANEL_EDGE = { 0.65f, 0.4f, 1.0f, 1 };
+/* each judgement's own colour, the same on every river and on the results: Perfect green, Good turquoise, Miss red
+ * (never the river's colour, so a word reads the same wherever it shows) */
+static const cw_color JUDGE_COL[4] = { { 1, 1, 1, 1 }, { 0.35f, 1.0f, 0.45f, 1 }, { 0.25f, 0.9f, 0.95f, 1 }, { 1.0f, 0.32f, 0.32f, 1 } };
 static cw_color lane_color(int l, float a) {
   float c[3];
   club_lane_rgb(l, c);
@@ -775,7 +778,7 @@ static void draw_play(cw_vec2 cv, float size) {
     float x, y, t = (float)G.judge_ticks[jl] / 40.0f;
     club_gate_screen(jl, cv.x, cv.y, &x, &y);
     y += size * 1.5f;
-    cw_color c = G.judge[jl] == J_MISS ? cw_rgba(1, 0.45f, 0.45f, 1) : lane_color(jl, 1);
+    cw_color c = JUDGE_COL[G.judge[jl]];
     c.a = fminf(1, t * 2.5f);
     text_at(JN[G.judge[jl]], x, y - size * 0.7f - (1 - t) * size * 0.4f, size * (G.judge[jl] == J_PERFECT ? 1.1f : 0.95f), c, 0);
   }
@@ -831,8 +834,25 @@ static void draw_results(cw_vec2 cv, float size) {
   LINE(b, r.y + size * 7.6f, size * 1.4f, WHITE);
   if (G.new_best) LINE("new best", r.y + size * 9.3f, size * 0.85f, ACCENT);
   else { snprintf(b, sizeof b, "best %d", G.best_score); LINE(b, r.y + size * 9.3f, size * 0.85f, DIM); }
-  snprintf(b, sizeof b, "Perfect %d   Good %d   Miss %d", G.perfect, G.good, G.miss);
-  LINE(b, r.y + size * 10.8f, size * 0.85f, WHITE);
+  { /* the counts, each in its judgement's colour, centred as one line */
+    char part[3][32];
+    snprintf(part[0], sizeof part[0], "Perfect %d", G.perfect);
+    snprintf(part[1], sizeof part[1], "   Good %d", G.good);
+    snprintf(part[2], sizeof part[2], "   Miss %d", G.miss);
+    float w[3], total = 0, h = 0, y = r.y + size * 10.8f; /* x: the panel middle (LINE) */
+    for (int i = 0; i < 3; i++) {
+      cw_text_style st = ts(size * 0.85f, WHITE);
+      cw_text_metrics m = cw_font_measure(font(), part[i], &st);
+      w[i] = m.width, total += m.width, h = fmaxf(h, m.height);
+    }
+    float px = x - total * 0.5f; /* centred on the panel, as LINE centres its lines */
+    (void)h;
+    for (int i = 0; i < 3; i++) {
+      cw_text_style pst = ts(size * 0.85f, JUDGE_COL[J_PERFECT + i]);
+      cw_r2d_text(font(), part[i], cw_v2(px, y), &pst);
+      px += w[i];
+    }
+  }
   snprintf(b, sizeof b, "longest streak %d of %d", G.max_combo, G.total);
   LINE(b, r.y + size * 12.1f, size * 0.85f, DIM);
   static const char *const ITEMS[2] = { "Play again", "Songs" };
