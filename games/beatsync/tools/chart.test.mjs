@@ -188,3 +188,26 @@ test('gapProblems and firstNoteProblem: the chart rules, and the controls they m
   assert.equal(firstNoteProblem(steady, steady[0].t, 4), null);
   assert.ok(firstNoteProblem(steady.filter((n) => n.t > 10), steady[0].t, 4));
 });
+
+test('Medium keeps the bass: every pattern with a bass line gets bass notes, and the bass check fails a chart without', async () => {
+  const { bassProblem, MIN_BASS_SHARE } = await import('./check-songs.mjs');
+  // a bar of four-on-the-floor kicks, claps on 2 and 4, and an off-beat bass on every 8th "and": the drums own every
+  // beat, so without the bass rule Medium picks no bass at all
+  const cands = [];
+  for (let bar = 0; bar < 16; bar++) {
+    for (const pos of [0, 4, 8, 12]) cands.push({ step: bar * 16 + pos, lane: pos % 8 ? 1 : 0, strength: 1 });
+    for (const pos of [2, 6, 10, 14]) cands.push({ step: bar * 16 + pos, lane: 2, strength: 1 });
+  }
+  const b = Array.from({ length: 70 }, (_, i) => 0.5 + i * 0.5);
+  const { charts } = makeCharts(cands, b, 0, b.at(-1) - b[0]);
+  const bars = new Set(charts.medium.filter((n) => n.lane === 2).map((n) => Math.floor(n.step / 16)));
+  assert.equal(bars.size, 16, 'every bar of Medium has a bass note');
+  assert.ok(charts.medium.some((n) => n.lane === 0) && charts.medium.some((n) => n.lane === 1), 'and the drums too');
+  assert.deepEqual(chartProblems(charts.medium, LEVELS.medium, b), []);
+  assert.equal(bassProblem(charts.medium, charts.hard), null);
+  // control: the same chart without its bass notes fails
+  assert.ok(bassProblem(charts.medium.filter((n) => n.lane !== 2), charts.hard));
+  // a song with no bass line asks nothing of the bass
+  assert.equal(bassProblem([{ lane: 0 }], [{ lane: 0 }, { lane: 1 }]), null);
+  assert.ok(MIN_BASS_SHARE > 0);
+});

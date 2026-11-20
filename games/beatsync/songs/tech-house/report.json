@@ -228,11 +228,11 @@
   },
   "medium": {
    "lambda": 0.5,
-   "notes": 385,
-   "main": 274,
+   "notes": 341,
+   "main": 230,
    "fill": 111,
-   "per_second": 2.09,
-   "per_second_playing": 2.09,
+   "per_second": 1.85,
+   "per_second_playing": 1.85,
    "holes_left": [],
    "fill_steps": [
     0,

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.32.2
+
+- **beatsync** Medium plays the bass: every song's Medium chart had almost no notes on the bass river (Test Groove
+  1, the others 8 to 11% and only in breaks), because the drums own every beat and the chart picker gave each bar to
+  them. Medium now keeps at least one real bass note in every bar where the bass plays, placed where it costs the
+  drums least: 25 to 49% of Medium's notes are bass, with the kick and clap still there. Easy stays kick and clap;
+  Hard is unchanged. The six songs are re-charted from their sources (tracks byte for byte unchanged), and
+  `tools/check-songs.mjs` fails a Medium chart under 15% bass in a song with a bass line (control: the chart with
+  its bass taken out).
+
 ## 0.32.1
 
 - **beatsync** is forgiving: the judgement windows were 35 ms for Perfect and 70 ms for Good on every difficulty, so a

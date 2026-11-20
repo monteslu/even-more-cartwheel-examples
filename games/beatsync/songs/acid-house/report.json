@@ -211,11 +211,11 @@
   },
   "medium": {
    "lambda": 0.5,
-   "notes": 465,
-   "main": 397,
+   "notes": 407,
+   "main": 339,
    "fill": 68,
-   "per_second": 2.19,
-   "per_second_playing": 2.2,
+   "per_second": 1.92,
+   "per_second_playing": 1.93,
    "holes_left": [],
    "fill_steps": [
     0,

@@ -25,7 +25,12 @@
   "bpm": 124.032,
   "autocorr_bpm": 123.926,
   "beats": 105,
-  "downbeat": 0
+  "downbeat": 0,
+  "beats_before_the_drums": 0,
+  "bpm_range": [
+   115,
+   135
+  ]
  },
  "onsets": {
   "kick": {
@@ -43,6 +48,17 @@
    "on_grid": 103,
    "mean_abs_err_16ths": 0.07
   }
+ },
+ "fill_onsets": {
+  "hats": 14,
+  "other": 182,
+  "other_on_grid": 157
+ },
+ "music_span": {
+  "first_step": 0,
+  "last_step": 400,
+  "first_s": 0.3235,
+  "last_s": 48.712
  },
  "clap_rejected": {
   "kick_clicks": 15,
@@ -79,20 +95,38 @@
   "easy": {
    "lambda": 1.45,
    "notes": 64,
+   "main": 64,
+   "fill": 0,
    "per_second": 1.27,
-   "per_second_playing": 1.38
+   "per_second_playing": 1.38,
+   "holes_left": [],
+   "fill_steps": [],
+   "hat_steps": [],
+   "other_steps": []
   },
   "medium": {
    "lambda": 0.5,
-   "notes": 102,
-   "per_second": 2.03,
-   "per_second_playing": 2.11
+   "notes": 104,
+   "main": 104,
+   "fill": 0,
+   "per_second": 2.07,
+   "per_second_playing": 2.15,
+   "holes_left": [],
+   "fill_steps": [],
+   "hat_steps": [],
+   "other_steps": []
   },
   "hard": {
    "lambda": 0.25,
    "notes": 174,
+   "main": 174,
+   "fill": 0,
    "per_second": 3.46,
-   "per_second_playing": 3.6
+   "per_second_playing": 3.6,
+   "holes_left": [],
+   "fill_steps": [],
+   "hat_steps": [],
+   "other_steps": []
   }
  },
  "patterns": {

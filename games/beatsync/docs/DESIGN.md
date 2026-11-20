@@ -154,7 +154,11 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
 
    Each candidate note scores its strength, its place in the bar (downbeat, beat, 8th, 16th) and how unusual it is
    (a fill beats the hundredth plain kick); a dynamic program picks the best set that keeps the level's gaps.
-7. Bars that sound alike share one chart pattern, so a groove repeats and can be learned.
+7. Bars that sound alike share one chart pattern, so a groove repeats and can be learned. **Medium plays all three
+   lanes**: the drums own every beat, so left to the scores a Medium pattern takes kicks and claps and no bass. Where
+   the bass plays in a pattern and the pick left it out, each of the bass's places is tried as a must-have note (the
+   rest picked as usual around it) and the one that costs the pattern least is kept: at least one bass note in every
+   such bar. Easy stays kick and clap (its quarter-note grid misses the bass's off-beats); Hard has the bass anyway.
 8. **No long silences in a chart.** On every level, no gap between two notes is longer than two bars, and the first
    note comes within a bar of the song's first onset (the game starts play a few beats before the first note, so an
    intro is played from where it starts). Where the chart above leaves a longer gap (a break, a drumless intro), a
@@ -167,6 +171,7 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
    gap rules and one note per step, and only places a note where an onset really is. Easy may leave up to four bars
    only where no track has an onset at all.
 9. Checks (`tools/check-songs.mjs`, also in the repository's CI): notes per second per level, no two notes in a step, the gaps held,
+   Medium at least 15% bass notes in a song with a bass line (control: the same chart with its bass taken out),
    the share of notes on real onsets (break notes from the other stem against the other track, and the break notes
    on their own), no gap over two bars and the first note within two bars of the first onset, the tracks aligned;
    controls that must fail: the chart moved by an 8th scores badly against the audio, a chart with a 30 s hole cut

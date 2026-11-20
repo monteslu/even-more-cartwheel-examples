@@ -8,10 +8,12 @@ export const LANES = ['kick', 'clap', 'bass'];
 /**
  * The levels: which steps of a beat they may use and the minimum gaps in 16ths.
  * `density` caps notes per second over the bars that have notes (so a long break cannot pay for a crowded drop).
+ * `bass`: the bass notes a bar pattern keeps where the bass plays in it (Medium plays all three lanes; the drums own
+ * the beats and would otherwise take every place, leaving the bass river empty). Easy stays kick and clap.
  */
 export const LEVELS = {
   easy: { grid: 4, same: 4, change: 4, lambda: 0.75, density: 1.6 },
-  medium: { grid: 2, same: 2, change: 4, lambda: 0.5, density: 3.5 },
+  medium: { grid: 2, same: 2, change: 4, lambda: 0.5, density: 3.5, bass: 1 },
   hard: { grid: 1, same: 1, change: 2, lambda: 0.25, density: 6.0 },
 };
 
@@ -254,7 +256,28 @@ export function chartLevel(scored, pats, barStep, lv, lambda) {
     const tiled = [];
     for (let r = 0; r < 3; r++) for (const c of p) tiled.push({ ...c, step: r * 16 + c.pos });
     tiled.sort((a, b) => a.step - b.step);
-    return selectNotes(tiled, lv, lambda).filter((c) => c.step >= 16 && c.step < 32).map((c) => ({ lane: c.lane, pos: c.pos, score: c.score }));
+    const pick = (cands) => selectNotes(cands, lv, lambda).filter((c) => c.step >= 16 && c.step < 32).map((c) => ({ lane: c.lane, pos: c.pos, score: c.score }));
+    let notes = pick(tiled);
+    // a level that keeps the bass (lv.bass): when the pattern has bass on the level's grid and the pick left too
+    // little of it, each bass place in the pattern is tried as a must-have note (the rest picked as usual around it)
+    // and the one that costs the pattern least is kept; repeated up to lv.bass bass notes
+    const forced = new Set();
+    for (let k = 0; lv.bass && k < lv.bass && notes.filter((c) => c.lane === 2).length < lv.bass; k++) {
+      let best = null, bestVal = -Infinity;
+      for (const c of p) {
+        if (c.lane !== 2 || c.pos % lv.grid || forced.has(c.pos)) continue;
+        const must = new Set([...forced, c.pos]);
+        const got = pick(tiled.map((t) => (t.lane === 2 && must.has(t.pos) && t.step >= 16 && t.step < 32 ? { ...t, score: t.score + 100 } : t)));
+        if (!must.size || [...must].some((pos) => !got.some((g) => g.lane === 2 && g.pos === pos))) continue;
+        const val = got.reduce((v, g) => v + g.score - lambda - (g.lane === 2 && must.has(g.pos) ? 100 : 0), 0);
+        if (val > bestVal) bestVal = val, best = { pos: c.pos, got };
+      }
+      if (!best) break;
+      forced.add(best.pos);
+      // the forced note keeps a score that wins at a bar boundary (enforceGaps); the others keep their own
+      notes = best.got.map((g) => (g.lane === 2 && forced.has(g.pos) ? { ...g, score: g.score - 100 + 2 } : g));
+    }
+    return notes;
   });
   const notes = [];
   const bars = [...pats.barCluster.keys()].sort((a, b) => a - b);

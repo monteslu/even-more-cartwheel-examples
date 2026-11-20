@@ -13,6 +13,8 @@
 // should catch them is reported broken: the Hard chart moved by an 8th scores badly against the audio, a track
 // shifted by 64 samples is caught by the alignment check, a chart with a 30 s hole cut into it (every level) is
 // caught by the gap check, and a Hard chart missing its first 30 s of notes is caught by the first-note check.
+// A level that keeps the bass (LEVELS[name].bass: Medium) has at least MIN_BASS_SHARE of its notes on the bass lane
+// wherever the song has a bass line (its Hard chart does); control: the same chart with its bass notes taken out.
 // Exits 1 on any failure.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -23,6 +25,22 @@ import { stbAvailable, decodeVorbisStb } from './lib/stbvorbis.mjs';
 import { excerptLag, unpackExcerpt, TRACKS } from './lib/package.mjs';
 import { bandOnsets, bassOnsets, monoOf } from './lib/analyze.mjs';
 import { biquad, filtfilt } from './lib/dsp.mjs';
+
+/** A level that keeps the bass: the least share of its notes on the bass lane, when the song has a bass line. */
+export const MIN_BASS_SHARE = 0.15;
+
+/**
+ * The bass rule for a level that keeps the bass.
+ * @param {{lane: number}[]} notes the level's chart
+ * @param {{lane: number}[]} hard the song's Hard chart (has the song a bass line at all)
+ * @returns {string|null}
+ */
+export function bassProblem(notes, hard) {
+  const share = (list) => (list.length ? list.filter((n) => n.lane === 2).length / list.length : 0);
+  if (share(hard) < MIN_BASS_SHARE) return null; // no bass line to speak of
+  const got = share(notes);
+  return got < MIN_BASS_SHARE ? `only ${(100 * got).toFixed(1)}% of notes on the bass lane (need ${100 * MIN_BASS_SHARE}%; Hard has ${(100 * share(hard)).toFixed(1)}%)` : null;
+}
 
 /** Minimum share of a chart's notes on a re-found onset, and the most the 8th-shifted control may keep of it. */
 export const MIN_ONSET_SHARE = 0.9, CONTROL_MAX_RATIO = 0.6;
@@ -163,6 +181,14 @@ export async function checkSong(dir) {
     info[`${name}_per_second`] = +nps.toFixed(2);
     info[`${name}_per_second_playing`] = +playing.toFixed(2);
     if (playing > lv.density + 0.01) fails.push(`${name}: ${playing.toFixed(2)} notes/s in the bars with notes, the cap is ${lv.density}`);
+    if (lv.bass) {
+      const hard = song.charts?.hard ?? [];
+      info[`${name}_bass_share`] = +(notes.filter((n) => n.lane === 2).length / notes.length).toFixed(3);
+      const bp = bassProblem(notes, hard);
+      if (bp) fails.push(`${name}: ${bp}`);
+      // control: the same chart without its bass notes must fail (when the song has a bass line: an empty chart fails)
+      if (bassProblem([], hard) && !bassProblem(notes.filter((n) => n.lane !== 2), hard)) fails.push(`CONTROL: ${name} with its bass notes taken out passed the bass check`);
+    }
   }
 
   // onsets found again in the decoded tracks
