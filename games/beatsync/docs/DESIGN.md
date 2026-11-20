@@ -18,7 +18,8 @@ needs something different.
   or bass note just played stands out, then falls back over about a quarter second (on Easy, whose kicks are on 1 and
   3, the kicks the player plays stand about 4 dB over the ones on 2 and 4). A miss drops only that track (to about
   -13 dB, with a low-pass at 700 Hz) and it comes back by itself over one beat, or at once on the next hit in its
-  lane, so a few misses across the lanes never empty the mix. A wrong button is a miss of the note it was meant for.
+  lane, so a few misses across the lanes never empty the mix. A wrong button never misses a note: it breaks the combo, and the note it was meant for can then only be Good; two
+  or more buttons on one tick (no chart has two notes on one tick) are a mash, scored Good at best with no combo.
   The song's own level changes only when the crowd leaves (the failed song fades out); the title and the song
   select's preview play every track at full.
 - **No waiting.** Play starts 8 beats before the first note of the level chosen (on the song's beats; from the top
@@ -26,8 +27,10 @@ needs something different.
   the song select's preview. The charts leave no long holes (see Charts). If a wait of more than 12 beats remains
   between two notes, the rivers' banks fill with light from the gate up as it passes, and over its last four bars a
   countdown (bars, then the last bar's beats) says when the notes come back onto the rivers; it fades out as they do.
-- **Judgement.** A hit is judged against the note's time in the song, not the frame: Perfect within 35 ms, Good within
-  70 ms, else Miss. A per-device offset from the calibration screen is added (saved).
+- **Judgement.** A hit is judged against the note's time in the song, not the frame, in windows a person on a
+  living-room setup can meet: Perfect within 75 ms and Good within 150 ms on Easy, 55 and 110 on Medium, 35 and 85 on
+  Hard (its Perfect stays tight), else Miss. Notes are at least 465 ms apart on Easy, 228 on Medium and 114 on Hard,
+  and a press takes the nearest note in its own lane. A per-device offset from the calibration screen is added (saved).
 - **Scoring.** Points per Perfect and Good, a combo, a multiplier that grows with the combo, a grade at the end, the
   best score and grade saved per song and difficulty.
 - **Difficulties.** Easy, Medium, Hard per song (see Charts).

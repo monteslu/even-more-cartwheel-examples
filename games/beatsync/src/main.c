@@ -49,8 +49,6 @@
 #include "song.h"
 
 
-#define PERFECT_MS 35
-#define GOOD_MS 70
 #define LEAD_MS 4000 /* from Play to the song's first frame: the how-to and the count-in, the first notes coming round */
 #define MAX_NOTES 8192
 #define PULSE_GAP_MS 350 /* a room pulse at most this often: under 3 a second, however busy the part */
@@ -91,6 +89,7 @@ static struct {
   int32_t screen, sel, diff, pick, item;      /* the game's own screen, the song and difficulty chosen, the menu item */
   const song *s;
   uint8_t state[MAX_NOTES];
+  uint8_t spoiled[MAX_NOTES]; /* a wrong button was pressed while this note was due: it scores Good at best */
   int32_t next;                         /* first note not judged yet */
   int32_t song_ms, raw_ms, done, failed, ended_ticks;
   int32_t total, hit, perfect, good, miss, combo, max_combo, score, best_score, new_best;
@@ -110,6 +109,7 @@ static struct {
   float fade; /* the failed song's dip, as drawn */
   int32_t preview_wait;
   bool demo;  /* the sequencer plays a song by itself (title, song select) */
+  bool old_rules; /* the `rules old` request: 35/70 ms on every difficulty, a wrong button misses the note */
   /* calibration */
   int64_t cal_start;
   int32_t cal_taps, cal_offsets[32], cal_result, cal_ms;
@@ -159,6 +159,15 @@ static void play(cw_sound s) { cw_audio_play(s, &(cw_play_desc){ .bus = cw_shell
 
 /* ── the song on the sequencer ─────────────────────────────────────── */
 
+/* the judgement windows per difficulty (Easy, Medium, Hard), in ms either side of the note: wide enough for a person
+ * on a living-room setup (Easy notes are at least 465 ms apart, Medium 228, Hard 114); Hard keeps its 35 ms Perfect
+ * (the sync gate's control presses 50 ms late, and frame steps put some of those presses at 41 ms) */
+static const int32_t PERFECT_WIN[DIFFS] = { 75, 55, 35 };
+static const int32_t GOOD_WIN[DIFFS] = { 150, 110, 85 };
+/* the `rules old` request (the forgiving gate's control): the windows and the wrong-button miss as they were */
+#define PERFECT_MS (G.old_rules ? 35 : PERFECT_WIN[G.diff])
+#define GOOD_MS (G.old_rules ? 70 : GOOD_WIN[G.diff])
+
 static const note *chart(void) { return G.s ? G.s->chart[G.diff] : NULL; }
 static int chart_count(void) { return G.s ? CW_MIN(G.s->notes[G.diff], MAX_NOTES) : 0; }
 
@@ -167,6 +176,7 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   G.s = s;
   G.diff = d;
   memset(G.state, NOTE_PENDING, sizeof G.state);
+  memset(G.spoiled, 0, sizeof G.spoiled);
   G.next = 0;
   const note *c = chart();
   int n = chart_count();
@@ -269,22 +279,37 @@ static void judged(int i, int j, int32_t err) {
 }
 
 /* a press in a lane at the song time t (the clock less the device's offset) */
-static void press(int lane, int32_t t) {
+static void press(int lane, int32_t t, bool mash) {
   const note *c = chart();
   int n = chart_count();
   G.press[lane] = 1;
-  /* the note it was meant for: the nearest not yet judged within the Good window (a chart never puts two notes that
-   * close, at any difficulty) */
+  /* the note it was meant for: the nearest not yet judged in this lane within the Good window */
   int best = -1;
   int32_t berr = GOOD_MS + 1;
+  int wrong = -1; /* the nearest note due in another lane: this press was the wrong button for it */
+  int32_t werr = GOOD_MS + 1;
   for (int i = G.next; i < n && c[i].ms <= t + GOOD_MS; i++) {
     if (G.state[i] != NOTE_PENDING) continue;
     int32_t e = t - c[i].ms;
+    if (c[i].lane != lane && G.old_rules) { /* as it was: the nearest note in any lane, a wrong button misses it */
+      if (abs(e) < abs(berr)) berr = e, best = i;
+      continue;
+    }
+    if (c[i].lane != lane) {
+      if (abs(e) <= GOOD_MS && abs(e) < abs(werr)) werr = e, wrong = i;
+      continue;
+    }
     if (abs(e) < abs(berr)) berr = e, best = i;
   }
-  if (best < 0) return; /* nothing near: a free tap */
-  if (c[best].lane != lane) { judged(best, J_MISS, 0); return; } /* the wrong button misses the note it was meant for */
-  judged(best, abs(berr) <= PERFECT_MS ? J_PERFECT : J_GOOD, berr);
+  if (best < 0) {
+    /* the wrong button costs the combo and that note's Perfect, never the note: it can still be hit in its own lane
+     * (so a slip is forgiven, and mashing every button scores Good at best with no multiplier) */
+    if (wrong >= 0) G.combo = 0, G.spoiled[wrong] = 1;
+    return; /* nothing near: a free tap */
+  }
+  if (G.old_rules && c[best].lane != lane) { judged(best, J_MISS, 0); return; }
+  if (mash && !G.old_rules) G.spoiled[best] = 1;
+  judged(best, abs(berr) <= PERFECT_MS && !G.spoiled[best] ? J_PERFECT : J_GOOD, berr);
 }
 
 /* the field's pulses: each instrument's notes in Hard's chart as the song plays them, heard only while its track is
@@ -350,11 +375,16 @@ static void tick_song(float dt, bool player) {
           G.state[i] = NOTE_SKIPPED;
           continue;
         }
-        press(c[i].lane, t);
+        press(c[i].lane, t, false);
       }
 #else
+    /* no chart puts two notes on one tick: two or more buttons at once is a mash, and its hit scores Good at best
+     * with no combo (so pressing every button on every note never pays) */
+    int down = 0;
+    for (int l = 0; l < LANES; l++) down += cw_action_just_pressed(0, lane_act[l]);
+    if (down > 1) G.combo = 0;
     for (int l = 0; l < LANES; l++)
-      if (cw_action_just_pressed(0, lane_act[l])) press(l, t);
+      if (cw_action_just_pressed(0, lane_act[l])) press(l, t, down > 1);
 #endif
   } else /* the demo plays every note itself */
     for (int i = G.next; i < n && c[i].ms <= t; i++)
@@ -949,6 +979,11 @@ static void cmd_fromzero(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"fromzero\":%d}", G.from_zero);
 }
 
+static void cmd_rules(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.old_rules = !strcmp(argv[1], "old");
+  cw_reply_printf(r, "{\"rules\":\"%s\"}", G.old_rules ? "old" : "new");
+}
+
 #ifdef GAME_AUTOPILOT
 static void cmd_skip(int argc, const char **argv, cw_reply *r) {
   int l = argc > 1 ? atoi(argv[1]) : -1;
@@ -1057,6 +1092,7 @@ static void init(void *user) {
   cw_debug_command("hole", "hole <from_ms> <to_ms>: cut the notes between those song times out of the chart playing (the wait gate's long wait)", cmd_hole);
   cw_debug_command("gap", "gap game|off|force: the wait indicator as the game shows it, never, or always (the wait gate's controls)", cmd_gap);
   cw_debug_command("fromzero", "fromzero 1|0: play every song from its top, not 8 beats before its first note (the start gate's control)", cmd_fromzero);
+  cw_debug_command("rules", "rules old|new: the judgement as it was (35/70 ms everywhere, a wrong button misses the note; the forgiving gate's control) or as it is", cmd_rules);
 #ifdef GAME_AUTOPILOT
   cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
   cw_debug_command("song", "song <index|id> [easy|medium|hard]: the autopilot plays that song from its start", cmd_song);

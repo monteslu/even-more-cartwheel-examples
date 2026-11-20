@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.32.1
+
+- **beatsync** is forgiving: the judgement windows were 35 ms for Perfect and 70 ms for Good on every difficulty, so a
+  player had to hit almost the exact moment, and any delay in the sound path (a browser, a TV, a wireless speaker)
+  ate the whole window. They are now 75 and 150 ms on Easy, 55 and 110 on Medium, 35 and 85 on Hard. A wrong button
+  no longer misses the note it was meant for: it breaks the combo and that note can only be Good, so a slip is
+  forgiven and mashing every button scores Good at best with no multiplier.
+- New gate `tests/beatsync-forgiving.mjs` through romdev on GL and WebGPU: a player pressing 50 ms late on average
+  with a 50 ms spread and a slipped thumb every 15 notes clears the first song on Easy (accuracy 0.70 or better) and
+  Medium (0.55 or better). Controls that must fail: the same player under the old judgement (the crowd leaves on
+  Easy) and a masher on every button (no Perfect, no combo).
+
 ## 0.32.0
 
 - **beatsync**'s rivers recede in true perspective: each is a road going away toward a horizon above the screen, its

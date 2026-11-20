@@ -11,8 +11,10 @@ characters.
   part to full and opens its top. A miss drops only that part (a short dip with a low-pass) and it comes back by
   itself over a beat. Too many misses and the floor empties.
 - **On the audio clock**: notes are placed and judged on the song's own position (the mixer's frames played), not on
-  frames: Perfect within 35 ms, Good within 70. A calibration screen (tap along to a click) saves the offset of this
-  screen and speaker.
+  frames. The windows suit a person on a living-room setup: Perfect within 75 ms and Good within 150 on Easy, 55 and
+  110 on Medium, 35 and 85 on Hard. A wrong button never costs the note: it breaks the combo and that note can only be
+  Good (so pressing every button scores Good at best with no multiplier). A calibration screen (tap along to a click)
+  saves the offset of this screen and speaker.
 - **The look**: a note highway of three rivers side by side, laid out as the buttons are: kick on the left (west),
   clap in the middle (south), bass on the right (east), so which button a note wants is where its river is. Each river
   is a road of characters receding toward a horizon near the top of the screen, a current streaming down it to a gate
@@ -77,6 +79,7 @@ each has a control that must fail:
 | `tests/beatsync-flash.mjs` | every effect's flash meter reads at most 3 flashes a second over a whole song, and romdev's picture check (WCAG 2.3.1, Harding) passes over the densest songs played whole on Hard (Test Groove, the most notes a second, and Acid House Rave, the most notes) and Test Groove on Easy (brighter notes) | every effect strobing; the picture with an 8 Hz strobe mixed in |
 | `tests/beatsync-programs.mjs` | the program table has every draw state the game asks for, at every preset and in a player's first frames | a sphere in a material no table has |
 | `tests/beatsync-text.mjs` | text at least the engine's size floor on every screen | the same screens at half text size |
+| `tests/beatsync-forgiving.mjs` | a person on a living-room setup (pressing 50 ms late on average with a 50 ms spread, a slipped thumb every 15 notes) clears the first song on Easy at accuracy 0.70 or better and on Medium at 0.55 or better, from the on-screen cue (GL and WebGPU) | the same player under the old judgement (`rules old`: 35/70 ms everywhere, a wrong button misses); a masher pressing every button on every note must get no Perfect and no combo |
 | `node tests/gate.mjs --gates-file beatsync-gates.json --hosts romdev` | the autopilot plays Test Groove on Hard to the results with every note Perfect, and the menus reach play from the pad, the same state on GL and WebGPU | each run cut short |
 
 The flash sweep (`tests/flash-sweep.mjs beatsync-hard`) holds a stretch of Acid House Rave on Hard to the same rules.

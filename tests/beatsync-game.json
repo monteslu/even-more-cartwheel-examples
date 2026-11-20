@@ -14,6 +14,26 @@
     },
     "maxSeconds": 120
   },
+  "forgiving": {
+    "note": "tests/beatsync-forgiving.mjs: the first song on Easy and Medium played by a person on a living-room setup (late on average, a wide spread, a slipped thumb now and then); cleared with at least minAccuracy for that difficulty (Perfect 1, Good a half; 0.70 is a C on Easy, 0.55 a D on Medium). Controls: the old judgement (rules old) and a masher must fail.",
+    "song": 0,
+    "difficulties": [
+      0,
+      1
+    ],
+    "minAccuracy": [
+      0.7,
+      0.55
+    ],
+    "maxSeconds": 240,
+    "human": {
+      "biasMs": 50,
+      "sigmaMs": 50,
+      "pressMs": 120,
+      "slipEvery": 15,
+      "slipFixMs": 90
+    }
+  },
   "flash": {
     "note": "The room's pulses (kick: the floor; clap: the wall and booth; bass: the pillars, the wall and the wash lights), the receptors' hit glow, and the failed song's dip to dark, over the whole first song on Hard; the crowd is sent home (the `leave` request) after it, for the dip.",
     "effects": [
