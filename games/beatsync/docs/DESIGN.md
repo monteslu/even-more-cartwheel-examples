@@ -63,7 +63,7 @@ needs something different.
     shows notes is set per difficulty: 8 beats on Easy, 6.4 on Medium, 5.2 on Hard (4, 3.2 and 2.6 seconds at 120
     BPM), twice what a flat river showed. The perspective packs the far beats toward the horizon, so the near part
     reads as it did: a note covers its last beat within about 10% of the distance it did before (what the player
-    times against) and crosses the gate about 14% faster. The timing windows do not change. Easy's notes are drawn brighter too: its quarter notes pass any point of a
+    times against) and crosses the gate about 14% faster. The perspective does not change the timing windows (see Judgement). Easy's notes are drawn brighter too: its quarter notes pass any point of a
     river at most about twice a second, so they can stand out more than Medium's and Hard's eighths and sixteenths
     without a regular flicker over 3 Hz.
   - **The music drives the field.** Each kick sends a shockwave of characters across the field from below the gates,
