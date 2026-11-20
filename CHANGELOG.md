@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.33.0
+
+- **Towers** gives stars: a map held earns one, two with the core at 10 or more, three when no creep reached it. Three
+  stars sit on the top line beside the core's count, and each one dims over half a second as the core falls past
+  what it asks, so a player sees what a leak cost while it happens. The win card grows the stars won in one after
+  another and says what the next one asks ("the core at 14 of 20: let no creep reach it for the third star"); the map
+  screen shows the map's best, the total ("STARS 12 OF 90") and the three rules. Each map keeps its best in the save,
+  after the two fields the save already had, so a save from before keeps its maps and starts with no stars (the
+  shell keeps the bytes both sizes hold since engine v0.51.0). New gate `tests/towers-stars.mjs`: an old save keeps
+  best map 7 and 9 maps won with no stars (control: another save version with no migrate hook starts over and
+  fails), and through romdev on GL and WebGPU map 1 held from a core of 20, 14 and 6 gives 3, 2 and 1 stars and saves
+  them (control: stars shown but never written, saved 0, fails). The HUD overlap gate passes with the wider top line
+  (every case and sweep on GL, its 20 px control failing) and the flash sweep's towers-boss stretch passes on GL and
+  WebGPU.
+- **Pinball**'s chrome balls, post lamps and flashers throw small four-ray stars where a lamp's highlight burns
+  (the engine's glints, threshold 1.5, short rays; off on Low and Very Low). The flash sweep's storm stretch (three
+  balls, every shot pulsing) passes on GL and WebGPU, with its 8 Hz strobe control failing.
+- Tried and not kept: motion blur on Skate and Destructo. The blur follows the camera's motion, and in both games the
+  camera moves with what the player watches: in Skate the park smears in every turn while the skater, board and
+  wheels stay sharp, and in Destructo the field softens in every camera glide while the flying blocks hardly move
+  between two frames. Neither looked better. Jewels keeps its own star glints: the engine's glints at any threshold
+  either flood the board with soft crosses on whole highlights or leave it bare, where Jewels' pass puts one small
+  star on the brightest facet of a patch.
+
 ## 0.32.4
 
 - Engine v0.53.4 (from v0.50.3: reflection probes and probe grids captured with their own camera's light under
