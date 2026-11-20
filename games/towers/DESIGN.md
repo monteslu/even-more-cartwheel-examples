@@ -193,6 +193,11 @@ navmesh (the path tiles' part of the drawn floor, so no creep walks on a curb), 
   so a share far down the path is never starved. Each player starts with 420 shared out (at least 110 each).
 - The core holds 20; a creep that reaches it costs its leak (a boss 10). The map is held when its last wave is beaten.
   A held map leads to the next; a fallen core starts the map again. The map screen offers every map reached.
+- Stars: a held map gives one star, two with the core at 10 or more, three when no creep reached it. The top line shows
+  three stars beside the core's count, and each one dims (over half a second) as the core falls past what it asks; the
+  win card grows in the stars won and says what the next one asks; the map screen shows the map's best, the total and
+  the three rules. Each map keeps its best in the save, after the two fields the first save had, so a save from
+  before the stars keeps its maps (the shell keeps the bytes both sizes hold). Gate `tests/towers-stars.mjs`.
 
 ## Maps
 

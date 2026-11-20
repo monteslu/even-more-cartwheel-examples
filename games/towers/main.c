@@ -43,7 +43,14 @@ static double wall(void) {
   return (double)ts.tv_sec + (double)ts.tv_nsec * 1e-9;
 }
 
-typedef struct save_data { int32_t best_map, maps_won; } save_data;
+/* Stars: each map's best, one byte a map: 1 the map held, 2 held with the core at STAR2_CORE or more, 3 held with the
+ * core untouched (no creep reached it). They sit after the two fields a save from before them holds: the shell keeps
+ * the bytes both sizes have (engine v0.51.0), so such a save keeps its maps and starts with no stars. */
+#define STAR_MAPS 64
+#define STAR2_CORE (CORE_HP / 2)
+typedef struct save_data { int32_t best_map, maps_won; uint8_t stars[STAR_MAPS]; } save_data;
+_Static_assert(STAR2_CORE == 10, "the map screen's star lines say 10");
+static int stars_for(int core) { return core >= CORE_HP ? 3 : core >= STAR2_CORE ? 2 : 1; }
 
 enum { PH_PICK, PH_PLAY };
 static struct {
@@ -53,6 +60,8 @@ static struct {
   int players, phase, pick_map, over_ticks, bench_crowd;
   int32_t state, map, wave, waves, core, enemies, kills, towers, maps_won, best_map, drawn, leaks, next_t, phase_dbg;
   int32_t gold[MAXP], slot[MAXP], players_dbg;
+  int32_t stars_total, map_stars, won_stars, won_prev; /* every map's best summed; this map's best; the last win's stars, and the map's best before it */
+  float star_lit[3]; /* the top line's stars, easing toward lit (still possible) or dim (lost): never a step */
   float pu[MAXP], pv[MAXP];
   uint32_t hash;
   int banner_t, banner_kind;
@@ -67,6 +76,13 @@ static struct {
 } G;
 
 static cw_font font;
+static int stars_of(int n) { return n >= 1 && n <= STAR_MAPS ? ((save_data *)cw_shell_game_save())->stars[n - 1] : 0; }
+static void stars_sum(void) {
+  const save_data *sd = cw_shell_game_save();
+  int t = 0;
+  for (int k = 0; k < STAR_MAPS; k++) t += CW_MIN(sd->stars[k], 3);
+  G.stars_total = t;
+}
 static cw_sound snd_zap, snd_frost, snd_beam, snd_mortar, snd_boom, snd_build, snd_upgrade, snd_sell, snd_leak, snd_wave, snd_hop, snd_nogold, snd_kill, snd_won,
   snd_lost, snd_move, snd_select, snd_back, snd_music;
 static cw_voice music;
@@ -159,6 +175,9 @@ static bool map_go(int n) {
   if (count > 0 && n > count) n = count;
   if (!map_load(n, &G.M, sim_kind_by_name)) return false;
   sim_map_start(&G.S, &G.M);
+  if (dev_env("TOWERS_CORE")) G.S.core_hp = CW_CLAMP(atoi(dev_env("TOWERS_CORE")), 1, CORE_HP); /* (the stars check: a core already hurt) */
+  G.map_stars = stars_of(G.S.m.num);
+  for (int k = 0; k < 3; k++) G.star_lit[k] = 1;
   G.bench_crowd = dev_env("TOWERS_CROWD") ? atoi(dev_env("TOWERS_CROWD")) : TOWERS_BENCH_CROWD;
   int wave0 = g_wave_cmd > 0 ? g_wave_cmd : dev_env("TOWERS_WAVE") ? atoi(dev_env("TOWERS_WAVE")) : 0;
   if (G.bench_crowd > 0 || wave0 > 0) {
@@ -273,6 +292,16 @@ static void cmd_players(int argc, const char **argv, cw_reply *r) {
 #endif
 
 static void cmd_hud(int argc, const char **argv, cw_reply *r); /* the HUD, below */
+/* the save's version: 1 since the first release (the stars grew the struct at its end, which needs no new version).
+ * TOWERS_SAVE_VERSION (native) is the save check's control: another version with no migrate hook starts the game's
+ * data over, so an old save's maps are lost and the check must fail. */
+static uint16_t save_version(void) {
+#if CW_CART
+  return 1;
+#else
+  return getenv("TOWERS_SAVE_VERSION") ? (uint16_t)atoi(getenv("TOWERS_SAVE_VERSION")) : 1;
+#endif
+}
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
@@ -282,7 +311,7 @@ static void init(void *u) {
   G.call = cw_action_find("call");
   G.power = cw_action_find("power");
   cw_shell_init(&(cw_shell_desc){ .title = "TOWERS", .subtitle = "hold the core together", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .players_changed = players_changed,
+                                  .game_save_size = sizeof(save_data), .game_save_version = save_version(), .start = start, .players_changed = players_changed,
                                   .sound = shell_sound, .screen_changed = shell_screen });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
@@ -309,6 +338,7 @@ static void init(void *u) {
   snd_music = synth(2.0f, 65, 65, 0.05f, 0.25f, 0.2f);
   G.best_map = ((save_data *)cw_shell_game_save())->best_map;
   G.maps_won = ((save_data *)cw_shell_game_save())->maps_won;
+  stars_sum();
   cop_init(); /* the coplanar debug command: faces that fight for the depth test (games/common/coplanar.h) */
   cop_set_plane_tol(0.0005f); /* (the camera's depth range is the map's own few metres: it tells faces apart microns apart, and
                                * the models lay their glows a millimetre over their bodies on purpose) */
@@ -325,6 +355,10 @@ static void init(void *u) {
   cw_debug_i32("game.next_wave", &G.next_t);
   cw_debug_i32("game.players", &G.players_dbg);
   cw_debug_i32("game.maps_won", &G.maps_won);
+  cw_debug_i32("game.best_map", &G.best_map);
+  cw_debug_i32("game.stars_total", &G.stars_total);
+  cw_debug_i32("game.map_stars", &G.map_stars);
+  cw_debug_i32("game.won_stars", &G.won_stars);
   cw_debug_field("player.gold", G.gold, CW_DBG_I32, MAXP);
   cw_debug_field("player.slot", G.slot, CW_DBG_I32, MAXP);
   cw_debug_u32("game.hash", &G.hash);
@@ -460,6 +494,10 @@ static void fixed_update(void *u, double dt) {
       save_data *sd = cw_shell_game_save();
       sd->maps_won++, G.maps_won = sd->maps_won;
       if (G.S.m.num + 1 > sd->best_map) sd->best_map = G.S.m.num + 1, G.best_map = sd->best_map;
+      int n = G.S.m.num;
+      G.won_stars = stars_for(G.S.core_hp), G.won_prev = stars_of(n);
+      if (n >= 1 && n <= STAR_MAPS && G.won_stars > sd->stars[n - 1] && !dev_env("TOWERS_STARS_NO_SAVE")) sd->stars[n - 1] = (uint8_t)G.won_stars;
+      stars_sum(), G.map_stars = stars_of(n);
       cw_shell_save_commit();
     }
     if (G.S.state_ticks > 60 * 5) { /* on to the next map */
@@ -550,6 +588,24 @@ static cw_vec2 pill(const char *markup, int player, float x, float y, float ax, 
   cw_r2d_rect(cw_rect_make(l, t, w, h), bg);
   cw_prompt_text(font, markup, player, cw_v2(l + pad, t + pad * 0.6f), size, c, CW_ALIGN_LEFT);
   return (cw_vec2){ w, h };
+}
+
+/* a five-pointed star at (cx, cy), outer radius r, on a dark rim so it reads over any ground; lit gold, or a dim
+ * slate one for a star not (or no longer) earned. k (0..1) blends dim to lit, so a star changes by easing, never a step. */
+static void star(float cx, float cy, float r, float k, float alpha) {
+  cw_vec2 p[10], q[10];
+  for (int i = 0; i < 10; i++) {
+    float a = -1.5707963f + (float)i * 0.62831853f, rr = i & 1 ? 0.45f : 1.0f;
+    p[i] = cw_v2(cx + cosf(a) * r * rr, cy + sinf(a) * r * rr);
+    q[i] = cw_v2(cx + cosf(a) * (r * rr + r * 0.16f), cy + sinf(a) * (r * rr + r * 0.16f));
+  }
+  k = cw_clampf(k, 0, 1);
+  cw_r2d_fan(cw_v2(cx, cy), q, 10, true, rgba(0.02f, 0.02f, 0.04f, 0.85f * alpha));
+  cw_r2d_fan(cw_v2(cx, cy), p, 10, true, rgba(0.26f + 0.74f * k, 0.28f + 0.58f * k, 0.34f - 0.06f * k, alpha));
+}
+/* three stars side by side, centred at (cx, cy), r each: the first `lit` gold */
+static void star_row(float cx, float cy, float r, int lit, float alpha) {
+  for (int i = 0; i < 3; i++) star(cx + ((float)i - 1) * r * 2.5f, cy, r, i < lit ? 1.0f : 0.0f, alpha);
 }
 
 /* ── the HUD's rectangles ───────────────────────────────────────────────
@@ -836,7 +892,8 @@ static void hud_top(float u, cw_vec2 cs) {
   cw_text_metrics wm = measure(b, 34 * u);
   snprintf(c, sizeof c, "CORE %d", G.S.core_hp);
   cw_text_metrics cm = measure(c, 34 * u);
-  float w = wm.width + cm.width + 60 * u, h = wm.height + 12 * u, x = cs.x * 0.5f - w * 0.5f, y = 10 * u;
+  float sr = 13 * u, sw = sr * 2.5f * 2 + sr * 2 + 22 * u; /* the stars this map can still give: lit while the core keeps them */
+  float w = wm.width + cm.width + 60 * u + sw, h = wm.height + 12 * u, x = cs.x * 0.5f - w * 0.5f, y = 10 * u;
   cw_rect panel = cw_rect_make(x, y, w, h);
   cw_r2d_rect(panel, rgba(0.02f, 0.03f, 0.06f, 0.72f));
   text(b, x + 16 * u, y + 6 * u, 34 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_LEFT);
@@ -845,7 +902,12 @@ static void hud_top(float u, cw_vec2 cs) {
   float lo = hurt < 0.35f ? 0.5f + 0.5f * cw_sin((float)G.S.tick * 0.07f) : 0.0f;
   cw_color cc = rgba(0.55f + 0.45f * (1 - hurt), 0.85f, 1, 1), warn = rgba(1, 0.6f, 0.32f, 1);
   if (g_strobe_control && hurt < 0.35f) lo = (G.S.tick / 15) % 2 ? 1.0f : 0.0f, warn = rgba(1, 0.3f, 0.25f, 1);
-  text(c, x + w - 16 * u, y + 6 * u, 34 * u, rgba(cc.r + (warn.r - cc.r) * lo, cc.g + (warn.g - cc.g) * lo, cc.b + (warn.b - cc.b) * lo, 1), CW_ALIGN_RIGHT);
+  text(c, x + w - 16 * u - sw, y + 6 * u, 34 * u, rgba(cc.r + (warn.r - cc.r) * lo, cc.g + (warn.g - cc.g) * lo, cc.b + (warn.b - cc.b) * lo, 1), CW_ALIGN_RIGHT);
+  int can = G.S.state == ST_LOST ? 0 : stars_for(G.S.core_hp);
+  for (int i = 0; i < 3; i++) {
+    G.star_lit[i] += ((i < can ? 1.0f : 0.0f) - G.star_lit[i]) * 0.06f; /* about half a second to dim: the drop reads, nothing flashes */
+    star(x + w - 16 * u - sw + 22 * u + sr + (float)i * sr * 2.5f, y + h * 0.5f, sr, G.star_lit[i], 1);
+  }
   hr_add(HR_TOP, 255, panel, cw_rect_make(x + 16 * u, y + 6 * u, w - 32 * u, wm.height), "WAVE / CORE");
   ext_add_rect(panel);
   float ny = y + h + 6 * u;
@@ -1042,14 +1104,30 @@ static void hud(void) {
     float pw = cs.x * 0.42f, ph = 0;
     const char *nm = G.S.m.name[0] ? G.S.m.name : "UNNAMED";
     snprintf(b, sizeof b, "MAP %d OF %d", G.S.m.num, count);
-    ph = measure(b, 30 * u).height + measure(nm, 52 * u).height + measure(THEME_NAME[0], bs).height * 2 + 70 * u;
+    float sr = 20 * u;
+    ph = measure(b, 30 * u).height + measure(nm, 52 * u).height + measure(THEME_NAME[0], bs).height * 2 + 70 * u + sr * 2;
     cw_r2d_rect(cw_rect_make(cs.x * 0.5f - pw * 0.5f, y, pw, ph), rgba(0.02f, 0.03f, 0.06f, 0.75f));
     float ty = y + 14 * u;
     ty += text(b, cs.x * 0.5f, ty, 30 * u, rgba(0.8f, 0.85f, 1, 1), CW_ALIGN_CENTER).height + 6 * u;
     ty += text(nm, cs.x * 0.5f, ty, 52 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER).height + 6 * u;
     ty += text(THEME_NAME[CW_CLAMP(G.S.m.theme, 0, MP_THEMES - 1)], cs.x * 0.5f, ty, bs, rgba(1, 0.85f, 0.55f, 1), CW_ALIGN_CENTER).height + 4 * u;
     snprintf(b, sizeof b, "%d waves", G.S.m.waves);
-    text(b, cs.x * 0.5f, ty, bs, rgba(0.9f, 0.9f, 0.9f, 1), CW_ALIGN_CENTER);
+    ty += text(b, cs.x * 0.5f, ty, bs, rgba(0.9f, 0.9f, 0.9f, 1), CW_ALIGN_CENTER).height + 10 * u;
+    star_row(cs.x * 0.5f, ty + sr, sr, G.map_stars, 1); /* this map's best */
+    { /* what the stars ask, under the panel: one line each, its stars beside it */
+      static const char *const ASK[3] = { "hold the map", "hold it with the core at 10 or more", "hold it with no creep reaching the core" };
+      float ly = y + ph + 18 * u, lr = 11 * u, lh = measure(ASK[2], bs).height + 10 * u, lw = measure(ASK[2], bs).width + lr * 8 + 40 * u;
+      snprintf(b, sizeof b, "STARS %d OF %d", G.stars_total, count * 3);
+      float th = measure(b, bs).height + 8 * u;
+      cw_r2d_rect(cw_rect_make(cs.x * 0.5f - lw * 0.5f, ly, lw, th + lh * 3 + 18 * u), rgba(0.02f, 0.03f, 0.06f, 0.75f));
+      text(b, cs.x * 0.5f, ly + 8 * u, bs, rgba(1, 0.85f, 0.4f, 1), CW_ALIGN_CENTER);
+      float lx = cs.x * 0.5f - lw * 0.5f + 20 * u;
+      for (int k = 0; k < 3; k++) {
+        float ry = ly + 10 * u + th + lh * (float)k;
+        for (int i = 0; i <= k; i++) star(lx + lr + (float)i * lr * 2.4f, ry + lh * 0.45f, lr, 1, 1);
+        text(ASK[k], lx + lr * 8, ry, bs, rgba(1, 1, 1, 0.95f), CW_ALIGN_LEFT);
+      }
+    }
     float py = cs.y * 0.86f;
     pill("{move_left|move_right}: choose a map      {act_s}: start", -1, cs.x * 0.5f, py, 0.5f, 0.0f, bs, rgba(1, 1, 1, 1), rgba(0.02f, 0.03f, 0.06f, 0.75f));
     cw_r2d_end();
@@ -1110,7 +1188,28 @@ static void hud(void) {
   }
   if (G.S.state == ST_WON) {
     float y = cs.y * 0.36f;
+    { /* a band behind the whole card: it reads over any ground */
+      float bh = measure("THE CORE HOLDS", 72 * u).height + 16 * u + 34 * u * 2.7f + 8 * u + measure("map", 30 * u).height * 2 + 14 * u +
+                 (G.won_stars > G.won_prev && G.won_prev > 0 ? measure("a", 26 * u).height + 4 * u : 0);
+      cw_r2d_rect(cw_rect_make(0, y - 14 * u, cs.x, bh + 34 * u), rgba(0.02f, 0.03f, 0.06f, 0.55f));
+    }
     y += text("THE CORE HOLDS", cs.x * 0.5f, y, 72 * u, rgba(0.6f, 1, 0.75f, 1), CW_ALIGN_CENTER).height;
+    { /* the stars won, one after another, each growing in (no flash), then what each one asks */
+      float r = 34 * u, cy = y + 16 * u + r;
+      int t = G.S.state_ticks;
+      for (int i = 0; i < 3; i++) {
+        float g = cw_clampf((float)(t - 20 - i * 18) / 16.0f, 0, 1), e = g * g * (3 - 2 * g);
+        float sx = cs.x * 0.5f + ((float)i - 1) * r * 2.6f;
+        star(sx, cy, r, 0, 1); /* the slot */
+        if (i < G.won_stars && g > 0) star(sx, cy, r * (0.4f + 0.6f * e), 1, e);
+      }
+      y = cy + r * 1.35f + 8 * u;
+      if (G.won_stars >= 3) snprintf(b, sizeof b, "no creep reached the core: all three stars");
+      else if (G.won_stars == 2) snprintf(b, sizeof b, "the core at %d of %d: let no creep reach it for the third star", G.S.core_hp, CORE_HP);
+      else snprintf(b, sizeof b, "the core at %d of %d: keep it at %d or more for the second star", G.S.core_hp, CORE_HP, STAR2_CORE);
+      y += text(b, cs.x * 0.5f, y, 30 * u, rgba(1, 0.88f, 0.5f, 1), CW_ALIGN_CENTER).height + 4 * u;
+      if (G.won_stars > G.won_prev && G.won_prev > 0) y += text("a new best for this map", cs.x * 0.5f, y, 26 * u, rgba(0.6f, 1, 0.75f, 1), CW_ALIGN_CENTER).height + 4 * u;
+    }
     snprintf(b, sizeof b, "map %d cleared: on to the next", G.S.m.num);
     text(b, cs.x * 0.5f, y + 6 * u, 30 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   } else if (G.S.state == ST_LOST) {
