@@ -26,8 +26,12 @@ const song *music_song(void);
 /* The lanes in play (player true, from the next music_play): a little under the record between hits, punched to full
  * by a hit; a miss drops that lane alone and it recovers over a beat. false (the demo): every lane at full. */
 void music_set_player(bool player);
-/* a hit or a miss on a lane (LANE_*), or on MUSIC_OTHER: a note the chart made from the other track */
-#define MUSIC_OTHER 3
+/* a hit or a miss on a lane (LANE_*), or on MUSIC_OTHER: the other track, which the synth lane plays and a
+ * three-lane note made from the other stem (a break) acts on */
+#define MUSIC_OTHER LANE_SYNTH
+/* the lanes someone plays (a bit a LANE_*), from the next music_play: an unplayed lane sits at full like the record;
+ * with the synth played the other track is a lane (under the record between hits), else the backing */
+void music_set_played(unsigned mask);
 /* the chart is playing notes made from the other track (a break): the other track sits lower between hits */
 void music_set_other_break(bool on);
 void music_hit(int lane);

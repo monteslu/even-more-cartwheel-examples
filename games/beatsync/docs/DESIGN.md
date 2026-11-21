@@ -11,7 +11,10 @@ needs something different.
 - **Three buttons, one thumb.** The three lower face buttons: west, south, east (left, bottom, right of the diamond).
   Lanes from left to right: **kick** (west), **clap** (south), **bass** (east). Keyboard fallback: J, K, L. Touch:
   three wide zones across the bottom of the screen, in the same order.
-- **Never two notes at once.** A chart never asks for two buttons in the same moment, at any difficulty.
+- **One or two players** (below): one player on the three lanes, one player on two lanes (a pair of parts), or two
+  players side by side, each on a pair on their own pad.
+- **Never two notes at once.** A chart never asks for two buttons in the same moment, at any difficulty (two players
+  can have a note each at once: they are on two pads).
 - **The song reacts.** The "other" stem (chords, pads, stabs, the rest of the drums) plays at full volume, except
   where the chart plays notes made from it (a break, below): there it sits about 6 dB down between hits (easing over
   half a second), a hit on such a note punches the other track about 3 dB over the record and a miss dips it, so a
@@ -101,6 +104,44 @@ needs something different.
     read on a TV across a room. The HUD and menus in boxes over the field, like Detexto's. No screen shake (a hit or a
     miss rumbles the pad).
 
+## One or two players
+
+How people groove to a record: two hands on a table, low and high. So the second way to play is two lanes, and two
+players jam together, each on two.
+
+- **The parts.** The three-lane game plays kick, clap and bass. The two-lane game splits the song into two pairs:
+  the **drums** (kick and clap; the hats ride the clap button, the clap track carries them) and the **groove** (bass
+  and the **synth**: the other stem's chords, stabs and lines, playable only here). Together the two pairs are the
+  whole track.
+- **One player** chooses on the difficulty screen: three lanes (kick, clap, bass on West, South, East, as before), or
+  two lanes on the drums or the groove. **Two players** each play one pair on their own pad (the drums and the groove
+  by default; left or right swaps them), each at their own difficulty, and both press ready.
+- **Buttons for two lanes.** A pair's left lane is West or the left shoulder, its right lane South or the right
+  shoulder, both always live: one thumb rocking between two neighbouring buttons, or a hand each on the shoulders.
+  East stays the three-lane game's bass. Keyboard fallback: J and K. No touch layout of the game's own: a touch
+  device gets the host's gamepad overlay, which draws every button the input map names.
+- **Joining.** Play opens the shell's join screen: South takes a seat, Start plays (alone, Start plays at once). A
+  second pad can also join with one press on the song select or the difficulties. A pad that goes away frees its
+  seat.
+- **More notes on two lanes.** With two buttons to follow instead of three, each level of a two-lane chart carries
+  more notes a button than the three-lane chart of that level (Easy on the eighths with a quarter note a hand, Medium
+  eighths on both hands, Hard sixteenths), and never fewer notes than the three-lane chart gives those parts.
+- **Together, each with their own streak.** One score and one crowd; each player has their own streak and multiplier
+  (their notes score at their own multiplier), their road's banks charge with it, and a miss breaks only their own
+  (it drains on their road, "streak N lost" under it) while it still costs the crowd. The pad that missed rumbles. Each player's notes are judged in their own difficulty's windows, and a press
+  only ever counts for its own player's lanes (another player's note is never your wrong button). The results show
+  each player's part and accuracy; two players play for the song, so no best is kept for them. One player's bests
+  are kept per difficulty for the three lanes and for each pair.
+- **The rivers.** One player on a pair: two rivers further apart than the three-lane game's (two rivers of dense
+  notes in one sixth of the screen were a regular flicker). Two players: two roads side by side, each player's pair on its
+  own road converging to its own vanishing point (player 1 on the left), the land filling between the roads as well
+  as outside them; the shared streak badge in the middle, over the land between the roads. The rivers glide
+  to the layout chosen on the difficulty screen. The synth river is its own colour in every section's palette and
+  its notes are hexagons. With two players at two difficulties the rivers show the slower one's beats ahead, so both
+  read their notes at least as early as their own level would.
+- **The mix.** A part nobody plays sits at full, like the record. When the synth is played the other track becomes
+  a lane: under the record between hits, punched up by a hit, dipped by a miss.
+
 ## The song package
 
 One directory per song under `songs/<song-id>/`, written by `tools/make-song.mjs`, read by the game:
@@ -151,6 +192,8 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
   2 bass. Notes are sorted by `t`, at most one per step.
 - `sections`: where the song's parts start (intro, build, drop, break, outro), from the audio, for the visuals.
 - `look`: what the picture reads from the music (below), between `sections` and `charts`.
+- `pairs`: the two-lane charts, after `charts`: `{"drums": {"easy": [...], "medium": [...], "hard": [...]},
+  "groove": {...}}`, notes as above with `lane` 0 kick, 1 clap (the drums), 2 bass, 3 synth (the groove).
 
 ## The look from the music
 
@@ -222,6 +265,16 @@ again from the decoded other track and holds each beat's loudness to it (control
 `tools/make-test-song.mjs` makes a synthetic house song with known notes (a kick, a clap, a bass line, a pad) as a
 `.stem.mp4` or a stems directory, so the tooling is measured against ground truth and the game has a song before any
 real one exists. The real songs are made by the author and split into stems with Loukai.
+
+### Two lanes
+
+The two-lane charts (`pairs`, `tools/lib/chart.mjs` `makePairCharts`) are made the same way from each pair's own
+onsets: the drums from the kick and clap onsets plus the hats (weaker candidates on the clap, so Easy keeps the claps
+and Medium and Hard add the hats between them), from the drums' first beat; the groove from the bass onsets and the
+other stem's onsets (the synth) from the top. Their levels (`LEVELS2`) are denser than the three-lane ones (Easy:
+eighths, a quarter note a hand; Medium: eighths; Hard: sixteenths, up to 7 notes a second), each level keeps every
+note the three-lane chart of that level gives its parts where its gaps allow, and the break fill uses the pair's own
+unchosen onsets only: where neither part plays, that player rests. `check-songs` holds them (see `docs/TOOLS.md`).
 
 ## Timing in the game
 

@@ -17,7 +17,7 @@ import { parseArgs } from 'node:util';
 import { readStems } from './lib/stems.mjs';
 import { analyze, monoOf, bandOnsets, OTHER_ONSETS } from './lib/analyze.mjs';
 import { otherLook } from './lib/look.mjs';
-import { quantize, makeCharts, stepTime } from './lib/chart.mjs';
+import { quantize, makeCharts, makePairCharts, PAIRS, stepTime } from './lib/chart.mjs';
 import { writePackage, writeCharts, readSongJson, formatSong } from './lib/package.mjs';
 
 /** "Late Night Deep House.stem.mp4" -> "late-night-deep-house" */
@@ -72,6 +72,17 @@ export async function makeSong(input, o) {
   }
   const playSeconds = a.beats[a.beats.length - 1] - a.beats[0];
   const { charts, stats, patterns, span } = makeCharts(cands, a.beats, a.downbeat, playSeconds, extra, 4 * a.beatsAdded);
+  // the two-lane charts (docs/DESIGN.md "Two lanes"): the drums (kick and clap, the hats filling their breaks) from the
+  // drums' first beat, the groove (bass and the synth: the other stem's onsets) from the top
+  const synth = quantize(a.lanes.other.onsets, a.beats).map((x) => ({ step: x.step, lane: 3, strength: x.strength }));
+  const partCands = [...cands, ...synth].sort((x, y) => x.step - y.step || x.lane - y.lane);
+  const hats = extra.filter((x) => x.src === 'hat');
+  // the drums' high hand plays the claps and the hats (the clap track carries both): a hat is a candidate on the clap,
+  // weaker than a clap, so Easy keeps the claps and Medium and Hard add the hats between them
+  const hatCands = hats.filter((h) => !cands.some((c) => c.step === h.step && c.lane === 1)).map((h) => ({ step: h.step, lane: 1, strength: 0.5 * h.strength }));
+  const drums = makePairCharts([...partCands, ...hatCands].sort((x, y) => x.step - y.step || x.lane - y.lane), a.beats, a.downbeat, playSeconds, PAIRS.drums, [], 4 * a.beatsAdded, charts);
+  const groove = makePairCharts(partCands, a.beats, a.downbeat, playSeconds, PAIRS.groove, [], 0, charts);
+  const pairs = { drums: drums.charts, groove: groove.charts };
   const id = o.id ?? basename(resolve(o.out));
   const title = o.title ?? stems.info?.title ?? basename(input).replace(/\.stem\.(mp4|m4a)$/i, '');
   const report = {
@@ -87,12 +98,13 @@ export async function makeSong(input, o) {
       pitch_change_notes: a.lanes.bass.onsets.filter((x) => x.how === 'pitch').length },
     sections: a.sections,
     charts: stats,
+    pairs: { drums: drums.stats, groove: groove.stats },
     patterns,
   };
   const write = o.chartsOnly ? writeCharts : writePackage;
   const r = await write(resolve(o.out), {
     id, title, artist: o.artist ?? stems.info?.artist ?? '', rate: a.rate, tracks: a.tracks, bpm: a.bpm, beats: a.beats,
-    downbeat: a.downbeat, sections: a.sections, look: lookOf(a.tracks.other, a.rate, a.beats, a.lanes.other.onsets), charts, report,
+    downbeat: a.downbeat, sections: a.sections, look: lookOf(a.tracks.other, a.rate, a.beats, a.lanes.other.onsets), charts, pairs, report,
   });
   return r;
 }
@@ -121,8 +133,8 @@ export async function addLook(input, out) {
   const otherM = monoOf(stems.tracks.other);
   const onsets = bandOnsets(otherM, stems.rate, OTHER_ONSETS).onsets;
   const look = lookOf(stems.tracks.other, stems.rate, prev.beats, onsets);
-  const { charts, look: _old, ...rest } = prev;
-  const song = { ...rest, look, charts };
+  const { charts, pairs, look: _old, ...rest } = prev;
+  const song = { ...rest, look, charts, ...(pairs ? { pairs } : {}) };
   writeFileSync(join(dir, 'song.json'), formatSong(song));
   return { song };
 }
@@ -159,6 +171,8 @@ async function main() {
   for (const [k, s] of Object.entries(report.charts)) {
     console.log(`  ${k}: ${s.notes} notes (${s.fill} in the breaks, ${s.other_steps.length} from the other stem), ${s.per_second}/s${s.holes_left.length ? `, ${s.holes_left.length} holes left` : ''}`);
   }
+  for (const [pn, lv] of Object.entries(report.pairs ?? {}))
+    console.log(`  two lanes, ${pn}: ${Object.entries(lv).map(([k, s]) => `${k} ${s.notes} (${s.parts.join('+')}) ${s.per_second_playing}/s${s.holes_left.length ? ` ${s.holes_left.length} holes` : ''}`).join(', ')}`);
   console.log(`  tracks ${(bytes / 1e6).toFixed(2)} MB (${((bytes / 1e6) * 60 / song.length_s).toFixed(2)} MB/min), aligned (0 lag, ${song.length_samples} samples each), ${((Date.now() - t0) / 1000).toFixed(0)} s`);
 }
 

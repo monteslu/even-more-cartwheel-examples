@@ -3,8 +3,8 @@
 // Run: node --test tools/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { quantize, stepTime, selectNotes, enforceGaps, makeCharts, LEVELS, chartDensity, MAX_GAP, fillGaps, FILL, chartHoles } from './lib/chart.mjs';
-import { chartProblems, onsetShare, gapProblems, firstNoteProblem } from './check-songs.mjs';
+import { quantize, stepTime, selectNotes, enforceGaps, makeCharts, makePairCharts, PAIRS, LEVELS, LEVELS2, chartDensity, MAX_GAP, fillGaps, FILL, chartHoles } from './lib/chart.mjs';
+import { chartProblems, onsetShare, gapProblems, firstNoteProblem, pairProblems } from './check-songs.mjs';
 import { extendBeats } from './lib/analyze.mjs';
 import { rng } from './lib/dsp.mjs';
 import { makeSong } from './lib/synth.mjs';
@@ -67,6 +67,32 @@ test('makeCharts on the synthetic song: gaps held, easy within hard\'s steps, ba
   // two bars of the same drop section in the same place of the chord loop chart alike
   const barNotes = (b) => charts.hard.filter((n) => Math.floor(n.step / 16) === b).map((n) => `${n.step % 16}:${n.lane}`).join(' ');
   assert.equal(barNotes(5), barNotes(9));
+});
+
+test('makePairCharts on the synthetic song: each pair on its own lanes, its rules held, denser than the three-lane game', () => {
+  const s = makeSong({ length: 40, rate: 8000 });
+  const t = s.truth;
+  const cands = t.notes.map((n) => ({ step: n.step, lane: n.lane, strength: 1 }));
+  // the synth: an onset on every other 8th the bass leaves free (the synthetic song has no other-stem truth)
+  const synth = [];
+  for (let st = 2; st < t.beats.length * 4 - 4; st += 4) if (!cands.some((c) => c.step === st)) synth.push({ step: st, lane: 3, strength: 1 });
+  const all = [...cands, ...synth].sort((a, b) => a.step - b.step || a.lane - b.lane);
+  const span = t.beats.at(-1) - t.beats[0];
+  const solo = makeCharts(cands, t.beats, 0, span).charts;
+  const song = { beats: t.beats, downbeat: 0, charts: solo, pairs: {} };
+  for (const [pn, pair] of Object.entries(PAIRS)) {
+    const { charts } = makePairCharts(all, t.beats, 0, span, pair, [], 0, solo);
+    song.pairs[pn] = charts;
+    for (const l of Object.keys(LEVELS2)) {
+      assert.ok(charts[l].every((n) => pair.lanes.includes(n.lane)), `${pn} ${l}: only its lanes`);
+      // every note of the pair's parts in the three-lane chart is in the pair's chart (where its gaps allow: Hard has none to break)
+      if (l === 'hard') for (const n of solo.hard.filter((m) => pair.lanes.includes(m.lane))) assert.ok(charts.hard.some((m) => m.step === n.step), `${pn} hard keeps step ${n.step}`);
+    }
+  }
+  assert.deepEqual(pairProblems(song), []);
+  // control: a pair moved onto the other pair's lanes is caught
+  const wrong = { ...song, pairs: { ...song.pairs, drums: song.pairs.groove } };
+  assert.ok(pairProblems(wrong).some((p) => p.startsWith('drums') && p.includes('off its two lanes')));
 });
 
 test('chartProblems: catches each broken rule (the controls)', () => {

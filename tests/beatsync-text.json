@@ -3,9 +3,9 @@
   "app": "beatsync",
   "screens": [
     { "name": "title", "frames": 120 },
-    { "name": "songs", "frames": 170, "input": "beatsync-join.json" },
-    { "name": "difficulty", "frames": 200, "input": "beatsync-menus-no-start.json" },
-    { "name": "calibration", "frames": 260, "input": "beatsync-calib.json" },
+    { "name": "songs", "frames": 200, "input": "beatsync-join.json" },
+    { "name": "difficulty", "frames": 240, "input": "beatsync-menus-no-start.json" },
+    { "name": "calibration", "frames": 300, "input": "beatsync-calib.json" },
     { "name": "count-in", "app": "beatsync_auto", "frames": 120 },
     { "name": "play", "app": "beatsync_auto", "frames": 900 },
     { "name": "results", "app": "beatsync_auto", "frames": 3360 },

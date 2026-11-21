@@ -152,6 +152,7 @@ function writeSongFiles(dir, p, files, proof) {
     format: 1, id: p.id, title: p.title, artist: p.artist ?? '', bpm: +p.bpm.toFixed(3), sample_rate: p.rate,
     length_s: +(n / p.rate).toFixed(4), length_samples: n, tracks: files,
     beats: p.beats.map((b) => +b.toFixed(4)), downbeat: p.downbeat, sections: p.sections, ...(p.look ? { look: p.look } : {}), charts: p.charts,
+    ...(p.pairs ? { pairs: p.pairs } : {}),
   };
   writeFileSync(join(dir, 'song.json'), formatSong(song));
   writePreview(join(dir, 'preview.wav'), p.rate, p.tracks, p.charts.hard);
@@ -166,6 +167,10 @@ function writeSongFiles(dir, p, files, proof) {
  */
 export function formatSong(song) {
   const lines = Object.entries(song).map(([k, v]) => {
+    if (k === 'pairs') { /* one pair a key, one chart a line */
+      const pairs = Object.entries(v).map(([pn, lv]) => `    ${JSON.stringify(pn)}: {\n${Object.entries(lv).map(([l, notes]) => `      ${JSON.stringify(l)}: ${JSON.stringify(notes)}`).join(',\n')}\n    }`);
+      return `  "pairs": {\n${pairs.join(',\n')}\n  }`;
+    }
     if (k !== 'charts') return `  ${JSON.stringify(k)}: ${JSON.stringify(v)}`;
     const levels = Object.entries(v).map(([l, notes]) => `    ${JSON.stringify(l)}: ${JSON.stringify(notes)}`);
     return `  "charts": {\n${levels.join(',\n')}\n  }`;

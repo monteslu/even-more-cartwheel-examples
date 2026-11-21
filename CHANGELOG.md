@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.36.0
+
+- **beatsync** plays with one or two players. One player chooses three lanes (kick, clap, bass, as before) or two
+  lanes: the **drums** (kick and clap, the hats on the clap) or the **groove** (bass and the **synth**, the record's
+  chords, stabs and lines, now playable). Two players each play a pair on their own pad, each on their own road (two
+  highways side by side, two vanishing points, the land between them),
+  each at their own difficulty, each with their own streak and multiplier (a miss breaks only your own, on your
+  road), one score and one crowd; left or right swaps the pairs, both press
+  ready. Play opens the join screen (Start plays alone), and a second pad can also join with one press on the song
+  select or the difficulties.
+- Two lanes play on West or the left shoulder and South or the right shoulder, both always live; East stays the
+  three-lane bass. A touch device gets the host's gamepad overlay, which now shows the shoulders too.
+- The two-lane charts carry more notes a button than the three-lane game at the same level (Easy on the eighths,
+  Medium eighths on both hands, Hard sixteenths), and never fewer than the three-lane chart gives those parts. All six
+  songs are re-charted with them (song.json `pairs`); their three-lane charts are unchanged byte for byte.
+- Each player's notes are judged in their own difficulty's windows, a press counts only for its own player's lanes,
+  and the pad that missed rumbles. The results show each player's part and accuracy. One player's bests are kept for
+  the three lanes and for each pair (an older save keeps its bests and calibration).
+- The rivers glide to the layout chosen on the difficulty screen; the synth has its own colour in every palette and
+  hexagon notes. One player's two rivers sit further apart than the three-lane game's: two rivers of dense notes in
+  one sixth of the screen were a regular flicker (0.027 against the 0.02 bound on the densest groove; now under
+  0.005). With two players the streak badge sits between the two roads, clear of the judgements. On two lanes the busiest rivers' notes are drawn dimmer (the clap, which carries the hats on the
+  eighths, at half light; the groove's bass on its Hard sixteenths and the synth less): the densest drums flickered at
+  0.043 and the densest groove at 0.036, both now under the bound. With two players each has their own Perfect,
+  Good or Miss under their own road (one word jumping between the roads on every hit blinked at 0.039). A part nobody plays sits at full in the mix; the synth played makes
+  the other track a lane.
+- New gate `tests/beatsync-duo.mjs` (GL and WebGPU): the autopilot plays Test Groove as two players at two
+  difficulties (and swapped) and as one player on each pair, every note hit, each player's notes exactly their
+  pair's chart; two pads reach two-player play through the menus; pad 2 alone hits player 2's notes and none of
+  player 1's; every river each layout shows is lit over its gate in the picture. Controls: the counts held to the
+  difficulties swapped, only one player ready, each player on the other's pad (`padswap 1`), a river not shown drawn
+  dark where it rests (`rivers hidden draw`, which covered the three-lane clap river in a first build); player 2's
+  miss breaks player 2's streak and not player 1's (control: one shared streak, `sharedstreak 1`). The flash check adds the drums and the groove on two lanes and two players on four rivers,
+  played whole on Hard. `check-songs` holds the two-lane charts (control: each pair cut to just under its rules,
+  caught on every pair and level), and the chart unit tests cover them. The menu inputs of the gates go through the
+  join screen.
+
 ## 0.35.0
 
 - **beatsync** draws only what tells the player something. The ring on every kick of the record, the sparks on every

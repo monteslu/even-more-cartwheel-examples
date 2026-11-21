@@ -61,6 +61,10 @@
 #endif
 
 enum { SCR_NONE, SCR_SELECT, SCR_DIFF, SCR_PLAY, SCR_RESULTS, SCR_CALIB };
+/* how the song is played (docs/DESIGN.md "One or two players"): one player on the three lanes, one player on a pair
+ * of two lanes, or two players each on a pair, side by side (each on their own pad and difficulty, one streak) */
+enum { MODE_SOLO, MODE_PAIR, MODE_DUO };
+#define MAX_PLAYERS 2
 enum { J_NONE, J_PERFECT, J_GOOD, J_MISS };
 static const char *const GRADES[] = { "S", "A", "B", "C", "D", "F" };
 /* beats of notes a river shows per difficulty: Easy slowest, so a newcomer reads a note about four seconds ahead. Twice
@@ -79,16 +83,32 @@ typedef struct best_entry {
   uint8_t pad;
 } best_entry;
 
+/* the two-lane game's bests, one player on a pair (added at the end of the save: an older save keeps its bytes) */
+typedef struct pair_best_entry {
+  uint32_t hash;
+  int32_t score[PAIRS][DIFFS];
+  uint8_t grade[PAIRS][DIFFS];
+  uint8_t pad[2];
+} pair_best_entry;
+
 typedef struct save_data {
   int32_t offset_ms; /* the calibration: how late this device's sound reaches the player */
   int32_t reserved;
   best_entry best[MAX_SONGS];
+  pair_best_entry pair_best[MAX_SONGS];
 } save_data;
 
-static flash_meter fl_glow, fl_fade, fl_tier, fl_drain;
+static flash_meter fl_glow, fl_fade, fl_tier[MAX_PLAYERS], fl_drain[MAX_PLAYERS];
 
 static struct {
   int32_t screen, sel, diff, pick, item;      /* the game's own screen, the song and difficulty chosen, the menu item */
+  int32_t mode, players;                      /* MODE_*, and the players seated (1 or 2) */
+  int32_t solo_pick;                          /* one player: 0 three lanes, 1 the drums, 2 the groove */
+  int32_t part[MAX_PLAYERS], pdiff[MAX_PLAYERS], ready[MAX_PLAYERS]; /* each player's pair (PAIR_*), difficulty, and ready to play */
+  int8_t owner[LANES];                        /* the player who plays each lane (-1: nobody, it plays as recorded) */
+  note notes[MAX_NOTES];                      /* the chart being played: the three-lane chart, or the players' pairs merged */
+  int32_t n_notes;
+  int32_t p_perfect[MAX_PLAYERS], p_good[MAX_PLAYERS], p_miss[MAX_PLAYERS], p_total[MAX_PLAYERS];
   const song *s;
   uint8_t state[MAX_NOTES];
   uint8_t spoiled[MAX_NOTES];
@@ -96,7 +116,7 @@ static struct {
   uint8_t hit_perfect[LANES]; /* a wrong button was pressed while this note was due: it scores Good at best */
   int32_t next;                         /* first note not judged yet */
   int32_t song_ms, raw_ms, done, failed, ended_ticks;
-  int32_t total, hit, perfect, good, miss, combo, max_combo, score, best_score, new_best;
+  int32_t total, hit, perfect, good, miss, score, best_score, new_best;
   float energy;
   float level[LANES], gain[LANES];
   int32_t cue_lane, cue_ms;
@@ -107,8 +127,11 @@ static struct {
   int32_t ticks, screen_ticks, miss_streak;
   /* the streak as the picture shows it: the banks' charge (toward the top multiplier), a multiplier step's band
    * rising up the rivers, a broken streak draining; the HUD's multiplier badge and the streak called out every 50 */
-  float charge, tier_t, tier_light, drain_t, drain_from, drain_light;
-  int32_t break_seq, tier_seq, broke_combo, broke_ticks, milestone, milestone_ticks;
+  struct streak { /* each player's own (two players: a miss by one never breaks the other's); one player: st[0] */
+    int32_t combo, max_combo;
+    float charge, tier_t, tier_light, drain_t, drain_from, drain_light;
+    int32_t break_seq, tier_seq, broke_combo, broke_ticks, milestone, milestone_ticks;
+  } st[MAX_PLAYERS];
   bool streakfx_off; /* the `streakfx off` request: none of it (the streak gate's control) */
   float flare[LANES], glow[LANES], glow_drawn[LANES], press[LANES];
   int32_t judge[LANES], judge_ticks[LANES];
@@ -116,6 +139,9 @@ static struct {
   int32_t preview_wait;
   bool demo;  /* the sequencer plays a song by itself (title, song select) */
   bool other_on_bass; /* the `othersrc 0` request: a note made from the other track plays on the bass lane, as 0.32.2 did (the bass gate's control) */
+  bool shared_streak; /* the `sharedstreak 1` request (the duo gate's control) */
+  bool crowd_stays; /* the `crowdstays 1` request: the floor never empties (a check that leaves one player idle) */
+  bool pad_swap; /* the `padswap 1` request: each player plays on the other's pad (the duo gate's control) */
   bool old_rules; /* the `rules old` request: 35/70 ms on every difficulty, a wrong button misses the note */
   /* calibration */
   int64_t cal_start;
@@ -131,11 +157,20 @@ static struct {
   float gap_fill, gap_alpha;
 } G;
 
-static cw_action lane_act[LANES], acc, back, up, down;
+static cw_action lane_act[SOLO_LANES], hand_act[2], acc, back, up, down, left, right;
 static cw_sound snd_move, snd_select, snd_back, snd_click, snd_fail, snd_cheer;
-static int touch_zone[LANES];
+static int touch_zone[SOLO_LANES];
 
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
+
+static pair_best_entry *pair_best_of(const song *s) {
+  save_data *sv = save();
+  for (int i = 0; i < MAX_SONGS; i++)
+    if (sv->pair_best[i].hash == s->hash) return &sv->pair_best[i];
+  for (int i = 0; i < MAX_SONGS; i++)
+    if (!sv->pair_best[i].hash) { sv->pair_best[i].hash = s->hash; return &sv->pair_best[i]; }
+  return NULL;
+}
 
 static best_entry *best_of(const song *s) {
   save_data *sv = save();
@@ -169,17 +204,62 @@ static void play(cw_sound s) { cw_audio_play(s, &(cw_play_desc){ .bus = cw_shell
  * (the sync gate's control presses 50 ms late, and frame steps put some of those presses at 41 ms) */
 static const int32_t PERFECT_WIN[DIFFS] = { 75, 55, 35 };
 static const int32_t GOOD_WIN[DIFFS] = { 150, 110, 85 };
+/* a lane's player and difficulty (two players can play at two difficulties) */
+static int player_of(int lane) { return lane >= 0 && lane < LANES && G.owner[lane] > 0 ? G.owner[lane] : 0; }
+static int diff_of(int lane) { return player_of(lane) ? G.pdiff[1] : G.diff; }
 /* the `rules old` request (the forgiving gate's control): the windows and the wrong-button miss as they were */
-#define PERFECT_MS (G.old_rules ? 35 : PERFECT_WIN[G.diff])
-#define GOOD_MS (G.old_rules ? 70 : GOOD_WIN[G.diff])
+static int32_t perfect_ms(int lane) { return G.old_rules ? 35 : PERFECT_WIN[diff_of(lane)]; }
+static int32_t good_ms(int lane) { return G.old_rules ? 70 : GOOD_WIN[diff_of(lane)]; }
 
-static const note *chart(void) { return G.s ? G.s->chart[G.diff] : NULL; }
-static int chart_count(void) { return G.s ? CW_MIN(G.s->notes[G.diff], MAX_NOTES) : 0; }
+static const note *chart(void) { return G.s ? G.notes : NULL; }
+static int chart_count(void) { return G.s ? G.n_notes : 0; }
+
+/* the chart to play: the three-lane chart (and every demo), or each player's pair at their difficulty, merged in time
+ * (the pairs' lanes never meet, so two notes on one tick are on two players' pads) */
+static void build_notes(void) {
+  G.n_notes = 0;
+  for (int l = 0; l < LANES; l++) G.owner[l] = -1;
+  const song *s = G.s;
+  if (!s) return;
+  if (G.demo || G.mode == MODE_SOLO) {
+    int n = CW_MIN(s->notes[G.diff], MAX_NOTES);
+    memcpy(G.notes, s->chart[G.diff], sizeof(note) * (size_t)n);
+    G.n_notes = n;
+    for (int l = 0; l < SOLO_LANES; l++) G.owner[l] = 0;
+    return;
+  }
+  int np = G.mode == MODE_DUO ? 2 : 1, cnt[MAX_PLAYERS] = { 0 }, k[MAX_PLAYERS] = { 0 };
+  const note *src[MAX_PLAYERS] = { 0 };
+  for (int p = 0; p < np; p++) {
+    int pl[2];
+    pair_lanes(G.part[p], pl);
+    G.owner[pl[0]] = G.owner[pl[1]] = (int8_t)p;
+    src[p] = s->pair_chart[G.part[p]][G.pdiff[p]];
+    cnt[p] = s->pair_notes[G.part[p]][G.pdiff[p]];
+  }
+  while (G.n_notes < MAX_NOTES) {
+    int pick = -1;
+    for (int p = 0; p < np; p++)
+      if (k[p] < cnt[p] && (pick < 0 || src[p][k[p]].ms < src[pick][k[pick]].ms)) pick = p;
+    if (pick < 0) break;
+    G.notes[G.n_notes++] = src[pick][k[pick]++];
+  }
+}
+static unsigned played_mask(void) {
+  unsigned m = 0;
+  for (int l = 0; l < LANES; l++)
+    if (G.owner[l] >= 0) m |= 1u << l;
+  return m;
+}
 
 /* start the song s at difficulty d: from_ms with a lead-in, or a preview */
 static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, float volume) {
   G.s = s;
   G.diff = d;
+  G.pdiff[0] = d;
+  build_notes();
+  for (int p = 0; p < MAX_PLAYERS; p++) G.p_perfect[p] = G.p_good[p] = G.p_miss[p] = G.p_total[p] = 0;
+  for (int i = 0; i < G.n_notes; i++) G.p_total[player_of(G.notes[i].lane)]++;
   memset(G.state, NOTE_PENDING, sizeof G.state);
   memset(G.spoiled, 0, sizeof G.spoiled);
   G.next = 0;
@@ -187,7 +267,7 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   int n = chart_count();
   while (G.next < n && c[G.next].ms < from_ms) G.state[G.next++] = NOTE_HIT; /* a preview starts part way */
   G.total = n;
-  G.hit = G.perfect = G.good = G.miss = G.combo = G.max_combo = G.score = 0;
+  G.hit = G.perfect = G.good = G.miss = G.score = 0;
   G.done = G.failed = G.ended_ticks = G.new_best = 0;
   G.energy = 0.6f;
   G.err_sum = G.err_sq = 0;
@@ -196,8 +276,13 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   G.gap_state = G.gap_count = G.gap_shown = G.gap_overlap = 0;
   G.gap_alpha = G.gap_fill = 0;
   for (int l = 0; l < LANES; l++) G.judge_ticks[l] = 0;
-  G.charge = 0, G.tier_t = G.drain_t = -1, G.broke_ticks = G.milestone_ticks = 0;
+  for (int p = 0; p < MAX_PLAYERS; p++) {
+    struct streak *S = &G.st[p];
+    S->combo = S->max_combo = 0;
+    S->charge = 0, S->tier_t = S->drain_t = -1, S->broke_ticks = S->milestone_ticks = 0;
+  }
   music_set_player(!G.demo);
+  music_set_played(G.demo ? (1u << SOLO_LANES) - 1 : played_mask());
   music_play(s, from_ms, lead_ms, volume);
 }
 
@@ -218,9 +303,9 @@ static void start_preview(void) {
  * long to wait with nothing to play; a song whose first note is near its start plays from the top. The intro is still
  * heard in the song select's preview and the title. (`fromzero 1`, the start gate's control, plays from the top.) */
 #define START_BEATS 8
-static int32_t play_from_ms(const song *s, int d) {
-  if (!s || s->beats < 2 || !s->notes[d] || G.from_zero) return 0;
-  const note *first = &s->chart[d][0];
+static int32_t play_from_ms(const song *s) {
+  if (!s || s->beats < 2 || !G.n_notes || G.from_zero) return 0;
+  const note *first = &G.notes[0]; /* the chart about to be played (build_notes) */
   int b = first->step / 4 - START_BEATS;
   /* on the song's own beats; before its first tracked beat (a long intro with no drums) the tempo carries on back */
   int32_t from = b >= 0 && b < s->beats ? s->beat_ms[b] : first->ms - (int32_t)lroundf(START_BEATS * 60000.0f / fmaxf(s->bpm, 1));
@@ -230,7 +315,11 @@ static int32_t play_from_ms(const song *s, int d) {
 static void play_song(void) {
   G.demo = false;
   const song *s = song_get(G.sel);
-  G.from_ms = play_from_ms(s, G.pick);
+  G.mode = G.players > 1 ? MODE_DUO : G.solo_pick ? MODE_PAIR : MODE_SOLO;
+  if (G.mode == MODE_PAIR) G.part[0] = G.solo_pick == 2 ? PAIR_GROOVE : PAIR_DRUMS;
+  G.s = s, G.diff = G.pdiff[0] = G.pick;
+  build_notes();
+  G.from_ms = play_from_ms(s);
   begin_song(s, G.pick, G.from_ms, LEAD_MS, 1);
   to_screen(SCR_PLAY);
 }
@@ -247,48 +336,57 @@ static int mult_of(int combo) { return 1 + CW_MIN(combo / TIER_COMBO, 3); }
 
 /* the streak breaks: one that had reached a multiplier drains its charge from the banks, throws its lit pieces off
  * and is felt in the pad; a short one just ends */
-static void combo_lost(void) {
-  if (G.combo >= TIER_COMBO && !G.demo) {
-    G.drain_t = 0;
-    G.drain_from = G.charge;
-    G.break_seq++;
-    G.broke_combo = G.combo;
-    G.broke_ticks = 70;
-    G.milestone_ticks = 0; /* what was lost replaces the call-out */
-    cw_input_rumble(0, 0.25f + 0.1f * (float)(mult_of(G.combo) - 1), 0.1f, 160);
+static void combo_lost_one(int player);
+/* the `sharedstreak 1` request: a break ends every player's streak (one shared streak, the duo gate's control) */
+static void combo_lost(int player) {
+  if (G.shared_streak) for (int p = 0; p < MAX_PLAYERS; p++) combo_lost_one(p);
+  else combo_lost_one(player);
+}
+static void combo_lost_one(int player) {
+  struct streak *S = &G.st[player];
+  if (S->combo >= TIER_COMBO && !G.demo) {
+    S->drain_t = 0;
+    S->drain_from = S->charge;
+    S->break_seq++;
+    S->broke_combo = S->combo;
+    S->broke_ticks = 70;
+    S->milestone_ticks = 0; /* what was lost replaces the call-out */
+    cw_input_rumble(player, 0.25f + 0.1f * (float)(mult_of(S->combo) - 1), 0.1f, 160); /* felt by who broke it */
   }
-  G.combo = 0;
-  G.charge = 0;
+  S->combo = 0;
+  S->charge = 0;
 }
 
 static void judged(int i, int j, int32_t err) {
-  int lane = chart()[i].lane;
+  int lane = chart()[i].lane, p = player_of(lane);
   G.state[i] = j == J_MISS ? NOTE_MISSED : NOTE_HIT;
   G.judge[lane] = j;
   G.judge_ticks[lane] = 40;
   if (j == J_MISS) {
     G.miss++;
-    combo_lost();
+    G.p_miss[p]++;
+    combo_lost(p);
     G.miss_streak++;
     music_miss(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane); /* a note made from the other track dips that track */
     if (!G.demo) {
-      G.energy -= G.diff == DIFF_EASY ? 0.05f : 0.075f;
-      cw_input_rumble(0, 0.35f, 0.15f, 90); /* a miss is felt in the pad, never a shake */
+      G.energy -= diff_of(lane) == DIFF_EASY ? 0.05f : 0.075f;
+      cw_input_rumble(p, 0.35f, 0.15f, 90); /* a miss is felt in the pad, never a shake */
     }
     return;
   }
   G.hit++;
   G.hit_seq[lane]++;
   G.hit_perfect[lane] = j == J_PERFECT;
-  G.combo++;
+  struct streak *S = &G.st[p];
+  S->combo++;
   G.miss_streak = 0;
-  if (G.combo > G.max_combo) G.max_combo = G.combo;
-  if (j == J_PERFECT) G.perfect++;
-  else G.good++;
-  int mult = mult_of(G.combo);
-  if (mult > mult_of(G.combo - 1)) G.tier_t = 0, G.tier_seq++; /* a multiplier step: a band rises up the rivers */
-  if (G.combo % MILESTONE == 0 && !G.demo) G.milestone = G.combo, G.milestone_ticks = 100;
-  G.score += (j == J_PERFECT ? 300 : 100) * mult;
+  if (S->combo > S->max_combo) S->max_combo = S->combo;
+  if (j == J_PERFECT) G.perfect++, G.p_perfect[p]++;
+  else G.good++, G.p_good[p]++;
+  int mult = mult_of(S->combo);
+  if (mult > mult_of(S->combo - 1)) S->tier_t = 0, S->tier_seq++; /* a multiplier step: a band rises up the player's rivers */
+  if (S->combo % MILESTONE == 0 && !G.demo) S->milestone = S->combo, S->milestone_ticks = 100;
+  G.score += (j == J_PERFECT ? 300 : 100) * mult; /* one score, each player's notes at their own multiplier */
   G.energy = fminf(1, G.energy + (j == J_PERFECT ? 0.03f : 0.015f));
   G.err_sum += (float)err;
   G.err_sq += (float)err * err;
@@ -296,7 +394,7 @@ static void judged(int i, int j, int32_t err) {
   if (abs(err) > G.err_max) G.err_max = abs(err);
   music_hit(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane);
   G.flare[lane] = fminf(1, G.flare[lane] + 0.09f); /* each hit adds a little: a run of hits builds the glow up */
-  if (!G.demo && lane == LANE_KICK) cw_input_rumble(0, 0.12f, 0, 40); /* feel the kick */
+  if (!G.demo && lane == LANE_KICK) cw_input_rumble(p, 0.12f, 0, 40); /* feel the kick */
 }
 
 /* a press in a lane at the song time t (the clock less the device's offset) */
@@ -304,20 +402,22 @@ static void press(int lane, int32_t t, bool mash) {
   const note *c = chart();
   int n = chart_count();
   G.press[lane] = 1;
-  /* the note it was meant for: the nearest not yet judged in this lane within the Good window */
+  /* the note it was meant for: the nearest not yet judged in this lane within the Good window; only this player's
+   * lanes count (the other player's notes are never this pad's wrong button) */
+  const int32_t GOOD = good_ms(lane), me = player_of(lane);
   int best = -1;
-  int32_t berr = GOOD_MS + 1;
+  int32_t berr = GOOD + 1;
   int wrong = -1; /* the nearest note due in another lane: this press was the wrong button for it */
-  int32_t werr = GOOD_MS + 1;
-  for (int i = G.next; i < n && c[i].ms <= t + GOOD_MS; i++) {
-    if (G.state[i] != NOTE_PENDING) continue;
+  int32_t werr = GOOD + 1;
+  for (int i = G.next; i < n && c[i].ms <= t + GOOD; i++) {
+    if (G.state[i] != NOTE_PENDING || player_of(c[i].lane) != me) continue;
     int32_t e = t - c[i].ms;
     if (c[i].lane != lane && G.old_rules) { /* as it was: the nearest note in any lane, a wrong button misses it */
       if (abs(e) < abs(berr)) berr = e, best = i;
       continue;
     }
     if (c[i].lane != lane) {
-      if (abs(e) <= GOOD_MS && abs(e) < abs(werr)) werr = e, wrong = i;
+      if (abs(e) <= GOOD && abs(e) < abs(werr)) werr = e, wrong = i;
       continue;
     }
     if (abs(e) < abs(berr)) berr = e, best = i;
@@ -325,12 +425,12 @@ static void press(int lane, int32_t t, bool mash) {
   if (best < 0) {
     /* the wrong button costs the combo and that note's Perfect, never the note: it can still be hit in its own lane
      * (so a slip is forgiven, and mashing every button scores Good at best with no multiplier) */
-    if (wrong >= 0) combo_lost(), G.spoiled[wrong] = 1;
+    if (wrong >= 0) combo_lost(me), G.spoiled[wrong] = 1;
     return; /* nothing near: a free tap */
   }
   if (G.old_rules && c[best].lane != lane) { judged(best, J_MISS, 0); return; }
   if (mash && !G.old_rules) G.spoiled[best] = 1;
-  judged(best, abs(berr) <= PERFECT_MS && !G.spoiled[best] ? J_PERFECT : J_GOOD, berr);
+  judged(best, abs(berr) <= perfect_ms(lane) && !G.spoiled[best] ? J_PERFECT : J_GOOD, berr);
 }
 
 static void tick_room(float dt) {
@@ -345,18 +445,22 @@ static void tick_room(float dt) {
   /* the streak: the banks charge toward the top multiplier, a third of the way in about a second (each hit's step
    * eases in, never a jump); a multiplier step's band swells in over 60 ms and fades as it rises; a break's drain
    * starts at its full light and fades as it falls */
-  float want = fminf(1, (float)G.combo / (float)(3 * TIER_COMBO));
-  G.charge = want > G.charge ? fminf(want, G.charge + dt / 0.35f) : want;
-  if (G.tier_t >= 0) G.tier_t = G.tier_t + dt < TIER_S ? G.tier_t + dt : -1;
-  if (G.drain_t >= 0) G.drain_t = G.drain_t + dt < DRAIN_S ? G.drain_t + dt : -1;
-  float te = G.tier_t < 0 ? 0 : G.tier_t < 0.06f ? G.tier_t / 0.06f : powf(1 - (G.tier_t - 0.06f) / (TIER_S - 0.06f), 1.5f);
-  float de = G.drain_t < 0 ? 0 : G.drain_t < 0.05f ? G.drain_t / 0.05f : 1 - (G.drain_t - 0.05f) / (DRAIN_S - 0.05f);
-  G.tier_light = flash_meter_feed(&fl_tier, te);
-  G.drain_light = flash_meter_feed(&fl_drain, de);
-  if (G.broke_ticks) G.broke_ticks--;
-  if (G.milestone_ticks) G.milestone_ticks--;
+  for (int p = 0; p < MAX_PLAYERS; p++) {
+    struct streak *S = &G.st[p];
+    float want = fminf(1, (float)S->combo / (float)(3 * TIER_COMBO));
+    S->charge = want > S->charge ? fminf(want, S->charge + dt / 0.35f) : want;
+    if (S->tier_t >= 0) S->tier_t = S->tier_t + dt < TIER_S ? S->tier_t + dt : -1;
+    if (S->drain_t >= 0) S->drain_t = S->drain_t + dt < DRAIN_S ? S->drain_t + dt : -1;
+    float te = S->tier_t < 0 ? 0 : S->tier_t < 0.06f ? S->tier_t / 0.06f : powf(1 - (S->tier_t - 0.06f) / (TIER_S - 0.06f), 1.5f);
+    float de = S->drain_t < 0 ? 0 : S->drain_t < 0.05f ? S->drain_t / 0.05f : 1 - (S->drain_t - 0.05f) / (DRAIN_S - 0.05f);
+    S->tier_light = flash_meter_feed(&fl_tier[p], te);
+    S->drain_light = flash_meter_feed(&fl_drain[p], de);
+    if (S->broke_ticks) S->broke_ticks--;
+    if (S->milestone_ticks) S->milestone_ticks--;
+  }
   /* the receptors' lights (a small area round each, but metered all the same: the strongest lane) */
-  float g = fmaxf(G.glow[0], fmaxf(G.glow[1], G.glow[2]));
+  float g = 0;
+  for (int l = 0; l < LANES; l++) g = fmaxf(g, G.glow[l]);
   float gd = flash_meter_feed(&fl_glow, g);
   for (int l = 0; l < LANES; l++) G.glow_drawn[l] = g > 0 ? G.glow[l] * gd / g : gd * (fl_glow.strobe > 0);
 }
@@ -386,11 +490,22 @@ static void tick_song(float dt, bool player) {
 #else
     /* no chart puts two notes on one tick: two or more buttons at once is a mash, and its hit scores Good at best
      * with no combo (so pressing every button on every note never pays) */
-    int down = 0;
-    for (int l = 0; l < LANES; l++) down += cw_action_just_pressed(0, lane_act[l]);
-    if (down > 1) combo_lost();
-    for (int l = 0; l < LANES; l++)
-      if (cw_action_just_pressed(0, lane_act[l])) press(l, t, down > 1);
+    if (G.mode == MODE_SOLO) {
+      int down = 0;
+      for (int l = 0; l < SOLO_LANES; l++) down += cw_action_just_pressed(0, lane_act[l]);
+      if (down > 1) combo_lost(0);
+      for (int l = 0; l < SOLO_LANES; l++)
+        if (cw_action_just_pressed(0, lane_act[l])) press(l, t, down > 1);
+    } else /* each player on their own pad: the left hand (West or L) and the right (South or R) of their pair */
+      for (int p = 0; p < (G.mode == MODE_DUO ? 2 : 1); p++) {
+        int pl[2], down = 0;
+        pair_lanes(G.part[p], pl);
+        int pad = G.pad_swap && G.mode == MODE_DUO ? 1 - p : p;
+        for (int h = 0; h < 2; h++) down += cw_action_just_pressed(pad, hand_act[h]);
+        if (down > 1) combo_lost(p);
+        for (int h = 0; h < 2; h++)
+          if (cw_action_just_pressed(pad, hand_act[h])) press(pl[h], t, down > 1);
+      }
 #endif
   } else /* the demo plays every note itself */
     for (int i = G.next; i < n && c[i].ms <= t; i++)
@@ -402,8 +517,8 @@ static void tick_song(float dt, bool player) {
     music_set_other_break(brk);
   } else music_set_other_break(false);
   /* notes past the Good window are missed */
-  for (int i = G.next; i < n && c[i].ms < t - GOOD_MS; i++)
-    if (G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) judged(i, J_MISS, 0);
+  for (int i = G.next; i < n && c[i].ms < t - 70; i++) /* 70: the narrowest Good window */
+    if ((G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) && c[i].ms < t - good_ms(c[i].lane)) judged(i, J_MISS, 0);
   while (G.next < n && G.state[G.next] != NOTE_PENDING && G.state[G.next] != NOTE_SKIPPED) G.next++;
   G.cue_lane = G.next < n ? c[G.next].lane : -1;
   G.cue_ms = G.next < n ? c[G.next].ms : -1;
@@ -432,8 +547,20 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *user) {
   if (to == CW_SHELL_TITLE && from != CW_SHELL_SETTINGS && from != CW_SHELL_LOADING) title_demo();
 }
 
+/* players: from the join screen, or a pad joining (or one leaving) later: two players play the two pairs */
+static void set_players(int n) {
+  G.players = CW_CLAMP(n, 1, MAX_PLAYERS);
+  G.ready[0] = G.ready[1] = 0;
+  if (G.players > 1 && G.part[0] == G.part[1]) G.part[1] = !G.part[0];
+}
+static void players_changed(int players, void *user) {
+  (void)user;
+  set_players(players);
+}
+
 static void start(int players, void *user) {
-  (void)players, (void)user;
+  (void)user;
+  set_players(players);
 #ifdef GAME_AUTOPILOT
   G.sel = 0;
   G.pick = DIFF_HARD;
@@ -447,6 +574,38 @@ static void start(int players, void *user) {
 /* ── the game's own screens ─────────────────────────────────────────── */
 
 static int menu_count(void) { return G.screen == SCR_SELECT ? songs_count() + 1 : G.screen == SCR_DIFF ? DIFFS : G.screen == SCR_RESULTS ? 2 : 0; }
+/* a menu press from any seated player's pad (both drive the song list and the results) */
+static bool any_pressed(cw_action a) {
+  for (int p = 0; p < G.players; p++)
+    if (cw_action_just_pressed(p, a)) return true;
+  return false;
+}
+
+/* two players choose on their own pads: up and down their difficulty, left and right swap the pairs, accept is ready
+ * (and back takes it back, or goes back to the songs); both ready plays */
+static void duo_diff_tick(void) {
+  for (int p = 0; p < 2; p++) {
+    int was = G.pdiff[p];
+    if (!G.ready[p] && cw_action_just_pressed(p, up)) G.pdiff[p] = (G.pdiff[p] + DIFFS - 1) % DIFFS;
+    if (!G.ready[p] && cw_action_just_pressed(p, down)) G.pdiff[p] = (G.pdiff[p] + 1) % DIFFS;
+    if (G.pdiff[p] != was) play(snd_move);
+    if (cw_action_just_pressed(p, left) || cw_action_just_pressed(p, right)) {
+      G.part[0] = !G.part[0], G.part[1] = !G.part[0];
+      G.ready[0] = G.ready[1] = 0;
+      play(snd_move);
+    }
+    if (cw_action_just_pressed(p, acc) && !G.ready[p]) { G.ready[p] = 1; play(snd_select); }
+    else if (cw_action_just_pressed(p, back)) {
+      play(snd_back);
+      if (G.ready[p]) G.ready[p] = 0;
+      else { to_screen(SCR_SELECT); return; }
+    }
+  }
+  if (G.ready[0] && G.ready[1]) {
+    G.pick = G.pdiff[0];
+    play_song();
+  }
+}
 
 static void calib_start(void) {
   to_screen(SCR_CALIB);
@@ -468,7 +627,8 @@ static void calib_tick(float dt) {
   G.cal_clock += fabs(err) > 120 ? err : err * 0.12;
   G.cal_ms = (int32_t)lround(G.cal_clock);
   bool tap = false;
-  for (int l = 0; l < LANES; l++) tap |= cw_action_just_pressed(0, lane_act[l]);
+  for (int l = 0; l < SOLO_LANES; l++) tap |= cw_action_just_pressed(0, lane_act[l]);
+  for (int h = 0; h < 2; h++) tap |= cw_action_just_pressed(0, hand_act[h]);
   if (tap && G.cal_ms > 1500 && G.cal_taps < 32 && G.cal_ms < 11750) {
     int32_t nearest = (int32_t)lround(G.cal_ms / 500.0) * 500;
     G.cal_offsets[G.cal_taps++] = G.cal_ms - nearest;
@@ -495,24 +655,33 @@ static void calib_tick(float dt) {
 }
 
 static void menu_tick(void) {
+  /* a second pad joins with one press while the songs or the difficulties show */
+  if ((G.screen == SCR_SELECT || G.screen == SCR_DIFF) && G.players < MAX_PLAYERS && cw_shell_join_press()) play(snd_select);
+  if (G.screen == SCR_DIFF && G.players > 1) { duo_diff_tick(); return; }
   int n = menu_count();
   int *cursor = G.screen == SCR_SELECT ? &G.sel : G.screen == SCR_DIFF ? &G.pick : &G.item;
   if (G.screen == SCR_SELECT && G.sel > n - 1) G.sel = n - 1;
   int was = *cursor;
-  if (cw_action_just_pressed(0, up)) *cursor = (*cursor + n - 1) % n;
-  if (cw_action_just_pressed(0, down)) *cursor = (*cursor + 1) % n;
+  if (any_pressed(up)) *cursor = (*cursor + n - 1) % n;
+  if (any_pressed(down)) *cursor = (*cursor + 1) % n;
+  if (G.screen == SCR_DIFF && (any_pressed(left) || any_pressed(right))) { /* one player: three lanes, or a pair */
+    G.solo_pick = (G.solo_pick + (any_pressed(left) ? 2 : 1)) % 3;
+    play(snd_move);
+  }
   if (*cursor != was) {
     play(snd_move);
     if (G.screen == SCR_SELECT) G.preview_wait = 20; /* the preview follows once the choice rests */
   }
   if (G.screen == SCR_SELECT && G.preview_wait && --G.preview_wait == 0 && G.sel < songs_count()) start_preview();
-  if (cw_action_just_pressed(0, acc)) {
+  if (any_pressed(acc)) {
     play(snd_select);
     if (G.screen == SCR_SELECT) {
       if (G.sel == songs_count()) calib_start();
       else {
         if (G.preview_wait) { G.preview_wait = 0; start_preview(); }
         to_screen(SCR_DIFF);
+        G.ready[0] = G.ready[1] = 0;
+        G.pdiff[0] = G.pick;
       }
     } else if (G.screen == SCR_DIFF) play_song();
     else if (G.screen == SCR_RESULTS) {
@@ -521,7 +690,7 @@ static void menu_tick(void) {
     }
     return;
   }
-  if (cw_action_just_pressed(0, back)) {
+  if (any_pressed(back)) {
     play(snd_back);
     if (G.screen == SCR_SELECT) { music_stop(0.3f); cw_shell_to_title(); }
     else if (G.screen == SCR_DIFF) to_screen(SCR_SELECT);
@@ -532,15 +701,24 @@ static void menu_tick(void) {
 static void finish_song(void) {
   G.leave = false;
   G.done = G.failed ? 0 : 1;
-  best_entry *b = best_of(G.s);
-  G.best_score = b ? b->score[G.diff] : 0;
-  if (b && !G.failed && G.score > b->score[G.diff]) {
-    b->score[G.diff] = G.score;
+  /* the best: one player's, per difficulty (three lanes, or each pair); two players play for the song, not a record */
+  int32_t *bs = NULL;
+  uint8_t *bg = NULL;
+  if (G.mode == MODE_SOLO) {
+    best_entry *b = best_of(G.s);
+    if (b) bs = &b->score[G.diff], bg = &b->grade[G.diff];
+  } else if (G.mode == MODE_PAIR) {
+    pair_best_entry *b = pair_best_of(G.s);
+    if (b) bs = &b->score[G.part[0]][G.diff], bg = &b->grade[G.part[0]][G.diff];
+  }
+  G.best_score = bs ? *bs : 0;
+  if (bs && !G.failed && G.score > *bs) {
+    *bs = G.score;
     G.best_score = G.score;
     G.new_best = 1;
   }
   int gr = grade_of();
-  if (b && (!b->grade[G.diff] || gr + 1 < b->grade[G.diff])) b->grade[G.diff] = (uint8_t)(gr + 1);
+  if (bg && (!*bg || gr + 1 < *bg)) *bg = (uint8_t)(gr + 1);
   cw_shell_save_commit();
   play(G.failed ? snd_fail : snd_cheer);
   to_screen(SCR_RESULTS);
@@ -552,6 +730,7 @@ static void finish_song(void) {
  * gate's controls). gap.shown counts frames it is fully up, gap.overlap frames it still shows 0.6 s after the notes
  * came on (must stay 0) */
 #define GAP_BEATS 12
+static float view_ahead(void);
 static void gap_tick(float dt) {
   const note *c = chart();
   float beat = G.s && G.s->bpm > 0 ? 60000.0f / G.s->bpm : 500;
@@ -559,7 +738,7 @@ static void gap_tick(float dt) {
   int last = G.next - 1;
   while (last >= 0 && G.state[last] == NOTE_GONE) last--;
   float prev = last >= 0 ? (float)c[last].ms : (float)G.from_ms, next = (float)G.cue_ms;
-  float appear = next - AHEAD_BEATS[G.diff] * beat; /* when the next note comes onto the far end of its river */
+  float appear = next - view_ahead() * beat; /* when the next note comes onto the far end of its river */
   bool on = G.cue_ms >= 0 && next - prev > GAP_BEATS * beat && t < appear && !G.failed;
   if (G.gap_mode == 1) on = false;
   if (G.gap_mode == 2) on = !G.failed;
@@ -578,10 +757,29 @@ static void gap_tick(float dt) {
   if (G.gap_alpha > 0.01f && G.cue_ms >= 0 && t > appear + 600) G.gap_overlap++;
 }
 
+/* what the rivers show: beats ahead (two players at two difficulties share the slower, so both read their notes as
+ * early as their own level would), the notes' light (Easy's brighter notes only where they come a beat apart: the
+ * three-lane game), and which rivers (the choice shows on the rivers as it is made) */
+static float view_ahead(void) {
+  float a = AHEAD_BEATS[G.diff];
+  if (G.mode == MODE_DUO && !G.demo) a = fmaxf(a, AHEAD_BEATS[G.pdiff[1]]);
+  return a;
+}
+static float view_note_light(void) { return G.demo || G.mode == MODE_SOLO ? NOTE_LIGHT[G.diff] : 1.0f; }
+static int view_layout(void) {
+  if (G.screen == SCR_DIFF) {
+    if (G.players > 1) return G.part[0] == PAIR_DRUMS ? CLUB_DUO_DRUMS_LEFT : CLUB_DUO_GROOVE_LEFT;
+    return G.solo_pick == 1 ? CLUB_DRUMS : G.solo_pick == 2 ? CLUB_GROOVE : CLUB_SOLO;
+  }
+  if (G.demo || (G.screen != SCR_PLAY && G.screen != SCR_RESULTS) || G.mode == MODE_SOLO) return CLUB_SOLO;
+  if (G.mode == MODE_PAIR) return G.part[0] == PAIR_GROOVE ? CLUB_GROOVE : CLUB_DRUMS;
+  return G.part[0] == PAIR_DRUMS ? CLUB_DUO_DRUMS_LEFT : CLUB_DUO_GROOVE_LEFT;
+}
+
 static void play_tick(float dt) {
   tick_song(dt, true);
   gap_tick(dt);
-  if ((G.energy <= 0 || G.leave) && !G.failed && (G.leave || !AUTOPILOT)) { /* the floor empties: the song fades out */
+  if ((G.energy <= 0 || G.leave) && !G.failed && (G.leave || (!AUTOPILOT && !G.crowd_stays))) { /* the floor empties: the song fades out */
     G.energy = 0;
     G.failed = 1;
     G.ended_ticks = 0;
@@ -730,13 +928,22 @@ static void draw_select(cw_vec2 cv, float size) {
   ptext("{ui_up|ui_down} choose    {ui_accept} select    {ui_back} title", cv.x * 0.5f, cv.y * 0.9f, size * 0.85f, (cw_color){ 0 });
 }
 
-static void draw_diff(cw_vec2 cv, float size) {
-  const song *s = song_get(G.sel);
-  if (!s) return;
-  text_at(s->title, cv.x * 0.5f, cv.y * 0.05f, size * 1.4f, WHITE, 0);
-  best_entry *be = best_of(s);
+/* the notes a choice plays: the three-lane chart or a pair's */
+static int notes_for(const song *s, int mode_pick, int part, int d) {
+  return mode_pick == 0 ? s->notes[d] : s->pair_notes[part][d];
+}
+static const char *const PART_HINT[PAIRS] = { "kick and clap", "bass and synth" };
+
+/* one player: the cards as before, and over them how to play it (three lanes, or a pair on two buttons) */
+static void draw_diff_solo(cw_vec2 cv, float size, const song *s) {
   static const char *const HINT[DIFFS] = { "on the beat", "eighths", "sixteenths" };
+  static const char *const MODES[3] = { "3 lanes", "2 lanes: drums", "2 lanes: groove" };
+  int part = G.solo_pick == 2 ? PAIR_GROOVE : PAIR_DRUMS;
   char b[64];
+  snprintf(b, sizeof b, "< %s >", MODES[G.solo_pick]);
+  text_at(b, cv.x * 0.5f, cv.y * 0.05f + size * 2.0f, size * 1.05f, ACCENT, 0);
+  best_entry *be = best_of(s);
+  pair_best_entry *pb = pair_best_of(s);
   /* three cards down the left and right of the rivers: Easy and Medium left, Hard right */
   for (int d = 0; d < DIFFS; d++) {
     float w = cv.x * 0.22f, h = cv.y * 0.22f;
@@ -744,14 +951,56 @@ static void draw_diff(cw_vec2 cv, float size) {
     panel(r, d == G.pick ? ACCENT : PANEL_EDGE);
     if (d == G.pick) select_bar((cw_rect){ r.x + size * 0.2f, r.y + size * 0.2f, r.w - size * 0.4f, size * 1.6f });
     text_at(diff_name(d), r.x + r.w * 0.5f, r.y + size * 0.3f, size * 1.25f, d == G.pick ? WHITE : DIM, 0);
-    text_at(HINT[d], r.x + r.w * 0.5f, r.y + size * 2.0f, size * 0.85f, DIM, 0);
-    snprintf(b, sizeof b, "%d notes", s->notes[d]);
+    text_at(G.solo_pick ? PART_HINT[part] : HINT[d], r.x + r.w * 0.5f, r.y + size * 2.0f, size * 0.85f, DIM, 0);
+    snprintf(b, sizeof b, "%d notes", notes_for(s, G.solo_pick, part, d));
     text_at(b, r.x + r.w * 0.5f, r.y + size * 3.2f, size * 0.85f, WHITE, 0);
-    if (be && be->grade[d]) snprintf(b, sizeof b, "best %s  %d", GRADES[be->grade[d] - 1], be->score[d]);
+    int32_t sc = G.solo_pick ? (pb ? pb->score[part][d] : 0) : (be ? be->score[d] : 0);
+    uint8_t gr = G.solo_pick ? (pb ? pb->grade[part][d] : 0) : (be ? be->grade[d] : 0);
+    if (gr) snprintf(b, sizeof b, "best %s  %d", GRADES[gr - 1], sc);
     else snprintf(b, sizeof b, "new");
     text_at(b, r.x + r.w * 0.5f, r.y + size * 4.4f, size * 0.85f, DIM, 0);
   }
-  ptext("{ui_up|ui_down} choose    {ui_accept} play    {ui_back} songs", cv.x * 0.5f, cv.y * 0.9f, size * 0.85f, (cw_color){ 0 });
+  ptext("{ui_left|ui_right} lanes    {ui_up|ui_down} difficulty    {ui_accept} play    {ui_back} songs", cv.x * 0.5f, cv.y * 0.9f, size * 0.85f, (cw_color){ 0 });
+}
+
+/* two players: a panel each, on their side of the rivers (the left player's pair on the left), each chosen on its own
+ * pad; both ready plays */
+static void draw_diff_duo(cw_vec2 cv, float size, const song *s) {
+  char b[64];
+  for (int p = 0; p < 2; p++) {
+    float w = cv.x * 0.22f, h = cv.y * 0.6f;
+    cw_rect r = { p == 0 ? cv.x * 0.04f : cv.x * 0.74f, cv.y * 0.16f, w, h };
+    panel(r, G.ready[p] ? ACCENT : PANEL_EDGE);
+    float x = r.x + r.w * 0.5f;
+    snprintf(b, sizeof b, "Player %d", p + 1);
+    text_at(b, x, r.y + size * 0.3f, size * 1.2f, WHITE, 0);
+    snprintf(b, sizeof b, "%s", pair_name(G.part[p]));
+    text_at(b, x, r.y + size * 1.9f, size * 1.05f, ACCENT, 0);
+    text_at(PART_HINT[G.part[p]], x, r.y + size * 3.1f, size * 0.8f, DIM, 0);
+    for (int d = 0; d < DIFFS; d++) {
+      float y = r.y + size * (4.8f + 1.7f * (float)d);
+      bool on = d == G.pdiff[p];
+      if (on) select_bar((cw_rect){ r.x + size * 0.3f, y - size * 0.2f, r.w - size * 0.6f, size * 1.5f });
+      snprintf(b, sizeof b, "%s  %d", diff_name(d), s->pair_notes[G.part[p]][d]);
+      text_at(b, x, y, size * 0.95f, on ? WHITE : DIM, 0);
+    }
+    text_at(G.ready[p] ? "ready" : "", x, r.y + r.h - size * 1.6f, size * 1.0f, ACCENT, 0);
+  }
+  ptext("{ui_up|ui_down} difficulty    {ui_left|ui_right} swap parts    {ui_accept} ready    {ui_back} back", cv.x * 0.5f, cv.y * 0.9f, size * 0.85f, (cw_color){ 0 });
+}
+
+static void draw_diff(cw_vec2 cv, float size) {
+  const song *s = song_get(G.sel);
+  if (!s) return;
+  text_at(s->title, cv.x * 0.5f, cv.y * 0.05f, size * 1.4f, WHITE, 0);
+  if (G.players > 1) draw_diff_duo(cv, size, s);
+  else draw_diff_solo(cv, size, s);
+}
+
+static int played_lane(void) {
+  for (int l = 0; l < LANES; l++)
+    if (G.owner[l] >= 0) return l;
+  return LANE_CLAP;
 }
 
 static void draw_play(cw_vec2 cv, float size) {
@@ -762,12 +1011,18 @@ static void draw_play(cw_vec2 cv, float size) {
     ascii_hud_rect(size * 0.8f, size * 1.9f, w, size * 0.25f, 1);
     cw_r2d_round_rect((cw_rect){ size * 0.8f, size * 1.9f, w, size * 0.25f }, size * 0.12f, 4, cw_rgba(1, 1, 1, 0.18f));
     cw_r2d_round_rect((cw_rect){ size * 0.8f, size * 1.9f, w * p, size * 0.25f }, size * 0.12f, 4, cw_rgba(0.7f, 0.45f, 1, 0.95f));
-    text_at(diff_name(G.diff), size * 0.8f, size * 2.5f, size * 0.8f, DIM, -1);
+    if (G.mode == MODE_DUO) snprintf(b, sizeof b, "%s %s  /  %s %s", diff_name(G.pdiff[0]), pair_name(G.part[0]), diff_name(G.pdiff[1]), pair_name(G.part[1]));
+    else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), pair_name(G.part[0]));
+    else snprintf(b, sizeof b, "%s", diff_name(G.diff));
+    text_at(b, size * 0.8f, size * 2.5f, size * 0.8f, DIM, -1);
   }
   snprintf(b, sizeof b, "%d", G.score); /* the score and the streak, top right */
   text_at(b, cv.x - size * 0.8f, size * 0.4f, size * 1.4f, WHITE, 1);
-  if (G.combo >= 4) {
-    snprintf(b, sizeof b, "%d streak", G.combo);
+  if (G.mode == MODE_DUO) { /* each player's own streak */
+    snprintf(b, sizeof b, "P1 %d   P2 %d streak", G.st[0].combo, G.st[1].combo);
+    text_at(b, cv.x - size * 0.8f, size * 2.2f, size * 0.9f, ACCENT, 1);
+  } else if (G.st[0].combo >= 4) {
+    snprintf(b, sizeof b, "%d streak", G.st[0].combo);
     text_at(b, cv.x - size * 0.8f, size * 2.2f, size * 0.9f, ACCENT, 1);
   }
   /* the crowd's energy: a meter down the right side */
@@ -782,9 +1037,11 @@ static void draw_play(cw_vec2 cv, float size) {
   cw_r2d_text(font(), "crowd", cw_v2(m.x + m.w * 0.5f - cw_ * 0.5f, m.y + m.h + size * 0.3f), &cst);
   /* the latest judgement under its river's gate, in its instrument's colour, rising and fading */
   static const char *const JN[] = { "", "Perfect", "Good", "Miss" };
+  /* each player's own (with two players one word jumping between the roads on every hit blinked under each road) */
+  for (int p = 0; p < (G.mode == MODE_DUO ? 2 : 1); p++) {
   int jl = -1;
   for (int l = 0; l < LANES; l++)
-    if (G.judge_ticks[l] && (jl < 0 || G.judge_ticks[l] > G.judge_ticks[jl])) jl = l;
+    if (G.judge_ticks[l] && (G.mode != MODE_DUO || G.owner[l] == p) && (jl < 0 || G.judge_ticks[l] > G.judge_ticks[jl])) jl = l;
   if (jl >= 0 && !G.failed) {
     float x, y, t = (float)G.judge_ticks[jl] / 40.0f;
     club_gate_screen(jl, cv.x, cv.y, &x, &y);
@@ -793,25 +1050,37 @@ static void draw_play(cw_vec2 cv, float size) {
     c.a = fminf(1, t * 2.5f);
     text_at(JN[G.judge[jl]], x, y - size * 0.7f - (1 - t) * size * 0.4f, size * (G.judge[jl] == J_PERFECT ? 1.1f : 0.95f), c, 0);
   }
+  }
   /* the multiplier, under the middle gate where the eyes already are: x1 to x4 and the hits to the next step as a
    * bar; every 50 the streak is called out there instead, rising and fading; a broken streak shows what was lost */
-  if (G.song_ms >= 0 && !G.failed && !G.streakfx_off) {
-    float x, y;
-    club_gate_screen(LANE_CLAP, cv.x, cv.y, &x, &y);
-    y += size * 2.35f;
-    int m = mult_of(G.combo);
-    if (G.milestone_ticks) {
-      float t = (float)G.milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 8 + 0.2f);
-      snprintf(b, sizeof b, "%d streak", G.milestone);
+  /* two players: each one's under their own road, from their own streak */
+  for (int p = 0; G.song_ms >= 0 && !G.failed && !G.streakfx_off && p < (G.mode == MODE_DUO ? 2 : 1); p++) {
+    const struct streak *S = &G.st[p];
+    float x, y, r_, gy;
+    club_center_screen(cv.x, cv.y, &x, &y, &r_); /* the middle of the rivers */
+    club_gate_screen(played_lane(), cv.x, cv.y, &r_, &gy); /* every gate is on one line */
+    if (G.mode == MODE_DUO) { /* the middle of this player's road */
+      int pl[2];
+      float x0, x1, yy;
+      pair_lanes(G.part[p], pl);
+      club_gate_screen(pl[0], cv.x, cv.y, &x0, &yy);
+      club_gate_screen(pl[1], cv.x, cv.y, &x1, &yy);
+      x = (x0 + x1) * 0.5f;
+    }
+    y = gy + size * 2.35f;
+    int m = mult_of(S->combo);
+    if (S->milestone_ticks) {
+      float t = (float)S->milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 8 + 0.2f);
+      snprintf(b, sizeof b, "%d streak", S->milestone);
       text_at(b, x, y - (1 - t) * size * 0.5f, size * 1.15f, cw_rgba(1, 0.95f, 0.7f, a), 0);
-    } else if (G.broke_ticks) {
-      float a = fminf(1, (float)G.broke_ticks / 30.0f);
+    } else if (S->broke_ticks) {
+      float a = fminf(1, (float)S->broke_ticks / 30.0f);
       cw_color c = JUDGE_COL[J_MISS];
       c.a = a;
-      snprintf(b, sizeof b, "streak %d lost", G.broke_combo);
+      snprintf(b, sizeof b, "streak %d lost", S->broke_combo);
       text_at(b, x, y, size * 0.9f, c, 0);
-    } else if (G.combo > 0) {
-      float w = size * 3.6f, bh = size * 0.22f, prog = m >= 4 ? 1 : (float)(G.combo % TIER_COMBO) / TIER_COMBO;
+    } else if (S->combo > 0) {
+      float w = size * 3.6f, bh = size * 0.22f, prog = m >= 4 ? 1 : (float)(S->combo % TIER_COMBO) / TIER_COMBO;
       snprintf(b, sizeof b, "x%d", m);
       cw_color c = m >= 4 ? cw_rgba(1, 0.95f, 0.7f, 1) : m >= 2 ? WHITE : DIM;
       text_at(b, x, y - size * 0.15f, size * (0.85f + 0.08f * (float)m), c, 0);
@@ -822,20 +1091,38 @@ static void draw_play(cw_vec2 cv, float size) {
   }
   /* how to play, in the count-in only: each button under the river it plays (kick left, clap middle, bass right, as
    * the buttons sit). Once the song is going the rivers' places are the only cue: no button stays on screen in play */
-  static const char *const LP[LANES] = { "{lane_kick} kick", "{lane_clap} clap", "{lane_bass} bass" };
+  static const char *const LP[SOLO_LANES] = { "{lane_kick} kick", "{lane_clap} clap", "{lane_bass} bass" };
+  static const char *const PART[LANES] = { "kick", "clap", "bass", "synth" };
   if (G.song_ms < 0 && !G.failed) {
     float fade = fminf(1, (float)-G.song_ms / 300.0f);
     for (int l = 0; l < LANES; l++) {
+      if (G.owner[l] < 0) continue;
+      /* a pair's buttons: its left lane West or L, its right South or R, on the pad of the player who plays it */
+      char lp[48];
+      int pl[2];
+      pair_lanes(G.mode == MODE_SOLO ? PAIR_DRUMS : G.part[G.owner[l]], pl);
+      if (G.mode == MODE_SOLO) snprintf(lp, sizeof lp, "%s", LP[l]);
+      else snprintf(lp, sizeof lp, "{%s} %s", l == pl[0] ? "hand_left" : "hand_right", PART[l]);
       float hx, hy, sz = size * 0.95f;
       club_gate_screen(l, cv.x, cv.y, &hx, &hy);
-      cw_vec2 ps = cw_prompt_text_size(font(), LP[l], 0, sz);
+      cw_vec2 ps = cw_prompt_text_size(font(), lp, 0, sz);
       float x = hx, y = hy + size * 1.0f;
       ascii_hud_rect_edge(x - ps.x * 0.5f, y, ps.x, ps.y, fade, lane_color(l, fade));
-      cw_prompt_text(font(), LP[l], 0, cw_v2(x, y), sz, lane_color(l, fade), CW_ALIGN_CENTER);
+      cw_prompt_text(font(), lp, 0, cw_v2(x, y), sz, lane_color(l, fade), CW_ALIGN_CENTER);
     }
+    if (G.mode == MODE_DUO) /* who plays which pair, over its two rivers */
+      for (int p = 0; p < 2; p++) {
+        int pl[2];
+        float x0, x1, y;
+        pair_lanes(G.part[p], pl);
+        club_gate_screen(pl[0], cv.x, cv.y, &x0, &y);
+        club_gate_screen(pl[1], cv.x, cv.y, &x1, &y);
+        snprintf(b, sizeof b, "Player %d", p + 1);
+        text_at(b, (x0 + x1) * 0.5f, y + size * 2.4f, size * 0.9f, cw_rgba(1, 1, 1, fade), 0);
+      }
   }
-  if (cw_touch_overlay_visible()) /* on a touch screen: the three zones across the bottom */
-    for (int l = 0; l < LANES; l++)
+  if (G.mode == MODE_SOLO && cw_touch_overlay_visible()) /* on a touch screen: the three zones across the bottom */
+    for (int l = 0; l < SOLO_LANES; l++)
       cw_r2d_round_rect_lines((cw_rect){ cv.x * (float)l / 3.0f + size * 0.3f, cv.y * 0.62f, cv.x / 3.0f - size * 0.6f, cv.y * 0.36f }, size * 0.5f, size * 0.08f, 8, lane_color(l, 0.35f + 0.5f * G.press[l]));
   if (G.gap_state == 2 && G.gap_alpha > 0 && G.song_ms >= 0) { /* a long wait's last four bars: the countdown */
     float x, y, r, a = G.gap_alpha; /* the whole countdown swells in and fades out; the number just changes */
@@ -865,12 +1152,20 @@ static void draw_results(cw_vec2 cv, float size) {
   cw_text_style st;
 #define LINE(s, y, sz, c) (st = ts(sz, c), cw_r2d_text(font(), s, cw_v2(x - cw_font_measure(font(), s, &st).width * 0.5f, y), &st))
   LINE(G.s ? G.s->title : "", r.y + size * 0.6f, size * 1.2f, WHITE);
-  snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), G.failed ? "the floor emptied" : "cleared");
+  if (G.mode == MODE_DUO) snprintf(b, sizeof b, "two players  %s", G.failed ? "the floor emptied" : "cleared");
+  else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s %s  %s", diff_name(G.diff), pair_name(G.part[0]), G.failed ? "the floor emptied" : "cleared");
+  else snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), G.failed ? "the floor emptied" : "cleared");
   LINE(b, r.y + size * 2.2f, size * 0.85f, DIM);
   LINE(GRADES[grade_of()], r.y + size * 3.4f, size * 3.6f, ACCENT);
   snprintf(b, sizeof b, "%d", G.score);
   LINE(b, r.y + size * 7.6f, size * 1.4f, WHITE);
-  if (G.new_best) LINE("new best", r.y + size * 9.3f, size * 0.85f, ACCENT);
+  if (G.mode == MODE_DUO) { /* each player's part: their difficulty and how it went */
+    for (int p = 0; p < 2; p++) {
+      int tot = G.p_total[p];
+      snprintf(b, sizeof b, "P%d %s %s  %d%%  miss %d", p + 1, diff_name(G.pdiff[p]), pair_name(G.part[p]), tot ? (int)lroundf(100.0f * ((float)G.p_perfect[p] + 0.5f * (float)G.p_good[p]) / (float)tot) : 0, G.p_miss[p]);
+      LINE(b, r.y + size * (8.9f + 0.9f * (float)p), size * 0.75f, DIM);
+    }
+  } else if (G.new_best) LINE("new best", r.y + size * 9.3f, size * 0.85f, ACCENT);
   else { snprintf(b, sizeof b, "best %d", G.best_score); LINE(b, r.y + size * 9.3f, size * 0.85f, DIM); }
   { /* the counts, each in its judgement's colour, centred as one line */
     char part[3][32];
@@ -891,7 +1186,8 @@ static void draw_results(cw_vec2 cv, float size) {
       px += w[i];
     }
   }
-  snprintf(b, sizeof b, "longest streak %d of %d", G.max_combo, G.total);
+  if (G.mode == MODE_DUO) snprintf(b, sizeof b, "longest streaks P1 %d, P2 %d", G.st[0].max_combo, G.st[1].max_combo);
+  else snprintf(b, sizeof b, "longest streak %d of %d", G.st[0].max_combo, G.total);
   LINE(b, r.y + size * 12.1f, size * 0.85f, DIM);
   static const char *const ITEMS[2] = { "Play again", "Songs" };
   for (int i = 0; i < 2; i++) {
@@ -931,11 +1227,18 @@ static void draw_calib(cw_vec2 cv, float size) {
 /* the shell's screens (title, pause, settings) over the field: a box behind the menu column and one behind the
  * prompt line at the foot, as Detexto does */
 static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *user) {
-  (void)screen, (void)user;
+  (void)user;
   float k = cs.y / 1080.0f;
   ascii_hud_reset(cs, k);
-  ascii_hud_rect(cs.x * 0.3f, cs.y * 0.08f, cs.x * 0.4f, cs.y * 0.7f, 1);
-  ascii_hud_rect(cs.x * 0.3f, cs.y * 0.895f, cs.x * 0.4f, cs.y * 0.075f, 1);
+  if (screen == CW_SHELL_JOIN) { /* a box behind each seat, the heading and the hints, where the shell draws them */
+    float u = cs.y / 20.0f, w = cs.x / 4.0f;
+    ascii_hud_rect(cs.x * 0.4f, cs.y * 0.06f, cs.x * 0.2f, cs.y * 0.14f, 1);
+    for (int s = 0; s < MAX_PLAYERS; s++) ascii_hud_rect(w * (float)s + u * 0.4f, cs.y * 0.3f, w - u * 0.8f, cs.y * 0.4f, 1);
+    ascii_hud_rect(cs.x * 0.25f, cs.y - u * 2.3f, cs.x * 0.5f, u * 1.3f, 1);
+  } else {
+    ascii_hud_rect(cs.x * 0.3f, cs.y * 0.08f, cs.x * 0.4f, cs.y * 0.7f, 1);
+    ascii_hud_rect(cs.x * 0.3f, cs.y * 0.895f, cs.x * 0.4f, cs.y * 0.075f, 1);
+  }
   ascii_hud_end();
   ascii_hud_draw();
 }
@@ -944,7 +1247,7 @@ static void touch_layout(void) {
   if (!cw_touch_controls_on()) return; /* in a cart the host draws the pad (the manifest's controls) */
   int w, h;
   cw_window_size(&w, &h);
-  for (int l = 0; l < LANES; l++) cw_touch_set_rect(touch_zone[l], (float)w * (float)l / 3.0f, (float)h * 0.55f, (float)w / 3.0f, (float)h * 0.45f);
+  for (int l = 0; l < SOLO_LANES; l++) cw_touch_set_rect(touch_zone[l], (float)w * (float)l / 3.0f, (float)h * 0.55f, (float)w / 3.0f, (float)h * 0.45f);
 }
 
 static bool look_ready;
@@ -964,14 +1267,18 @@ static void render(void *user, double alpha) {
   club_view v = {
     .s = G.s, .notes = chart(), .state = G.state, .count = chart_count(),
     .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : G.offset_ms) : 0,
-    .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .note_light = NOTE_LIGHT[G.diff], .t = G.vis_t,
+    .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = view_ahead(), .note_light = view_note_light(), .t = G.vis_t, .layout = view_layout(),
     .gap_fill = G.screen == SCR_PLAY ? G.gap_fill : 0, .gap_alpha = G.screen == SCR_PLAY ? G.gap_alpha : 0,
   };
   bool fx = G.screen == SCR_PLAY && !G.streakfx_off;
-  v.charge = fx ? G.charge : 0;
-  v.tier_t = fx ? G.tier_t : -1, v.tier_light = fx ? G.tier_light : 0;
-  v.drain_t = fx ? G.drain_t : -1, v.drain_from = G.drain_from, v.drain_light = fx ? G.drain_light : 0;
-  v.break_seq = fx ? G.break_seq : 0;
+  for (int p = 0; p < MAX_PLAYERS; p++) { /* each player's streak on their own rivers */
+    const struct streak *S = &G.st[p];
+    v.charge[p] = fx ? S->charge : 0;
+    v.tier_t[p] = fx ? S->tier_t : -1, v.tier_light[p] = fx ? S->tier_light : 0;
+    v.drain_t[p] = fx ? S->drain_t : -1, v.drain_from[p] = S->drain_from, v.drain_light[p] = fx ? S->drain_light : 0;
+    v.break_seq[p] = fx ? S->break_seq : 0;
+  }
+  for (int l = 0; l < LANES; l++) v.lane_player[l] = (int8_t)(G.owner[l] > 0 ? G.owner[l] : 0);
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];
     v.hit_seq[l] = G.hit_seq[l];
@@ -1020,9 +1327,9 @@ static void cmd_leave(int argc, const char **argv, cw_reply *r) {
 /* lanes <kick> <clap> <bass>: the river each lane is drawn as (0 left, 1 middle, 2 right; the game is 0 1 2). The
  * layout gate (tests/beatsync-layout.mjs) swaps it for its control, a layout that must fail */
 static void cmd_lanes(int argc, const char **argv, cw_reply *r) {
-  if (argc != 1 + LANES) { cw_reply_error(r, "lanes <kick> <clap> <bass> (each 0 left, 1 middle, 2 right)"); return; }
-  int p[LANES];
-  for (int l = 0; l < LANES; l++) p[l] = atoi(argv[1 + l]);
+  if (argc != 1 + SOLO_LANES) { cw_reply_error(r, "lanes <kick> <clap> <bass> (each 0 left, 1 middle, 2 right)"); return; }
+  int p[SOLO_LANES];
+  for (int l = 0; l < SOLO_LANES; l++) p[l] = atoi(argv[1 + l]);
   club_set_place(p);
   cw_reply_printf(r, "{\"kick\":%d,\"clap\":%d,\"bass\":%d}", club_place(0), club_place(1), club_place(2));
 }
@@ -1052,6 +1359,19 @@ static void cmd_othersrc(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"othersrc\":%d}", !G.other_on_bass);
 }
 
+static void cmd_sharedstreak(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.shared_streak = atoi(argv[1]) != 0;
+  cw_reply_printf(r, "{\"sharedstreak\":%d}", G.shared_streak);
+}
+static void cmd_crowdstays(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.crowd_stays = atoi(argv[1]) != 0;
+  cw_reply_printf(r, "{\"crowdstays\":%d}", G.crowd_stays);
+}
+static void cmd_padswap(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) G.pad_swap = atoi(argv[1]) != 0;
+  cw_reply_printf(r, "{\"padswap\":%d}", G.pad_swap);
+}
+
 static void cmd_rules(int argc, const char **argv, cw_reply *r) {
   if (argc > 1) G.old_rules = !strcmp(argv[1], "old");
   cw_reply_printf(r, "{\"rules\":\"%s\"}", G.old_rules ? "old" : "new");
@@ -1060,34 +1380,45 @@ static void cmd_rules(int argc, const char **argv, cw_reply *r) {
 #ifdef GAME_AUTOPILOT
 static void cmd_skip(int argc, const char **argv, cw_reply *r) {
   int l = argc > 1 ? atoi(argv[1]) : -1;
-  if (argc < 3 || l < 0 || l >= LANES) { cw_reply_error(r, "skip <lane 0..2> <n> [after_ms]"); return; }
+  if (argc < 3 || l < 0 || l >= LANES) { cw_reply_error(r, "skip <lane 0..3> <n> [after_ms]"); return; }
   G.bot_skip[l] = atoi(argv[2]);
   G.bot_skip_after = argc > 3 ? atoi(argv[3]) : G.song_ms;
   cw_reply_printf(r, "{\"lane\":%d,\"n\":%d,\"after\":%d}", l, G.bot_skip[l], G.bot_skip_after);
 }
 
-/* song <index|id> [easy|medium|hard]: the autopilot plays that song from its start (the flash sweep's densest song) */
+static int diff_arg(const char *s) { return !strcmp(s, "easy") ? 0 : !strcmp(s, "medium") ? 1 : DIFF_HARD; }
+/* song <index|id> [easy|medium|hard] [solo|drums|groove|duo|duo-swap] [easy|medium|hard]: the autopilot plays that
+ * song from its start (the flash sweep's densest song): on the three lanes, one pair, or two players (player 1 on the
+ * drums and player 2 on the groove, or swapped; the last difficulty is player 2's) */
 static void cmd_song(int argc, const char **argv, cw_reply *r) {
-  if (argc < 2) { cw_reply_error(r, "song <index|id> [easy|medium|hard]"); return; }
+  if (argc < 2) { cw_reply_error(r, "song <index|id> [easy|medium|hard] [solo|drums|groove|duo|duo-swap] [easy|medium|hard]"); return; }
   int pick = -1;
   for (int i = 0; i < songs_count(); i++)
     if (!strcmp(song_get(i)->id, argv[1])) pick = i;
   if (pick < 0 && argv[1][0] >= '0' && argv[1][0] <= '9') pick = atoi(argv[1]);
   if (pick < 0 || pick >= songs_count()) { cw_reply_error(r, "song: no such song"); return; }
   int diff = DIFF_HARD;
-  if (argc > 2) diff = !strcmp(argv[2], "easy") ? 0 : !strcmp(argv[2], "medium") ? 1 : DIFF_HARD;
+  if (argc > 2) diff = diff_arg(argv[2]);
+  const char *mode = argc > 3 ? argv[3] : "solo";
+  bool duo = !strncmp(mode, "duo", 3);
+  G.players = duo ? 2 : 1;
+  G.solo_pick = !strcmp(mode, "drums") ? 1 : !strcmp(mode, "groove") ? 2 : 0;
+  G.part[0] = !strcmp(mode, "duo-swap") ? PAIR_GROOVE : PAIR_DRUMS, G.part[1] = !G.part[0];
+  G.pdiff[1] = argc > 4 ? diff_arg(argv[4]) : diff;
   G.sel = pick;
   G.pick = diff;
   play_song();
-  cw_reply_printf(r, "{\"song\":%d,\"diff\":%d}", pick, diff);
+  cw_reply_printf(r, "{\"song\":%d,\"diff\":%d,\"mode\":%d,\"players\":%d,\"diff2\":%d}", pick, diff, G.mode, G.players, G.pdiff[1]);
 }
 #endif
 
 static void init(void *user) {
   (void)user;
   cw_project_load_input();
-  static const char *const LANE_ACTIONS[LANES] = { "lane_kick", "lane_clap", "lane_bass" };
-  for (int l = 0; l < LANES; l++) {
+  static const char *const LANE_ACTIONS[SOLO_LANES] = { "lane_kick", "lane_clap", "lane_bass" };
+  hand_act[0] = cw_action_find("hand_left");
+  hand_act[1] = cw_action_find("hand_right");
+  for (int l = 0; l < SOLO_LANES; l++) {
     /* native builds: three touch zones, laid out every frame (touch_layout); in a cart the host draws the pad */
     touch_zone[l] = cw_touch_controls_on() ? cw_touch_add_button(0, 0, 1, 1) : -1;
     lane_act[l] = cw_action_find(LANE_ACTIONS[l]);
@@ -1096,10 +1427,11 @@ static void init(void *user) {
   cw_shell_init(&(cw_shell_desc){
     .title = "beatsync",
     .subtitle = "play the kick, the clap and the bass",
-    .max_players = 1,
+    .max_players = MAX_PLAYERS,
     .game_save_size = sizeof(save_data),
     .game_save_version = 1,
     .start = start,
+    .players_changed = players_changed,
     .sound = shell_sound,
     .screen_changed = shell_screen,
     .draw_background = draw_background,
@@ -1109,6 +1441,9 @@ static void init(void *user) {
   back = cw_action_find("ui_back");
   up = cw_action_find("ui_up");
   down = cw_action_find("ui_down");
+  left = cw_action_find("ui_left");
+  right = cw_action_find("ui_right");
+  G.players = 1;
   music_init();
   snd_move = tone(880, 0.05f, 880, 0.15f, 3);
   snd_select = tone(660, 0.12f, 1320, 0.2f, 3);
@@ -1120,6 +1455,16 @@ static void init(void *user) {
   G.offset_ms = save()->offset_ms;
   G.cue_lane = -1;
   cw_debug_i32("game.screen", &G.screen);
+  cw_debug_i32("game.mode", &G.mode);
+  cw_debug_i32("game.players", &G.players);
+  cw_debug_field("game.part", G.part, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("game.pdiff", G.pdiff, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("game.ready", G.ready, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("player.perfect", G.p_perfect, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("player.good", G.p_good, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("player.miss", G.p_miss, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_field("player.total", G.p_total, CW_DBG_I32, MAX_PLAYERS);
+  cw_debug_i32("game.solo_pick", &G.solo_pick);
   cw_debug_i32("song.index", &G.sel);
   cw_debug_i32("song.diff", &G.diff);
   cw_debug_i32("song.ms", &G.song_ms);
@@ -1131,8 +1476,13 @@ static void init(void *user) {
   cw_debug_i32("notes.perfect", &G.perfect);
   cw_debug_i32("notes.good", &G.good);
   cw_debug_i32("notes.miss", &G.miss);
-  cw_debug_i32("game.combo", &G.combo);
-  cw_debug_i32("game.max_combo", &G.max_combo);
+  cw_debug_i32("game.combo", &G.st[0].combo); /* player 1's (the only one alone); player 2's: streak2.* */
+  cw_debug_i32("game.max_combo", &G.st[0].max_combo);
+  cw_debug_i32("streak2.combo", &G.st[1].combo);
+  cw_debug_i32("streak2.max_combo", &G.st[1].max_combo);
+  cw_debug_i32("streak2.tiers", &G.st[1].tier_seq);
+  cw_debug_i32("streak2.breaks", &G.st[1].break_seq);
+  cw_debug_f32("streak2.charge", &G.st[1].charge);
   cw_debug_i32("game.score", &G.score);
   cw_debug_f32("game.energy", &G.energy);
   cw_debug_f32_array("lane.level", G.level, LANES);
@@ -1166,6 +1516,9 @@ static void init(void *user) {
   cw_debug_command("gap", "gap game|off|force: the wait indicator as the game shows it, never, or always (the wait gate's controls)", cmd_gap);
   cw_debug_command("fromzero", "fromzero 1|0: play every song from its top, not 8 beats before its first note (the start gate's control)", cmd_fromzero);
   cw_debug_command("othersrc", "othersrc 1|0: a note made from the other track plays its hit and miss on the other track (1, the game) or on the bass lane (0, the bass gate's control)", cmd_othersrc);
+  cw_debug_command("sharedstreak", "sharedstreak 1|0: one streak for both players, a break by either ends it (the duo gate's control: each player keeps their own)", cmd_sharedstreak);
+  cw_debug_command("crowdstays", "crowdstays 1|0: the floor never empties however many notes are missed (the duo gate leaves one player idle)", cmd_crowdstays);
+  cw_debug_command("padswap", "padswap 1|0: with two players, each plays on the other's pad (the duo gate's control: a pad must play only its own player's lanes)", cmd_padswap);
   cw_debug_command("rules", "rules old|new: the judgement as it was (35/70 ms everywhere, a wrong button misses the note; the forgiving gate's control) or as it is", cmd_rules);
 #ifdef GAME_AUTOPILOT
   cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
@@ -1173,19 +1526,20 @@ static void init(void *user) {
 #endif
   flash_meter_init(&fl_glow, "hit");
   flash_meter_init(&fl_fade, "fail");
-  flash_meter_init(&fl_tier, "tier");
-  flash_meter_init(&fl_drain, "drain");
+  flash_meter_init(&fl_tier[0], "tier");
+  flash_meter_init(&fl_drain[0], "drain");
+  flash_meter_init(&fl_tier[1], "tier2");
+  flash_meter_init(&fl_drain[1], "drain2");
   flash_meter_register(&fl_glow);
   flash_meter_register(&fl_fade);
-  flash_meter_register(&fl_tier);
-  flash_meter_register(&fl_drain);
-  cw_debug_f32("streak.charge", &G.charge);
-  cw_debug_f32("streak.tier_t", &G.tier_t);
-  cw_debug_f32("streak.drain_t", &G.drain_t);
-  cw_debug_f32("streak.drain_from", &G.drain_from);
-  cw_debug_i32("streak.tiers", &G.tier_seq);
-  cw_debug_i32("streak.breaks", &G.break_seq);
-  cw_debug_i32("streak.milestone", &G.milestone);
+  for (int p = 0; p < MAX_PLAYERS; p++) flash_meter_register(&fl_tier[p]), flash_meter_register(&fl_drain[p]);
+  cw_debug_f32("streak.charge", &G.st[0].charge);
+  cw_debug_f32("streak.tier_t", &G.st[0].tier_t);
+  cw_debug_f32("streak.drain_t", &G.st[0].drain_t);
+  cw_debug_f32("streak.drain_from", &G.st[0].drain_from);
+  cw_debug_i32("streak.tiers", &G.st[0].tier_seq);
+  cw_debug_i32("streak.breaks", &G.st[0].break_seq);
+  cw_debug_i32("streak.milestone", &G.st[0].milestone);
   cw_debug_command("streakfx", "streakfx on|off: the streak's charge, bands, drain and badge as the game shows them, or none (the streak gate's control)", cmd_streakfx);
 #ifdef GAME_AUTOPILOT
   cw_shell_start(1); /* straight into play, no menus */

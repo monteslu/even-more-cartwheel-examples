@@ -5,13 +5,17 @@ app = beatsync
 title = beatsync
 main_scene = main.cwscene
 app_id = org.cartwheel.beatsync
-; The three lanes, left to right: the three lower face buttons (one thumb), J K L on a keyboard, three zones across
-; the bottom of a touch screen in a native build (the touch controls added in init, in this order; in a cart the host
-; draws its pad from the manifest's controls, which the build works out from these bindings: the three face buttons,
-; the d-pad and Start for the menus). The menus' actions (ui_*, pause) come from the engine's shell.
+; The three lanes of the one-player game, left to right: the three lower face buttons (one thumb), J K L on a keyboard,
+; three zones across the bottom of a touch screen in a native build (the touch controls added in init, in this order).
+; The two-lane game (one player on a pair, or two players each on their own pad): a pair's left lane on West or the
+; left shoulder, its right lane on South or the right shoulder, both at once (two thumbs or two hands). In a cart the
+; host draws its pad from the manifest's controls, which the build works out from these bindings: the face buttons,
+; the shoulders, the d-pad and Start for the menus. The menus' actions (ui_*, pause) come from the engine's shell.
 input.lane_kick = key:j, pad:west, touch:0
 input.lane_clap = key:k, pad:south, touch:1
 input.lane_bass = key:l, pad:east, touch:2
+input.hand_left = key:j, pad:west, pad:lshoulder
+input.hand_right = key:k, pad:south, pad:rshoulder
 render.width = 960
 render.height = 540
 render.msaa = 4

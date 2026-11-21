@@ -5,6 +5,10 @@
 
 export const LANES = ['kick', 'clap', 'bass'];
 
+/** Every part a player can play: the three lanes of the one-player game and the synth (the other stem's onsets),
+ * which only the two-lane charts play. */
+export const PARTS = ['kick', 'clap', 'bass', 'synth'];
+
 /**
  * The levels: which steps of a beat they may use and the minimum gaps in 16ths.
  * `density` caps notes per second over the bars that have notes (so a long break cannot pay for a crowded drop).
@@ -75,10 +79,12 @@ export function quantize(onsets, beats, tol = 0.4) {
 
 const METRIC = (pos) => (pos === 0 ? 1 : pos === 8 ? 0.85 : pos % 4 === 0 ? 0.8 : pos % 2 === 0 ? 0.55 : 0.35);
 
-/** The lane that owns a place in the bar: clap on 2 and 4, kick on 1 and 3, bass off the beat. */
+/** The part that owns a place in the bar: clap on 2 and 4, kick on 1 and 3, bass off the beat, the synth on the
+ * eighths (a stab or chord pattern rides them). */
 const OWNER = (lane, pos) => {
   if (lane === 1) return pos === 4 || pos === 12 ? 0.9 : 0;
   if (lane === 0) return pos === 0 || pos === 8 ? 0.8 : pos % 4 === 0 ? 0.1 : 0;
+  if (lane === 3) return pos % 2 === 0 ? 0.2 : 0;
   return pos % 4 ? 0.3 : 0;
 };
 
@@ -91,7 +97,7 @@ const OWNER = (lane, pos) => {
  * @param {number} [from] the step the drums start on (bars for novelty are counted from the first bar line there)
  */
 export function scoreCandidates(cands, barStep, from = 0) {
-  const byLane = [[], [], []];
+  const byLane = [[], [], [], []];
   for (const c of cands) byLane[c.lane].push(c.strength);
   const mid = byLane.map((a) => {
     if (!a.length) return 1;
@@ -414,4 +420,78 @@ export function makeCharts(cands, beats, downbeat, playSeconds, extra = [], drum
       fill_steps: filled.added.map((c) => c.step), hat_steps: bySrc('hat'), other_steps: bySrc('other') };
   }
   return { charts, stats, patterns: { bars: pats.barCluster.size, distinct: pats.patterns.length }, span };
+}
+
+/**
+ * The two-lane game: each player plays a pair of parts on two buttons (docs/DESIGN.md "Two lanes"). With two buttons
+ * to follow instead of three, each level carries more notes than the three-lane game's: Easy runs on the eighths
+ * with a quarter note a hand, Medium eighths on both hands, Hard sixteenths. `lanes` are the parts (PARTS indices).
+ */
+export const PAIRS = { drums: { lanes: [0, 1] }, groove: { lanes: [2, 3] } };
+export const LEVELS2 = {
+  easy: { grid: 2, same: 4, change: 2, lambda: 0.6, density: 2.4 },
+  medium: { grid: 2, same: 2, change: 2, lambda: 0.4, density: 4.0 },
+  hard: { grid: 1, same: 1, change: 1, lambda: 0.2, density: 7.0 },
+};
+/** the two-lane break fill: a step coarser than each level's drops, as the three-lane fill is */
+export const FILL2 = {
+  easy: { grid: 4, gap: 4 },
+  medium: { grid: 2, gap: 4 },
+  hard: { grid: 2, gap: 2 },
+};
+
+/**
+ * One pair's three charts. `cands` are that pair's onsets with their part (PARTS index) as `lane`; the chart is
+ * picked on local lanes 0 and 1 (the dynamic program's state) and written back as parts. The break fill takes the
+ * pair's own unchosen onsets (and, for the drums, the hats on the clap); a stretch where neither part plays stays
+ * empty (that player rests). Holes are reported against the pair's own music.
+ * @param {{step: number, lane: number, strength: number}[]} cands
+ * @param {number[]} beats
+ * @param {number} downbeat
+ * @param {number} playSeconds
+ * @param {{lanes: number[]}} pair
+ * @param {{step: number, strength: number, src: string}[]} [extra] hats (the drums' fill)
+ * @param {number} [start] the step the main chart starts on (the drums' first beat for the drums)
+ * @param {Record<string, {step: number, lane: number}[]>} [solo] the three-lane charts: each level keeps every note they
+ *   give the pair's parts (where its gaps allow), so a pair never has less of its parts than the three-lane game
+ */
+export function makePairCharts(cands, beats, downbeat, playSeconds, pair, extra = [], start = 0, solo = {}) {
+  const barStep = downbeat * 4;
+  const local = (c) => ({ ...c, part: c.lane, lane: pair.lanes.indexOf(c.lane) });
+  const own = cands.filter((c) => pair.lanes.includes(c.lane));
+  const scored = scoreCandidates(own.filter((c) => c.step >= start), barStep, start).map(local);
+  const pats = barPatterns(scored, barStep);
+  const intro = own.filter((c) => c.step < start).map((c) => ({ ...local(c), src: PARTS[c.lane] }));
+  const fillScored = scoreFill([...intro, ...extra.map((c) => ({ ...c, lane: 1, part: pair.lanes[1] }))], barStep);
+  const all = [...own, ...extra];
+  const span = all.length ? { first: Math.min(...all.map((c) => c.step)), last: Math.max(...all.map((c) => c.step)) } : { first: 0, last: 0 };
+  const charts = {}, stats = {};
+  for (const [name, lv] of Object.entries(LEVELS2)) {
+    let lambda = lv.lambda, notes = chartLevel(scored, pats, barStep, lv, lambda);
+    while (chartDensity(notes, beats, downbeat) > lv.density && lambda < 3) {
+      lambda += 0.05;
+      notes = chartLevel(scored, pats, barStep, lv, lambda);
+    }
+    const main = notes.length;
+    const taken = new Set(notes.map((n) => n.step));
+    const pool = [...scored.filter((c) => !taken.has(c.step)).map((c) => ({ ...c, src: PARTS[pair.lanes[c.lane]] })), ...fillScored];
+    const filled = fillGaps(notes, [pool], FILL2[name], span);
+    notes = filled.notes;
+    // every note the three-lane chart gives these parts, where the level's gaps hold around it
+    const have = new Set(notes.map((n) => n.step));
+    let kept = 0;
+    for (const s of (solo[name] ?? []).filter((n) => !n.o && pair.lanes.includes(n.lane) && !have.has(n.step))) {
+      const lane = pair.lanes.indexOf(s.lane), i = notes.findIndex((n) => n.step > s.step);
+      const p = i < 0 ? notes[notes.length - 1] : notes[i - 1], q = i < 0 ? null : notes[i];
+      const fits = (a, b) => !a || !b || b.step - a.step >= (a.lane === b.lane ? lv.same : lv.change);
+      const me = { step: s.step, lane, score: 0 };
+      if (s.step % lv.grid === 0 && fits(p, me) && fits(me, q)) { notes.splice(i < 0 ? notes.length : i, 0, me); kept++; }
+    }
+    charts[name] = notes.map((n) => ({ t: +stepTime(beats, n.step).toFixed(4), step: n.step, lane: pair.lanes[n.lane] }));
+    stats[name] = { lambda: +lambda.toFixed(2), notes: notes.length, main, fill: filled.added.length,
+      per_second: +(notes.length / playSeconds).toFixed(2), per_second_playing: +chartDensity(notes, beats, downbeat).toFixed(2),
+      parts: pair.lanes.map((p) => notes.filter((n) => pair.lanes[n.lane] === p).length), from_three_lanes: kept,
+      holes_left: chartHoles(notes, span).map((h) => [h.a, h.b]) };
+  }
+  return { charts, stats, span };
 }

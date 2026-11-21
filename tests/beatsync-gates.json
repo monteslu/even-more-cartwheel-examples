@@ -11,9 +11,9 @@
   },
   {
     "name": "beatsync-menus",
-    "note": "The menus from pad 0 (beatsync-menus.json): south on Play opens the song select, south picks the song, south plays it at the difficulty shown (Easy). The control is the same presses without the last (beatsync-menus-no-start.json), which stays on the difficulty.",
+    "note": "The menus from pad 0 (beatsync-menus.json): south on Play opens the join screen, Start plays alone and opens the song select, south picks the song, south plays it at the difficulty shown (Easy, three lanes). The control is the same presses without the last (beatsync-menus-no-start.json), which stays on the difficulty.",
     "app": "beatsync",
-    "frames": 240,
+    "frames": 280,
     "input": "beatsync-menus.json",
     "hosts": ["romdev"],
     "webgpu": true,

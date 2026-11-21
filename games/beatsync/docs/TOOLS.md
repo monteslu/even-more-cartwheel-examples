@@ -45,6 +45,18 @@ source must be the very audio the package was made from (it refuses a source of 
 and id, and the flags the package was made with (`--keep-vocals`, the BPM range, kept in `report.json`), carry over
 unless given again.
 
+## The two-lane charts
+
+`make-song.mjs` (and `--charts-only`) also writes `pairs`: the drums (kick and clap, the hats on the clap) and the
+groove (bass and the synth, the other stem's onsets) on Easy, Medium and Hard (`docs/DESIGN.md` "One or two players").
+The three-lane `charts` are made exactly as before (a re-chart that adds `pairs` leaves them byte for byte), and the
+re-chart prints each pair's notes per level, its two parts' counts and its notes a second. `check-songs` holds them:
+each pair on each level sorted, on its grid and gaps, on its own two lanes and both of them, under its cap, more notes
+from Easy to Hard, never fewer than the three-lane chart gives those parts, and on Easy and Medium more notes a button
+than the three-lane chart. Its control cuts each pair to just under those numbers and must be caught on every pair
+and level. Re-charting all six songs takes about two minutes (Test Groove from `node tools/make-test-song.mjs --out
+out/tg48 --length 48`'s `song.stem.mp4`, the five house songs from their `.stem.mp4`).
+
 ## Adding the look to a package
 
 A new package gets its look from `make-song.mjs` (and from `--charts-only`). A package made before the look existed

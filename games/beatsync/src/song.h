@@ -8,7 +8,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-enum { LANE_KICK, LANE_CLAP, LANE_BASS, LANES };
+/* the parts a player plays: the one-player game's three lanes (kick, clap, bass) and the synth, the other track's
+ * onsets, which the two-lane game plays (docs/DESIGN.md "Two lanes") */
+enum { LANE_KICK, LANE_CLAP, LANE_BASS, LANE_SYNTH, LANES };
+#define SOLO_LANES 3 /* the one-player three-lane game: kick, clap, bass */
+/* the two-lane game's pairs: the drums (kick and clap, the hats on the clap) and the groove (bass and synth) */
+enum { PAIR_DRUMS, PAIR_GROOVE, PAIRS };
 enum { DIFF_EASY, DIFF_MEDIUM, DIFF_HARD, DIFFS };
 enum { TRACK_KICK, TRACK_CLAP, TRACK_BASS, TRACK_OTHER, TRACKS };
 
@@ -48,8 +53,10 @@ typedef struct song {
   int beats, downbeat;
   struct { int32_t ms; section_kind kind; } section[MAX_SECTIONS];
   int sections;
-  note *chart[DIFFS];
+  note *chart[DIFFS];        /* the three-lane game (song.json "charts") */
   int notes[DIFFS];
+  note *pair_chart[PAIRS][DIFFS]; /* the two-lane game, a pair's two parts (song.json "pairs"; lanes are LANE_*) */
+  int pair_notes[PAIRS][DIFFS];
   uint32_t hash; /* of the id: the save keys on it */
   int32_t preview_ms; /* where the song select's preview starts: the first drop, else a third in */
   song_look look;
@@ -63,6 +70,9 @@ int songs_load(void);
 int songs_count(void);
 const song *song_get(int i);
 const char *diff_name(int d);
+const char *pair_name(int p); /* "drums", "groove" */
+/* the two lanes of a pair, left then right */
+void pair_lanes(int p, int out[2]);
 /* the beat phase at a time: beats since the first (fractional), from the song's tracked beats */
 float song_beat_at(const song *s, float ms);
 /* the look at a beat position (clamped to the song): height, hue, bright, tonal; a song without a look gives a quiet land */

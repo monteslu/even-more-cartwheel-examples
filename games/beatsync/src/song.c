@@ -278,9 +278,30 @@ static bool load_one(const char *id, song *s) {
       for (int i = a->first; i >= 0; i = j.v[i].next) {
         note n = { (int32_t)lround(jnum(jget(&j, &j.v[i], "t"), 0) * 1000), (int16_t)jnum(jget(&j, &j.v[i], "step"), 0),
                    (uint8_t)jnum(jget(&j, &j.v[i], "lane"), 0), (uint8_t)(jnum(jget(&j, &j.v[i], "o"), 0) != 0) };
-        if (n.lane >= LANES || n.ms < last) { cw_error("%s: charts.%s note %d is out of order or has no lane", path, DN[d], s->notes[d]); ok = false; break; }
+        if (n.lane >= SOLO_LANES || n.ms < last) { cw_error("%s: charts.%s note %d is out of order or has no lane", path, DN[d], s->notes[d]); ok = false; break; }
         last = n.ms;
         s->chart[d][s->notes[d]++] = n;
+      }
+    }
+    /* the two-lane charts: each pair's notes on its own two lanes */
+    const jv *pr = jget(&j, R, "pairs");
+    if (ok && !pr) { cw_error("%s: no two-lane charts (\"pairs\"): re-chart it, tools/make-song.mjs --charts-only", path); ok = false; }
+    for (int p = 0; p < PAIRS && ok; p++) {
+      int pl[2];
+      pair_lanes(p, pl);
+      const jv *pc = jget(&j, pr, pair_name(p));
+      for (int d = 0; d < DIFFS && ok; d++) {
+        const jv *a = pc ? jget(&j, pc, DN[d]) : NULL;
+        if (!a || a->type != J_ARR || !a->count) { cw_error("%s: pairs.%s.%s is empty", path, pair_name(p), DN[d]); ok = false; break; }
+        s->pair_chart[p][d] = cw_alloc(sizeof(note) * (size_t)a->count, CW_MEM_GAME);
+        int32_t last = -1000000;
+        for (int i = a->first; i >= 0; i = j.v[i].next) {
+          note n = { (int32_t)lround(jnum(jget(&j, &j.v[i], "t"), 0) * 1000), (int16_t)jnum(jget(&j, &j.v[i], "step"), 0),
+                     (uint8_t)jnum(jget(&j, &j.v[i], "lane"), 0), 0 };
+          if ((n.lane != pl[0] && n.lane != pl[1]) || n.ms < last) { cw_error("%s: pairs.%s.%s note %d is out of order or off its pair", path, pair_name(p), DN[d], s->pair_notes[p][d]); ok = false; break; }
+          last = n.ms;
+          s->pair_chart[p][d][s->pair_notes[p][d]++] = n;
+        }
       }
     }
   }
@@ -290,7 +311,10 @@ static bool load_one(const char *id, song *s) {
     for (int i = 0; i < s->sections; i++)
       if (s->section[i].kind == SEC_DROP) { s->preview_ms = s->section[i].ms; break; }
   } else if (!j.bad) {
-    for (int d = 0; d < DIFFS; d++) cw_free(s->chart[d]);
+    for (int d = 0; d < DIFFS; d++) {
+      cw_free(s->chart[d]);
+      for (int p = 0; p < PAIRS; p++) cw_free(s->pair_chart[p][d]);
+    }
     cw_free(s->beat_ms);
     song_look *L = &s->look;
     cw_free(L->height), cw_free(L->hue), cw_free(L->bright), cw_free(L->tonal), cw_free(L->change), cw_free(L->band);
@@ -309,6 +333,8 @@ int songs_load(void) {
 }
 int songs_count(void) { return nsongs; }
 const song *song_get(int i) { return i >= 0 && i < nsongs ? &SONGS[i] : NULL; }
+const char *pair_name(int p) { return p == PAIR_GROOVE ? "groove" : "drums"; }
+void pair_lanes(int p, int out[2]) { out[0] = p == PAIR_GROOVE ? LANE_BASS : LANE_KICK, out[1] = p == PAIR_GROOVE ? LANE_SYNTH : LANE_CLAP; }
 const char *diff_name(int d) { static const char *const N[DIFFS] = { "Easy", "Medium", "Hard" }; return d >= 0 && d < DIFFS ? N[d] : "?"; }
 
 float song_beat_at(const song *s, float ms) {

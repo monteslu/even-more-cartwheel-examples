@@ -66,7 +66,8 @@ export async function openBeatsync(app, { gpu = 'gl', seed = 1, tag = '' } = {})
 /** a pad press for `frames`, then `gap` frames of nothing */
 export const tap = (button, frames = 4, gap = 20) => [{ pads: [{ buttons: [button] }], frames }, { pads: [{ buttons: [] }], frames: gap }];
 
-/** from the title to the first frame of a song's play, as a player does it on a pad: Play on the title, the song
+/** from the title to the first frame of a song's play, as a player does it on a pad: Play on the title, Start on the join
+ * screen (one player), the song
  * (index `song` from the top of the list), the difficulty, accept. One request a screen; returns the fields after. */
 export async function enterSong(r, { song = 0, diff = 0 }, fields) {
   const look = ['shell.screen', 'game.screen', 'song.index', 'song.pick', ...fields];
@@ -76,6 +77,7 @@ export async function enterSong(r, { song = 0, diff = 0 }, fields) {
     let segs;
     if (shell === 0) segs = [{ pads: [{ buttons: [] }], frames: 30 }]; // loading
     else if (shell === 1) segs = tap('south'); // the title: Play
+    else if (shell === 2) segs = tap('start'); // the join screen: Start plays alone
     else if (shell !== 3) throw new Error(`enterSong: the shell is on screen ${shell}`);
     else if (scr === SCREEN.play) return f;
     else if (scr === SCREEN.select) segs = f['song.index'] !== song ? tap(f['song.index'] < song ? 'down' : 'up') : tap('south');

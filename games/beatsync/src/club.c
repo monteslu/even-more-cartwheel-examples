@@ -45,7 +45,11 @@
 #define VIEW_HALF_H 8.0f /* camera at z 22, 40 degrees */
 #define GATE_Y (-4.7f)   /* the gate line */
 #define TOP_Y 6.6f       /* where a river starts (its far end, `ahead` beats up), under the horizon */
-#define LANE_DX 4.9f     /* the rivers' centres at the gate: -LANE_DX, 0, LANE_DX */
+#define LANE_DX 4.9f     /* the three-lane game's rivers' centres at the gate: -LANE_DX, 0, LANE_DX */
+#define PAIR_DX 4.2f     /* one player's two rivers: -PAIR_DX, PAIR_DX (apart: two rivers of notes in one sixth of the screen were a flicker) */
+#define DUO_C 6.2f       /* two players: each player's road at the gates, its own highway converging to its own point */
+#define DUO_HALF 2.1f    /* and its two rivers either side of that centre */
+#define DUO_VP 4.6f      /* the point each road converges to: a little inside its centre, so the two roads lean in together */
 #define RIVER_W 2.8f     /* a river's width at the gate (a gap of about 2 between rivers, a character at the far end) */
 #define FAR 0.25f        /* a river's scale at its far end: a quarter of its size at the gate */
 #define PAST 0.7f        /* beats a river runs on below the gate */
@@ -57,7 +61,8 @@
 #define SHARDS 192 /* the hit bursts' shards, shared by the three lanes */
 #define RINGS 6    /* the hit bursts' rings, two a lane */
 #define LAND_ROWS 20 /* half-beat rows of the land (the longest view, 8 beats ahead and PAST below the gate, is 18) */
-#define LAND_COLS 14 /* columns a side */
+#define LAND_COLS 14 /* columns a side (two sides: 2 * LAND_COLS a row, shared by the row's stretches of land) */
+#define LAND_SPANS 3 /* stretches of land a row at most: left of the roads, between two roads, right of them */
 #define DEBRIS 160   /* a broken streak's falling pieces */
 /* a note's size at the gate (times its shape), and its brightness there (NB0, times the view's note_light) and what
  * it adds at the far end (NB_FAR), where it is smaller than a character and needs the light to show */
@@ -66,14 +71,15 @@
 #define NB_FAR 0.6f
 
 typedef struct pal { t3_color lane[LANES], bg; } pal;
-/* a palette per section: intro violet, build warming, drop hot magenta and orange, break cool cyan, outro blue */
+/* a palette per section: intro violet, build warming, drop hot magenta and orange, break cool cyan, outro blue (the
+ * synth, a fourth colour apart from the other three) */
 static const pal PALS[6] = {
-  [SEC_INTRO] = { { { 0.75f, 0.25f, 1 }, { 0.2f, 0.7f, 1 }, { 1, 0.45f, 0.15f } }, { 0.35f, 0.18f, 0.9f } },
-  [SEC_BUILD] = { { { 1, 0.45f, 0.1f }, { 1, 0.9f, 0.3f }, { 0.95f, 0.2f, 0.75f } }, { 0.85f, 0.4f, 0.08f } },
-  [SEC_DROP] = { { { 1, 0.1f, 0.65f }, { 1, 0.55f, 0.05f }, { 0.2f, 0.65f, 1 } }, { 0.9f, 0.08f, 0.45f } },
-  [SEC_BREAK] = { { { 0.1f, 0.8f, 1 }, { 0.45f, 1, 0.6f }, { 0.6f, 0.3f, 1 } }, { 0.05f, 0.5f, 0.75f } },
-  [SEC_OUTRO] = { { { 0.35f, 0.45f, 1 }, { 0.75f, 0.35f, 1 }, { 0.3f, 1, 0.6f } }, { 0.2f, 0.25f, 0.8f } },
-  [SEC_OTHER] = { { { 0.75f, 0.25f, 1 }, { 0.2f, 0.7f, 1 }, { 1, 0.45f, 0.15f } }, { 0.35f, 0.18f, 0.9f } },
+  [SEC_INTRO] = { { { 0.75f, 0.25f, 1 }, { 0.2f, 0.7f, 1 }, { 1, 0.45f, 0.15f }, { 0.35f, 1, 0.45f } }, { 0.35f, 0.18f, 0.9f } },
+  [SEC_BUILD] = { { { 1, 0.45f, 0.1f }, { 1, 0.9f, 0.3f }, { 0.95f, 0.2f, 0.75f }, { 0.25f, 0.8f, 1 } }, { 0.85f, 0.4f, 0.08f } },
+  [SEC_DROP] = { { { 1, 0.1f, 0.65f }, { 1, 0.55f, 0.05f }, { 0.2f, 0.65f, 1 }, { 0.4f, 1, 0.35f } }, { 0.9f, 0.08f, 0.45f } },
+  [SEC_BREAK] = { { { 0.1f, 0.8f, 1 }, { 0.45f, 1, 0.6f }, { 0.6f, 0.3f, 1 }, { 1, 0.6f, 0.2f } }, { 0.05f, 0.5f, 0.75f } },
+  [SEC_OUTRO] = { { { 0.35f, 0.45f, 1 }, { 0.75f, 0.35f, 1 }, { 0.3f, 1, 0.6f }, { 1, 0.75f, 0.25f } }, { 0.2f, 0.25f, 0.8f } },
+  [SEC_OTHER] = { { { 0.75f, 0.25f, 1 }, { 0.2f, 0.7f, 1 }, { 1, 0.45f, 0.15f }, { 0.35f, 1, 0.45f } }, { 0.35f, 0.18f, 0.9f } },
 };
 
 static struct {
@@ -81,7 +87,10 @@ static struct {
   t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *flare, *shards, *rings, *land, *caps, *crests, *sky, *band, *debris;
   cw_node camera;
   float zoom, spread, ahead;
-  int place[LANES]; /* the river each lane is drawn as: 0 left, 1 middle, 2 right (the layout gate swaps it) */
+  int place[SOLO_LANES]; /* the three-lane game's river each lane is drawn as: 0 left, 1 middle, 2 right (the layout gate swaps it) */
+  float x[LANES], on[LANES]; /* each lane's river: its centre at the gate and how far it shows, gliding to the layout */
+  float ax[LANES];           /* the point its road converges to (0: the one highway; two players: each player's own) */
+  bool laid;
   struct { float x, y, vx, vy, born, size; uint8_t lane, perfect; } shard[SHARDS];
   struct { float x, y, born; uint8_t lane, perfect; } ring[RINGS];
   int shard_next, ring_next, bursts;
@@ -91,7 +100,8 @@ static struct {
   t3_color sky_col;
   struct { float x, y, vx, vy, born, size; uint8_t lane; } bit[DEBRIS];
   int debris_next;
-  int32_t last_break;
+  int32_t last_break[CLUB_PLAYERS];
+  bool hidden_draw; /* the `hidden draw` request: a river not shown is drawn dark, as 0.36.0's first build did (the rivers gate's control) */
   int land_mode; /* 0 the song's look; 1 flat (one height and colour, the land gate's control); 2 off */
   struct land_probe { float beat, height, hue, bands[3]; int stab; bool crest; } land_probe[LAND_ROWS];
   int land_n;
@@ -101,7 +111,7 @@ static struct {
   bool built;
 } C;
 /* each note shape's width in units at scale 1 (the geometries in club_build) */
-static const float NOTE_W[LANES] = { 1.44f, 1.76f, 2.0f };
+static const float NOTE_W[LANES] = { 1.44f, 1.76f, 2.0f, 1.6f };
 
 static uint32_t hash(uint32_t a, uint32_t b) {
   uint32_t h = a * 374761393u + b * 668265263u;
@@ -167,8 +177,37 @@ static float persp(float d) {
 static float haze(float s, float lo) { return lo + (1 - lo) * fminf(1, fmaxf(0, (s - FAR) / (1 - FAR))); }
 static t3_vec3 on_river(int lane, float d, float u, float z) {
   float s = persp(d), p = (1 - s) / (1 - FAR);
-  float cx = (float)(C.place[lane] - 1) * LANE_DX * C.spread;
-  return (t3_vec3){ (cx + u * RIVER_W) * s, GATE_Y + (TOP_Y - GATE_Y) * p, z };
+  float ax = C.ax[lane] * C.spread, cx = (C.x[lane] - C.ax[lane]) * C.spread;
+  return (t3_vec3){ ax + (cx + u * RIVER_W) * s, GATE_Y + (TOP_Y - GATE_Y) * p, z };
+}
+
+/* the outermost river shown (its centre at the gate, before the spread): the land starts past it */
+static float outer_x(void) {
+  float m = 0;
+  for (int l = 0; l < LANES; l++) m = fmaxf(m, fabsf(C.x[l]) * fminf(1, C.on[l] * 2));
+  return fmaxf(m, PAIR_DX);
+}
+
+/* where each lane's river goes in a layout, and whether it shows; a hidden river stays where it was (it only fades) */
+static void layout_targets(int layout, float x[LANES], float on[LANES], float ax[LANES]) {
+  for (int l = 0; l < LANES; l++) x[l] = C.x[l], on[l] = 0, ax[l] = 0;
+  static const float X3[SOLO_LANES] = { -LANE_DX, 0, LANE_DX };
+  switch (layout) {
+  case CLUB_DRUMS: x[LANE_KICK] = -PAIR_DX, x[LANE_CLAP] = PAIR_DX, on[LANE_KICK] = on[LANE_CLAP] = 1; break;
+  case CLUB_GROOVE: x[LANE_BASS] = -PAIR_DX, x[LANE_SYNTH] = PAIR_DX, on[LANE_BASS] = on[LANE_SYNTH] = 1; break;
+  case CLUB_DUO_DRUMS_LEFT:
+  case CLUB_DUO_GROOVE_LEFT: {
+    float s = layout == CLUB_DUO_DRUMS_LEFT ? -1 : 1; /* the drums' road: left (player 1 on the drums) or right */
+    ax[LANE_KICK] = ax[LANE_CLAP] = DUO_VP * s, ax[LANE_BASS] = ax[LANE_SYNTH] = -DUO_VP * s;
+    x[LANE_KICK] = DUO_C * s - DUO_HALF, x[LANE_CLAP] = DUO_C * s + DUO_HALF; /* each pair left to right on its road */
+    x[LANE_BASS] = -DUO_C * s - DUO_HALF, x[LANE_SYNTH] = -DUO_C * s + DUO_HALF;
+    for (int l = 0; l < LANES; l++) on[l] = 1;
+    break;
+  }
+  default:
+    for (int l = 0; l < SOLO_LANES; l++) x[l] = X3[C.place[l]], on[l] = 1;
+    break;
+  }
 }
 
 void club_build(void) {
@@ -180,11 +219,12 @@ void club_build(void) {
   C.built = true;
   C.camera = cw_node_get(level, "Camera");
   C.zoom = 1, C.spread = 1, C.ahead = 3;
-  for (int l = 0; l < LANES; l++) C.place[l] = l;
-  /* the notes: kick round, clap a diamond, bass a long bar across its river */
+  for (int l = 0; l < SOLO_LANES; l++) C.place[l] = l;
+  /* the notes: kick round, clap a diamond, bass a long bar across its river, the synth a hexagon */
   C.notes[LANE_KICK] = instanced(t3_circle_geometry_new(0.72f, 24), MAX_NOTES_SHOWN);
   C.notes[LANE_CLAP] = instanced(t3_circle_geometry_new(0.88f, 4), MAX_NOTES_SHOWN);
   C.notes[LANE_BASS] = instanced(t3_plane_geometry_new(2.0f, 0.66f, 1, 1), MAX_NOTES_SHOWN);
+  C.notes[LANE_SYNTH] = instanced(t3_circle_geometry_new(0.8f, 6), MAX_NOTES_SHOWN);
   C.flow = instanced(t3_plane_geometry_new(0.55f, 0.12f, 1, 1), FLOW * LANES);
   C.banks = instanced(t3_plane_geometry_new(0.14f, 1.0f, 1, 1), BANK_SEGS * 2 * LANES);
   C.ticks = instanced(t3_plane_geometry_new(1.0f, 0.1f, 1, 1), TICKS * LANES);
@@ -195,7 +235,7 @@ void club_build(void) {
   C.rings = instanced(t3_ring_geometry_new(0.72f, 1.0f, 64, 1), RINGS);
   C.land = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS);
   C.caps = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS);
-  C.crests = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2);
+  C.crests = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * LAND_SPANS);
   C.sky = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), 1);
   C.band = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LANES);
   C.debris = instanced(t3_plane_geometry_new(0.8f, 0.8f, 1, 1), DEBRIS);
@@ -239,7 +279,8 @@ static section_kind section_at(const song *s, double ms) {
  * notes; each the other track at its beat */
 static void land_update(const club_view *v, float beat, float now, float dim) {
   (void)now;
-  float xin = LANE_DX * C.spread + RIVER_W * 0.5f + 0.8f, xout = 17.0f, cw_ = (xout - xin) / LAND_COLS;
+  float amax = 0; /* the farthest point a road converges to (two players' roads) */
+  for (int l = 0; l < LANES; l++) amax = fmaxf(amax, fabsf(C.ax[l]) * C.spread * (C.on[l] > 0.5f));
   float first = floorf((beat - PAST) * 2) / 2;
   float on = C.land_mode == 2 ? 0 : 1;
   C.land_n = 0;
@@ -269,41 +310,68 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
      * a sawtooth at the half beat */
     float in = fminf(1, (C.ahead - d) / 0.8f);
     float fade = show ? in * haze(s, 0.4f) * dim : 0;
-    t3_color col = even(hsv(hue, 0.45f + 0.5f * ton, 1));
+    t3_color col_c = even(hsv(hue, 0.45f + 0.5f * ton, 1));
     float light = 0.5f * (0.5f + 0.35f * br) * (0.5f + 0.5f * h) * fade; /* under the rivers' light: they stay what the eye follows */
     uint32_t row = (uint32_t)(int32_t)lroundf(rb * 2 + 100000);
     float zr = -0.3f - 0.02f * d; /* a nearer row in front of a farther one */
-    for (int side = 0; side < 2; side++) {
-      float sg = side ? 1.0f : -1.0f;
-      for (int j = 0; j < LAND_COLS; j++) {
-        int idx = (r * 2 + side) * LAND_COLS + j;
-        if (!show) { hide(C.land, idx), hide(C.caps, idx); continue; }
-        float u = ((float)j + 0.5f) / LAND_COLS; /* 0 beside the rivers, 1 at the edge */
-        /* the spectrum laid outward: bass beside the rivers, mid between, treble at the edges */
+    /* the row's stretches of land: the width out to the edges, less the roads (each shown river and a margin, a gap
+     * narrower than a river's left as road): left of the roads, between two players' roads, right of them */
+    float xo = 17.0f * s + amax * (1 - s); /* the edges converge with the roads (with two roads, around their points) */
+    float blk[LANES][2];
+    int nb = 0;
+    for (int l = 0; l < LANES; l++) {
+      if (C.on[l] < 0.5f) continue;
+      float xc = on_river(l, d, 0, 0).x, hw = (RIVER_W * 0.5f + 0.8f) * s * C.spread;
+      int k = nb++;
+      while (k > 0 && blk[k - 1][0] > xc - hw) { blk[k][0] = blk[k - 1][0], blk[k][1] = blk[k - 1][1]; k--; }
+      blk[k][0] = xc - hw, blk[k][1] = xc + hw;
+    }
+    float span[LAND_SPANS][2];
+    int ns = 0;
+    float at = -xo;
+    for (int b = 0; b <= nb; b++) {
+      float a = b < nb ? blk[b][0] : xo;
+      if (a - at > 2.0f * s && ns < LAND_SPANS) span[ns][0] = at, span[ns][1] = a, ns++;
+      if (b < nb) at = fmaxf(at, blk[b][1]);
+    }
+    float total = 0;
+    for (int k = 0; k < ns; k++) total += span[k][1] - span[k][0];
+    int col = 0;
+    for (int k = 0; k < ns && show; k++) {
+      float a = span[k][0], b = span[k][1], w = b - a;
+      bool leftEdge = a <= -xo + 1e-3f, rightEdge = b >= xo - 1e-3f; /* an end at the screen's edge, not a road */
+      int n = k == ns - 1 ? 2 * LAND_COLS - col : (int)lroundf(2.0f * LAND_COLS * w / total);
+      float cwk = w / (float)CW_MAX(n, 1);
+      for (int j = 0; j < n && col < 2 * LAND_COLS; j++, col++) {
+        int idx = r * 2 * LAND_COLS + col;
+        float X = a + cwk * ((float)j + 0.5f);
+        /* u: 0 beside a road, 1 farthest from one (the screen's edge, or the middle between two roads) */
+        float u = leftEdge ? (b - X) / w : rightEdge ? (X - a) / w : 1 - fabsf(X - (a + b) * 0.5f) / (w * 0.5f);
+        /* the spectrum laid outward: bass beside the rivers, mid between, treble far from them */
         float bv = u < 0.5f ? drawn[0] + (drawn[1] - drawn[0]) * (u / 0.5f) : drawn[1] + (drawn[2] - drawn[1]) * ((u - 0.5f) / 0.5f);
         bv = fminf(2.2f, bv);
         /* rough by column, never by row: rows of different heights passing one point of the screen at the half beat
          * would be a regular flicker near 4 Hz; a column keeps its roughness and its height follows the music smoothly */
-        float rough = 0.7f + 0.6f * hf(7u, (uint32_t)(j * 2 + side));
+        float rough = 0.7f + 0.6f * hf(7u, (uint32_t)col);
         float H = s * fminf(3.4f, 0.4f + 2.4f * (0.4f + 0.6f * h) * powf(bv, 0.8f) * rough * (0.3f + 1.0f * u));
-        float X = (xin + (xout - xin) * u) * sg;
-        set_inst(C.land, idx, (t3_vec3){ X * s, (yb + y0 + H) * 0.5f, zr }, 0, (t3_vec3){ cw_ * 0.86f * s, y0 + H - yb, 1 });
-        t3_instanced_mesh_set_color_at(C.land, idx, scale(col, light * (0.9f + 0.1f * fminf(1.5f, bv)) * (0.55f + 0.45f * u)));
+        set_inst(C.land, idx, (t3_vec3){ X, (yb + y0 + H) * 0.5f, zr }, 0, (t3_vec3){ cwk * 0.86f, y0 + H - yb, 1 });
+        t3_instanced_mesh_set_color_at(C.land, idx, scale(col_c, light * (0.9f + 0.1f * fminf(1.5f, bv)) * (0.55f + 0.45f * u)));
         /* a stab: lights on the ridge, more for a stronger one */
-        if (stab && hf(row + (uint32_t)stab * 7919u, (uint32_t)(j * 2 + side)) < 0.12f + 0.06f * (float)stab) {
-          float cs = cw_ * 0.8f * s;
-          set_inst(C.caps, idx, (t3_vec3){ X * s, y0 + H + cs * 0.5f, zr + 0.01f }, 0, (t3_vec3){ cs, cs, 1 });
-          t3_instanced_mesh_set_color_at(C.caps, idx, scale(mix(col, (t3_color){ 1, 1, 1 }, 0.35f), (0.16f + 0.03f * (float)stab) * fade));
+        if (stab && hf(row + (uint32_t)stab * 7919u, (uint32_t)col) < 0.12f + 0.06f * (float)stab) {
+          float cs = cwk * 0.8f;
+          set_inst(C.caps, idx, (t3_vec3){ X, y0 + H + cs * 0.5f, zr + 0.01f }, 0, (t3_vec3){ cs, cs, 1 });
+          t3_instanced_mesh_set_color_at(C.caps, idx, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.35f), (0.16f + 0.03f * (float)stab) * fade));
         } else hide(C.caps, idx);
       }
-      /* the harmony moves on this row: a crest of light along it in the new colour */
-      int ci = r * 2 + side;
-      if (show && crest) {
-        float w = (xout - xin) * s;
-        set_inst(C.crests, ci, (t3_vec3){ (xin + (xout - xin) * 0.5f) * sg * s, y0, zr + 0.02f }, 0, (t3_vec3){ w, 0.16f * s, 1 });
-        t3_instanced_mesh_set_color_at(C.crests, ci, scale(mix(col, (t3_color){ 1, 1, 1 }, 0.3f), 0.7f * fade));
+      /* the harmony moves on this row: a crest of light along each stretch in the new colour */
+      int ci = r * LAND_SPANS + k;
+      if (crest) {
+        set_inst(C.crests, ci, (t3_vec3){ (a + b) * 0.5f, y0, zr + 0.02f }, 0, (t3_vec3){ w, 0.16f * s, 1 });
+        t3_instanced_mesh_set_color_at(C.crests, ci, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.3f), 0.7f * fade));
       } else hide(C.crests, ci);
     }
+    for (int k = show ? ns : 0; k < LAND_SPANS; k++) hide(C.crests, r * LAND_SPANS + k);
+    for (; col < 2 * LAND_COLS; col++) hide(C.land, r * 2 * LAND_COLS + col), hide(C.caps, r * 2 * LAND_COLS + col);
   }
   changed(C.land);
   changed(C.caps);
@@ -324,22 +392,24 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
 static void streak_update(const club_view *v, float now, float dim) {
   (void)now;
   for (int l = 0; l < LANES; l++) {
-    if (v->tier_t < 0 || v->tier_t >= TIER_S) { hide(C.band, l); continue; }
-    float u = v->tier_t / TIER_S, d = C.ahead * (1 - (1 - u) * (1 - u)), s = persp(d);
+    int pp = v->lane_player[l] > 0 ? 1 : 0;
+    if (v->tier_t[pp] < 0 || v->tier_t[pp] >= TIER_S || C.on[l] < 0.5f) { hide(C.band, l); continue; }
+    float u = v->tier_t[pp] / TIER_S, d = C.ahead * (1 - (1 - u) * (1 - u)), s = persp(d);
     set_inst(C.band, l, on_river(l, d, 0, 0.08f), 0, (t3_vec3){ RIVER_W * 1.1f * s, 0.5f * s, 1 });
-    t3_instanced_mesh_set_color_at(C.band, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.5f), 1.4f * v->tier_light * haze(s, 0.5f) * dim));
+    t3_instanced_mesh_set_color_at(C.band, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.5f), 1.4f * v->tier_light[pp] * haze(s, 0.5f) * dim));
   }
   changed(C.band);
-  if (v->break_seq != C.last_break) {
-    C.last_break = v->break_seq;
+  for (int pp = 0; pp < CLUB_PLAYERS; pp++) {
+    if (v->break_seq[pp] == C.last_break[pp]) continue;
+    C.last_break[pp] = v->break_seq[pp];
     for (int l = 0; l < LANES; l++)
-      for (int side = 0; side < 2; side++)
+      for (int side = 0; side < 2 && C.on[l] >= 0.5f && (v->lane_player[l] > 0 ? 1 : 0) == pp; side++)
         for (int j = 0; j < BANK_SEGS; j++) {
           float span = C.ahead + PAST, dm = C.ahead - span * ((float)j + 0.5f) / BANK_SEGS;
-          if (dm < 0 || dm / C.ahead > v->drain_from) continue;
+          if (dm < 0 || dm / C.ahead > v->drain_from[pp]) continue;
           t3_vec3 a = on_river(l, dm, side ? 0.53f : -0.53f, 0.12f);
           int i = C.debris_next++ % DEBRIS;
-          float sg = side ? 1.0f : -1.0f, r1 = hf((uint32_t)v->break_seq, (uint32_t)(l * 97 + side * 31 + j)), r2 = hf((uint32_t)v->break_seq + 7, (uint32_t)(l * 97 + side * 31 + j));
+          float sg = side ? 1.0f : -1.0f, r1 = hf((uint32_t)v->break_seq[pp], (uint32_t)(l * 97 + side * 31 + j)), r2 = hf((uint32_t)v->break_seq[pp] + 7, (uint32_t)(l * 97 + side * 31 + j));
           C.bit[i] = (typeof(C.bit[0])){ a.x, a.y, sg * (0.8f + 1.6f * r1), 0.5f + 1.5f * r2, v->t, persp(dm) * (0.7f + 0.5f * r2), (uint8_t)l };
         }
   }
@@ -349,7 +419,7 @@ static void streak_update(const club_view *v, float now, float dim) {
     float x = C.bit[i].x + C.bit[i].vx * age, y = C.bit[i].y + C.bit[i].vy * age - 6.0f * age * age;
     float env = (1 - age / DRAIN_S) * (1 - age / DRAIN_S);
     set_inst(C.debris, i, (t3_vec3){ x, y, 0.12f }, age * 4 + (float)i, (t3_vec3){ C.bit[i].size, C.bit[i].size, 1 });
-    t3_instanced_mesh_set_color_at(C.debris, i, scale(mix(C.p.lane[C.bit[i].lane], (t3_color){ 1, 0.18f, 0.18f }, 0.75f), 1.3f * env * v->drain_light * dim));
+    t3_instanced_mesh_set_color_at(C.debris, i, scale(mix(C.p.lane[C.bit[i].lane], (t3_color){ 1, 0.18f, 0.18f }, 0.75f), 1.3f * env * v->drain_light[v->lane_player[C.bit[i].lane] > 0 ? 1 : 0] * dim));
   }
   changed(C.debris);
 }
@@ -366,6 +436,18 @@ void club_update(const club_view *v) {
   C.spread += (sw - C.spread) * 0.04f;
   C.ahead += (aw - C.ahead) * 0.06f;
   if (C.camera.id) cw_node3d_set_position(C.camera, (t3_vec3){ 0, 0, 22.0f / C.zoom });
+  /* the rivers glide to the layout and fade in or out (a hidden river keeps its place) */
+  {
+    float tx[LANES], ton[LANES], tax[LANES];
+    layout_targets(v->layout, tx, ton, tax);
+    for (int l = 0; l < LANES; l++) {
+      if (!C.laid) C.x[l] = tx[l], C.on[l] = ton[l], C.ax[l] = tax[l];
+      C.x[l] += (tx[l] - C.x[l]) * 0.08f;
+      C.ax[l] += (tax[l] - C.ax[l]) * 0.08f;
+      C.on[l] = ton[l] > C.on[l] ? fminf(ton[l], C.on[l] + dt / 0.4f) : fmaxf(ton[l], C.on[l] - dt / 0.3f);
+    }
+    C.laid = true;
+  }
 
   /* the palette: the section's, eased toward over about a bar */
   section_kind sec = section_at(v->s, now);
@@ -376,9 +458,18 @@ void club_update(const club_view *v) {
 
   float span = C.ahead + PAST; /* the current runs from the far end to below the gate */
   for (int l = 0; l < LANES; l++) {
+    const float ldim = dim * C.on[l]; /* a river fading in or out with the layout (0: not shown) */
+    const int pp = v->lane_player[l] > 0 ? 1 : 0; /* whose streak this river shows */
+    if (C.on[l] < 0.01f && !C.hidden_draw) { /* not shown: left out, never drawn dark (it would cover a river where it rests) */
+      for (int i = 0; i < FLOW; i++) hide(C.flow, l * FLOW + i);
+      for (int j = 0; j < BANK_SEGS * 2; j++) hide(C.banks, l * BANK_SEGS * 2 + j);
+      for (int j = 0; j < TICKS; j++) hide(C.ticks, l * TICKS + j);
+      hide(C.front, l), hide(C.gates, l), hide(C.flare, l);
+      continue;
+    }
     /* a river plays at full strength while it is hit, dimmed to dots while it is missed out (the streak shows on the
      * banks, which stay still: brightening the moving current with it made dense eighths flicker at the half beat) */
-    float lv = (0.3f + 0.7f * v->level[l]) * dim, fl = v->flare[l];
+    float lv = (0.3f + 0.7f * v->level[l]) * ldim, fl = v->flare[l];
 
     /* the current: streaks riding down at the notes' speed, a gentle sway across; a hit surges the water round the
      * gate (brighter and a little wider), swelling with the flare and fading with it */
@@ -406,15 +497,15 @@ void club_update(const club_view *v) {
         fade += 1.6f * v->gap_alpha * lit;
         /* the streak's charge: the banks lit from the gate up, a soft front at how far the streak has come toward
          * the top multiplier (the far end); a broken streak's charge drains back down to the gate, reddening */
-        float qc = fmaxf(0, q), on = dm >= -0.2f ? fminf(1, fmaxf(0, (v->charge - qc) / 0.06f + 0.5f)) : 0;
+        float qc = fmaxf(0, q), on = dm >= -0.2f ? fminf(1, fmaxf(0, (v->charge[pp] - qc) / 0.06f + 0.5f)) : 0;
         float drain = 0;
-        if (v->drain_t >= 0 && v->drain_t < DRAIN_S) {
-          float front = v->drain_from * (1 - v->drain_t / DRAIN_S);
-          drain = dm >= -0.2f ? fminf(1, fmaxf(0, (front - qc) / 0.06f + 0.5f)) * v->drain_light : 0;
+        if (v->drain_t[pp] >= 0 && v->drain_t[pp] < DRAIN_S) {
+          float front = v->drain_from[pp] * (1 - v->drain_t[pp] / DRAIN_S);
+          drain = dm >= -0.2f ? fminf(1, fmaxf(0, (front - qc) / 0.06f + 0.5f)) * v->drain_light[pp] : 0;
         }
         t3_color bc = mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.4f * on);
         bc = mix(bc, (t3_color){ 1, 0.18f, 0.18f }, 0.8f * drain);
-        float bl = 0.48f * lv * fade * haze(persp(dm), 0.6f) + (0.4f * on + 0.9f * drain) * dim * haze(persp(dm), 0.5f) * (dm < 0 ? fmaxf(0, 1 + dm / PAST) : 1);
+        float bl = 0.48f * lv * fade * haze(persp(dm), 0.6f) + (0.4f * on + 0.9f * drain) * ldim * haze(persp(dm), 0.5f) * (dm < 0 ? fmaxf(0, 1 + dm / PAST) : 1);
         int idx = (l * 2 + side) * BANK_SEGS + j;
         set_inst(C.banks, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.1f }, -atan2f(dx, dy), (t3_vec3){ 1 + 1.6f * fmaxf(on, drain), len * 1.04f, 1 });
         t3_instanced_mesh_set_color_at(C.banks, idx, scale(bc, bl));
@@ -437,7 +528,7 @@ void club_update(const club_view *v) {
     if (v->gap_alpha > 0) {
       float fd = v->gap_fill * C.ahead, s = persp(fd);
       set_inst(C.front, l, on_river(l, fd, 0, -0.12f), 0, (t3_vec3){ RIVER_W * 1.06f * s, s, 1 });
-      t3_instanced_mesh_set_color_at(C.front, l, scale(C.p.lane[l], 0.8f * v->gap_alpha * dim));
+      t3_instanced_mesh_set_color_at(C.front, l, scale(C.p.lane[l], 0.8f * v->gap_alpha * ldim));
     } else hide(C.front, l);
 
     /* the gate: a bar across the river at the hit line, lit while the river plays; it blooms on a hit and a press
@@ -445,10 +536,10 @@ void club_update(const club_view *v) {
     float pr = v->press[l];
     t3_vec3 g = on_river(l, 0, 0, 0.06f);
     set_inst(C.gates, l, g, 0, (t3_vec3){ (RIVER_W + 0.5f) * (1 + 0.08f * fl), 1 + 0.5f * fl + 0.2f * pr, 1 });
-    t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * dim + 0.55f * fl * dim));
+    t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * ldim + 0.55f * fl * ldim));
     float fs = 0.6f + 1.0f * fl + 0.15f * pr;
     set_inst(C.flare, l, (t3_vec3){ g.x, g.y, 0.04f }, 0, (t3_vec3){ fs * 1.7f, fs * 0.8f, 1 });
-    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * dim));
+    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * ldim));
   }
   changed(C.flow);
   changed(C.banks);
@@ -472,12 +563,17 @@ void club_update(const club_view *v) {
     float since = now - (float)v->notes[i].ms; /* a played note fades over 400 ms: never gone in a frame */
     if ((st == NOTE_HIT && since > 400) || st == NOTE_GONE || ahead < -PAST) continue;
     int l = v->notes[i].lane;
-    if (cnt[l] >= MAX_NOTES_SHOWN) continue;
+    if (cnt[l] >= MAX_NOTES_SHOWN || C.on[l] < 0.01f) continue; /* a river not shown carries no notes */
     float in = fminf(1, (C.ahead - ahead) / 0.5f);    /* they fade in at the far end */
     float nl = v->note_light > 0 ? v->note_light : 1, nb0 = NB0 * nl;
     /* the bass bar spans its river: on a run of eighths it is the most light passing the gate, so it is drawn a little
      * dimmer than the round notes (the flash check's regular-flicker bound on the densest song) */
     if (v->notes[i].lane == LANE_BASS) nb0 *= 0.8f;
+    /* on two lanes the clap river carries the hats too, a note on every eighth: drawn dimmer still (the densest drums
+     * on two lanes flickered at 0.043 against the 0.02 bound with the clap at full) */
+    if (v->notes[i].lane == LANE_CLAP && v->layout != CLUB_SOLO) nb0 *= 0.5f;
+    if (v->notes[i].lane == LANE_BASS && v->layout != CLUB_SOLO) nb0 *= 0.6f;  /* the groove's Hard bass runs in sixteenths */
+    if (v->notes[i].lane == LANE_SYNTH) nb0 *= 0.7f;
     float d = ahead, s = persp(ahead), far = fminf(1, fmaxf(0, (1 - s) / (1 - FAR)));
     float size = note_size(s), bright = nb0 * (1 + NB_FAR * far) * in;
     if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = note_size(s) * 0.8f;
@@ -490,6 +586,7 @@ void club_update(const club_view *v) {
       to_canvas(on_river(l, d, 0, 0), 1920, 1080, &cx, &cy);
       C.probe[C.probe_n++] = (struct probe){ (uint8_t)l, ahead, cy, size * NOTE_W[l] * k, bright };
     }
+    bright *= C.on[l];
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
     set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });
     t3_instanced_mesh_set_color_at(C.notes[l], cnt[l]++, c);
@@ -551,9 +648,10 @@ static void to_canvas(t3_vec3 p, float cw, float ch, float *x, float *y) {
   *x = cw * 0.5f + p.x * k;
   *y = ch * 0.5f - p.y * k;
 }
-void club_set_place(const int place[LANES]) {
-  for (int l = 0; l < LANES; l++) C.place[l] = place[l] >= 0 && place[l] < LANES ? place[l] : l;
+void club_set_place(const int place[SOLO_LANES]) {
+  for (int l = 0; l < SOLO_LANES; l++) C.place[l] = place[l] >= 0 && place[l] < SOLO_LANES ? place[l] : l;
 }
+float club_lane_shown(int lane) { return C.built && lane >= 0 && lane < LANES ? C.on[lane] : lane < SOLO_LANES; }
 int club_place(int lane) { return C.place[lane]; }
 void club_gate_screen(int lane, float cw, float ch, float *x, float *y) {
   if (!C.built) { *x = cw * 0.5f, *y = ch * 0.8f; return; }
@@ -561,7 +659,7 @@ void club_gate_screen(int lane, float cw, float ch, float *x, float *y) {
 }
 void club_center_screen(float cw, float ch, float *x, float *y, float *half_w) {
   to_canvas((t3_vec3){ 0, (GATE_Y + TOP_Y) * 0.5f, 0 }, cw, ch, x, y);
-  *half_w = (LANE_DX * C.spread + RIVER_W * 0.5f) * (ch * 0.5f) / VIEW_HALF_H * (C.zoom > 0 ? C.zoom : 1);
+  *half_w = (outer_x() * C.spread + RIVER_W * 0.5f) * (ch * 0.5f) / VIEW_HALF_H * (C.zoom > 0 ? C.zoom : 1);
 }
 void club_lane_rgb(int lane, float rgb[3]) {
   t3_color c = C.built && lane >= 0 && lane < LANES ? C.p.lane[lane] : (t3_color){ 1, 1, 1 };
@@ -569,6 +667,18 @@ void club_lane_rgb(int lane, float rgb[3]) {
   if (m <= 0) m = 1;
   /* a little lighter than the river, so the HUD's text reads on its box */
   rgb[0] = 0.25f + 0.75f * c.r / m, rgb[1] = 0.25f + 0.75f * c.g / m, rgb[2] = 0.25f + 0.75f * c.b / m;
+}
+
+/* `rivers`: each lane's river as last drawn; `rivers hidden draw|hide` */
+static void cmd_rivers(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 3 && !strcmp(argv[1], "hidden")) C.hidden_draw = !strcmp(argv[2], "draw");
+  cw_reply_printf(r, "{\"hidden_draw\":%d,\"rivers\":[", C.hidden_draw);
+  for (int l = 0; l < LANES; l++) {
+    float x, y;
+    to_canvas(on_river(l, 0, 0, 0), 1920, 1080, &x, &y);
+    cw_reply_printf(r, "%s{\"lane\":%d,\"shown\":%.3f,\"x\":%.1f,\"y\":%.1f}", l ? "," : "", l, C.on[l], x, y);
+  }
+  cw_reply_printf(r, "]}");
 }
 
 /* `notes`: the notes on the rivers as last drawn ({lane, ahead in beats, y and width in pixels of a 1920 x 1080 frame,
@@ -604,6 +714,7 @@ static void cmd_land(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "]}");
 }
 void club_register_debug(void) {
+  cw_debug_command("rivers", "rivers: each lane's river as last drawn (how far it shows, its gate x and y in pixels of a 1920 x 1080 frame); rivers hidden draw|hide: a river not shown drawn dark (the rivers gate's control) or left out (src/club.c)", cmd_rivers);
   cw_debug_command("land", "land [game|flat|off]: the land's rows as last drawn (beat, height, hue, bands, stab, crest), or how it reads the song (src/club.c)", cmd_land);
   cw_debug_command("notes", "notes: the notes on the rivers as last drawn (lane, beats ahead, y and width in pixels) (src/club.c)", cmd_notes);
   cw_debug_command("notescale", "notescale game|flat|reverse: how a note's size follows its distance (the size gate's controls)", cmd_notescale);

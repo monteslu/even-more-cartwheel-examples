@@ -600,6 +600,155 @@
    ]
   }
  },
+ "pairs": {
+  "drums": {
+   "easy": {
+    "lambda": 0.6,
+    "notes": 309,
+    "main": 307,
+    "fill": 2,
+    "per_second": 1.46,
+    "per_second_playing": 1.88,
+    "parts": [
+     140,
+     169
+    ],
+    "from_three_lanes": 0,
+    "holes_left": [
+     [
+      128,
+      196
+     ],
+     [
+      768,
+      820
+     ],
+     [
+      820,
+      896
+     ],
+     [
+      1284,
+      1408
+     ],
+     [
+      1408,
+      1472
+     ]
+    ]
+   },
+   "medium": {
+    "lambda": 0.4,
+    "notes": 564,
+    "main": 562,
+    "fill": 1,
+    "per_second": 2.66,
+    "per_second_playing": 3.39,
+    "parts": [
+     163,
+     401
+    ],
+    "from_three_lanes": 1,
+    "holes_left": [
+     [
+      128,
+      194
+     ],
+     [
+      768,
+      802
+     ],
+     [
+      820,
+      896
+     ],
+     [
+      1284,
+      1408
+     ],
+     [
+      1414,
+      1472
+     ]
+    ]
+   },
+   "hard": {
+    "lambda": 0.2,
+    "notes": 636,
+    "main": 635,
+    "fill": 0,
+    "per_second": 3,
+    "per_second_playing": 3.83,
+    "parts": [
+     179,
+     457
+    ],
+    "from_three_lanes": 1,
+    "holes_left": [
+     [
+      128,
+      194
+     ],
+     [
+      820,
+      896
+     ],
+     [
+      1284,
+      1408
+     ],
+     [
+      1414,
+      1472
+     ]
+    ]
+   }
+  },
+  "groove": {
+   "easy": {
+    "lambda": 0.6,
+    "notes": 454,
+    "main": 454,
+    "fill": 0,
+    "per_second": 2.14,
+    "per_second_playing": 2.15,
+    "parts": [
+     244,
+     210
+    ],
+    "from_three_lanes": 0,
+    "holes_left": []
+   },
+   "medium": {
+    "lambda": 0.4,
+    "notes": 587,
+    "main": 586,
+    "fill": 0,
+    "per_second": 2.77,
+    "per_second_playing": 2.78,
+    "parts": [
+     277,
+     310
+    ],
+    "from_three_lanes": 1,
+    "holes_left": []
+   },
+   "hard": {
+    "lambda": 0.2,
+    "notes": 1408,
+    "main": 1407,
+    "fill": 0,
+    "per_second": 6.64,
+    "per_second_playing": 6.62,
+    "parts": [
+     658,
+     750
+    ],
+    "from_three_lanes": 1,
+    "holes_left": []
+   }
+  }
+ },
  "patterns": {
   "bars": 96,
   "distinct": 28

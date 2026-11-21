@@ -139,9 +139,11 @@ game.
 
 ![beatsync: three rivers of neon characters receding toward a horizon, the notes small far off and growing as they ride down to the gates, a Perfect under the bass gate](docs/screenshots/beatsync.jpg)
 
-A house-music rhythm game for one player on three buttons: you are the rhythm
-section of an instrumental house track, playing the kick, the clap and the
-bass on the three lower face buttons, and the song plays the way you play it.
+A house-music rhythm game for one or two players: you are the rhythm section
+of an instrumental house track, playing the kick, the clap and the bass on the
+three lower face buttons, and the song plays the way you play it. Or play two
+lanes, the drums or the groove (bass and the record's synths), alone or with a
+friend on a second pad, each on a pair at their own difficulty.
 Each note you hit punches its part up; a miss drops only that part, which
 comes back by itself over a beat. Notes are placed and judged on the song's own audio clock (Perfect
 within 35 ms), with a calibration screen for the screen and speaker. Every

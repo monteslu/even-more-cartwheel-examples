@@ -39,10 +39,11 @@
 #define SLEW_DOWN_S 0.04f      /* a level falls by at most its full range in 40 ms */
 #define SLEW_UP_S 0.012f       /* and rises in 12 ms (a hit's punch is near instant) */
 
-static const int LANE_TRACK[LANES] = { TRACK_KICK, TRACK_CLAP, TRACK_BASS };
-/* The mix's slots: the three lanes and the other track (a bass-lane note the chart made from the other stem, in a
- * break, plays on it: hitting or missing it acts on the other track, the sound the player is actually playing). */
-#define SLOTS (LANES + 1)
+static const int LANE_TRACK[LANES] = { TRACK_KICK, TRACK_CLAP, TRACK_BASS, TRACK_OTHER };
+/* The mix's slots: a lane each, the synth's being the other track (the two-lane game plays it; in the three-lane game
+ * a bass-lane note the chart made from the other stem, in a break, plays on it: hitting or missing it acts on the
+ * other track, the sound the player is actually playing). */
+#define SLOTS LANES
 /* The bass sits well under the drums in these songs (8 to 11 dB under the mix), so its reward is wider: lower between
  * hits and a hit lifts it over the record for a moment (the kick and clap keep IDLE_LEVEL and full, as the mix gate
  * holds them). The other track is the backing, at full; while the chart plays notes made from it (a break), it sits
@@ -75,14 +76,21 @@ static struct {
   bool miss_all; /* the `missall` request: a miss ducks every lane (the mix gate's control) */
   bool bass_old; /* the `bassmix old` request: the bass lane at the kick and clap's levels, as 0.32.2 had it (the bass gate's control) */
   bool no_reward; /* the `reward 0` request: the lanes sit at full between hits, as 0.31 did (the reward gate's control) */
+  unsigned played; /* the lanes someone plays (music_set_played): the rest sit at full, the other track as the backing */
   float song_level, song_target, song_rate;
 } M;
 
 /* a slot's level between hits, the top of its punch and its dulled top, as the player hears it (the demo and the
  * reward gate's control: every slot at full, no punch over it) */
-static float idle_of(int s) { return M.idle >= 1 ? 1 : s == LANE_BASS && !M.bass_old ? BASS_IDLE : s == MUSIC_OTHER ? M.other_idle : M.idle; }
-static float top_of(int s) { return M.idle >= 1 ? 1 : s == LANE_BASS && !M.bass_old ? BASS_TOP : s == MUSIC_OTHER ? OTHER_TOP : 1; }
-static float idle_cutoff_of(int s) { return s == MUSIC_OTHER ? 20000 : M.idle_cutoff; }
+static bool played(int s) { return (M.played >> s) & 1u; }
+static float idle_of(int s) {
+  if (M.idle >= 1) return 1;
+  if (s == MUSIC_OTHER) return played(s) ? OTHER_BREAK_IDLE : M.other_idle; /* the synth's lane, or the backing */
+  if (!played(s)) return 1;
+  return s == LANE_BASS && !M.bass_old ? BASS_IDLE : M.idle;
+}
+static float top_of(int s) { return M.idle >= 1 ? 1 : s == MUSIC_OTHER ? OTHER_TOP : !played(s) ? 1 : s == LANE_BASS && !M.bass_old ? BASS_TOP : 1; }
+static float idle_cutoff_of(int s) { return s == MUSIC_OTHER || !played(s) ? 20000 : M.idle_cutoff; }
 
 void music_init(void) {
   M.song_bus = cw_bus_create("song", cw_shell_music_bus());
@@ -96,6 +104,7 @@ void music_init(void) {
   }
   M.idle = 1, M.idle_cutoff = 20000, M.recover_s = 0.47f;
   M.other_idle = 1;
+  M.played = (1u << LANE_KICK) | (1u << LANE_CLAP) | (1u << LANE_BASS);
   M.song_level = M.song_target = 1;
 }
 
@@ -138,7 +147,7 @@ void music_play(const song *s, int32_t from_ms, int32_t lead_ms, float volume) {
   M.song_level = M.song_target = volume;
   cw_bus_set_volume(M.song_bus, volume);
   for (int t = 0; t < TRACKS; t++) {
-    cw_bus bus = t == TRACK_OTHER ? M.lane_bus[MUSIC_OTHER] : M.lane_bus[t == TRACK_KICK ? LANE_KICK : t == TRACK_CLAP ? LANE_CLAP : LANE_BASS];
+    cw_bus bus = M.lane_bus[t]; /* LANE_TRACK: track t is lane t's slot */
     M.v[t] = cw_audio_play(M.snd[t], &(cw_play_desc){ .bus = bus, .start_frame = M.start_frame, .offset = M.offset, .priority = 10,
                                               .fade_in = M.offset > 0 ? 1.0f : 0 }); /* a start part way in swells up, never a cut in */
   }
@@ -154,6 +163,7 @@ void music_pause(bool paused) {
   for (int t = 0; t < TRACKS; t++) cw_voice_set_paused(M.v[t], paused);
 }
 
+void music_set_played(unsigned mask) { M.played = mask; }
 void music_set_player(bool player) {
   M.idle = player && !M.no_reward ? IDLE_LEVEL : 1;
   M.idle_cutoff = player && !M.no_reward ? IDLE_CUTOFF : 20000;
@@ -164,7 +174,7 @@ void music_hit(int lane) {
 }
 void music_miss(int lane) {
   for (int l = 0; l < SLOTS; l++)
-    if (l == lane || (M.miss_all && lane >= 0 && l < LANES)) M.miss_t[l] = M.recover_s, M.punch[l] = 0;
+    if (l == lane || (M.miss_all && lane >= 0 && played(l))) M.miss_t[l] = M.recover_s, M.punch[l] = 0;
 }
 float music_lane_level(int lane) { return lane >= 0 && lane < LANES ? M.health[lane] : 0; }
 float music_lane_gain(int lane) { return lane >= 0 && lane < LANES ? M.level[lane] : 0; }
@@ -261,8 +271,7 @@ static void cmd_solo(int argc, const char **argv, cw_reply *r) {
   for (int t = 0; argc > 1 && t < TRACKS; t++)
     if (!strcmp(argv[1], N[t])) pick = t;
   if (argc < 2 || (pick < 0 && strcmp(argv[1], "off"))) { cw_reply_error(r, "usage: solo kick|clap|bass|other|off"); return; }
-  for (int l = 0; l < LANES; l++) cw_bus_set_solo(M.lane_bus[l], pick == LANE_TRACK[l]);
-  cw_bus_set_solo(M.lane_bus[MUSIC_OTHER], pick == TRACK_OTHER);
+  for (int l = 0; l < SLOTS; l++) cw_bus_set_solo(M.lane_bus[l], pick == LANE_TRACK[l]);
   cw_reply_printf(r, "{\"solo\":\"%s\"}", argv[1]);
 }
 /* `missall 1|0`: a miss ducks every lane (the mix gate's control, which must fail) */

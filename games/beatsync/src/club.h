@@ -20,8 +20,13 @@
 
 #include "song.h"
 
+#define CLUB_PLAYERS 2 /* players whose streaks the rivers show */
 #define TIER_S 0.8f  /* seconds a multiplier step's band takes to rise up the rivers */
 #define DRAIN_S 0.7f /* seconds a broken streak's charge takes to drain */
+
+/* the rivers on screen: the three-lane game (kick, clap, bass), one pair of the two-lane game, or two players' pairs
+ * side by side (the left player's pair on the left) */
+enum { CLUB_SOLO, CLUB_DRUMS, CLUB_GROOVE, CLUB_DUO_DRUMS_LEFT, CLUB_DUO_GROOVE_LEFT };
 
 enum { NOTE_PENDING, NOTE_HIT, NOTE_MISSED, NOTE_SKIPPED /* the autopilot lets it go by (drawn as pending) */,
        NOTE_GONE /* cut out of the chart (the `hole` request: the wait gate's long wait) */ };
@@ -37,13 +42,15 @@ typedef struct club_view {
   uint8_t hit_perfect[LANES]; /* the latest hit in the lane was a Perfect (a bigger burst) */
   float press[LANES];     /* a button held down */
   float level[LANES];     /* each track's level (a ducked instrument's river dims) */
-  float charge;           /* 0..1: the streak's way to the top multiplier: the banks lit from the gate up that far */
-  float tier_t;           /* seconds since the multiplier stepped up (its band rising up the rivers), <0 none */
-  float tier_light;       /* that band's light, 0..1 (through its flash meter) */
-  float drain_t;          /* seconds since a streak with a multiplier broke, <0 none */
-  float drain_from;       /* the charge it had */
-  float drain_light;      /* the draining light and the falling pieces, 0..1 (through its flash meter) */
-  int32_t break_seq;      /* counts the breaks: a new value throws the lit bank pieces off */
+  /* each player's streak (one player: [0]), drawn on that player's rivers (lane_player) */
+  float charge[CLUB_PLAYERS];     /* 0..1: the streak's way to the top multiplier: the banks lit from the gate up that far */
+  float tier_t[CLUB_PLAYERS];     /* seconds since the multiplier stepped up (its band rising up the rivers), <0 none */
+  float tier_light[CLUB_PLAYERS]; /* that band's light, 0..1 (through its flash meter) */
+  float drain_t[CLUB_PLAYERS];    /* seconds since a streak with a multiplier broke, <0 none */
+  float drain_from[CLUB_PLAYERS]; /* the charge it had */
+  float drain_light[CLUB_PLAYERS];/* the draining light and the falling pieces, 0..1 (through its flash meter) */
+  int32_t break_seq[CLUB_PLAYERS];/* counts the breaks: a new value throws the lit bank pieces off */
+  int8_t lane_player[LANES];      /* whose streak a lane's river shows */
   float dim;              /* 0..1: the field dims under a menu panel (still moving) */
   float zoom;             /* 1 in play; more brings the camera closer */
   float spread;           /* 1 in play; more moves the rivers apart (the title stands them round its box) */
@@ -53,6 +60,7 @@ typedef struct club_view {
   float t;                /* seconds since start (slow motion) */
   float gap_fill;         /* 0..1: how far through a long wait for notes (the banks fill from the gate up as it passes) */
   float gap_alpha;        /* 0..1: the wait's indicator, swelling in and fading out */
+  int layout;             /* CLUB_* : which rivers show and where (they glide from one layout to the next) */
 } club_view;
 
 void club_build(void);         /* once the scene is up (the first render) */
@@ -61,9 +69,12 @@ void club_update(const club_view *v);
 void club_gate_screen(int lane, float canvas_w, float canvas_h, float *x, float *y);
 /* canvas position of the highway's middle and its half width at the gates (the HUD keeps clear of it) */
 void club_center_screen(float canvas_w, float canvas_h, float *x, float *y, float *half_w);
-/* the river each lane is drawn as (0 left, 1 middle, 2 right): kick 0, clap 1, bass 2, as the buttons sit. Only the
- * layout gate's control (the `lanes` debug request) changes it, to prove the gate can see a wrong layout */
-void club_set_place(const int place[LANES]);
+/* the river each lane of the three-lane game is drawn as (0 left, 1 middle, 2 right): kick 0, clap 1, bass 2, as the
+ * buttons sit. Only the layout gate's control (the `lanes` debug request) changes it, to prove the gate can see a
+ * wrong layout */
+void club_set_place(const int place[SOLO_LANES]);
+/* a lane's river shows (0..1, it fades in and out as the layout changes) */
+float club_lane_shown(int lane);
 int club_place(int lane);
 void club_register_debug(void); /* the `notes` and `notescale` debug requests (the size gate) */
 /* the instrument's colour in the palette showing now (the HUD's prompts and judgements match the river) */

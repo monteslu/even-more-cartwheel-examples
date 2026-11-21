@@ -18,11 +18,17 @@
 // The look (song.json "look.other", lib/look.mjs): a value a beat in every list, all in range, and the same look made
 // again from the DECODED other track: each beat's loudness within LOOK_LEVEL_TOL; control: the look moved by two
 // beats must fail that.
+// The two-lane charts (song.json "pairs", docs/DESIGN.md "One or two players"): each pair on each level sorted, on its
+// level's grid and gaps, only its own two lanes and both of them, under its level's cap; more notes from Easy to Hard;
+// at every level at least as many notes as the three-lane chart gives those two parts, and on Easy and Medium more
+// notes a button than the three-lane chart (two buttons to follow, not three); control: each pair chart cut to just
+// under those (Easy and Medium to the three-lane chart's notes a button, Hard to one fewer than the three-lane chart
+// gives its parts) must fail on every pair and level.
 // Exits 1 on any failure.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { LEVELS, MAX_GAP, stepTime, chartDensity } from './lib/chart.mjs';
+import { LEVELS, LEVELS2, PAIRS, MAX_GAP, stepTime, chartDensity } from './lib/chart.mjs';
 import { decodeVorbisLib } from './lib/ogg.mjs';
 import { stbAvailable, decodeVorbisStb } from './lib/stbvorbis.mjs';
 import { excerptLag, unpackExcerpt, TRACKS } from './lib/package.mjs';
@@ -97,6 +103,36 @@ export function chartProblems(notes, lv, beats) {
     if (n.t < p.t || n.step <= p.step) bad.push(`note ${i}: not after note ${i - 1} (one note per step, sorted)`);
     const gap = n.step - p.step, need = p.lane === n.lane ? lv.same : lv.change;
     if (gap < need) bad.push(`note ${i}: ${gap}/16 after note ${i - 1} (${p.lane === n.lane ? 'same lane' : 'lane change'} needs ${need})`);
+  }
+  return bad;
+}
+
+/**
+ * The two-lane charts' problems (see the top of this file).
+ * @param {any} song
+ * @returns {string[]}
+ */
+export function pairProblems(song) {
+  const bad = [];
+  if (!song.pairs) return ['no two-lane charts ("pairs"): re-chart with tools/make-song.mjs --charts-only'];
+  for (const [pn, pair] of Object.entries(PAIRS)) {
+    let prev = 0;
+    for (const [l, lv] of Object.entries(LEVELS2)) {
+      const notes = song.pairs[pn]?.[l], solo = song.charts?.[l] ?? [];
+      if (!Array.isArray(notes) || !notes.length) { bad.push(`${pn} ${l}: no chart`); continue; }
+      const off = notes.filter((n) => !pair.lanes.includes(n.lane)).length;
+      if (off) bad.push(`${pn} ${l}: ${off} notes off its two lanes`);
+      for (const lane of pair.lanes) if (!notes.some((n) => n.lane === lane)) bad.push(`${pn} ${l}: no notes on lane ${lane}`);
+      const local = notes.map((n) => ({ ...n, lane: pair.lanes.indexOf(n.lane) }));
+      for (const p of chartProblems(local, lv, song.beats).slice(0, 3)) bad.push(`${pn} ${l}: ${p}`);
+      const playing = chartDensity(notes, song.beats, song.downbeat);
+      if (playing > lv.density + 0.01) bad.push(`${pn} ${l}: ${playing.toFixed(2)} notes/s in the bars with notes, the cap is ${lv.density}`);
+      if (notes.length < prev) bad.push(`${pn} ${l}: ${notes.length} notes, fewer than the level below (${prev})`);
+      prev = notes.length;
+      const soloParts = solo.filter((n) => !n.o && pair.lanes.includes(n.lane)).length; /* a break note made from the other stem is not the bass part */
+      if (notes.length < soloParts) bad.push(`${pn} ${l}: ${notes.length} notes, fewer than the three-lane ${l} chart gives its parts (${soloParts})`);
+      if (l !== 'hard' && notes.length / 2 <= solo.length / 3) bad.push(`${pn} ${l}: ${(notes.length / 2).toFixed(0)} notes a button, not more than the three-lane ${l} chart's ${(solo.length / 3).toFixed(0)}`);
+    }
   }
   return bad;
 }
@@ -224,6 +260,24 @@ export async function checkSong(dir) {
       if (bassProblem([], hard) && !bassProblem(notes.filter((n) => n.lane !== 2), hard)) fails.push(`CONTROL: ${name} with its bass notes taken out passed the bass check`);
     }
   }
+
+  // the two-lane charts
+  for (const p of pairProblems(song)) fails.push(p);
+  {
+    // control: each pair cut to just under what its rules ask (Easy and Medium: the three-lane chart's notes a button;
+    // Hard: one note fewer than the three-lane chart gives its parts) must be caught on every pair and level
+    const cut = (pn, l, n) => {
+      const solo = song.charts?.[l] ?? [];
+      const k = l === 'hard' ? solo.filter((x) => !x.o && PAIRS[pn].lanes.includes(x.lane)).length - 1 : Math.floor((2 * solo.length) / 3);
+      return n.slice(0, Math.max(0, k));
+    };
+    const thinned = { ...song, pairs: Object.fromEntries(Object.entries(song.pairs ?? {}).map(([pn, lv]) => [pn, Object.fromEntries(Object.entries(lv).map(([l, n]) => [l, cut(pn, l, n)]))])) };
+    const probs = pairProblems(thinned);
+    const caught = Object.keys(PAIRS).every((pn) => Object.keys(LEVELS2).every((l) => probs.some((x) => x.startsWith(`${pn} ${l}:`))));
+    info.control_pairs_cut_caught = caught;
+    if (song.pairs && !caught) fails.push('CONTROL: a pair chart with every other note taken out passed the two-lane checks');
+  }
+  for (const [pn, lv] of Object.entries(song.pairs ?? {})) for (const [l, n] of Object.entries(lv)) info[`${pn}_${l}_notes`] = n.length;
 
   // onsets found again in the decoded tracks
   if (decoded.kick && decoded.clap && decoded.bass) {

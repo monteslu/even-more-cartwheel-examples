@@ -447,6 +447,135 @@
    ]
   }
  },
+ "pairs": {
+  "drums": {
+   "easy": {
+    "lambda": 0.6,
+    "notes": 335,
+    "main": 335,
+    "fill": 0,
+    "per_second": 1.6,
+    "per_second_playing": 1.86,
+    "parts": [
+     175,
+     160
+    ],
+    "from_three_lanes": 0,
+    "holes_left": [
+     [
+      100,
+      164
+     ],
+     [
+      164,
+      236
+     ],
+     [
+      1024,
+      1152
+     ]
+    ]
+   },
+   "medium": {
+    "lambda": 0.4,
+    "notes": 351,
+    "main": 351,
+    "fill": 0,
+    "per_second": 1.68,
+    "per_second_playing": 1.94,
+    "parts": [
+     176,
+     175
+    ],
+    "from_three_lanes": 0,
+    "holes_left": [
+     [
+      100,
+      164
+     ],
+     [
+      164,
+      236
+     ],
+     [
+      1024,
+      1152
+     ]
+    ]
+   },
+   "hard": {
+    "lambda": 0.2,
+    "notes": 352,
+    "main": 351,
+    "fill": 0,
+    "per_second": 1.68,
+    "per_second_playing": 1.95,
+    "parts": [
+     177,
+     175
+    ],
+    "from_three_lanes": 1,
+    "holes_left": [
+     [
+      100,
+      164
+     ],
+     [
+      164,
+      236
+     ],
+     [
+      1027,
+      1152
+     ]
+    ]
+   }
+  },
+  "groove": {
+   "easy": {
+    "lambda": 0.6,
+    "notes": 342,
+    "main": 342,
+    "fill": 0,
+    "per_second": 1.63,
+    "per_second_playing": 1.64,
+    "parts": [
+     128,
+     214
+    ],
+    "from_three_lanes": 0,
+    "holes_left": []
+   },
+   "medium": {
+    "lambda": 0.4,
+    "notes": 476,
+    "main": 475,
+    "fill": 0,
+    "per_second": 2.27,
+    "per_second_playing": 2.29,
+    "parts": [
+     132,
+     344
+    ],
+    "from_three_lanes": 1,
+    "holes_left": []
+   },
+   "hard": {
+    "lambda": 0.2,
+    "notes": 863,
+    "main": 862,
+    "fill": 0,
+    "per_second": 4.12,
+    "per_second_playing": 4.14,
+    "parts": [
+     324,
+     539
+    ],
+    "from_three_lanes": 1,
+    "holes_left": []
+   }
+  }
+ },
  "patterns": {
   "bars": 92,
   "distinct": 17

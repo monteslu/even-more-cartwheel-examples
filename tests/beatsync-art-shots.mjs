@@ -72,7 +72,7 @@ const report = (name, f) => console.log(`${name}: ${JSON.stringify(f)}`);
   try {
     await r.run([{ pads: [{ buttons: [] }], frames: 240 }]);
     await r.shot(join(OUT, 'title.png'));
-    await r.run([{ pads: [{ buttons: ['south'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 30 }, { pads: [{ buttons: ['down'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 30 }, { pads: [{ buttons: ['down'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 90 }]);
+    await r.run([{ pads: [{ buttons: ['south'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 30 }, { pads: [{ buttons: ['start'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 30 }, { pads: [{ buttons: ['down'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 30 }, { pads: [{ buttons: ['down'] }], frames: 4 }, { pads: [{ buttons: [] }], frames: 90 }]);
     await r.shot(join(OUT, 'select.png'));
   } finally { await r.close(); }
 }
