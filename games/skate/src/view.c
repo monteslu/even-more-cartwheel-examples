@@ -4,7 +4,7 @@
  *              per view: the park holds still), a light haze, filmic tone mapping.
  *   the park   park.c's own triangles, one mesh per surface kind (concrete, plywood, paint, steel, ...), tinted by their
  *              vertex colours; the tokens are spinning gold rings, hidden in each player's view once that player has
- *              taken them (the pipeline's view hook).
+ *              taken them (a mask of views on each token).
  *   skaters    a rig per seat: the rider (a skinned glb, posed by pose.c from the board's state) standing on a board
  *              built here (deck, grip, trucks, wheels in the seat's colour). Both follow the simulation between ticks;
  *              a flip turns the board under the rider, a grab lifts it to the hand.
@@ -53,7 +53,8 @@ typedef struct seat {
 } seat;
 
 static struct {
-  cw_node root, world, park, sun, sky, env, fog, post, light, dome;
+  cw_node root, world, park, sun, sky, env, fog, post, light;
+  cw_node dome[MAXP];     /* the sky dome round each view's camera: one geometry, a node and a view mask each */
   cw_node baked;          /* the park's own meshes: lightmapped (its bake, lightmaps/park<n>.cwlm) */
   cw_lightmap_data *lm;
   cw_node dust[MAXP];     /* a landing's puff */
@@ -66,7 +67,7 @@ static struct {
   int players;
   cw_node token[PARK_MAXTOKEN];
   int ntoken;
-  uint32_t token_seen[MAXP]; /* each player's taken tokens, for the view hook */
+  uint32_t token_seen[MAXP]; /* each player's taken tokens: hidden in that player's view */
   const park *k;
   v3 park_c;
   float park_r;
@@ -446,7 +447,8 @@ static void set_shadows(t3_object *o) {
  * flat-bottomed clouds (the ProceduralSky still lights the park and fills the reflections; its own background is off:
  * a physical sky at this exposure reads grey, and this game's sky is a postcard's) */
 static void sky_dome(cw_node parent, const scenery_mood *md) {
-  if (cw_node_valid(VW.dome)) cw_node_free(VW.dome);
+  for (int k = 0; k < MAXP; k++)
+    if (cw_node_valid(VW.dome[k])) cw_node_free(VW.dome[k]);
   mesh_build b = { 0 };
   /* the dome is unlit: it holds its brightness whatever the park's exposure, a bright sky over a darker ground */
   float sk = 2.5f * cw_pow(2.0f, -md->exposure), ck = sk * 1.1f;
@@ -512,38 +514,61 @@ static void sky_dome(cw_node parent, const scenery_mood *md) {
   m->fog = false;
   if (!getenv("SKATE_NO_DITHER")) m->transparent = true, t3_material_set_texture(m, T3_MAP, tex_dither());
   t3_geometry *g = mb_finish(&b);
-  t3_mesh *me = t3_mesh_new(g, m);
-  me->base.cast_shadow = false, me->base.receive_shadow = false;
-  me->base.frustum_culled = false;
-  me->base.render_order = -100;
-  cw_node n = cw_node_new("Node3D", "SkyDome");
-  cw_node_add_child(parent, n);
-  {
-    t3_material *cm = t3_mesh_basic_material_new(0xffffff);
-    cm->vertex_colors = true, cm->side = T3_DOUBLE_SIDE, cm->transparent = true, cm->depth_write = false, cm->fog = false;
-    t3_material_set_texture(cm, T3_MAP, tex_get(TEX_CLOUD)->map);
-    t3_geometry *cg = mb_finish(&cb);
+  t3_material *cm = t3_mesh_basic_material_new(0xffffff);
+  cm->vertex_colors = true, cm->side = T3_DOUBLE_SIDE, cm->transparent = true, cm->depth_write = false, cm->fog = false;
+  t3_material_set_texture(cm, T3_MAP, tex_get(TEX_CLOUD)->map);
+  t3_geometry *cg = mb_finish(&cb);
+  /* one dome a view, each round its own camera and drawn only in its view (view_masks): the same geometry and
+     materials, a node each */
+  for (int k = 0; k < MAXP; k++) {
+    t3_mesh *me = t3_mesh_new(g, m);
+    me->base.cast_shadow = false, me->base.receive_shadow = false;
+    me->base.frustum_culled = false;
+    me->base.render_order = -100;
     t3_mesh *cme = t3_mesh_new(cg, cm);
     cme->base.cast_shadow = false, cme->base.receive_shadow = false, cme->base.frustum_culled = false, cme->base.render_order = -99;
     t3_object_add(&me->base, &cme->base);
-    t3_release(cme), t3_release(cg), t3_release(cm);
+    t3_release(cme);
+    cw_node n = cw_node_new("Node3D", "SkyDome");
+    cw_node_add_child(parent, n);
+    cw_node3d_set_object(n, &me->base);
+    t3_release(me);
+    cw_node_set(n, "visible", cw_val_bool(k == 0));
+    VW.dome[k] = n;
   }
-  cw_node3d_set_object(n, &me->base);
-  t3_release(me), t3_release(g), t3_release(m);
-  VW.dome = n;
+  t3_release(g), t3_release(m), t3_release(cg), t3_release(cm);
 }
-static void view_hook(int view, void *u) {
-  /* the sky dome around each view's own camera */
-  if (cw_node_valid(VW.dome) && view >= 0 && view < MAXP) {
-    /* (the scene's matrices are made once, with the first view: a later view's move updates its own) */
-    v3 c = cw_node3d_global_position(VW.cam[view]);
-    cw_node3d_set_position(VW.dome, V(c.x, 0, c.z));
-    t3_object *o = cw_node3d_object(VW.dome);
-    if (o) o->position = V(c.x, 0, c.z), t3_object_update_world_matrix(o, true, true);
+
+/* what each view draws, said before the frame (a mask of views per object keeps a split screen in one pass): each
+ * view's sky dome round its own camera, and a token gone from the view of each player who has taken it. views: how
+ * many the frame draws (1 when one camera fills the screen: a mask means nothing there, visible says it all). */
+static void view_masks(int views) {
+  if (views < 1) views = 1;
+  /* the one-pass gate's controls (tests/skate-onepass.mjs): SKATE_VIEWS_CONTROL=masks gives each view the next one's
+     dome and tokens, =tokens the next one's tokens only */
+  static int shift = -1;
+  if (shift < 0) {
+    const char *c = getenv("SKATE_VIEWS_CONTROL");
+    shift = c && !strcmp(c, "masks") ? 3 : c && !strcmp(c, "tokens") ? 2 : 0;
   }
-  (void)u;
-  for (int t = 0; t < VW.ntoken; t++)
-    if (cw_node_valid(VW.token[t])) cw_node_set(VW.token[t], "visible", cw_val_bool(view >= MAXP || !(VW.token_seen[view] & (1u << t))));
+  const int sh = (shift & 1) && views > 1 ? 1 : 0, sht = (shift & 2) && views > 1 ? 1 : 0;
+  for (int k = 0; k < MAXP; k++) {
+    if (!cw_node_valid(VW.dome[k])) continue;
+    bool on = k < views;
+    cw_node_set(VW.dome[k], "visible", cw_val_bool(on));
+    if (!on) continue;
+    v3 c = cw_node3d_global_position(VW.cam[k]);
+    cw_node3d_set_position(VW.dome[k], V(c.x, 0, c.z));
+    cw_node3d_set_views(VW.dome[k], views > 1 ? 1u << ((k + sh) % views) : CW_VIEWS_ALL);
+  }
+  for (int t = 0; t < VW.ntoken; t++) {
+    if (!cw_node_valid(VW.token[t])) continue;
+    uint32_t m = 0;
+    for (int v = 0; v < views && v < MAXP; v++)
+      if (!(VW.token_seen[v] & (1u << t))) m |= 1u << ((v + sht) % views);
+    cw_node_set(VW.token[t], "visible", cw_val_bool(m != 0));
+    cw_node3d_set_views(VW.token[t], views > 1 ? m : CW_VIEWS_ALL);
+  }
 }
 
 bool view_init_step(cw_node root, int *done, int *total) {
@@ -602,6 +627,8 @@ bool view_init_step(cw_node root, int *done, int *total) {
     cw_node_set(VW.post, "vignette", cw_val_bool(true)); /* a light frame on each view: the eye goes to the middle */
     cw_node_set(VW.post, "vignette_intensity", cw_val_float(0.42f));
     cw_node_set(VW.post, "vignette_smoothness", cw_val_float(0.55f));
+    /* (SKATE_VIEWS_CONTROL=vignette: one vignette over the whole screen, the one-pass gate's other control) */
+    cw_node_set(VW.post, "vignette_per_view", cw_val_bool(!(getenv("SKATE_VIEWS_CONTROL") && !strcmp(getenv("SKATE_VIEWS_CONTROL"), "vignette"))));
     /* the grade (tools/make-lut.mjs): a gentle S-curve and a little saturation after the tone curve */
     if (!getenv("SKATE_NO_GRADE")) {
       cw_node_set(VW.post, "lut", cw_val_string("grade.cube"));
@@ -628,7 +655,8 @@ bool view_init_step(cw_node root, int *done, int *total) {
       cw_node_set(VW.cam[i], "current", cw_val_bool(i == 0));
       cw_node_add_child(root, VW.cam[i]);
     }
-    cw_pipeline_set_view_hook(cw_pipeline_of(cw_scene_app_tree()), view_hook, NULL);
+    /* split screen: one post chain over the laid-out views and the scene in one pass; the vignette stays each view's */
+    cw_pipeline_set_views_shared_post(cw_pipeline_of(cw_scene_app_tree()), true);
     VW.built_park = -1;
     tex_k = 0;
   } else if (step >= S_TEX && step < S_MATS) {
@@ -1300,12 +1328,10 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
     cw_node3d_set_position(VW.token[i], V(b.x, b.y + 0.12f * cw_sin(t * 2.0f + (float)i), b.z));
     cw_node3d_set_rotation(VW.token[i], V(0, t * 2.4f + (float)i, 0));
   }
-  /* the sky dome round the first camera (the view hook moves it for the others) */
-  if (cw_node_valid(VW.dome)) { v3 c = cw_node3d_global_position(VW.cam[0]); cw_node3d_set_position(VW.dome, V(c.x, 0, c.z)); }
-  /* one view per player */
+  /* one view per player, each with its sky dome and the tokens its player has not taken */
   cw_node cams[MAXP];
   for (int i = 0; i < MAXP; i++) cams[i] = VW.cam[i];
-  cw_shell_split(NULL, cams);
+  view_masks(cw_shell_split(NULL, cams));
   (void)players;
 }
 
@@ -1320,6 +1346,6 @@ void view_title_camera(const park *k, float t) {
   cw_node_set(VW.cam[0], "fov", cw_val_float(64));
   /* one view, whatever the players: the menus sit over the whole picture */
   cw_pipeline_split(cw_pipeline_of(cw_scene_app_tree()), &VW.cam[0], 1);
-  if (cw_node_valid(VW.dome)) cw_node3d_set_position(VW.dome, V(p.x, 0, p.z));
+  view_masks(1);
 }
 
