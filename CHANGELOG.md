@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.34.0
+
+- Engine v0.57.2 (from v0.53.4): what each split screen view draws said by masks, a split screen drawn in one pass
+  with more of the passes (probes, SSR, SSGI, the depth prepass, distortion, the viewmodel, planar water), each view
+  sent to the GPU as it is drawn on WebGPU and GL, a lens per view on a shared post chain, randomized sounds and
+  interactive music, a sound's own loop points. The program tables are regenerated on the new engine (Destructo's,
+  Detexto's and Ember Throne's water reads its view's rectangle).
+- **Skate** draws its split screen in one pass: each player's sky dome sits round that player's camera and the tokens a
+  player has taken are gone from that player's view only, said once a frame as masks of views instead of a hook run
+  before each view, and the post chain is shared with its vignette kept in each view. At two and four players, GL and
+  WebGPU, every preset (Very Low to Ultra), the frame runs in one pass. The picture is the old one: new gate
+  `tests/skate-onepass.mjs` holds it to v0.33.0's build at frames 600 and 1400 (bots skating Sunnyside) within 0.3% of
+  the pixels off the seams (measured 0.0000% to 0.0046%), with two controls that fail: one vignette over the whole
+  screen (47 to 48%) and each view given the next view's dome and tokens (2.7 to 3.3%).
+- Wall time a frame, Skate's release cart on a host that waits for each frame (romdev), v0.33.0's view hook code against one pass on
+  the same engine, interleaved rounds, on a Radeon Navi 33 (the load printed was 4 to 5 from other work, so the
+  medians carry noise):
+
+  | backend | players | view hook ms | one pass ms | CPU ms | GPU ms | GPU clock |
+  |---|---|---|---|---|---|---|
+  | GL | 2 | 6.24 | 6.08 | 3.60 to 3.45 | 1.12 to 1.28 | 2260 / 2155 MHz |
+  | GL | 4 | 9.61 | 7.71 | 6.09 to 5.00 | 1.86 to 1.95 | 2172 / 2034 MHz |
+  | WebGPU | 2 | 6.41 | 6.63 | 4.26 to 4.06 | 1.40 to 1.47 | 2211 / 2278 MHz |
+  | WebGPU | 4 | 10.62 | 10.63 | 7.06 to 6.89 | 1.76 to 1.66 | 1608 / 1579 MHz |
+
+- Checks run on this pin: every game builds; the program survey of every app (native and dual carts, GL and WebGPU,
+  every preset and the switches between them): no state missing; cart smoke of all nine games, cart art (its no-cover
+  control caught), cart version (its rewritten-version control caught) and the prompt check of every game; Skate's
+  gates (skate-auto, skate-play) on GL and WebGPU and the new one-pass gate; Destructo's play and newcomer gates on
+  the new engine; the sea of Destructo and Detexto (a harbour level) and an Ember Throne run against v0.33.0's carts
+  on GL and WebGPU: the same to the pixel in the water; Skate looked at on romdev at native scale: two players with pad
+  play (each view's sky round its own camera as it turns, the vignette in each view) and four bots (a token taken by
+  one player gone from that player's view and still in another's, against a control that swaps the views' tokens). No game uses the sampler loop points the new audio reads (none ships a
+  WAV) or motion blur.
+
 ## 0.33.0
 
 - **Towers** gives stars: a map held earns one, two with the core at 10 or more, three when no creep reached it. Three
