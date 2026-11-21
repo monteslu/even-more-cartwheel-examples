@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.35.0
+
+- **beatsync** draws only what tells the player something. The ring on every kick of the record, the sparks on every
+  clap, the bass waveform along the bottom and the field of glyphs following the loudness are gone: each repeated
+  what the player already heard.
+- **beatsync** shows the music coming: beside the rivers, out to the screen's edges, a landscape of characters that
+  is the other track (the chords, pads, stabs and synth lines the player does not play). It is a row every half beat
+  riding down with the notes, so a loud stretch rises on the horizon before it is heard and a break flattens the land
+  ahead. A row rises with the track's loudness and its bass, mid and treble laid outward; it takes the colour of the
+  harmony sounding then, so a chord or key change is a new colour travelling toward the gates; stabs light its ridge
+  and a chord change runs a crest along it. A faint sky above the horizon holds the harmony sounding now.
+- The song tooling analyses the other stem once per song (`tools/lib/look.mjs`, song.json `look`): loudness, tone,
+  harmony on the circle of fifths and how clearly it sounds, the beats where it changes, bass/mid/treble per half beat
+  against their own average, and the stabs. `make-song.mjs --look-only` adds it to a package from its source without
+  touching the charts or tracks; all six songs have it. `check-songs` makes the look again from the decoded other
+  track and holds every beat's loudness to it (control: the look moved by two beats fails). Unit tests against known
+  chords and the synthetic song's one chord a bar, with controls.
+- **beatsync**'s streak is where the eyes are: the multiplier (x1 to x4) and a bar of the hits to its next step sit
+  under the middle gate. The streak charges the banks with light from the gates up, to the horizon at x4; each step
+  sends a band of light up the rivers; every 50 is called out. A streak broken after a multiplier drains back down
+  the banks in red, its lit pieces fall away, the pad rumbles, and "streak N lost" shows what went.
+- New gates through romdev on GL and WebGPU: `tests/beatsync-land.mjs` (every row drawn is the song's analysis, the
+  land changes with the music and the picture follows it; controls `land off` and `land flat` fail) and
+  `tests/beatsync-streak.mjs` (the same deterministic run with and without the streak's picture: the charge shows and
+  reaches the far end at a streak of 50, the break shows in red; control: the run without it against itself). The
+  flash check meters the multiplier band and the drain, with a break in its run.
+- The land passes the photosensitivity check over whole songs. A row every half beat passing one point of the screen
+  was a regular flicker near 4 Hz (amplitude 0.10 on the densest song, the bound is 0.02). Now each row reaches down
+  behind the nearer one (no dark gaps), keeps its roughness by column, does not fade below the gate and spreads its
+  bands over a beat either side; its stab lights are soft. The land and the banks' charge sit under the rivers' light,
+  and the streak no longer brightens the moving current. The bass bar, the most light a run of eighths passes the gate,
+  is drawn a fifth dimmer than the round notes (0.023 down to 0.015 at its gate on the densest song).
+
 ## 0.34.0
 
 - Engine v0.57.2 (from v0.53.4): what each split screen view draws said by masks, a split screen drawn in one pass

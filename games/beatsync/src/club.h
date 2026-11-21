@@ -6,10 +6,11 @@
  *   - three rivers side by side, as the buttons are: kick left (west), clap middle (south), bass right (east); each a
  *     current of characters streaming down to a gate near the bottom, the notes riding it down to reach the gate
  *     exactly on their time, small far off and growing as they come, on a highway receding toward a horizon;
- *   - the music in the field: a shockwave on every kick, sparks thrown off the clap's gate by every clap, a bass
- *     waveform along the bottom, a slow field of faint glyphs behind everything from the song's energy;
+ *   - the other track as a land beside the rivers, riding down with the notes: its loudness, bass, mid and treble,
+ *     harmony and stabs, so what the music will do is seen coming (the song's look, song.h);
  *   - how the player is doing: a hit blooms the gate and surges its river, a missed instrument's river dims for the
- *     beat its track is down, a streak brightens everything;
+ *     beat its track is down; the streak charges the banks from the gate up, a multiplier step sends a band up the
+ *     rivers, a broken streak drains its charge and its pieces fall;
  *   - a long wait for notes: the banks fill with light as it passes. */
 #ifndef BEATSYNC_CLUB_H
 #define BEATSYNC_CLUB_H
@@ -18,6 +19,9 @@
 #include <stdint.h>
 
 #include "song.h"
+
+#define TIER_S 0.8f  /* seconds a multiplier step's band takes to rise up the rivers */
+#define DRAIN_S 0.7f /* seconds a broken streak's charge takes to drain */
 
 enum { NOTE_PENDING, NOTE_HIT, NOTE_MISSED, NOTE_SKIPPED /* the autopilot lets it go by (drawn as pending) */,
        NOTE_GONE /* cut out of the chart (the `hole` request: the wait gate's long wait) */ };
@@ -28,14 +32,18 @@ typedef struct club_view {
   const uint8_t *state;   /* NOTE_* per note */
   int count;
   double ms;              /* the song clock (what the notes are placed by) */
-  float kick, clap, bass; /* the music's pulses, 0..1, as drawn (through their flash meters) */
-  int32_t kick_ms, clap_ms; /* song time of the latest kick and clap heard (the shockwave and the sparks start there) */
   float flare[LANES];     /* each instrument's hit bloom at its gate, 0..1 */
   int32_t hit_seq[LANES]; /* counts the player's hits per lane: a new value bursts that gate (shards and a ring) */
   uint8_t hit_perfect[LANES]; /* the latest hit in the lane was a Perfect (a bigger burst) */
   float press[LANES];     /* a button held down */
   float level[LANES];     /* each track's level (a ducked instrument's river dims) */
-  float streak;           /* 0..1: the combo, filling the field */
+  float charge;           /* 0..1: the streak's way to the top multiplier: the banks lit from the gate up that far */
+  float tier_t;           /* seconds since the multiplier stepped up (its band rising up the rivers), <0 none */
+  float tier_light;       /* that band's light, 0..1 (through its flash meter) */
+  float drain_t;          /* seconds since a streak with a multiplier broke, <0 none */
+  float drain_from;       /* the charge it had */
+  float drain_light;      /* the draining light and the falling pieces, 0..1 (through its flash meter) */
+  int32_t break_seq;      /* counts the breaks: a new value throws the lit bank pieces off */
   float dim;              /* 0..1: the field dims under a menu panel (still moving) */
   float zoom;             /* 1 in play; more brings the camera closer */
   float spread;           /* 1 in play; more moves the rivers apart (the title stands them round its box) */

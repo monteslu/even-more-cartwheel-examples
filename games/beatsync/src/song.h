@@ -24,6 +24,22 @@ typedef struct note {
 
 typedef enum { SEC_INTRO, SEC_BUILD, SEC_DROP, SEC_BREAK, SEC_OUTRO, SEC_OTHER } section_kind;
 
+/* What the picture reads from the other track (song.json "look", tools/lib/look.mjs), a value a beat, ready to draw:
+ * the land beside the rivers rises with it, takes its harmony's colour, carries its stabs and lights a crest where the
+ * harmony moves, so a player sees the music coming. A song without a look gets a quiet flat land. */
+typedef struct song_look {
+  int beats;          /* values a beat (0: the song has no look) */
+  float *height;      /* 0..1: the other track's loudness, against the song's own quiet and loud beats */
+  float *hue;         /* degrees: the harmony's colour, one held from change to change, spread over the song's own range */
+  float *bright;      /* 0..1: its tone, dark pad to bright stab */
+  float *tonal;       /* 0..1: how clearly one harmony sounds */
+  uint8_t *change;    /* 1 on a beat where the harmony moves */
+  float *band;        /* bass, mid, treble a HALF beat (3 each), against each band's song average: 1 its usual energy */
+  float *stab_beat;   /* the other track's attacks: beat positions, ascending */
+  uint8_t *stab_str;  /* their strength, 1..9 */
+  int stabs;
+} song_look;
+
 typedef struct song {
   char id[48], title[64], artist[64];
   char track[TRACKS][96]; /* asset paths of the four tracks */
@@ -36,6 +52,7 @@ typedef struct song {
   int notes[DIFFS];
   uint32_t hash; /* of the id: the save keys on it */
   int32_t preview_ms; /* where the song select's preview starts: the first drop, else a third in */
+  song_look look;
 } song;
 
 extern const char *const SONG_IDS[]; /* song_list.c, written by CMakeLists.txt */
@@ -48,5 +65,12 @@ const song *song_get(int i);
 const char *diff_name(int d);
 /* the beat phase at a time: beats since the first (fractional), from the song's tracked beats */
 float song_beat_at(const song *s, float ms);
+/* the look at a beat position (clamped to the song): height, hue, bright, tonal; a song without a look gives a quiet land */
+void song_look_at(const song *s, float beat, float *height, float *hue, float *bright, float *tonal);
+/* the strongest stab in [b0, b1) (0: none), and whether the harmony moves on a beat in [b0, b1) */
+int song_stab_in(const song *s, float b0, float b1);
+bool song_change_in(const song *s, float b0, float b1);
+/* bass, mid and treble at a beat position (1 each band's usual energy; a song without a look gives 0.4) */
+void song_bands_at(const song *s, float beat, float out[3]);
 
 #endif

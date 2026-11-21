@@ -35,15 +35,18 @@
     }
   },
   "flash": {
-    "note": "The room's pulses (kick: the floor; clap: the wall and booth; bass: the pillars, the wall and the wash lights), the receptors' hit glow, and the failed song's dip to dark, over the whole first song on Hard; the crowd is sent home (the `leave` request) after it, for the dip.",
+    "note": "The hit glow at the gates, a multiplier step's band rising up the rivers, a broken streak's drain (the autopilot lets one note go at frame 1300, after a streak of about 50), and the failed song's dip to dark, over the whole first song on Hard; the crowd is sent home (the `leave` request) after it, for the dip.",
     "effects": [
-      "kick",
-      "clap",
-      "bass",
       "hit",
-      "fail"
+      "fail",
+      "tier",
+      "drain"
     ],
     "run": [
+      {
+        "frame": 1300,
+        "command": "skip 1 1"
+      },
       {
         "frame": 3700,
         "command": "leave"

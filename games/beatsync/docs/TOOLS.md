@@ -13,6 +13,7 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 |---|---|
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> [--title ..] [--artist ..]` | the whole pipeline: a song package |
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> --charts-only` | re-chart a package from its source: only `song.json`, `report.json` and `preview.wav` are written, the tracks stay byte for byte |
+| `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> --look-only` | add or redo `song.json`'s `look` (the picture's reading of the other track, `docs/DESIGN.md` "The look from the music") from the package's source; every other key, the charts and the tracks stay as they are |
 | `node tools/check-songs.mjs [songs/<id> ...]` | the checks over every package (or the ones named), with their controls; exits 1 on a failure |
 | `node tools/make-test-song.mjs [--variants]` | the synthetic house song with known notes (stems, `.stem.mp4`, `truth.json`) |
 | `node tools/eval-accuracy.mjs [--source mp4\|wav]` | the analysis measured against the synthetic songs' ground truth |
@@ -43,6 +44,13 @@ only. The Ogg tracks and their alignment proof are kept as they are (`git diff -
 source must be the very audio the package was made from (it refuses a source of another length). The title, artist
 and id, and the flags the package was made with (`--keep-vocals`, the BPM range, kept in `report.json`), carry over
 unless given again.
+
+## Adding the look to a package
+
+A new package gets its look from `make-song.mjs` (and from `--charts-only`). A package made before the look existed
+gets it with `--look-only` from its own source, which must be the same audio (same length in samples): the five
+house songs from their `.stem.mp4`, Test Groove from `node tools/make-test-song.mjs --out out/tg48 --length 48`'s
+`song.stem.mp4` (its package was made from that file). About 5 s a song.
 
 ## The pipeline
 

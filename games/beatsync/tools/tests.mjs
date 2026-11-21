@@ -2,3 +2,4 @@
 // through tools/package.json "main"). `node --test 'tools/*.test.mjs'` runs the same files directly.
 import './dsp.test.mjs';
 import './chart.test.mjs';
+import './look.test.mjs';
