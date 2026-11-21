@@ -11,13 +11,14 @@
 // split that filed an instrumental lead under vocals). --charts-only re-charts an existing package from its source:
 // the analysis and charts run again and only song.json, report.json and preview.wav are rewritten; the Ogg tracks
 // and their alignment proof stay as they are (the source must be the same audio: same length in samples).
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { readStems } from './lib/stems.mjs';
-import { analyze, monoOf } from './lib/analyze.mjs';
+import { analyze, monoOf, bandOnsets, OTHER_ONSETS } from './lib/analyze.mjs';
+import { otherLook } from './lib/look.mjs';
 import { quantize, makeCharts, stepTime } from './lib/chart.mjs';
-import { writePackage, writeCharts, readSongJson } from './lib/package.mjs';
+import { writePackage, writeCharts, readSongJson, formatSong } from './lib/package.mjs';
 
 /** "Late Night Deep House.stem.mp4" -> "late-night-deep-house" */
 export function slug(s) {
@@ -91,9 +92,39 @@ export async function makeSong(input, o) {
   const write = o.chartsOnly ? writeCharts : writePackage;
   const r = await write(resolve(o.out), {
     id, title, artist: o.artist ?? stems.info?.artist ?? '', rate: a.rate, tracks: a.tracks, bpm: a.bpm, beats: a.beats,
-    downbeat: a.downbeat, sections: a.sections, charts, report,
+    downbeat: a.downbeat, sections: a.sections, look: lookOf(a.tracks.other, a.rate, a.beats, a.lanes.other.onsets), charts, report,
   });
   return r;
+}
+
+/** the picture's reading of the other track (lib/look.mjs), rounded beats as song.json has them */
+function lookOf(otherTrack, rate, beats, onsets) {
+  return { other: otherLook(monoOf(otherTrack), rate, beats.map((b) => +b.toFixed(4)), onsets) };
+}
+
+/**
+ * --look-only: add (or redo) song.json's "look" from the package's source, keeping every other key as it is: the
+ * charts, beats and tracks are not touched (the source must be the same audio: same length in samples).
+ * @param {string} input
+ * @param {string} out
+ */
+export async function addLook(input, out) {
+  const dir = resolve(out);
+  const prev = readSongJson(dir);
+  const rep = JSON.parse(readFileSync(join(dir, 'report.json'), 'utf8'));
+  const stems = await readStems(input);
+  if (rep.source?.keep_vocals && stems.tracks.vocals) {
+    stems.tracks.other = stems.tracks.other.map((c, k) => Float32Array.from(c, (v, i) => v + stems.tracks.vocals[k][i]));
+  }
+  const n = stems.tracks.other[0].length;
+  if (n !== prev.length_samples) throw new Error(`${dir}: the package is ${prev.length_samples} samples, the source ${n}: not the same audio`);
+  const otherM = monoOf(stems.tracks.other);
+  const onsets = bandOnsets(otherM, stems.rate, OTHER_ONSETS).onsets;
+  const look = lookOf(stems.tracks.other, stems.rate, prev.beats, onsets);
+  const { charts, look: _old, ...rest } = prev;
+  const song = { ...rest, look, charts };
+  writeFileSync(join(dir, 'song.json'), formatSong(song));
+  return { song };
 }
 
 async function main() {
@@ -102,7 +133,7 @@ async function main() {
     options: {
       out: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, artist: { type: 'string' },
       'bpm-min': { type: 'string' }, 'bpm-max': { type: 'string' }, 'keep-vocals': { type: 'boolean' },
-      'charts-only': { type: 'boolean' },
+      'charts-only': { type: 'boolean' }, 'look-only': { type: 'boolean' },
     },
   });
   const input = positionals[0];
@@ -112,6 +143,12 @@ async function main() {
   }
   const out = v.out ?? `songs/${slug(basename(input))}`;
   const t0 = Date.now();
+  if (v['look-only']) {
+    const { song } = await addLook(input, out);
+    const o = song.look.other;
+    console.log(`${out}: look from the other track: ${o.level.length} beats, ${o.changes.length} harmony changes, ${o.stabs.length / 2} stabs, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
+    return;
+  }
   const { song, report } = await makeSong(input, {
     out, id: v.id, title: v.title, artist: v.artist, keepVocals: v['keep-vocals'], chartsOnly: v['charts-only'],
     bpmMin: v['bpm-min'] ? Number(v['bpm-min']) : undefined, bpmMax: v['bpm-max'] ? Number(v['bpm-max']) : undefined,

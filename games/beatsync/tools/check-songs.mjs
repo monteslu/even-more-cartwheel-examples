@@ -15,6 +15,9 @@
 // caught by the gap check, and a Hard chart missing its first 30 s of notes is caught by the first-note check.
 // A level that keeps the bass (LEVELS[name].bass: Medium) has at least MIN_BASS_SHARE of its notes on the bass lane
 // wherever the song has a bass line (its Hard chart does); control: the same chart with its bass notes taken out.
+// The look (song.json "look.other", lib/look.mjs): a value a beat in every list, all in range, and the same look made
+// again from the DECODED other track: each beat's loudness within LOOK_LEVEL_TOL; control: the look moved by two
+// beats must fail that.
 // Exits 1 on any failure.
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -25,6 +28,37 @@ import { stbAvailable, decodeVorbisStb } from './lib/stbvorbis.mjs';
 import { excerptLag, unpackExcerpt, TRACKS } from './lib/package.mjs';
 import { bandOnsets, bassOnsets, monoOf } from './lib/analyze.mjs';
 import { biquad, filtfilt } from './lib/dsp.mjs';
+import { otherLook } from './lib/look.mjs';
+
+/** how far (0..99) a beat's loudness in the look may sit from the same measure of the decoded other track (AAC to
+ * Vorbis moves it a little); the share of beats that must hold it */
+export const LOOK_LEVEL_TOL = 4, LOOK_LEVEL_SHARE = 0.95;
+
+/**
+ * The look's shape: every per-beat list a value a beat, in range; the bands three a half beat; the stabs pairs.
+ * @param {any} look song.json "look"
+ * @param {number} beats
+ * @returns {string[]}
+ */
+export function lookProblems(look, beats) {
+  const o = look?.other, bad = [];
+  if (!o) return ['song.json has no look.other (tools/make-song.mjs --look-only adds it)'];
+  for (const [k, hi] of [['level', 99], ['bright', 99], ['tonal', 99], ['hue', 359]]) {
+    if (!Array.isArray(o[k]) || o[k].length !== beats) bad.push(`look.other.${k}: ${o[k]?.length} values for ${beats} beats`);
+    else if (o[k].some((v) => !Number.isInteger(v) || v < 0 || v > hi)) bad.push(`look.other.${k}: a value outside 0..${hi}`);
+  }
+  if (!Array.isArray(o.bands) || o.bands.length !== beats * 6) bad.push(`look.other.bands: ${o.bands?.length} values for ${beats * 2} half beats`);
+  if (!Array.isArray(o.changes) || o.changes.some((c, i) => c < 0 || c >= beats || (i && c <= o.changes[i - 1]))) bad.push('look.other.changes: not increasing beat indices');
+  if (!Array.isArray(o.stabs) || o.stabs.length % 2) bad.push('look.other.stabs: not [beat x 100, strength] pairs');
+  return bad;
+}
+
+/** the share of beats whose loudness in `level` is within LOOK_LEVEL_TOL of `again` */
+export function lookLevelShare(level, again) {
+  let ok = 0;
+  for (let i = 0; i < level.length; i++) if (Math.abs(level[i] - (again[i] ?? -100)) <= LOOK_LEVEL_TOL) ok++;
+  return level.length ? ok / level.length : 0;
+}
 
 /** A level that keeps the bass: the least share of its notes on the bass lane, when the song has a bass line. */
 export const MIN_BASS_SHARE = 0.15;
@@ -254,6 +288,18 @@ export async function checkSong(dir) {
     if (moved > CONTROL_MAX_RATIO * (info.hard_onset_share ?? 1)) {
       fails.push(`CONTROL: the Hard chart moved by an 8th still has ${(100 * moved).toFixed(1)}% of its notes on onsets: the onset check cannot tell a good chart from a bad one`);
     }
+  }
+  // the look: its shape, and the same look again from the decoded other track
+  const lp = lookProblems(song.look, song.beats.length);
+  fails.push(...lp);
+  if (!lp.length && decoded.other) {
+    const again = otherLook(decoded.other, song.sample_rate, song.beats, []);
+    const lv = song.look.other.level;
+    info.look_level_share = +lookLevelShare(lv, again.level).toFixed(3);
+    if (info.look_level_share < LOOK_LEVEL_SHARE) fails.push(`look: only ${(100 * info.look_level_share).toFixed(1)}% of beats' loudness match the decoded other track (need ${100 * LOOK_LEVEL_SHARE}%)`);
+    const moved = [...lv.slice(2), 0, 0];
+    info.control_look_moved_2_beats_share = +lookLevelShare(moved, again.level).toFixed(3);
+    if (info.control_look_moved_2_beats_share >= LOOK_LEVEL_SHARE) fails.push('CONTROL: the look moved by two beats still matches the decoded other track: the look check cannot see a misplaced look');
   }
   return { dir, fails, info };
 }

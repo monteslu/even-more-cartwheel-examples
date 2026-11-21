@@ -70,20 +70,33 @@ needs something different.
     times against) and crosses the gate about 14% faster. The perspective does not change the timing windows (see Judgement). Easy's notes are drawn brighter too: its quarter notes pass any point of a
     river at most about twice a second, so they can stand out more than Medium's and Hard's eighths and sixteenths
     without a regular flicker over 3 Hz.
-  - **The music drives the field.** Each kick sends a shockwave of characters across the field from below the gates,
-    faint behind the rivers, so the screen breathes on four-on-the-floor; a clap throws sparks (`' * +`) off the clap's
-    gate that drift and fall; the bass is a waveform of characters along the bottom, under the gates, that thickens
-    while the bass plays and thins when it is missed out; the other stem's energy sets a slow field of faint glyphs
-    behind everything, sparse in a break and dense in a drop.
+  - **Every effect tells the player something.** It shows what the music will do, or what the player just did. An
+    effect that only repeats what is already heard (a ring on every kick of the record, sparks on every clap, a field
+    of glyphs following the loudness) adds nothing and is not drawn.
+  - **The land: the other track, seen coming.** Beside the rivers, out to the screen's edges, a landscape of
+    characters that is the other stem (the chords, pads, stabs and synth lines the player does not play), read from
+    the song's look (see "The look from the music"). It is a row every half beat riding down with the notes, so the
+    music ahead is on screen as far ahead as the notes are: a loud stretch rises before it is heard, a break flattens.
+    A row's height follows the track's loudness at its beat, its bass, mid and treble laid outward (bass beside the
+    rivers, treble at the edges); its colour is the harmony sounding then, held from chord change to chord change and
+    spread over the song's own range of harmonies, so a chord or key change is a new colour travelling down toward the
+    gates. A stab puts lights on its row's ridge; a row where the harmony moves carries a crest of light. A faint sky
+    above the horizon holds the harmony sounding now. The land stays under the rivers' light: the rivers are what the
+    eye follows.
+  - **The streak, where the eyes are.** The multiplier (x1 to x4, a step every 16 hits) sits under the middle gate
+    with a bar of the hits to the next step. The streak charges the banks with light from the gates up, reaching the
+    far end at x4, so a full streak is a highway lit to the horizon; each step sends a band of light up the rivers. A
+    streak of every 50 is called out under the middle gate. A streak broken after a multiplier drains: its charge runs
+    back down the banks in red over 0.7 s, the lit pieces fall away, the pad rumbles (harder for a higher
+    multiplier), and "streak N lost" shows where the multiplier was.
   - **Playing well or badly.** A hit bursts at the gate in the river's colour: shards thrown up and out and a ring
     opening out, swelling in over 40 ms and fading over half a second (a Perfect throws more, faster and further, its
     ring wider and whiter); it blooms the gate and surges its river around and below it (the current brightens and
     widens, swelling and fading). The judgement word keeps one colour on every river: Perfect green, Good turquoise,
-    Miss red (the results line too). A miss dims that instrument's river for the beat its track is down. A streak
-    brightens the rivers and the field; a long streak in a drop fills the screen dense and bright. Each section has its
+    Miss red (the results line too). A miss dims that instrument's river for the beat its track is down. Each section has its
     own palette (break cool cyan, build warming, drop hot magenta and orange), crossfading over a bar.
   - **The title** has the rivers spread wide round the title's box, the first song playing itself on them.
-  - **Rules.** Every pulse swells and fades and the field brightens over several frames, never a whole-screen flick
+  - **Rules.** Every light swells and fades over several frames, never a whole-screen flick
     (the flash rules hold at 128 BPM, and romdev's picture check over whole songs on Hard). Characters large enough to
     read on a TV across a room. The HUD and menus in boxes over the field, like Detexto's. No screen shake (a hit or a
     miss rumbles the pad).
@@ -137,6 +150,28 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
 - A note: `t` its time in seconds, `step` its 16th-note index from beat 0 (step 4 is beat 1), `lane` 0 kick, 1 clap,
   2 bass. Notes are sorted by `t`, at most one per step.
 - `sections`: where the song's parts start (intro, build, drop, break, outro), from the audio, for the visuals.
+- `look`: what the picture reads from the music (below), between `sections` and `charts`.
+
+## The look from the music
+
+`tools/lib/look.mjs` analyses the other stem once, when the package is made, on the song's own beats, and writes
+`song.json` `look.other`. Made ahead of time, it lets the game draw what is coming, not only what sounds now. The
+kinds of data are the ones music visualizers feed their presets (band energies against their own average, a beat
+grid, onsets), plus the harmony:
+
+| Key | One value | What it is |
+|---|---|---|
+| `level` | a beat, 0..99 | the track's loudness over the beat, 0 at 36 dB under its loud beats |
+| `bright` | a beat, 0..99 | its tone: the spectral centroid, about 150 Hz (dark pads) to 5 kHz (bright stabs) |
+| `hue` | a beat, 0..359 | its harmony as an angle on the circle of fifths: each sounding pitch class at its place (C 0, G 30, D 60, ...), summed. Related chords sit close; a key change moves far |
+| `tonal` | a beat, 0..99 | how clearly one harmony sounds (a held chord high, noise or a drum hit low) |
+| `changes` | a list | the beats where the harmony moves (the chroma of the two beats after against the two before) |
+| `bands` | a half beat, 3 each | bass (20-250 Hz), mid (250-2000) and treble (2-8 kHz), each against its own average over the song: 50 its usual energy, 100 twice it, at most 199 |
+| `stabs` | pairs | the track's attacks: [beat position x 100, strength 1..9] |
+
+The game turns loudness into a height against the song's own quiet and loud beats, holds the harmony from change to
+change, and spreads it over the song's own range of harmonies (its mean at blue-violet). `check-songs` makes the look
+again from the decoded other track and holds each beat's loudness to it (control: the look moved by two beats).
 
 ## Charts (the tooling's job)
 

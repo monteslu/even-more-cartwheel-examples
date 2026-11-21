@@ -20,9 +20,11 @@ characters.
   is a road of characters receding toward a horizon near the top of the screen, a current streaming down it to a gate
   near the bottom; a note rides it down, small far off and growing all the way, and reaches the gate exactly on its
   beat. A hit bursts at the gate in shards and a ring (bigger on a Perfect), blooms the gate and surges the river; a
-  miss dims the river for a beat. Perfect shows green, Good turquoise, Miss red, on every river. Each kick sends a shockwave of characters across the field,
-  claps throw sparks off their gate, the bass is a waveform along the bottom, and a field of glyphs behind it all
-  follows the song's energy; each section has its palette. Easy shows eight beats of each river, Medium 6.4, Hard
+  miss dims the river for a beat. Perfect shows green, Good turquoise, Miss red, on every river. Beside the rivers, a land of characters is the
+  other track (chords, pads, stabs), a row every half beat riding down with the notes: it rises before a loud stretch
+  is heard, takes the harmony's colour (a chord change is a new colour coming down), lights its ridge on stabs. The
+  multiplier sits under the middle gate; the streak charges the banks from the gates to the horizon at x4, each step
+  sends a band up the rivers, and a broken streak drains back down in red. Each section has its palette. Easy shows eight beats of each river, Medium 6.4, Hard
   5.2 (twice what they showed before, with the notes' last beat as fast as it was), so Easy is the slowest to read.
 - **No waiting**: play starts 8 beats before the level's first note, and the charts leave no long holes; if a wait of
   more than three bars remains, the banks fill as it passes and a countdown says when the notes come back. The ASCII pass is Detexto's.

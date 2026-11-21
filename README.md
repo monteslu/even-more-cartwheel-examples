@@ -149,8 +149,10 @@ frame is a note highway drawn in neon characters, Detexto's ASCII pass: three
 rivers side by side as the buttons sit (kick left, clap middle, bass right),
 each a road receding toward a horizon, its notes small far off and growing as
 they ride down to the gate on their beat; a hit blooms the gate
-and surges the river, kicks send shockwaves of characters across the field,
-claps throw sparks, and the bass is a waveform along the bottom. Six songs from 121 to 129
+and surges the river, and beside the rivers a land made from the song's chords
+and synths rises, changes colour and lights up with what the music will do
+before it is heard; a streak charges the banks to the horizon, and a broken one
+drains away in red. Six songs from 121 to 129
 BPM on Easy, Medium and Hard, with scores, grades and bests saved. The song
 tooling that makes a song from a stems file (tempo, beats, bars, onsets per
 lane and the three charts) is in the game's folder.

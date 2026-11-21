@@ -15,9 +15,10 @@
  *   - render(): the HUD and the screens' panels, then the shell's menus.
  *
  * The picture (club.c) is a note highway in neon ASCII: three rivers side by side as the buttons are (kick left,
- * clap middle, bass right), the notes riding each down to its gate on their beat, the music in the field around them; the ASCII pass (ascii.c, Detexto's) turns it
- * into characters. Every pulse it shows comes from here, shaped to swell and fade and fed through a flash meter
- * (src/flash_meter.c). The HUD and the screens sit in boxes over the field.
+ * clap middle, bass right), the notes riding each down to its gate on their beat, the other track as a land beside
+ * them (what the music will do, seen coming), the streak charging the banks; the ASCII pass (ascii.c, Detexto's) turns
+ * it into characters. Every light that rises and falls on its own is shaped here to swell and fade and fed through a
+ * flash meter (src/flash_meter.c). The HUD and the screens sit in boxes over the field.
  *
  * <app>_auto is the same game built with GAME_AUTOPILOT: straight into play on Hard, hitting every note when it
  * reaches the hit line (the debug field bot.late_ms makes it hit late: the sync check's control), and round again.
@@ -51,7 +52,8 @@
 
 #define LEAD_MS 4000 /* from Play to the song's first frame: the how-to and the count-in, the first notes coming round */
 #define MAX_NOTES 8192
-#define PULSE_GAP_MS 350 /* a room pulse at most this often: under 3 a second, however busy the part */
+#define TIER_COMBO 16 /* hits a multiplier step: x2 at 16, x3 at 32, x4 at 48 */
+#define MILESTONE 50  /* a streak of every 50 is called out */
 #ifdef GAME_AUTOPILOT
 #define AUTOPILOT 1
 #else
@@ -83,7 +85,7 @@ typedef struct save_data {
   best_entry best[MAX_SONGS];
 } save_data;
 
-static flash_meter fl_kick, fl_bass, fl_clap, fl_glow, fl_fade;
+static flash_meter fl_glow, fl_fade, fl_tier, fl_drain;
 
 static struct {
   int32_t screen, sel, diff, pick, item;      /* the game's own screen, the song and difficulty chosen, the menu item */
@@ -103,9 +105,11 @@ static struct {
   int32_t bot_late_ms;
   int32_t bot_skip[LANES], bot_skip_after, bot_skipped_ms; /* the `skip` request (the mix gate) */
   int32_t ticks, screen_ticks, miss_streak;
-  /* the field's pulses: the song's own kicks, claps and bass notes (Hard's chart, the fullest), each a swell and fade */
-  int32_t pulse_next[LANES], pulse_last[LANES];
-  float pulse[LANES], pulse_drawn[LANES];
+  /* the streak as the picture shows it: the banks' charge (toward the top multiplier), a multiplier step's band
+   * rising up the rivers, a broken streak draining; the HUD's multiplier badge and the streak called out every 50 */
+  float charge, tier_t, tier_light, drain_t, drain_from, drain_light;
+  int32_t break_seq, tier_seq, broke_combo, broke_ticks, milestone, milestone_ticks;
+  bool streakfx_off; /* the `streakfx off` request: none of it (the streak gate's control) */
   float flare[LANES], glow[LANES], glow_drawn[LANES], press[LANES];
   int32_t judge[LANES], judge_ticks[LANES];
   float fade; /* the failed song's dip, as drawn */
@@ -119,8 +123,6 @@ static struct {
   double cal_clock;
   int32_t offset_ms;
   float vis_t;  /* seconds of frames shown (the picture's slow motion: the field's twinkle, the beams) */
-  float streak; /* the streak as the field shows it: follows the combo, at most a third of the way a second (a
-                 * broken streak dims the field over seconds, never in a frame) */
   bool leave; /* the `leave` debug request: the crowd leaves (the flash check shows the dip) */
   int32_t from_ms, from_zero; /* where play started in the song; the `fromzero` request (the start gate's control) */
   /* a long wait for notes (more than GAP_BEATS between two): state 0 none, 1 the banks filling, 2 the countdown too;
@@ -193,14 +195,8 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   G.fade = 0;
   G.gap_state = G.gap_count = G.gap_shown = G.gap_overlap = 0;
   G.gap_alpha = G.gap_fill = 0;
-  for (int l = 0; l < LANES; l++) {
-    G.pulse_next[l] = 0;
-    G.pulse_last[l] = -100000;
-    G.judge_ticks[l] = 0;
-  }
-  const note *h = s->chart[DIFF_HARD];
-  for (int l = 0; l < LANES; l++)
-    while (G.pulse_next[l] < s->notes[DIFF_HARD] && h[G.pulse_next[l]].ms < from_ms) G.pulse_next[l]++;
+  for (int l = 0; l < LANES; l++) G.judge_ticks[l] = 0;
+  G.charge = 0, G.tier_t = G.drain_t = -1, G.broke_ticks = G.milestone_ticks = 0;
   music_set_player(!G.demo);
   music_play(s, from_ms, lead_ms, volume);
 }
@@ -247,6 +243,24 @@ static int grade_of(void) {
   return acc_ >= 0.95f ? 0 : acc_ >= 0.85f ? 1 : acc_ >= 0.7f ? 2 : acc_ >= 0.55f ? 3 : 4;
 }
 
+static int mult_of(int combo) { return 1 + CW_MIN(combo / TIER_COMBO, 3); }
+
+/* the streak breaks: one that had reached a multiplier drains its charge from the banks, throws its lit pieces off
+ * and is felt in the pad; a short one just ends */
+static void combo_lost(void) {
+  if (G.combo >= TIER_COMBO && !G.demo) {
+    G.drain_t = 0;
+    G.drain_from = G.charge;
+    G.break_seq++;
+    G.broke_combo = G.combo;
+    G.broke_ticks = 70;
+    G.milestone_ticks = 0; /* what was lost replaces the call-out */
+    cw_input_rumble(0, 0.25f + 0.1f * (float)(mult_of(G.combo) - 1), 0.1f, 160);
+  }
+  G.combo = 0;
+  G.charge = 0;
+}
+
 static void judged(int i, int j, int32_t err) {
   int lane = chart()[i].lane;
   G.state[i] = j == J_MISS ? NOTE_MISSED : NOTE_HIT;
@@ -254,7 +268,7 @@ static void judged(int i, int j, int32_t err) {
   G.judge_ticks[lane] = 40;
   if (j == J_MISS) {
     G.miss++;
-    G.combo = 0;
+    combo_lost();
     G.miss_streak++;
     music_miss(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane); /* a note made from the other track dips that track */
     if (!G.demo) {
@@ -271,7 +285,9 @@ static void judged(int i, int j, int32_t err) {
   if (G.combo > G.max_combo) G.max_combo = G.combo;
   if (j == J_PERFECT) G.perfect++;
   else G.good++;
-  int mult = 1 + CW_MIN(G.combo / 16, 3);
+  int mult = mult_of(G.combo);
+  if (mult > mult_of(G.combo - 1)) G.tier_t = 0, G.tier_seq++; /* a multiplier step: a band rises up the rivers */
+  if (G.combo % MILESTONE == 0 && !G.demo) G.milestone = G.combo, G.milestone_ticks = 100;
   G.score += (j == J_PERFECT ? 300 : 100) * mult;
   G.energy = fminf(1, G.energy + (j == J_PERFECT ? 0.03f : 0.015f));
   G.err_sum += (float)err;
@@ -309,7 +325,7 @@ static void press(int lane, int32_t t, bool mash) {
   if (best < 0) {
     /* the wrong button costs the combo and that note's Perfect, never the note: it can still be hit in its own lane
      * (so a slip is forgiven, and mashing every button scores Good at best with no multiplier) */
-    if (wrong >= 0) G.combo = 0, G.spoiled[wrong] = 1;
+    if (wrong >= 0) combo_lost(), G.spoiled[wrong] = 1;
     return; /* nothing near: a free tap */
   }
   if (G.old_rules && c[best].lane != lane) { judged(best, J_MISS, 0); return; }
@@ -317,31 +333,8 @@ static void press(int lane, int32_t t, bool mash) {
   judged(best, abs(berr) <= PERFECT_MS && !G.spoiled[best] ? J_PERFECT : J_GOOD, berr);
 }
 
-/* the field's pulses: each instrument's notes in Hard's chart as the song plays them, heard only while its track is
- * up; a pulse at most every PULSE_GAP_MS, so the field never pulses more than 3 times a second */
-static void pulses(int32_t now) {
-  const song *s = G.s;
-  if (!s) return;
-  const note *h = s->chart[DIFF_HARD];
-  for (int l = 0; l < LANES; l++) {
-    bool fire = false;
-    while (G.pulse_next[l] < s->notes[DIFF_HARD] && h[G.pulse_next[l]].ms <= now) {
-      if (h[G.pulse_next[l]].lane == l) fire = true;
-      G.pulse_next[l]++;
-    }
-    /* advance every lane's index past other lanes' notes too */
-    if (fire && now - G.pulse_last[l] >= PULSE_GAP_MS && G.level[l] > 0.5f) {
-      G.pulse_last[l] = now;
-    }
-  }
-}
-
 static void tick_room(float dt) {
-  /* swell over 50 ms, fade over about a third of a second (the bass slower) */
   for (int l = 0; l < LANES; l++) {
-    float since = (float)(G.song_ms - G.pulse_last[l]);
-    float env = since < 0 ? 0 : since < 50 ? since / 50 : expf(-(since - 50) / (l == LANE_BASS ? 260.0f : 170.0f));
-    G.pulse[l] = env * (0.4f + 0.6f * G.level[l]);
     /* the hit glow: what the hits add decays over about a third of a second, and the glow drawn follows it up over
      * 60 ms (a swell) and down as it decays: fast runs of hits hold it lit instead of flashing it */
     G.flare[l] *= expf(-dt / 0.8f);
@@ -349,11 +342,19 @@ static void tick_room(float dt) {
     G.glow[l] = G.flare[l] > G.glow[l] ? fminf(G.flare[l], G.glow[l] + dt / 0.25f) : G.flare[l];
     if (G.judge_ticks[l]) G.judge_ticks[l]--;
   }
-  float want = G.demo ? 0.3f : fminf(1, (float)G.combo / 48.0f);
-  G.streak += CW_CLAMP(want - G.streak, -dt / 3, dt / 3);
-  G.pulse_drawn[LANE_KICK] = flash_meter_feed(&fl_kick, G.pulse[LANE_KICK]);
-  G.pulse_drawn[LANE_CLAP] = flash_meter_feed(&fl_clap, G.pulse[LANE_CLAP]);
-  G.pulse_drawn[LANE_BASS] = flash_meter_feed(&fl_bass, G.pulse[LANE_BASS]);
+  /* the streak: the banks charge toward the top multiplier, a third of the way in about a second (each hit's step
+   * eases in, never a jump); a multiplier step's band swells in over 60 ms and fades as it rises; a break's drain
+   * starts at its full light and fades as it falls */
+  float want = fminf(1, (float)G.combo / (float)(3 * TIER_COMBO));
+  G.charge = want > G.charge ? fminf(want, G.charge + dt / 0.35f) : want;
+  if (G.tier_t >= 0) G.tier_t = G.tier_t + dt < TIER_S ? G.tier_t + dt : -1;
+  if (G.drain_t >= 0) G.drain_t = G.drain_t + dt < DRAIN_S ? G.drain_t + dt : -1;
+  float te = G.tier_t < 0 ? 0 : G.tier_t < 0.06f ? G.tier_t / 0.06f : powf(1 - (G.tier_t - 0.06f) / (TIER_S - 0.06f), 1.5f);
+  float de = G.drain_t < 0 ? 0 : G.drain_t < 0.05f ? G.drain_t / 0.05f : 1 - (G.drain_t - 0.05f) / (DRAIN_S - 0.05f);
+  G.tier_light = flash_meter_feed(&fl_tier, te);
+  G.drain_light = flash_meter_feed(&fl_drain, de);
+  if (G.broke_ticks) G.broke_ticks--;
+  if (G.milestone_ticks) G.milestone_ticks--;
   /* the receptors' lights (a small area round each, but metered all the same: the strongest lane) */
   float g = fmaxf(G.glow[0], fmaxf(G.glow[1], G.glow[2]));
   float gd = flash_meter_feed(&fl_glow, g);
@@ -387,7 +388,7 @@ static void tick_song(float dt, bool player) {
      * with no combo (so pressing every button on every note never pays) */
     int down = 0;
     for (int l = 0; l < LANES; l++) down += cw_action_just_pressed(0, lane_act[l]);
-    if (down > 1) G.combo = 0;
+    if (down > 1) combo_lost();
     for (int l = 0; l < LANES; l++)
       if (cw_action_just_pressed(0, lane_act[l])) press(l, t, down > 1);
 #endif
@@ -406,7 +407,6 @@ static void tick_song(float dt, bool player) {
   while (G.next < n && G.state[G.next] != NOTE_PENDING && G.state[G.next] != NOTE_SKIPPED) G.next++;
   G.cue_lane = G.next < n ? c[G.next].lane : -1;
   G.cue_ms = G.next < n ? c[G.next].ms : -1;
-  pulses(G.song_ms);
   tick_room(dt);
 }
 
@@ -793,6 +793,33 @@ static void draw_play(cw_vec2 cv, float size) {
     c.a = fminf(1, t * 2.5f);
     text_at(JN[G.judge[jl]], x, y - size * 0.7f - (1 - t) * size * 0.4f, size * (G.judge[jl] == J_PERFECT ? 1.1f : 0.95f), c, 0);
   }
+  /* the multiplier, under the middle gate where the eyes already are: x1 to x4 and the hits to the next step as a
+   * bar; every 50 the streak is called out there instead, rising and fading; a broken streak shows what was lost */
+  if (G.song_ms >= 0 && !G.failed && !G.streakfx_off) {
+    float x, y;
+    club_gate_screen(LANE_CLAP, cv.x, cv.y, &x, &y);
+    y += size * 2.35f;
+    int m = mult_of(G.combo);
+    if (G.milestone_ticks) {
+      float t = (float)G.milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 8 + 0.2f);
+      snprintf(b, sizeof b, "%d streak", G.milestone);
+      text_at(b, x, y - (1 - t) * size * 0.5f, size * 1.15f, cw_rgba(1, 0.95f, 0.7f, a), 0);
+    } else if (G.broke_ticks) {
+      float a = fminf(1, (float)G.broke_ticks / 30.0f);
+      cw_color c = JUDGE_COL[J_MISS];
+      c.a = a;
+      snprintf(b, sizeof b, "streak %d lost", G.broke_combo);
+      text_at(b, x, y, size * 0.9f, c, 0);
+    } else if (G.combo > 0) {
+      float w = size * 3.6f, bh = size * 0.22f, prog = m >= 4 ? 1 : (float)(G.combo % TIER_COMBO) / TIER_COMBO;
+      snprintf(b, sizeof b, "x%d", m);
+      cw_color c = m >= 4 ? cw_rgba(1, 0.95f, 0.7f, 1) : m >= 2 ? WHITE : DIM;
+      text_at(b, x, y - size * 0.15f, size * (0.85f + 0.08f * (float)m), c, 0);
+      float by = y + size * 1.05f;
+      cw_r2d_round_rect((cw_rect){ x - w * 0.5f, by, w, bh }, bh * 0.5f, 4, cw_rgba(1, 1, 1, 0.15f));
+      cw_r2d_round_rect((cw_rect){ x - w * 0.5f, by, w * prog, bh }, bh * 0.5f, 4, m >= 4 ? cw_rgba(1, 0.9f, 0.6f, 0.95f) : cw_rgba(0.7f, 0.45f, 1, 0.95f));
+    }
+  }
   /* how to play, in the count-in only: each button under the river it plays (kick left, clap middle, bass right, as
    * the buttons sit). Once the song is going the rivers' places are the only cue: no button stays on screen in play */
   static const char *const LP[LANES] = { "{lane_kick} kick", "{lane_clap} clap", "{lane_bass} bass" };
@@ -937,11 +964,14 @@ static void render(void *user, double alpha) {
   club_view v = {
     .s = G.s, .notes = chart(), .state = G.state, .count = chart_count(),
     .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : G.offset_ms) : 0,
-    .kick = G.pulse_drawn[LANE_KICK], .clap = G.pulse_drawn[LANE_CLAP], .bass = G.pulse_drawn[LANE_BASS],
-    .kick_ms = G.pulse_last[LANE_KICK], .clap_ms = G.pulse_last[LANE_CLAP],
-    .streak = G.streak, .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .note_light = NOTE_LIGHT[G.diff], .t = G.vis_t,
+    .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = AHEAD_BEATS[G.diff], .note_light = NOTE_LIGHT[G.diff], .t = G.vis_t,
     .gap_fill = G.screen == SCR_PLAY ? G.gap_fill : 0, .gap_alpha = G.screen == SCR_PLAY ? G.gap_alpha : 0,
   };
+  bool fx = G.screen == SCR_PLAY && !G.streakfx_off;
+  v.charge = fx ? G.charge : 0;
+  v.tier_t = fx ? G.tier_t : -1, v.tier_light = fx ? G.tier_light : 0;
+  v.drain_t = fx ? G.drain_t : -1, v.drain_from = G.drain_from, v.drain_light = fx ? G.drain_light : 0;
+  v.break_seq = fx ? G.break_seq : 0;
   for (int l = 0; l < LANES; l++) {
     v.flare[l] = G.glow_drawn[l];
     v.hit_seq[l] = G.hit_seq[l];
@@ -974,6 +1004,11 @@ static void render(void *user, double alpha) {
 
 static int32_t lane_level_dbg[LANES];
 static float lane_level_f[LANES];
+
+static void cmd_streakfx(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2) G.streakfx_off = !strcmp(argv[1], "off");
+  cw_reply_printf(r, "{\"streakfx\":%d}", !G.streakfx_off);
+}
 
 static void cmd_leave(int argc, const char **argv, cw_reply *r) {
   (void)argc, (void)argv;
@@ -1136,16 +1171,22 @@ static void init(void *user) {
   cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
   cw_debug_command("song", "song <index|id> [easy|medium|hard]: the autopilot plays that song from its start", cmd_song);
 #endif
-  flash_meter_init(&fl_kick, "kick");
-  flash_meter_init(&fl_clap, "clap");
-  flash_meter_init(&fl_bass, "bass");
   flash_meter_init(&fl_glow, "hit");
   flash_meter_init(&fl_fade, "fail");
-  flash_meter_register(&fl_kick);
-  flash_meter_register(&fl_clap);
-  flash_meter_register(&fl_bass);
+  flash_meter_init(&fl_tier, "tier");
+  flash_meter_init(&fl_drain, "drain");
   flash_meter_register(&fl_glow);
   flash_meter_register(&fl_fade);
+  flash_meter_register(&fl_tier);
+  flash_meter_register(&fl_drain);
+  cw_debug_f32("streak.charge", &G.charge);
+  cw_debug_f32("streak.tier_t", &G.tier_t);
+  cw_debug_f32("streak.drain_t", &G.drain_t);
+  cw_debug_f32("streak.drain_from", &G.drain_from);
+  cw_debug_i32("streak.tiers", &G.tier_seq);
+  cw_debug_i32("streak.breaks", &G.break_seq);
+  cw_debug_i32("streak.milestone", &G.milestone);
+  cw_debug_command("streakfx", "streakfx on|off: the streak's charge, bands, drain and badge as the game shows them, or none (the streak gate's control)", cmd_streakfx);
 #ifdef GAME_AUTOPILOT
   cw_shell_start(1); /* straight into play, no menus */
 #else

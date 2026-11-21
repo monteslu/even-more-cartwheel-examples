@@ -402,6 +402,9 @@ export function clapFilter(clap, kick, clapTrack, rate) {
   return { onsets, rejected: clicks, hats };
 }
 
+/** the other track's onsets: chords, stabs and synth lines (the break fill, the picture's stabs) */
+export const OTHER_ONSETS = { fLo: 80, fHi: 4000, gap: 0.1, k: 2 };
+
 /**
  * Run the whole analysis on a song's stems.
  * @param {import('./stems.mjs').Stems} stems
@@ -419,7 +422,7 @@ export function analyze(stems, o = {}) {
   const lanes = {
     kick: bandOnsets(kickM, rate, { fLo: 20, fHi: 160, gap: 0.05, k: 2, envMs: 8, minRel: 0.2 }),
     clap: bandOnsets(clapM, rate, { fLo: 1000, fHi: 5000, gap: 0.05, k: 2, refineBand: clapBand }),
-    other: bandOnsets(otherM, rate, { fLo: 80, fHi: 4000, gap: 0.1, k: 2 }),
+    other: bandOnsets(otherM, rate, OTHER_ONSETS),
   };
   lanes.clap = { ...lanes.clap, ...clapFilter(lanes.clap, lanes.kick, clapM, rate) };
   // Kick bleed in the bass stem (a separation model's usual leak) is cancelled before the bass is analysed: a
