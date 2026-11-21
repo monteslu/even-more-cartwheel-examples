@@ -1231,9 +1231,12 @@ static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *user) {
   float k = cs.y / 1080.0f;
   ascii_hud_reset(cs, k);
   if (screen == CW_SHELL_JOIN) { /* a box behind each seat, the heading and the hints, where the shell draws them */
-    float u = cs.y / 20.0f, w = cs.x / 4.0f;
+    float u = cs.y / 20.0f;
     ascii_hud_rect(cs.x * 0.4f, cs.y * 0.06f, cs.x * 0.2f, cs.y * 0.14f, 1);
-    for (int s = 0; s < MAX_PLAYERS; s++) ascii_hud_rect(w * (float)s + u * 0.4f, cs.y * 0.3f, w - u * 0.8f, cs.y * 0.4f, 1);
+    for (int s = 0; s < MAX_PLAYERS; s++) { /* under the seats where the shell centres them */
+      cw_rect r = cw_shell_join_seat_rect(s);
+      ascii_hud_rect(r.x, r.y, r.w, r.h, 1);
+    }
     ascii_hud_rect(cs.x * 0.25f, cs.y - u * 2.3f, cs.x * 0.5f, u * 1.3f, 1);
   } else {
     ascii_hud_rect(cs.x * 0.3f, cs.y * 0.08f, cs.x * 0.4f, cs.y * 0.7f, 1);

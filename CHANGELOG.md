@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.37.0
+
+- Engine v0.57.7 (from v0.57.2): the join screen centres its seats for any number of players, program tables stamped
+  with the extension sources they were made from (the build stops on a stale one), values a program lacks reported by
+  the program survey, the clustered lights' shadows drawn from each view's own casters in a split screen drawn in one
+  pass. Every program table is regenerated and stamped on the new engine.
+- **beatsync**'s join screen draws its box behind each seat where the engine now puts the seats
+  (`cw_shell_join_seat_rect`), centred under the heading; it had copied the old layout, which sat both seats on the
+  left half. **Ember Throne** and **Lanternfall** (two players) get the centred seats from the engine.
+- Checks run on this pin: every game builds (native and dual carts); cart smoke of all nine games, cart art (its
+  no-cover control caught), cart version (its rewritten-version control caught) and the prompt check of every game;
+  the program survey of every app, native (every preset and the switches between them, GL and WebGPU): no state
+  missing, and of every dual cart on a GL and a WebGPU host: no state missing and no value set for a program that
+  lacks it. The check cart `destructo_check` draws no 3D frame and has nothing to survey; Destructo's and Detexto's
+  unseeded player runs were still on their loading screens at the survey's frame count (as v0.36.0's carts are) and
+  were read at their title screens instead, nothing missing. Skate's one-pass gate (`tests/skate-onepass.mjs`, two and
+  four players, GL and WebGPU) against v0.36.0's build: 0.0000% of the pixels off at frames 600 and 1400, both
+  controls failing (vignette 46.9 to 48.0%, masks 2.7 to 3.3%). beatsync's gates (`beatsync-song`, `beatsync-menus`,
+  GL and WebGPU, controls failing) and the two-player gate (`tests/beatsync-duo.mjs`, GL and WebGPU, all five
+  controls failing). The water of Destructo and Detexto (the harbour level) and Ember Throne (the marsh) against
+  v0.36.0's carts on GL and WebGPU: the same to the pixel, against a control 6 frames later that differs in 10 to 63%
+  of the pixels. The join screens of beatsync (no seat joined, both joined), Ember Throne and Lanternfall looked at on
+  romdev at native scale on GL and WebGPU: the seats centred under the heading, beatsync's boxes behind them.
+
 ## 0.36.0
 
 - **beatsync** plays with one or two players. One player chooses three lanes (kick, clap, bass, as before) or two
