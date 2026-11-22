@@ -69,3 +69,9 @@ standard+instbig+l0601
 standard+instbig+l0601+xplain
 standard+l0601
 standard+l0601+xplain
+standard+ds+l1001+xwaterlow
+basic+trans+instbig+icol
+basic+map+trans
+basic+map+trans+instbig+icol
+basic+trans
+standard+ds+l1001+xwater

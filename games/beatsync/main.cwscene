@@ -19,7 +19,7 @@ aa = NONE
 position = vec3(0, 0, 22)
 fov = 40
 near = 1
-far = 60
+far = 1500
 current = true
 
 [node name="Field" parent="." type="Node3D" groups="airborne"]

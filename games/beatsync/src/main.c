@@ -48,6 +48,7 @@
 #include "flash_meter.h"
 #include "music.h"
 #include "song.h"
+#include "styles.h"
 
 
 /* the tempo on the shoulders, in percent of the song's own */
@@ -104,6 +105,9 @@ typedef struct save_data {
   best_entry best[SAVE_SONGS];
   pair_best_entry pair_best[SAVE_SONGS];
 } save_data;
+/* the shell keeps the Settings rows' choices (the visual style) in the last CW_SHELL_SETTINGS_SAVE_BYTES of the game's
+ * save area: the game's own data stays clear of them */
+_Static_assert(sizeof(save_data) <= CW_SHELL_GAME_SAVE_MAX - 1024, "beatsync's save must leave the Settings rows their 1024 bytes");
 
 static flash_meter fl_glow, fl_fade, fl_tier[MAX_PLAYERS], fl_drain[MAX_PLAYERS];
 
@@ -608,6 +612,27 @@ static void start(int players, void *user) {
 
 /* ── the game's own screens ─────────────────────────────────────────── */
 
+/* the song select's rows: the songs, then the timing calibration */
+static int calib_row(void) { return songs_count(); }
+/* the visual style, a row of the shell's Settings (src/styles.h): All styles, or one style only. style_choice is the
+ * row's choice, style_of[choice] the style it names (-1 every style); the shell saves it as shell:style */
+static int style_choice, style_applied = -2, style_of[STYLE_COUNT + 1], style_choices_n;
+static const char *style_choices[STYLE_COUNT + 1];
+static const cw_shell_setting SETTINGS_ROWS[] = { { "Visual style", "style", &style_choice, style_choices, 0 } };
+static cw_shell_setting settings_rows[1];
+static void style_choices_make(void) {
+  style_choices[0] = "All styles", style_of[0] = -1, style_choices_n = 1;
+  for (int i = 0; i < STYLE_COUNT; i++)
+    if (!style_held(i)) style_choices[style_choices_n] = style_title(i), style_of[style_choices_n++] = i;
+  settings_rows[0] = SETTINGS_ROWS[0];
+  settings_rows[0].count = style_choices_n;
+}
+/* the row's choice into the styles (at the first frame, the saved one; then whenever a player changes it) */
+static void style_setting_apply(void) {
+  int c = style_choice >= 0 && style_choice < style_choices_n ? style_choice : 0;
+  if (c != style_applied) style_applied = c, styles_set_mode(style_of[c]);
+}
+static void settings_changed(int index, int value, void *user) { (void)index, (void)value, (void)user; style_setting_apply(); }
 static int menu_count(void) { return G.screen == SCR_SELECT ? songs_count() + 1 : G.screen == SCR_DIFF ? DIFFS : G.screen == SCR_RESULTS ? 2 : 0; }
 /* a menu press from any seated player's pad (both drive the song list and the results) */
 static bool any_pressed(cw_action a) {
@@ -711,7 +736,7 @@ static void menu_tick(void) {
   if (any_pressed(acc)) {
     play(snd_select);
     if (G.screen == SCR_SELECT) {
-      if (G.sel == songs_count()) calib_start();
+      if (G.sel == calib_row()) calib_start();
       else {
         if (G.preview_wait) { G.preview_wait = 0; start_preview(); }
         to_screen(SCR_DIFF);
@@ -838,6 +863,9 @@ static void play_tick(float dt) {
 static void update(void *user, double dt) {
   (void)user;
   G.vis_t += (float)dt;
+  /* the styles follow the song shown (play, the previews, the title's demo) on its own clock */
+  style_setting_apply();
+  styles_tick(G.s, G.s ? (double)G.song_ms : 0, G.demo ? 1.0f : music_tempo(), (float)fmin(dt, 0.1));
   cw_shell_screen sh = cw_shell_screen_now();
   if (sh == CW_SHELL_PLAY || sh == CW_SHELL_PAUSE || (sh == CW_SHELL_SETTINGS && G.screen != SCR_NONE) || !G.demo) return;
   tick_song((float)fmin(dt, 0.1), false);
@@ -1140,21 +1168,18 @@ static void draw_play(cw_vec2 cv, float size) {
   cw_text_style cst = ts(size * 0.75f, DIM);
   float cw_ = cw_font_measure(font(), "crowd", &cst).width;
   cw_r2d_text(font(), "crowd", cw_v2(m.x + m.w * 0.5f - cw_ * 0.5f, m.y + m.h + size * 0.3f), &cst);
-  /* the latest judgement under its river's gate, in its instrument's colour, rising and fading */
+  /* each river's judgement under its gate, in its instrument's colour: it stays where it is, in full, while that river
+   * keeps being played, and fades a little over half a second after its last note. A word hopping from gate to gate on
+   * every hit (and rising each time) was a regular flicker at four a second on a run of eighths over the plain picture */
   static const char *const JN[] = { "", "Perfect", "Good", "Miss" };
-  /* each player's own (with two players one word jumping between the roads on every hit blinked under each road) */
-  for (int p = 0; p < (G.mode == MODE_DUO ? 2 : 1); p++) {
-  int jl = -1;
-  for (int l = 0; l < LANES; l++)
-    if (G.judge_ticks[l] && (G.mode != MODE_DUO || G.owner[l] == p) && (jl < 0 || G.judge_ticks[l] > G.judge_ticks[jl])) jl = l;
-  if (jl >= 0 && !G.failed) {
-    float x, y, t = (float)G.judge_ticks[jl] / 40.0f;
-    club_gate_screen(jl, cv.x, cv.y, &x, &y);
+  for (int l = 0; l < LANES && !G.failed; l++) {
+    if (!G.judge_ticks[l] || club_lane_shown(l) < 0.5f) continue;
+    float x, y, t = (float)G.judge_ticks[l] / 40.0f;
+    club_gate_screen(l, cv.x, cv.y, &x, &y);
     y += size * 1.5f;
-    cw_color c = JUDGE_COL[G.judge[jl]];
+    cw_color c = JUDGE_COL[G.judge[l]];
     c.a = fminf(1, t * 2.5f);
-    text_at(JN[G.judge[jl]], x, y - size * 0.7f - (1 - t) * size * 0.4f, size * (G.judge[jl] == J_PERFECT ? 1.1f : 0.95f), c, 0);
-  }
+    text_at(JN[G.judge[l]], x, y - size * 0.7f, size * (G.judge[l] == J_PERFECT ? 1.1f : 0.95f), c, 0);
   }
   /* the multiplier, under the middle gate where the eyes already are: x1 to x4 and the hits to the next step as a
    * bar; every 50 the streak is called out there instead, rising and fading; a broken streak shows what was lost */
@@ -1365,6 +1390,7 @@ static void ensure_look(void) { /* the picture and the ASCII pass, once the GPU 
   look_ready = true;
   club_build();
   ascii_init(cw_scene_app_tree());
+  styles_build(cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level"));
 }
 
 static void render(void *user, double alpha) {
@@ -1395,6 +1421,7 @@ static void render(void *user, double alpha) {
     v.press[l] = G.press[l];
     v.level[l] = G.level[l];
   }
+  styles_apply(G.vis_t);
   club_update(&v);
   if (cw_shell_hud_shown() && G.screen != SCR_NONE) {
     cw_r2d_begin(NULL);
@@ -1540,6 +1567,7 @@ static void init(void *user) {
    * twice that, and room to spare (the shell starts the mixer with 8 streams unless the game has; when the game has,
    * the game updates it each frame, cw_audio_update in render) */
   cw_audio_init(&(cw_audio_desc){ .max_streams = 2 * ALL_TRACKS + 2 }); /* the game owns the mixer: render() updates it */
+  style_choices_make();
   cw_shell_init(&(cw_shell_desc){
     .title = "beatsync",
     .subtitle = "play the kick, the clap and the bass",
@@ -1552,6 +1580,9 @@ static void init(void *user) {
     .sound = shell_sound,
     .screen_changed = shell_screen,
     .draw_background = draw_background,
+    .settings_items = settings_rows,
+    .settings_item_count = 1,
+    .settings_changed = settings_changed,
     .accent = { 0.75f, 0.5f, 1.0f, 1 },
   });
   acc = cw_action_find("ui_accept");
@@ -1643,6 +1674,7 @@ static void init(void *user) {
   cw_debug_command("skip", "skip <lane> <n> [after_ms]: the autopilot lets the next n notes of a lane (0 kick, 1 clap, 2 bass) after after_ms go by, so they are missed (the mix gate)", cmd_skip);
   cw_debug_command("song", "song <index|id> [easy|medium|hard]: the autopilot plays that song from its start", cmd_song);
 #endif
+  styles_init();
   flash_meter_init(&fl_glow, "hit");
   flash_meter_init(&fl_fade, "fail");
   flash_meter_init(&fl_tier[0], "tier");

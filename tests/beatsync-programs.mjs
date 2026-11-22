@@ -69,6 +69,8 @@ async function run(gpu, { label, cartPath, seed = 1, preset = null, set = [], sw
   try {
     if (preset) await r.command(`quality ${preset}`);
     for (const c of set) await r.command(`quality set ${c}`);
+    // every visual style in turn (src/styles.c): each backdrop draws states of its own, at every preset
+    await r.command('style tour');
     if (control) {
       const t = await r.command('tree / 64');
       const cam = findCamera(t && t.tree ? t.tree : t);

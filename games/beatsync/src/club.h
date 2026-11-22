@@ -63,6 +63,30 @@ typedef struct club_view {
   int layout;             /* CLUB_* : which rivers show and where (they glide from one layout to the next) */
 } club_view;
 
+/* What a style asks of the picture (src/styles.c): the rivers, notes and gates are always drawn; a style changes their
+ * colours and what is round them. */
+typedef struct club_style {
+  float pal;             /* 0: the section's palette; 1: lane (a style's own colours, held through every section) */
+  float lane[LANES][3];
+  float land_tint;       /* 0: the harmony's colour; 1: land_rgb */
+  float land_rgb[3];
+  float land_body;       /* the land's light (1 as it is; low: a dark skyline against a backdrop) */
+  float land_alpha;      /* how much of what is behind the land it covers (1 all: the land as it is; 0 only its ridge) */
+  float ridge;           /* a line of light along the land's tops */
+  float plate;           /* the dark road under each river, 0..1 opaque */
+  float sky;             /* the faint harmony glow above the horizon (1 as it is) */
+  float burst;           /* a hit's burst (shards, ring, the gate's flare): 1 as the game draws them; the plain picture
+                          * draws them softer, as the characters do (a run of eighths is a burst four times a second) */
+  float flow;            /* the rivers' current (1 as the game draws it; the characters read a note better over a quieter
+                          * current) */
+  float pocket;          /* a dark pocket round each coming note, clearing the current there (0 none, 1 the full pocket) */
+  float note_light;      /* the notes' light (1 as the game draws them; a crisp plain picture shows a run of notes
+                          * harder than the characters do, so it draws them a little dimmer) */
+} club_style;
+/* the style fading out (a), the one fading in (b) and how far from a to b (0..1) */
+void club_set_style(const club_style *a, const club_style *b, float t);
+/* the notes' light times k (1 the game; the readability gate's control dims them) */
+void club_set_note_gain(float k);
 void club_build(void);         /* once the scene is up (the first render) */
 void club_update(const club_view *v);
 /* canvas position of an instrument's gate (the hit line on its river), for the HUD */

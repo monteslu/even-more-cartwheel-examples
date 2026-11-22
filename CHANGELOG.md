@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.43.0
+
+- **beatsync**: visual styles that change with the music. A style is a look (the ASCII pass on or off), a backdrop, a
+  palette and the field's params; the song changes style at phrase boundaries (every 8 bars) and at drops, faded over
+  2 beats (a drop's over 1, never under half a second), each song starting in the neon characters and keeping its own
+  order. Six in the rotation: Neon characters, Clean (the same land, plain, its tops lit), Fire (the engine's baked fire
+  flipbook, embers, heat haze), Synthwave grid (a grid floor to the horizon, a striped sun, the land as see-through
+  mountains), Terminal green, Club lasers (three fans sweeping slowly through haze, spot lights in a fog volume). A
+  Night sea style on the engine's water is built and held out of the rotation until the water draws at night without a
+  procedural sky. The rivers, notes and gates never fade; every coming note rides in a dark pocket, and a style with a
+  backdrop lays a dark road under each river. **Visual style** in Settings: all styles or one. Debug request
+  `style <name|index>|auto|next|cut|readctl|tour`.
+- **beatsync**: no regular flicker on a run of eighths: a run on one river draws at 60%, and each river keeps its own
+  judgement word under its gate instead of one word hopping from gate to gate on every hit (Test Groove on Hard read
+  0.029 against the 0.02 bound).
+- New gate: tests/beatsync-styles.mjs (every style shown, a still and motion frames saved for review; the notes at least
+  3:1 against their river in every style; romdev's flash check through every fade; controls: no roads or pockets with
+  dim notes, every change a one-frame cut).
+- Every game on cartwheel-engine 0.60.0 (Settings rows of the game's own).
+
 ## 0.42.0
 
 - **beatsync**: the shoulders change the tempo while a song plays: L slower, R faster, 5% a press from 70% to 130%,

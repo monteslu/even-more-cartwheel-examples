@@ -5,6 +5,7 @@
 // pixels under luma 14), carry lit characters (at least 3% of the pixels, at most 40%) drawn as strokes (at most 15%
 // of the bright pixels inside a fully lit 9 x 9 box: characters are lines, not filled shapes), and the character grid
 // must cover the frame.
+// The game's style is held at the neon characters (`style neon`; tests/beatsync-styles.mjs checks every style).
 // The CONTROL must fail: the same frame with the pass off (the `ascii off` request) is the plain picture of filled
 // shapes, which the same measure must reject.
 //   node tests/beatsync-look.mjs [--gpu gl|webgpu|both]
@@ -48,6 +49,7 @@ function stats(path) {
 async function run(gpu, off) {
   const r = await openBeatsync('beatsync_auto', { gpu, tag: off ? 'look-control' : 'look' });
   try {
+    await r.command('style neon'); // the neon characters (src/styles.c): the look this gate is about, held
     if (off) await r.command('ascii off');
     await r.stepTo(AT);
     const path = join(OUT, `${gpu}-${off ? 'off' : 'on'}.png`);

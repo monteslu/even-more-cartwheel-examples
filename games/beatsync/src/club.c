@@ -85,6 +85,12 @@ static const pal PALS[6] = {
 static struct {
   t3_object *root;
   t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *flare, *shards, *rings, *land, *caps, *crests, *sky, *band, *debris;
+  t3_instanced_mesh *ridge, *plate, *pocket; /* the styles' (src/styles.c): a line along the land's tops, the dark road under each river */
+  t3_material *plate_mat, *land_mat;
+  club_style sa, sb; /* the style fading out and the one fading in (club_set_style) */
+  float st;          /* how far from sa to sb, 0..1 */
+  bool styled;
+  pal sec;           /* the section's palette, eased (C.p is what is drawn: the section's under the styles') */
   cw_node camera;
   float zoom, spread, ahead;
   int place[SOLO_LANES]; /* the three-lane game's river each lane is drawn as: 0 left, 1 middle, 2 right (the layout gate swaps it) */
@@ -106,7 +112,7 @@ static struct {
   struct land_probe { float beat, height, hue, bands[3]; int stab; bool crest; } land_probe[LAND_ROWS];
   int land_n;
   int notescale; /* 0 the game; 1 flat, 2 reversed: the size gate's controls */
-  struct probe { uint8_t lane; float ahead, y, px, bright; } probe[PROBE_MAX];
+  struct probe { uint8_t lane; float ahead, x, y, px, bright; } probe[PROBE_MAX];
   int probe_n;
   bool built;
 } C;
@@ -139,6 +145,14 @@ static float note_size(float s) {
 }
 
 static t3_material *unlit(void) { return t3_mesh_basic_material_new(0xffffff); }
+/* light that only adds (a burst's ring, a flare): drawn over what is behind it, never as a dark shape in front of it
+ * (a fading ring drawn opaque was a black ring over the river in the plain picture) */
+static t3_instanced_mesh *glowing(t3_instanced_mesh *im) {
+  t3_material *m = im->mesh.materials[0];
+  m->blending = T3_ADDITIVE_BLENDING, m->transparent = true, m->depth_write = false;
+  m->version++;
+  return im;
+}
 
 static void set_inst(t3_instanced_mesh *im, int i, t3_vec3 p, float rot, t3_vec3 s) {
   t3_mat4 m;
@@ -230,15 +244,31 @@ void club_build(void) {
   C.ticks = instanced(t3_plane_geometry_new(1.0f, 0.1f, 1, 1), TICKS * LANES);
   C.front = instanced(t3_plane_geometry_new(1.0f, 0.2f, 1, 1), LANES);
   C.gates = instanced(t3_plane_geometry_new(1.0f, 0.34f, 1, 1), LANES);
-  C.flare = instanced(t3_circle_geometry_new(1.0f, 32), LANES);
-  C.shards = instanced(t3_plane_geometry_new(0.42f, 0.42f, 1, 1), SHARDS);
-  C.rings = instanced(t3_ring_geometry_new(0.72f, 1.0f, 64, 1), RINGS);
+  C.flare = glowing(instanced(t3_circle_geometry_new(1.0f, 32), LANES));
+  C.shards = glowing(instanced(t3_plane_geometry_new(0.42f, 0.42f, 1, 1), SHARDS));
+  C.rings = glowing(instanced(t3_ring_geometry_new(0.72f, 1.0f, 64, 1), RINGS));
   C.land = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS);
-  C.caps = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS);
-  C.crests = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * LAND_SPANS);
-  C.sky = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), 1);
-  C.band = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LANES);
-  C.debris = instanced(t3_plane_geometry_new(0.8f, 0.8f, 1, 1), DEBRIS);
+  C.caps = glowing(instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS));
+  C.crests = glowing(instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * LAND_SPANS));
+  C.sky = glowing(instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), 1));
+  C.band = glowing(instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LANES));
+  C.debris = glowing(instanced(t3_plane_geometry_new(0.8f, 0.8f, 1, 1), DEBRIS));
+  /* each pending note's pocket: a dark disc a little larger than the note, under it, clearing the current round it so
+   * the note reads against black (club_style.pocket) */
+  C.pocket = instanced(t3_circle_geometry_new(1.0f, 40), MAX_NOTES_SHOWN * LANES);
+  C.ridge = glowing(instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), LAND_ROWS * 2 * LAND_COLS));
+  /* the land is see-through for the styles that show a backdrop through it (club_style.land_alpha): drawn without
+   * depth, its rows far to near (each row's instances in order, the farthest row first), so a nearer row covers a
+   * farther one as it did with depth */
+  C.land_mat = C.land->mesh.materials[0];
+  C.land_mat->transparent = true, C.land_mat->depth_write = false, C.land_mat->opacity = 1, C.land_mat->version++;
+  /* the road: dark glass under each river, in front of a backdrop (it writes depth, so a backdrop's particles stay
+   * out of it), drawn only while a style asks for it */
+  C.plate = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), BANK_SEGS * LANES);
+  C.plate_mat = C.plate->mesh.materials[0];
+  C.plate_mat->transparent = true, C.plate_mat->opacity = 0, C.plate_mat->version++;
+  T3_OBJ(C.plate)->visible = false;
+  T3_OBJ(C.plate)->render_order = -1;
   for (int i = 0; i < DEBRIS; i++) C.bit[i].born = -1e9f;
   for (int i = 0; i < FLOW; i++) {
     C.flow_u[i] = -0.42f + 0.84f * hf(i, 21);
@@ -249,6 +279,7 @@ void club_build(void) {
   for (int i = 0; i < RINGS; i++) C.ring[i].born = -1e9f;
   for (int l = 0; l < LANES; l++) C.p.lane[l] = even(PALS[SEC_INTRO].lane[l]);
   C.p.bg = even(PALS[SEC_INTRO].bg);
+  C.sec = C.p;
   C.sky_col = (t3_color){ 0, 0, 0 };
 }
 
@@ -273,6 +304,25 @@ static section_kind section_at(const song *s, double ms) {
   for (int i = 0; s && i < s->sections; i++)
     if (s->section[i].ms <= ms) k = s->section[i].kind;
   return k;
+}
+
+/* ── the styles (src/styles.c): what each asks of the picture, between the one fading out and the one fading in ── */
+#define sty(f) (C.styled ? C.sa.f + (C.sb.f - C.sa.f) * C.st : (float)NEUTRAL.f)
+static const club_style NEUTRAL = { .land_body = 1, .land_alpha = 1, .sky = 1, .burst = 1, .flow = 1, .note_light = 1, .pocket = 0 };
+static t3_color style_lane(const club_style *x, int l) {
+  if (!C.styled || x->pal <= 0) return C.sec.lane[l];
+  t3_color c = even((t3_color){ x->lane[l][0], x->lane[l][1], x->lane[l][2] });
+  return mix(C.sec.lane[l], c, x->pal);
+}
+static t3_color style_land1(const club_style *x, t3_color c) {
+  if (x->land_tint <= 0) return c;
+  return mix(c, even((t3_color){ x->land_rgb[0], x->land_rgb[1], x->land_rgb[2] }), x->land_tint);
+}
+static t3_color style_land(t3_color c) { return C.styled ? mix(style_land1(&C.sa, c), style_land1(&C.sb, c), C.st) : c; }
+static float note_gain = 1;
+void club_set_note_gain(float k) { note_gain = k; }
+void club_set_style(const club_style *a, const club_style *b, float t) {
+  C.sa = *a, C.sb = *b, C.st = fminf(1, fmaxf(0, t)), C.styled = true;
 }
 
 /* the land (see the top of this file): rows every half beat from below the gate to the far end, riding down with the
@@ -310,8 +360,9 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
      * a sawtooth at the half beat */
     float in = fminf(1, (C.ahead - d) / 0.8f);
     float fade = show ? in * haze(s, 0.4f) * dim : 0;
-    t3_color col_c = even(hsv(hue, 0.45f + 0.5f * ton, 1));
+    t3_color col_c = style_land(even(hsv(hue, 0.45f + 0.5f * ton, 1)));
     float light = 0.5f * (0.5f + 0.35f * br) * (0.5f + 0.5f * h) * fade; /* under the rivers' light: they stay what the eye follows */
+    float body = sty(land_body), ridge = sty(ridge), capk = fmaxf(sty(land_alpha), ridge) * fminf(1, body * 1.6f);
     uint32_t row = (uint32_t)(int32_t)lroundf(rb * 2 + 100000);
     float zr = -0.3f - 0.02f * d; /* a nearer row in front of a farther one */
     /* the row's stretches of land: the width out to the edges, less the roads (each shown river and a margin, a gap
@@ -343,7 +394,7 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
       int n = k == ns - 1 ? 2 * LAND_COLS - col : (int)lroundf(2.0f * LAND_COLS * w / total);
       float cwk = w / (float)CW_MAX(n, 1);
       for (int j = 0; j < n && col < 2 * LAND_COLS; j++, col++) {
-        int idx = r * 2 * LAND_COLS + col;
+        int idx = r * 2 * LAND_COLS + col, li = (LAND_ROWS - 1 - r) * 2 * LAND_COLS + col; /* li: the land's own order, far first */
         float X = a + cwk * ((float)j + 0.5f);
         /* u: 0 beside a road, 1 farthest from one (the screen's edge, or the middle between two roads) */
         float u = leftEdge ? (b - X) / w : rightEdge ? (X - a) / w : 1 - fabsf(X - (a + b) * 0.5f) / (w * 0.5f);
@@ -354,25 +405,35 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
          * would be a regular flicker near 4 Hz; a column keeps its roughness and its height follows the music smoothly */
         float rough = 0.7f + 0.6f * hf(7u, (uint32_t)col);
         float H = s * fminf(3.4f, 0.4f + 2.4f * (0.4f + 0.6f * h) * powf(bv, 0.8f) * rough * (0.3f + 1.0f * u));
-        set_inst(C.land, idx, (t3_vec3){ X, (yb + y0 + H) * 0.5f, zr }, 0, (t3_vec3){ cwk * 0.86f, y0 + H - yb, 1 });
-        t3_instanced_mesh_set_color_at(C.land, idx, scale(col_c, light * (0.9f + 0.1f * fminf(1.5f, bv)) * (0.55f + 0.45f * u)));
+        set_inst(C.land, li, (t3_vec3){ X, (yb + y0 + H) * 0.5f, zr }, 0, (t3_vec3){ cwk * 0.86f, y0 + H - yb, 1 });
+        t3_instanced_mesh_set_color_at(C.land, li, scale(col_c, body * light * (0.9f + 0.1f * fminf(1.5f, bv)) * (0.55f + 0.45f * u)));
+        /* a style's ridge: the column's top as a line of the land's colour (the land as a lit skyline) */
+        /* near the gates the rows pass fastest (one a half beat): a ridge there would be a regular flicker, so it
+         * fades out over the last two beats before the gate */
+        float near = fminf(1, fmaxf(0, (d - 0.5f) / 2.0f));
+        if (ridge > 0.003f && near > 0) {
+          float th = fmaxf(0.05f, 0.14f * s);
+          set_inst(C.ridge, idx, (t3_vec3){ X, y0 + H - th * 0.5f, zr + 0.005f }, 0, (t3_vec3){ cwk * 0.86f, th, 1 });
+          t3_instanced_mesh_set_color_at(C.ridge, idx, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.2f), ridge * fade * (0.6f + 0.4f * fminf(1, h + 0.3f)) * near));
+        } else hide(C.ridge, idx);
         /* a stab: lights on the ridge, more for a stronger one */
         if (stab && hf(row + (uint32_t)stab * 7919u, (uint32_t)col) < 0.12f + 0.06f * (float)stab) {
           float cs = cwk * 0.8f;
           set_inst(C.caps, idx, (t3_vec3){ X, y0 + H + cs * 0.5f, zr + 0.01f }, 0, (t3_vec3){ cs, cs, 1 });
-          t3_instanced_mesh_set_color_at(C.caps, idx, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.35f), (0.16f + 0.03f * (float)stab) * fade));
+          t3_instanced_mesh_set_color_at(C.caps, idx, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.35f), (0.16f + 0.03f * (float)stab) * fade * capk));
         } else hide(C.caps, idx);
       }
       /* the harmony moves on this row: a crest of light along each stretch in the new colour */
       int ci = r * LAND_SPANS + k;
       if (crest) {
         set_inst(C.crests, ci, (t3_vec3){ (a + b) * 0.5f, y0, zr + 0.02f }, 0, (t3_vec3){ w, 0.16f * s, 1 });
-        t3_instanced_mesh_set_color_at(C.crests, ci, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.3f), 0.7f * fade));
+        t3_instanced_mesh_set_color_at(C.crests, ci, scale(mix(col_c, (t3_color){ 1, 1, 1 }, 0.3f), 0.7f * fade * capk));
       } else hide(C.crests, ci);
     }
     for (int k = show ? ns : 0; k < LAND_SPANS; k++) hide(C.crests, r * LAND_SPANS + k);
-    for (; col < 2 * LAND_COLS; col++) hide(C.land, r * 2 * LAND_COLS + col), hide(C.caps, r * 2 * LAND_COLS + col);
+    for (; col < 2 * LAND_COLS; col++) hide(C.land, (LAND_ROWS - 1 - r) * 2 * LAND_COLS + col), hide(C.caps, r * 2 * LAND_COLS + col), hide(C.ridge, r * 2 * LAND_COLS + col);
   }
+  changed(C.ridge);
   changed(C.land);
   changed(C.caps);
   changed(C.crests);
@@ -380,7 +441,7 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
   float h, hue, br, ton;
   song_look_at(v->s, beat, &h, &hue, &br, &ton);
   if (C.land_mode == 1) hue = 220, ton = 0.4f;
-  t3_color want = scale(even(hsv(hue, 0.45f + 0.5f * ton, 1)), on * dim * (0.06f + 0.06f * h));
+  t3_color want = scale(style_land(even(hsv(hue, 0.45f + 0.5f * ton, 1))), on * dim * (0.06f + 0.06f * h) * sty(sky));
   C.sky_col = mix(C.sky_col, want, 0.08f);
   set_inst(C.sky, 0, (t3_vec3){ 0, TOP_Y + 1.5f, -4 }, 0, (t3_vec3){ 34, 2.6f, 1 });
   t3_instanced_mesh_set_color_at(C.sky, 0, C.sky_col);
@@ -453,9 +514,20 @@ void club_update(const club_view *v) {
   section_kind sec = section_at(v->s, now);
   const pal *want = &PALS[sec];
   float k = fminf(1, dt * 1000.0f / (beat_ms * 4) * 3);
-  for (int l = 0; l < LANES; l++) C.p.lane[l] = mix(C.p.lane[l], even(want->lane[l]), k);
-  C.p.bg = mix(C.p.bg, even(want->bg), k);
+  for (int l = 0; l < LANES; l++) C.sec.lane[l] = mix(C.sec.lane[l], even(want->lane[l]), k);
+  C.sec.bg = mix(C.sec.bg, even(want->bg), k);
+  /* the styles' palettes over the section's (a style with its own lanes holds them through every section) */
+  for (int l = 0; l < LANES; l++) C.p.lane[l] = mix(style_lane(&C.sa, l), style_lane(&C.sb, l), C.st);
+  C.p.bg = C.sec.bg;
 
+  {
+    float la = fminf(1, fmaxf(0, sty(land_alpha)));
+    if (C.land_mat->opacity != la) C.land_mat->opacity = la, C.land_mat->version++;
+    T3_OBJ(C.land)->visible = la > 0.002f;
+    float pl = sty(plate);
+    T3_OBJ(C.plate)->visible = pl > 0.002f;
+    if (C.plate_mat->opacity != pl) C.plate_mat->opacity = pl, C.plate_mat->version++;
+  }
   float span = C.ahead + PAST; /* the current runs from the far end to below the gate */
   for (int l = 0; l < LANES; l++) {
     const float ldim = dim * C.on[l]; /* a river fading in or out with the layout (0: not shown) */
@@ -469,7 +541,7 @@ void club_update(const club_view *v) {
     }
     /* a river plays at full strength while it is hit, dimmed to dots while it is missed out (the streak shows on the
      * banks, which stay still: brightening the moving current with it made dense eighths flicker at the half beat) */
-    float lv = (0.3f + 0.7f * v->level[l]) * ldim, fl = v->flare[l];
+    float lv = (0.3f + 0.7f * v->level[l]) * ldim, fl = v->flare[l] * sty(burst);
 
     /* the current: streaks riding down at the notes' speed, a gentle sway across; a hit surges the water round the
      * gate (brighter and a little wider), swelling with the flare and fading with it */
@@ -479,7 +551,7 @@ void club_update(const club_view *v) {
       float near_gate = expf(-fabsf(d) * 1.8f), surge = 1 + 2.4f * fl * near_gate;
       u *= 1 + 0.25f * fl * near_gate;
       float s = persp(d), in = fminf(1, (C.ahead - d) / 0.6f), out = d < 0 ? fmaxf(0, 1 + d / PAST) : 1;
-      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out * haze(s, 0.3f);
+      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out * haze(s, 0.3f) * sty(flow);
       set_inst(C.flow, l * FLOW + i, on_river(l, d, u, -0.2f), 0, (t3_vec3){ C.flow_len[i] * s, s, 1 });
       t3_instanced_mesh_set_color_at(C.flow, l * FLOW + i, scale(C.p.lane[l], b));
     }
@@ -511,6 +583,17 @@ void club_update(const club_view *v) {
         t3_instanced_mesh_set_color_at(C.banks, idx, scale(bc, bl));
       }
 
+    /* the road under the river (a style's): dark glass from the far end to below the gate, a little wider than the
+     * banks, so the notes and the current read against it whatever the backdrop behind */
+    for (int j = 0; j < BANK_SEGS; j++) {
+      int idx = l * BANK_SEGS + j;
+      if (!T3_OBJ(C.plate)->visible) { hide(C.plate, idx); continue; }
+      float d0 = C.ahead - span * (float)j / BANK_SEGS, d1 = C.ahead - span * (float)(j + 1) / BANK_SEGS, dm = 0.5f * (d0 + d1);
+      t3_vec3 a = on_river(l, d0, 0, -0.25f), b2 = on_river(l, d1, 0, -0.25f);
+      float dx = b2.x - a.x, dy = b2.y - a.y, len = sqrtf(dx * dx + dy * dy);
+      set_inst(C.plate, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.25f }, -atan2f(dx, dy), (t3_vec3){ RIVER_W * 1.08f * persp(dm) * C.spread * C.on[l], len * 1.02f, 1 }); /* edges under the banks (each segment is a rectangle) */
+    }
+
     /* the beat lines: across the river on every beat, brighter on the bar's first, riding down with the notes */
     int down = v->s ? v->s->downbeat : 0;
     float b0 = floorf(beat);
@@ -533,15 +616,19 @@ void club_update(const club_view *v) {
 
     /* the gate: a bar across the river at the hit line, lit while the river plays; it blooms on a hit and a press
      * lifts it a little; behind it the flare, a soft glow that swells and fades */
-    float pr = v->press[l];
+    float pr = v->press[l] * sty(burst);
     t3_vec3 g = on_river(l, 0, 0, 0.06f);
     set_inst(C.gates, l, g, 0, (t3_vec3){ (RIVER_W + 0.5f) * (1 + 0.08f * fl), 1 + 0.5f * fl + 0.2f * pr, 1 });
+    /* the `rivers hidden draw` control: a river not shown drawn dark over where it rests, as 0.36.0's first build's
+     * dark flare did (the flare is light that adds now, so the gate bar stands in for it, in front, flare-sized) */
+    if (C.hidden_draw && C.on[l] < 0.01f) set_inst(C.gates, l, (t3_vec3){ g.x, g.y, 0.3f }, 0, (t3_vec3){ 1.7f * 1.4f * 2, 0.8f * 1.4f * 2 / 0.34f, 1 });
     t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * ldim + 0.55f * fl * ldim));
     float fs = 0.6f + 1.0f * fl + 0.15f * pr;
     set_inst(C.flare, l, (t3_vec3){ g.x, g.y, 0.04f }, 0, (t3_vec3){ fs * 1.7f, fs * 0.8f, 1 });
-    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * ldim));
+    t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * ldim * sty(burst)));
   }
   changed(C.flow);
+  changed(C.plate);
   changed(C.banks);
   changed(C.ticks);
   changed(C.front);
@@ -553,7 +640,7 @@ void club_update(const club_view *v) {
    * near the gate: their light there grows only with their size, so a run of notes riding down is a steady light,
    * never a burst on each beat (the flash check's regular-flicker bound); a played note opens out at the gate and
    * fades, a missed one greys and drifts on down */
-  int cnt[LANES] = { 0 };
+  int cnt[LANES] = { 0 }, npk = 0;
   C.probe_n = 0;
   for (int i = 0; v->notes && i < v->count; i++) {
     float nb = song_beat_at(v->s, (float)v->notes[i].ms), ahead = nb - beat;
@@ -574,6 +661,17 @@ void club_update(const club_view *v) {
     if (v->notes[i].lane == LANE_CLAP && v->layout != CLUB_SOLO) nb0 *= 0.5f;
     if (v->notes[i].lane == LANE_BASS && v->layout != CLUB_SOLO) nb0 *= 0.6f;  /* the groove's Hard bass runs in sixteenths */
     if (v->notes[i].lane == LANE_SYNTH) nb0 *= 0.7f;
+    /* a run of eighths on one river (Hard's claps in a busy stretch) passes each point of it four times a second: drawn
+     * at 60% so the run is a steady light, not a regular flicker over the 0.02 bound (it read 0.029 on Test Groove's
+     * second half) */
+    {
+      float gap = 1e9f;
+      for (int k = i - 1; k >= 0 && k >= i - 12; k--)
+        if (v->notes[k].lane == v->notes[i].lane) { gap = fminf(gap, nb - song_beat_at(v->s, (float)v->notes[k].ms)); break; }
+      for (int k = i + 1; k < v->count && k <= i + 12; k++)
+        if (v->notes[k].lane == v->notes[i].lane) { gap = fminf(gap, song_beat_at(v->s, (float)v->notes[k].ms) - nb); break; }
+      if (gap < 0.6f) nb0 *= 0.6f;
+    }
     float d = ahead, s = persp(ahead), far = fminf(1, fmaxf(0, (1 - s) / (1 - FAR)));
     float size = note_size(s), bright = nb0 * (1 + NB_FAR * far) * in;
     if (st == NOTE_MISSED) bright = 0.3f * fmaxf(0, 1 + ahead / PAST), size = note_size(s) * 0.8f;
@@ -584,17 +682,24 @@ void club_update(const club_view *v) {
     if (st == NOTE_PENDING && C.probe_n < PROBE_MAX) { /* what the size gate reads: where the note is and how big */
       float cx, cy, k = 1080.0f * 0.5f / VIEW_HALF_H * (C.zoom > 0 ? C.zoom : 1);
       to_canvas(on_river(l, d, 0, 0), 1920, 1080, &cx, &cy);
-      C.probe[C.probe_n++] = (struct probe){ (uint8_t)l, ahead, cy, size * NOTE_W[l] * k, bright };
+      C.probe[C.probe_n++] = (struct probe){ (uint8_t)l, ahead, cx, cy, size * NOTE_W[l] * k, bright };
     }
-    bright *= C.on[l];
+    bright *= C.on[l] * note_gain * sty(note_light);
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
     set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });
     t3_instanced_mesh_set_color_at(C.notes[l], cnt[l]++, c);
+    float pk = sty(pocket) * in * C.on[l];
+    if (st == NOTE_PENDING && pk > 0.01f && npk < MAX_NOTES_SHOWN * LANES) {
+      float rx = 0.5f * NOTE_W[l] * size * 1.45f * pk, ry = l == LANE_BASS ? 0.33f * size * 1.9f * pk : rx;
+      set_inst(C.pocket, npk++, on_river(l, d, 0, 0.04f), 0, (t3_vec3){ rx, ry, 1 });
+    }
   }
   for (int l = 0; l < LANES; l++) {
     C.notes[l]->count = cnt[l];
     changed(C.notes[l]);
   }
+  C.pocket->count = npk;
+  changed(C.pocket);
 
   /* the player's hits: a burst at the gate in the river's colour, shards thrown out (up and to the sides, falling a
    * little) and a ring opening out; a Perfect throws more, faster and further, its ring wider and whiter. Each swells
@@ -624,7 +729,7 @@ void club_update(const club_view *v) {
     float sz = C.shard[i].size * (1 - 0.5f * age / 0.55f);
     set_inst(C.shards, i, (t3_vec3){ x, y, 0.14f }, age * 5 + (float)i, (t3_vec3){ sz, sz, 1 });
     t3_color c = mix(C.p.lane[C.shard[i].lane], (t3_color){ 1, 1, 1 }, C.shard[i].perfect ? 0.4f : 0.15f);
-    t3_instanced_mesh_set_color_at(C.shards, i, scale(c, 1.9f * env * dim));
+    t3_instanced_mesh_set_color_at(C.shards, i, scale(c, 1.9f * env * dim * sty(burst)));
   }
   changed(C.shards);
   for (int i = 0; i < RINGS; i++) {
@@ -634,7 +739,7 @@ void club_update(const club_view *v) {
     float env = fminf(1, age / 0.04f) * (1 - u) * (1 - u);
     set_inst(C.rings, i, (t3_vec3){ C.ring[i].x, C.ring[i].y, 0.12f }, 0, (t3_vec3){ r, r * 0.55f, 1 });
     t3_color c = mix(C.p.lane[C.ring[i].lane], (t3_color){ 1, 1, 1 }, C.ring[i].perfect ? 0.45f : 0.1f);
-    t3_instanced_mesh_set_color_at(C.rings, i, scale(c, 1.3f * env * dim));
+    t3_instanced_mesh_set_color_at(C.rings, i, scale(c, 1.3f * env * dim * sty(burst)));
   }
   changed(C.rings);
 
@@ -690,7 +795,7 @@ static void cmd_notes(int argc, const char **argv, cw_reply *r) {
   to_canvas(on_river(0, 0, 0, 0), 1920, 1080, &gx, &gy);
   cw_reply_printf(r, "{\"notescale\":%d,\"ahead\":%.3f,\"gate_y\":%.1f,\"notes\":[", C.notescale, C.ahead, gy);
   for (int i = 0; i < C.probe_n; i++)
-    cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"y\":%.1f,\"px\":%.2f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].y, C.probe[i].px, C.probe[i].bright);
+    cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"x\":%.1f,\"y\":%.1f,\"px\":%.2f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].x, C.probe[i].y, C.probe[i].px, C.probe[i].bright);
   cw_reply_printf(r, "]}");
 }
 static void cmd_notescale(int argc, const char **argv, cw_reply *r) {

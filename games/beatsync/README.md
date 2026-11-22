@@ -1,8 +1,8 @@
 # beatsync
 
 A house-music rhythm game on three buttons. You are the rhythm section of an instrumental house track: play the kick,
-the clap and the bass, and the song plays the way you play it. Every frame is a step sequencer drawn in neon
-characters.
+the clap and the bass, and the song plays the way you play it. Every frame is a step sequencer, drawn in
+neon characters, fire, a synthwave grid or lasers, the style changing with the music.
 
 - **Three buttons, one thumb**: the kick, the clap and the bass on the three lower face buttons (left, bottom,
   right). Never two notes at once. In a cart the host's on-screen pad shows those three buttons on a phone; a native
@@ -35,6 +35,12 @@ characters.
   multiplier sits under the middle gate; the streak charges the banks from the gates to the horizon at x4, each step
   sends a band up the rivers, and a broken streak drains back down in red. Each section has its palette. Easy shows eight beats of each river, Medium 6.4, Hard
   5.2 (twice what they showed before, with the notes' last beat as fast as it was), so Easy is the slowest to read.
+- **Styles that change with the music**: the song is drawn in a style that changes at phrase boundaries (every 8 bars)
+  and at drops, faded over a beat or two: the neon characters, a clean picture of the same land with its tops lit, a
+  wall of fire with embers and heat haze, a synthwave grid under a striped sun, terminal green, and club lasers
+  sweeping slowly through haze. The rivers, notes and gates never fade, and every style with a backdrop lays a dark road
+  under each river, so the notes read over anything. Each song starts in the characters and keeps its own order of
+  styles. **Visual style** in Settings picks all styles or one (`docs/DESIGN.md`, "Styles").
 - **No waiting**: play starts 8 beats before the level's first note, and the charts leave no long holes; if a wait of
   more than three bars remains, the banks fill as it passes and a countdown says when the notes come back. The ASCII pass is Detexto's.
 - **Songs**: six built in (`songs/<id>/`: four sample-aligned Ogg Vorbis stems and their charts), from a short
@@ -96,6 +102,7 @@ each has a control that must fail:
 | `tests/beatsync-land.mjs` | every land row drawn is the song's analysis of the other track for its half beat, the land changes with the music and the picture follows it | the land off (`land off`); one flat land (`land flat`) |
 | `tests/beatsync-streak.mjs` | the same deterministic run with and without the streak's picture: the banks' charge shows and reaches the far end at a streak of 50, a break drains in red | the run without the streak's picture against itself |
 | `tests/beatsync-duo.mjs` | the autopilot plays Test Groove as two players (drums and groove at two difficulties, and swapped) and as one player on each pair, every note hit and each player's notes exactly their pair's chart; two pads reach two-player play through the menus; pad 2 alone hits player 2's notes and none of player 1's; every river each layout shows (three lanes, each pair, two players) is lit over its gate in the picture; player 2's miss breaks only player 2's streak | the counts held to the difficulties swapped; only one player ready; each player on the other's pad (`padswap 1`); a hidden river drawn dark where it rests (`rivers hidden draw`); one shared streak (`sharedstreak 1`) |
+| `tests/beatsync-styles.mjs` | every style shows as it says (its backdrop, the characters on or off; a still and three frames of motion saved to `out/beatsync-styles/<gpu>/` for review); in every style the notes stand at least 3:1 (WCAG's contrast for graphics) against their river; a run through every fade (a drop's one-beat fade included) passes romdev's flash check (WCAG 2.3.1, Harding, regular flicker under 0.02, no two-frame rise of a sixth of the screen over 0.2) and the fades' flash meter reads at most 3 a second | fire with no roads or pockets and dim notes (`style readctl 1`); every change a one-frame cut (`style cut 1`) |
 | `node tests/gate.mjs --gates-file beatsync-gates.json --hosts romdev` | the autopilot plays Test Groove on Hard to the results with every note Perfect, and the menus reach play from the pad, the same state on GL and WebGPU | each run cut short |
 
 The flash sweep (`tests/flash-sweep.mjs beatsync-hard`) holds a stretch of Acid House Rave on Hard to the same rules.

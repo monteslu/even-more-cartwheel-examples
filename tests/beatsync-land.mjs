@@ -47,6 +47,7 @@ function landLit(path) {
 async function sample(gpu, mode) {
   const r = await openBeatsync('beatsync_auto', { gpu, tag: `land-${mode}` });
   try {
+    await r.command('style neon'); // the land as the neon characters draw it (src/styles.c; some styles hide it for a backdrop)
     if (mode !== 'game') await r.command(`land ${mode}`);
     await r.command(`song ${SONG} hard`);
     const base = r.now(), out = [];

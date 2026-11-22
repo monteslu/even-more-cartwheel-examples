@@ -2,3 +2,5 @@ project.cwproj
 main.cwscene
 fonts/FiraMono-Regular.ttf
 fonts/FiraMono-OFL.txt
+fx/fire.png
+fx/fire_mv.png

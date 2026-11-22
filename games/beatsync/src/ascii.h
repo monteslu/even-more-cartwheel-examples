@@ -25,6 +25,12 @@ void ascii_init(cw_tree *tree);
 /* On or off (off: the plain 3D picture, the control the gates compare with). */
 void ascii_set_enabled(bool on);
 bool ascii_enabled(void);
+/* The style's share of the characters (src/styles.c): 1 all characters, 0 the plain scene, between the two mixed (the
+ * scene shows through and the characters fade). prepare: a fade out of the characters is coming, so the scene renders
+ * at the output's size already (it does from a beat before, so the fade starts from the same characters). The
+ * `ascii on|off` request overrides it until `ascii style`. */
+void ascii_set_mix(float k, bool prepare);
+float ascii_mix(void);
 /* a tuning value (Detexto's names: ASCII_ROWS, ASCII_GLOW, SCENE_SCALE, HUD_BOX_ALPHA, ...): the game's own setting,
  * else def. ascii_tune_set changes one (the `ascii set NAME VALUE` debug request does the same). */
 float ascii_tune(const char *name, float def);

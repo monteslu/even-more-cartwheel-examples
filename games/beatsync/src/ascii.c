@@ -30,6 +30,9 @@ static const char SHAPES[] = ".,:;'`\"-_=+*^~|/\\()[]{}<>!?lLJT7YVvo";
 static struct {
   cw_tree *tree;
   bool on, ready;
+  float mix;     /* the style's share of the characters, 0..1 (src/styles.c fades it); the scene shows through the rest */
+  int forced;    /* the `ascii on|off` request: 1 on, 0 off, -1 the style decides */
+  bool prepare;  /* a fade out of the characters is coming: the scene renders at the output's size already */
   unsigned char *ttf;
   stbtt_fontinfo font;
   float aspect;          /* advance / line height */
@@ -47,6 +50,7 @@ static struct {
   int frame;
   /* debug fields */
   int dbg_cols, dbg_rows, dbg_cw, dbg_ch, dbg_on, dbg_boxes;
+  float dbg_mix;
   /* the HUD boxes the pass keeps black (fractions of the frame, top left origin: x0, y0, x1, y1) */
   float mask[MAXMASK][4];
   int nmask;
@@ -83,7 +87,8 @@ static void cmd_ascii(int argc, const char **argv, cw_reply *r) {
   if (argc >= 4 && !strcmp(argv[1], "set")) ascii_tune_set(argv[2], (float)atof(argv[3]));
   else if (argc >= 2 && !strcmp(argv[1], "off")) ascii_set_enabled(false);
   else if (argc >= 2 && !strcmp(argv[1], "on")) ascii_set_enabled(true);
-  else if (argc >= 2) { cw_reply_error(r, "usage: ascii set NAME VALUE | ascii on | ascii off"); return; }
+  else if (argc >= 2 && !strcmp(argv[1], "style")) A.forced = -1, ascii_set_mix(A.mix, A.prepare);
+  else if (argc >= 2) { cw_reply_error(r, "usage: ascii set NAME VALUE | ascii on | ascii off | ascii style"); return; }
   cw_reply_printf(r, "{\"on\":%d,\"rows\":%d,\"cols\":%d}", A.on ? 1 : 0, A.rows, A.cols);
 }
 
@@ -184,7 +189,7 @@ static void make_atlas(int cw, int ch) {
 
 static const char *CELLS_GLSL_HEAD =
     "uniform sampler2D u_src; uniform sampler2D u_depth; uniform sampler2D u_gv; uniform sampler2D u_prev;\n"
-    "uniform vec4 u_cell; uniform vec4 u_lin; uniform vec4 u_par; uniform vec4 u_col; uniform vec4 u_ext; uniform vec4 u_ex2;\n"
+    "uniform vec4 u_cell; uniform vec4 u_lin; uniform vec4 u_par; uniform vec4 u_col; uniform vec4 u_ext; uniform vec4 u_ex2; uniform vec4 u_ex3;\n"
     "uniform vec4 u_m0; uniform vec4 u_m1; uniform vec4 u_m2; uniform vec4 u_m3; uniform vec4 u_m4; uniform vec4 u_m5;\n"
     "uniform vec4 u_m6; uniform vec4 u_m7; uniform vec4 u_m8; uniform vec4 u_m9; uniform vec4 u_m10; uniform vec4 u_m11;\n"
     "uniform vec4 u_m12; uniform vec4 u_m13; uniform vec4 u_m14; uniform vec4 u_m15;\n"
@@ -224,7 +229,7 @@ static const char *CELLS_GLSL_HEAD =
     "    vec3 mx = t0; if (lum(t1) > lum(mx)) mx = t1; if (lum(t2) > lum(mx)) mx = t2; if (lum(t3) > lum(mx)) mx = t3;\n"
     "    s = mix(s, mx, u_ex2.z) * u_col.x; /* thin bright things (a lattice girder) keep their light */\n"
     "    float zz = ldepth(c); z[r] = zz;\n"
-    "    if (zz > 1e5) { s = vec3(0.0); far += 1.0; } else { zmax = max(zmax, zz); }\n"
+    "    if (zz > 1e5 && u_ex3.x > 0.5) { s = vec3(0.0); far += 1.0; } else if (zz <= 1e5) { zmax = max(zmax, zz); }\n"
     "    csum += s;\n"
     "    float l = lum(s); v[r] = l / (1.0 + l);\n"
     "  }\n"
@@ -270,7 +275,7 @@ static const char *CELLS_GLSL_HEAD =
     "}\n";
 
 static const char *CELLS_WGSL =
-    "struct U { u_cell: vec4f, u_lin: vec4f, u_par: vec4f, u_col: vec4f, u_ext: vec4f, u_ex2: vec4f,\n"
+    "struct U { u_cell: vec4f, u_lin: vec4f, u_par: vec4f, u_col: vec4f, u_ext: vec4f, u_ex2: vec4f, u_ex3: vec4f,\n"
     "  u_m0: vec4f, u_m1: vec4f, u_m2: vec4f, u_m3: vec4f, u_m4: vec4f, u_m5: vec4f, u_m6: vec4f, u_m7: vec4f,\n"
     "  u_m8: vec4f, u_m9: vec4f, u_m10: vec4f, u_m11: vec4f, u_m12: vec4f, u_m13: vec4f, u_m14: vec4f, u_m15: vec4f };\n"
     "@group(0) @binding(0) var<uniform> u: U;\n"
@@ -311,7 +316,7 @@ static const char *CELLS_WGSL =
     "    var mx = t0; if (lum(t1) > lum(mx)) { mx = t1; } if (lum(t2) > lum(mx)) { mx = t2; } if (lum(t3) > lum(mx)) { mx = t3; }\n"
     "    var s = mix((t0 + t1 + t2 + t3) * 0.25, mx, u.u_ex2.z) * u.u_col.x;\n"
     "    let zz = ldepth(c); z[r] = zz;\n"
-    "    if (zz > 1e5) { s = vec3f(0.0); far += 1.0; } else { zmax = max(zmax, zz); }\n"
+    "    if (zz > 1e5 && u.u_ex3.x > 0.5) { s = vec3f(0.0); far += 1.0; } else if (zz <= 1e5) { zmax = max(zmax, zz); }\n"
     "    csum += s;\n"
     "    let l = lum(s); v[r] = l / (1.0 + l);\n"
     "  }\n"
@@ -362,7 +367,7 @@ static const char *CELLS_WGSL =
  * of the character's own colour under it (the dim world gets none). u_cell: the cell's size in scene pixels, cols,
  * rows; u_glow: gain, the brightness a cell starts to glow at. */
 static const char *GLOW_GLSL =
-    "uniform sampler2D u_cells; uniform vec4 u_cell; uniform vec4 u_glow;\n"
+    "uniform sampler2D u_cells; uniform sampler2D u_src; uniform vec4 u_cell; uniform vec4 u_glow;\n"
     "out vec4 o;\n"
     "void main() {\n"
     "  vec2 q = gl_FragCoord.xy / u_cell.xy;\n"
@@ -374,13 +379,16 @@ static const char *GLOW_GLSL =
     "    float k = smoothstep(u_glow.y, 1.0, max(c.r, max(c.g, c.b)));\n"
     "    s += c * k * w; wsum += w;\n"
     "  }\n"
-    "  o = vec4(s / wsum * u_glow.x, 1.0);\n"
+    "  vec3 g = s / wsum * u_glow.x;\n"
+    "  vec3 sc = texelFetch(u_src, ivec2(gl_FragCoord.xy), 0).rgb;\n"
+    "  o = vec4(mix(sc, g, u_glow.z), 1.0);\n"
     "}\n";
 
 static const char *GLOW_WGSL =
     "struct U { u_cell: vec4f, u_glow: vec4f };\n"
     "@group(0) @binding(0) var<uniform> u: U;\n"
     "@group(0) @binding(1) var u_cells: texture_2d<f32>;\n"
+    "@group(0) @binding(2) var u_src: texture_2d<f32>;\n"
     "@fragment fn fs(@builtin(position) pos: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {\n"
     "  let q = cw_frag_coord(pos) / u.u_cell.xy;\n"
     "  var s = vec3f(0.0); var wsum = 0.0;\n"
@@ -391,7 +399,8 @@ static const char *GLOW_WGSL =
     "    let k = smoothstep(u.u_glow.y, 1.0, max(c.r, max(c.g, c.b)));\n"
     "    s += c * k * w; wsum += w;\n"
     "  } }\n"
-    "  return vec4f(s / wsum * u.u_glow.x, 1.0);\n"
+    "  let sc = textureLoad(u_src, vec2i(cw_frag_coord(pos)), 0).rgb;\n"
+    "  return vec4f(mix(sc, s / wsum * u.u_glow.x, u.u_glow.z), 1.0);\n"
     "}\n";
 
 /* The characters (OVERLAY, at the output's full size, added over the glowing picture): each pixel draws its cell's
@@ -408,7 +417,7 @@ static const char *TEXT_GLSL =
     "  int g = int(cell.a + 0.5);\n"
     "  ivec2 l = ivec2(p - c * u_cell.xy);\n"
     "  float cov = texelFetch(u_atlas, ivec2(g * int(u_cell.x) + l.x, l.y), 0).r;\n"
-    "  o = vec4(1.0 - exp(-cell.rgb * cov * u_out.x), 1.0);\n"
+    "  o = vec4((1.0 - exp(-cell.rgb * cov * u_out.x)) * u_out.y, 1.0);\n"
     "}\n";
 
 static const char *TEXT_WGSL =
@@ -424,12 +433,14 @@ static const char *TEXT_WGSL =
     "  let g = i32(cell.a + 0.5);\n"
     "  let l = vec2i(p - c * u.u_cell.xy);\n"
     "  let cov = textureLoad(u_atlas, vec2i(g * i32(u.u_cell.x) + l.x, l.y), 0).r;\n"
-    "  return vec4f(1.0 - exp(-cell.rgb * cov * u.u_out.x), 1.0);\n"
+    "  return vec4f((1.0 - exp(-cell.rgb * cov * u.u_out.x)) * u.u_out.y, 1.0);\n"
     "}\n";
 
 /* ── the passes ──────────────────────────────────────────────────────── */
 
 static float optf(const char *name, float def) { return ascii_tune(name, def); }
+/* the characters' share now: the request's on/off, else the style's */
+static float mix_now(void) { return A.forced >= 0 ? (float)A.forced : A.mix; }
 
 static bool ascii_active(const cw_pass_ctx *ctx, void *u) {
   (void)ctx, (void)u;
@@ -448,7 +459,9 @@ static void programs(void) {
 /* the scene's share of the output: the characters need only about two scene pixels a region, so the scene renders
  * at SCENE_SCALE of the output (cw_quality_scene_scale), the characters at the output's full size */
 static void apply_scene_scale(void) {
-  float s = A.on ? optf("SCENE_SCALE", 0.35f) : 0;
+  /* the scene at the characters' share only while nothing else of it shows: in a fade (and from a beat before one)
+   * the scene itself is seen, at the output's size (never scaled up) */
+  float s = A.on && mix_now() >= 0.999f && !A.prepare ? optf("SCENE_SCALE", 0.35f) : 0;
   if (s != A.scene_scale) A.scene_scale = s, cw_quality_scene_scale(s);
 }
 
@@ -499,6 +512,9 @@ static void cells_exec(cw_pass_ctx *ctx, void *u) {
   int nm = opt_on("ASCII_NO_HUD_BOXES") ? 0 : A.nmask;
   cw_pass_uniform4f(A.prog_cells, "u_ext", (float)nm, optf("ASCII_FLAT", 0.45f), (float)RAMP_N, optf("ASCII_RAMP_GAIN", 1.0f));
   cw_pass_uniform4f(A.prog_cells, "u_ex2", optf("ASCII_FLAT_BRIGHT", 0.75f), optf("ASCII_WORLD_BRIGHT", 0.3f), optf("ASCII_PEAK", 0.5f), optf("ASCII_UNDER_BOX", 0.5f));
+  /* Detexto's sky (nothing drawn) is blacked out by its depth; beatsync's background is black already, and its land
+   * draws without depth (it is see-through over a backdrop, club.c), so nothing is blacked out by depth here */
+  cw_pass_uniform4f(A.prog_cells, "u_ex3", optf("ASCII_FAR_BLACK", 0), 0, 0, 0);
   for (int k = 0; k < MAXMASK; k++) {
     char nmk[8];
     snprintf(nmk, sizeof nmk, "u_m%d", k);
@@ -510,9 +526,10 @@ static void cells_exec(cw_pass_ctx *ctx, void *u) {
   cw_pass_bind_target(ctx, ctx->dst);
   cw_pass_use(A.prog_glow);
   cw_pass_bind_texture(0, cur->tex);
-  if (!wg) cw_pass_uniform1i(A.prog_glow, "u_cells", 0);
+  cw_pass_bind_texture(1, ctx->src->tex);
+  if (!wg) cw_pass_uniform1i(A.prog_glow, "u_cells", 0), cw_pass_uniform1i(A.prog_glow, "u_src", 1);
   cw_pass_uniform4f(A.prog_glow, "u_cell", sx, sy, (float)cols, (float)rows);
-  cw_pass_uniform4f(A.prog_glow, "u_glow", optf("ASCII_GLOW", 0.5f), optf("ASCII_GLOW_FROM", 0.5f), 0, 0);
+  cw_pass_uniform4f(A.prog_glow, "u_glow", optf("ASCII_GLOW", 0.5f), optf("ASCII_GLOW_FROM", 0.5f), mix_now(), 0);
   cw_pass_fullscreen();
   A.cells = cur, A.cells_frame = ctx->frame, A.have_cells = true;
 }
@@ -533,7 +550,7 @@ static void text_exec(cw_pass_ctx *ctx, void *u) {
   cw_pass_bind_texture(1, A.atlas);
   if (!wg) cw_pass_uniform1i(A.prog_text, "u_cells", 0), cw_pass_uniform1i(A.prog_text, "u_atlas", 1);
   cw_pass_uniform4f(A.prog_text, "u_cell", (float)A.cw, (float)A.ch, (float)A.cols, (float)A.rows);
-  cw_pass_uniform4f(A.prog_text, "u_out", optf("ASCII_GAIN", 1.6f), 0, 0, 0);
+  cw_pass_uniform4f(A.prog_text, "u_out", optf("ASCII_GAIN", 1.6f), mix_now(), 0, 0);
   cw_pass_fullscreen();
   cw_pass_set_blend(CW_PASS_BLEND_NONE);
 }
@@ -541,7 +558,9 @@ static void text_exec(cw_pass_ctx *ctx, void *u) {
 void ascii_init(cw_tree *tree) {
   if (A.tree) return;
   A.tree = tree;
-  A.on = !opt_on("ASCII_OFF");
+  A.forced = opt_on("ASCII_OFF") ? 0 : -1;
+  A.mix = 1;
+  A.on = mix_now() > 0.002f;
   size_t len = 0;
   A.ttf = cw_vfs_read(FONT_PATH, &len);
   if (!A.ttf || !stbtt_InitFont(&A.font, A.ttf, stbtt_GetFontOffsetForIndex(A.ttf, 0))) {
@@ -567,18 +586,31 @@ void ascii_init(cw_tree *tree) {
   cw_debug_i32("ascii.cell_w", &A.dbg_cw);
   cw_debug_i32("ascii.cell_h", &A.dbg_ch);
   cw_debug_i32("ascii.on", &A.dbg_on);
+  cw_debug_f32("ascii.mix", &A.dbg_mix);
+  A.dbg_mix = mix_now();
   cw_debug_i32("ascii.hud_boxes", &A.dbg_boxes);
   A.dbg_on = A.on;
   cw_debug_command("ascii", "ascii set NAME VALUE | ascii on | ascii off: the ASCII pass (src/ascii.c)", cmd_ascii);
 }
 
 void ascii_set_enabled(bool on) {
+  A.forced = on ? 1 : 0;
   A.on = on;
   apply_scene_scale();
   A.dbg_on = on;
 }
 
+void ascii_set_mix(float k, bool prepare) {
+  A.mix = k < 0 ? 0 : k > 1 ? 1 : k;
+  A.prepare = prepare;
+  A.on = mix_now() > 0.002f;
+  A.dbg_on = A.on;
+  A.dbg_mix = mix_now();
+  if (A.ready) apply_scene_scale();
+}
+
 bool ascii_enabled(void) { return A.on; }
+float ascii_mix(void) { return mix_now(); }
 
 /* ── the HUD boxes ───────────────────────────────────────────────────── */
 
@@ -605,7 +637,7 @@ static void border(cw_rect r, float u, cw_color c) {
 /* the boxes go down before the HUD draws (the last frame's: the HUD barely moves), black inside, a neon edge */
 void ascii_hud_begin(cw_vec2 canvas, float u) {
   H.cs = canvas, H.u = u, H.n = 0;
-  if (!A.on || opt_on("ASCII_NO_HUD_BOXES")) return;
+  if (opt_on("ASCII_NO_HUD_BOXES")) return; /* every style draws the HUD in its boxes */
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
@@ -672,7 +704,7 @@ void ascii_hud_reset(cw_vec2 canvas, float u) {
 }
 
 void ascii_hud_draw(void) {
-  if (!A.on || opt_on("ASCII_NO_HUD_BOXES")) return;
+  if (opt_on("ASCII_NO_HUD_BOXES")) return; /* every style draws the HUD in its boxes */
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);

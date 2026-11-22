@@ -230,6 +230,60 @@ The game turns loudness into a height against the song's own quiet and loud beat
 change, and spreads it over the song's own range of harmonies (its mean at blue-violet). `check-songs` makes the look
 again from the decoded other track and holds each beat's loudness to it (control: the look moved by two beats).
 
+## Styles
+
+How the song is drawn changes with the music (`src/styles.c`, `src/backdrop.c`). A style is a look (the game's ASCII
+pass on or off), a backdrop behind the field, a palette for the rivers and the land, and the field's params (the
+land's light, how much of what is behind it the land covers, a line of light along its tops, a dark road under each
+river, the sky, the bloom). The rivers, notes and gates never fade: only what is round them changes.
+
+| Style | Look | Backdrop | Palette |
+|---|---|---|---|
+| Neon characters | characters | the land | the sections' |
+| Clean | plain picture | the land, its tops lit | the sections' |
+| Fire | plain picture | a wall of flames (the engine's baked fire flipbook), embers, heat haze | ice: cyan, white, violet |
+| Synthwave grid | plain picture | a neon grid floor to the horizon, a striped sun, the land as see-through mountains | cyan, yellow, lime |
+| Terminal green | characters | the land | green phosphor |
+| Club lasers | plain picture | three laser fans sweeping slowly through haze (spot lights in a fog volume) | warm: orange, white, red |
+| Night sea | plain picture | the engine's water under a low moon | warm |
+
+The night sea is built and held out of the rotation and the setting: the engine's water draws black without a
+procedural sky, which every other style needs to keep away (an engine gap, reported). `style water` still shows it.
+
+**When it changes.** While a song plays (the title's demo and the song select's preview too) the style changes at a
+phrase boundary, every 8 bars on the song's own beat grid (from its first downbeat), and at the start of a drop
+(`song.json` sections), once it has held at least 8 bars (4 before a drop). Every song starts in the neon characters;
+after that the song's seed (its id's hash) fixes the order, every style once before any comes round again, and a drop
+takes a big one (fire, lasers, the grid) while one is left. The same song always looks the same.
+
+**The fades.** A change fades over 2 beats, a drop's over 1, never under half a second, in song time, so it follows the
+BPM and the tempo on the shoulders; the blend is eased (smoothstep) and fed through a flash meter (`fl.style`). What
+fades: the ASCII pass's share (the characters thin out as the plain picture shows through them; the scene renders at
+the output's size from a beat and a half before a change can come, so the fade starts from the same characters), each
+backdrop's weight (its own colours, its particles' energy, its lights, its fog), the palette, the land and the roads,
+and the bloom. One fade at a time: a change asked for during a fade waits for it.
+
+**Readable over any backdrop.** Every coming note rides in a dark pocket a little larger than itself, which clears the
+current round it. A style with a backdrop lays a dark road under each river (it writes depth, so nothing of a backdrop
+shows inside it) and its own palette, set apart from the backdrop's colours. A hit's burst
+is light that adds (65% in the characters, about half in the plain picture, which also draws its notes a little
+dimmer), every style draws a run of eighths on one river at 60%, and each river keeps its own judgement word under its
+gate: a burst, a note or a word passing four times a second is otherwise a regular flicker over the 0.02 bound.
+
+**The land.** The characters and Clean draw it as it is (Clean lights its tops); Fire and Club lasers leave it out, the
+backdrop being the scene; the grid draws it see-through, as violet mountains with lit tops. The land gate holds the
+neon characters (`style neon`), as the look gate does. The land draws without depth
+(far rows first), so it can let a backdrop through; the ASCII pass blacks nothing out by depth in this game.
+
+**The setting.** **Visual style** in Settings (from the title or the pause menu, a game row of the engine's shell):
+**All styles**, or one style only. The shell saves it (`shell:style`) and puts it back before the first frame.
+
+**Debug.** `style` (the state and the table), `style <name|index>` (that style only, faded in), `style auto` (every
+style with the song), `style next [drop]` (the next change now), `style cut 1` (every change a one-frame cut: the flash
+check's control), `style readctl 1` (no roads or pockets, dim notes: the readability check's control), `style tour` (every style in
+turn about every 1.25 s: the program table's survey). Fields: `style.cur`, `style.from`, `style.t`, `style.mode`,
+`style.changes`, `style.prepare`, `style.backdrop` (each backdrop's weight), `ascii.mix`.
+
 ## Charts (the tooling's job)
 
 1. Decode the `.stem.mp4` (NI Stems from Loukai: master, drums, bass, other, vocals) to PCM. Open source only, JS
