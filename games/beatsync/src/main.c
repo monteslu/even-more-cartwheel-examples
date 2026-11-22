@@ -52,8 +52,8 @@
 
 
 /* the tempo on the shoulders, in percent of the song's own */
-#define TEMPO_MIN 70
-#define TEMPO_MAX 130
+#define TEMPO_MIN 50
+#define TEMPO_MAX 150
 #define TEMPO_STEP 5
 #define LEAD_MS 4000 /* from Play to the song's first frame: the how-to and the count-in, the first notes coming round */
 #define MAX_NOTES 8192
@@ -363,6 +363,12 @@ static void combo_lost(int player) {
   if (G.shared_streak) for (int p = 0; p < MAX_PLAYERS; p++) combo_lost_one(p);
   else combo_lost_one(player);
 }
+/* the pad's motors, counted for the haptics gate (haptic.count, haptic.last_ms, haptic.total_ms) */
+static int32_t haptic_count, haptic_last_ms, haptic_total_ms;
+static void haptic(int player, float low, float high, int ms) {
+  cw_input_rumble(player, low, high, ms);
+  haptic_count++, haptic_last_ms = ms, haptic_total_ms += ms;
+}
 static void combo_lost_one(int player) {
   struct streak *S = &G.st[player];
   if (S->combo >= TIER_COMBO && !G.demo) {
@@ -372,7 +378,7 @@ static void combo_lost_one(int player) {
     S->broke_combo = S->combo;
     S->broke_ticks = 70;
     S->milestone_ticks = 0; /* what was lost replaces the call-out */
-    cw_input_rumble(player, 0.25f + 0.1f * (float)(mult_of(S->combo) - 1), 0.1f, 160); /* felt by who broke it */
+    haptic(player, 0.3f + 0.1f * (float)(mult_of(S->combo) - 1), 0.15f, 180); /* felt by who broke it */
   }
   S->combo = 0;
   S->charge = 0;
@@ -391,7 +397,7 @@ static void judged(int i, int j, int32_t err) {
     music_miss(chart()[i].other && !G.other_on_bass ? MUSIC_OTHER : lane); /* a note made from the other track dips that track */
     if (!G.demo) {
       G.energy -= diff_of(lane) == DIFF_EASY ? 0.05f : 0.075f;
-      cw_input_rumble(p, 0.35f, 0.15f, 90); /* a miss is felt in the pad, never a shake */
+      haptic(p, 0.5f, 0.35f, 120); /* a miss is felt in the pad, a short firm bump (never a screen shake) */
     }
     return;
   }
@@ -545,7 +551,7 @@ static void tick_song(float dt, bool player) {
     music_set_other_break(brk);
   } else music_set_other_break(false);
   /* notes past the Good window are missed */
-  for (int i = G.next; i < n && c[i].ms < t - 49; i++) /* 49: the narrowest Good window (70) at the slowest tempo */
+  for (int i = G.next; i < n && c[i].ms < t - 35; i++) /* 35: the narrowest Good window (70) at the slowest tempo (50%) */
     if ((G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) && c[i].ms < t - good_ms(c[i].lane)) judged(i, J_MISS, 0);
   while (G.next < n && G.state[G.next] != NOTE_PENDING && G.state[G.next] != NOTE_SKIPPED) G.next++;
   G.cue_lane = G.next < n ? c[G.next].lane : -1;
@@ -844,8 +850,11 @@ static void play_tick(float dt) {
     G.failed = 1;
     G.ended_ticks = 0;
     music_set_fade(0, 1.5f);
-    cw_input_rumble(0, 0.5f, 0.2f, 300);
+    /* the loss: a long buzz on every playing pad that tapers off with the song (play_tick steps it down) */
+    for (int p = 0; p < G.players && p < MAX_PLAYERS; p++) haptic(p, 0.85f, 0.5f, 450);
   }
+  if (G.failed && (G.ended_ticks == 27 || G.ended_ticks == 54)) /* the taper: 1.35 s in all, softer each step */
+    for (int p = 0; p < G.players && p < MAX_PLAYERS; p++) haptic(p, G.ended_ticks == 27 ? 0.55f : 0.3f, G.ended_ticks == 27 ? 0.3f : 0.15f, 450);
   G.energy = fmaxf(0, G.energy);
   float f = G.failed ? fminf(1, G.ended_ticks / 90.0f) * 0.55f : 0;
   G.fade = flash_meter_feed(&fl_fade, f);
@@ -1646,6 +1655,9 @@ static void init(void *user) {
   cw_debug_i32("bot.skipped_ms", &G.bot_skipped_ms);
   cw_debug_i32("game.offset_ms", &G.offset_ms);
   cw_debug_i32("game.tempo_pct", &G.tempo_pct);
+  cw_debug_i32("haptic.count", &haptic_count);
+  cw_debug_i32("haptic.last_ms", &haptic_last_ms);
+  cw_debug_i32("haptic.total_ms", &haptic_total_ms);
   cw_debug_i32("game.ticks", &G.ticks);
   (void)lane_level_dbg, (void)lane_level_f;
   music_register_debug();

@@ -28,15 +28,16 @@ const FRAME_MS = 1000 / 60;
 const OUT = join(ROOT, 'out/gate/beatsync-tempo');
 mkdirSync(OUT, { recursive: true });
 const RESULT = ['notes.total', 'notes.perfect', 'notes.good', 'notes.miss', 'judge.err_sum', 'judge.err_n', 'judge.err_max', 'game.screen', 'game.tempo_pct'];
-const upTaps = () => Array.from({ length: STEPS }, () => tap('r', 3, 5)).flat();
 
-/** the open-loop bot on Hard at 120%, its presses timed for `assume` (TEMPO, or 1 for the control) */
-async function botRun(gpu, assume) {
-  const r = await openBeatsync('beatsync', { gpu, tag: assume === TEMPO ? 'tempo' : 'tempo-control' });
+/** the open-loop bot on Hard at `pct` (R or L pressed in the count-in), its presses timed for `assume` (the tempo, or
+ * 1 for the control) */
+async function botRun(gpu, assume, pct = 120) {
+  const r = await openBeatsync('beatsync', { gpu, tag: `tempo-${pct}-${assume}` });
   try {
     await enterSong(r, { song: SONG, diff: 2 }, []);
-    const f0 = (await r.run([...upTaps(), { pads: [{ buttons: [] }], frames: 20 }], { fields: ['song.ms', 'game.tempo_pct'] })).fields;
-    if (f0['game.tempo_pct'] !== 120) throw new Error(`four presses of R gave tempo ${f0['game.tempo_pct']}%, not 120%`);
+    const taps = Array.from({ length: Math.abs(pct - 100) / 5 }, () => tap(pct > 100 ? 'r' : 'l', 3, 5)).flat();
+    const f0 = (await r.run([...taps, { pads: [{ buttons: [] }], frames: 20 }], { fields: ['song.ms', 'game.tempo_pct'] })).fields;
+    if (f0['game.tempo_pct'] !== pct) throw new Error(`the shoulders gave tempo ${f0['game.tempo_pct']}%, not ${pct}%`);
     const m0 = f0['song.ms'];
     const segs = [];
     let at = 0;
@@ -176,6 +177,10 @@ for (const gpu of GPUS) {
   const mean = a['judge.err_n'] ? (a['judge.err_sum'] / a['judge.err_n']).toFixed(1) : 0;
   say(a['notes.perfect'] === a['notes.total'] && a['notes.total'] > 0 && a['game.screen'] === SCREEN.results,
     `tempo (${gpu}, ${SONGS[SONG].id} Hard at 120%, open-loop bot): ${a['notes.perfect']} / ${a['notes.total']} Perfect (Good ${a['notes.good']}, Miss ${a['notes.miss']}); error mean ${mean} song ms, worst ${a['judge.err_max']}`);
+  for (const pct of [50, 150]) { /* the range's ends */
+    const e = await botRun(gpu, pct / 100, pct);
+    say(e['notes.perfect'] === e['notes.total'] && e['notes.total'] > 0, `tempo ${pct}% (${gpu}, open-loop bot): ${e['notes.perfect']} / ${e['notes.total']} Perfect (Good ${e['notes.good']}, Miss ${e['notes.miss']}), worst ${e['judge.err_max']} song ms`);
+  }
   const c = await botRun(gpu, 1);
   say(c['notes.perfect'] < c['notes.total'] * 0.1, `tempo control (${gpu}, the bot timed at the song's own speed): ${c['notes.perfect']} of ${c['notes.total']} Perfect${c['notes.perfect'] < c['notes.total'] * 0.1 ? ', as it must be' : ': the tempo did not change the song'}`);
   if (argv.includes('--no-audio')) continue;

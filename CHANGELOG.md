@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.45.0
+
+- **beatsync**: firmer haptics. A miss is a 120 ms bump at about half strength (was a faint 90 ms one), a broken
+  streak a little stronger, and losing the crowd a long buzz that tapers over about 1.35 s on every playing pad (was
+  300 ms on the first pad only). New gate: tests/beatsync-haptics.mjs (no rumble in the count-in, a bump a miss, the
+  loss's three steps).
+- **beatsync**: the tempo on the shoulders goes from 50% to 150% (was 70% to 130%). The tempo gate also checks both
+  ends: every note Perfect at 50% and at 150%.
+
 ## 0.44.0
 
 - **Detexto** is drawn in one bit by default: every pixel of the 3D picture is black or white at the screen's full

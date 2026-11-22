@@ -11,7 +11,9 @@ neon characters, fire, a synthwave grid or lasers, the style changing with the m
   bass and the synth, the chords and stabs of the record); two players side by side on their own pads, each on a pair on their own road
   at their own difficulty, each with their own streak, one score between them. Two lanes play on West and South, both at once,
   and carry more notes a button than the three-lane game.
-- **Tempo on the shoulders**: while a song plays, L slows it and R speeds it up, 5% a press from 70% to 130%, on
+- **Felt in the pad**: a miss is a short firm bump, a broken streak a longer one, and losing the crowd a long buzz
+  that tapers off with the song, on every playing pad. Never a screen shake.
+- **Tempo on the shoulders**: while a song plays, L slows it and R speeds it up, 5% a press from 50% to 150%, on
   either pad, and the song keeps its pitch (a time stretch, the engine's keylock: no chipmunk voices). The BPM as
   played shows under the difficulty. The notes, the judgement and the clock all follow the tempo; the windows stay the
   same in real time, and the score counts each hit times the tempo, so a faster song is worth more. The tempo carries

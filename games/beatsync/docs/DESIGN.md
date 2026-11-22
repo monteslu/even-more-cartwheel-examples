@@ -118,7 +118,7 @@ players jam together, each on two.
   by default; left or right swaps them), each at their own difficulty, and both press ready.
 - **Buttons for two lanes.** A pair's left lane is West, its right lane South: one thumb rocking between two
   neighbouring buttons. East stays the three-lane game's bass.
-- **Tempo on the shoulders.** L slower, R faster, 5% a press, 70% to 130%, either pad, in play only (the count-in shows
+- **Tempo on the shoulders.** L slower, R faster, 5% a press, 50% to 150%, either pad, in play only (the count-in shows
   the two buttons; the HUD the BPM as played and the percent, in the accent colour while it is not 100%). Every track
   takes the change in one engine command (cw_voices_set_tempo: the stems stay locked to the sample) with the pitch
   kept; the song clock counts song time, so the charts need nothing; the judgement windows are in real time (scaled
