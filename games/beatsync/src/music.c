@@ -58,8 +58,9 @@ static const int LANE_TRACK[LANES] = { TRACK_KICK, TRACK_CLAP, TRACK_BASS, TRACK
 static struct {
   cw_bus song_bus, lane_bus[SLOTS]; /* lane_bus[MUSIC_OTHER] is the other track's */
   int lowpass_slot[SLOTS];
-  cw_sound snd[TRACKS];
-  cw_voice v[TRACKS];
+  cw_sound snd[ALL_TRACKS];
+  cw_voice v[ALL_TRACKS];
+  cw_bus vocals_bus; /* the vocals, when a song has them: as recorded, never reacting */
   const song *s;
   int64_t start_frame;  /* mixer frame the tracks start on */
   int64_t offset;       /* source frame they start from */
@@ -94,6 +95,7 @@ static float idle_cutoff_of(int s) { return s == MUSIC_OTHER || !played(s) ? 200
 
 void music_init(void) {
   M.song_bus = cw_bus_create("song", cw_shell_music_bus());
+  M.vocals_bus = cw_bus_create("vocals", M.song_bus);
   static const char *const N[SLOTS] = { "kick", "clap", "bass", "other" };
   for (int l = 0; l < SLOTS; l++) {
     M.lane_bus[l] = cw_bus_create(N[l], M.song_bus);
@@ -109,7 +111,7 @@ void music_init(void) {
 }
 
 void music_stop(float fade_s) {
-  for (int t = 0; t < TRACKS; t++) {
+  for (int t = 0; t < ALL_TRACKS; t++) {
     cw_voice_stop(M.v[t], fade_s);
     M.v[t] = (cw_voice){ 0 };
   }
@@ -119,9 +121,9 @@ void music_stop(float fade_s) {
 void music_play(const song *s, int32_t from_ms, int32_t lead_ms, float volume) {
   music_stop(0.05f);
   if (M.s != s) {
-    for (int t = 0; t < TRACKS; t++) {
+    for (int t = 0; t < ALL_TRACKS; t++) {
       cw_sound_free(M.snd[t]);
-      M.snd[t] = cw_sound_load(s->track[t], &(cw_sound_desc){ .mode = CW_SOUND_STREAM });
+      M.snd[t] = t < TRACKS || s->has_vocals ? cw_sound_load(s->track[t], &(cw_sound_desc){ .mode = CW_SOUND_STREAM }) : (cw_sound){ 0 };
     }
     M.s = s;
   }
@@ -146,8 +148,9 @@ void music_play(const song *s, int32_t from_ms, int32_t lead_ms, float volume) {
   }
   M.song_level = M.song_target = volume;
   cw_bus_set_volume(M.song_bus, volume);
-  for (int t = 0; t < TRACKS; t++) {
-    cw_bus bus = M.lane_bus[t]; /* LANE_TRACK: track t is lane t's slot */
+  for (int t = 0; t < ALL_TRACKS; t++) {
+    if (t == TRACK_VOCALS && !M.s->has_vocals) { M.v[t] = (cw_voice){ 0 }; continue; }
+    cw_bus bus = t == TRACK_VOCALS ? M.vocals_bus : M.lane_bus[t]; /* LANE_TRACK: track t is lane t's slot */
     M.v[t] = cw_audio_play(M.snd[t], &(cw_play_desc){ .bus = bus, .start_frame = M.start_frame, .offset = M.offset, .priority = 10,
                                               .fade_in = M.offset > 0 ? 1.0f : 0 }); /* a start part way in swells up, never a cut in */
   }
@@ -160,7 +163,7 @@ void music_play(const song *s, int32_t from_ms, int32_t lead_ms, float volume) {
 void music_pause(bool paused) {
   if (!M.playing || paused == M.paused) return;
   M.paused = paused;
-  for (int t = 0; t < TRACKS; t++) cw_voice_set_paused(M.v[t], paused);
+  for (int t = 0; t < ALL_TRACKS; t++) cw_voice_set_paused(M.v[t], paused);
 }
 
 void music_set_played(unsigned mask) { M.played = mask; }
@@ -266,12 +269,13 @@ const song *music_song(void) { return M.s; }
 
 /* `solo <kick|clap|bass|other|off>`: hear one track alone (the sync check records the kick by itself) */
 static void cmd_solo(int argc, const char **argv, cw_reply *r) {
-  static const char *const N[TRACKS] = { "kick", "clap", "bass", "other" };
+  static const char *const N[ALL_TRACKS] = { "kick", "clap", "bass", "other", "vocals" };
   int pick = -1;
-  for (int t = 0; argc > 1 && t < TRACKS; t++)
+  for (int t = 0; argc > 1 && t < ALL_TRACKS; t++)
     if (!strcmp(argv[1], N[t])) pick = t;
   if (argc < 2 || (pick < 0 && strcmp(argv[1], "off"))) { cw_reply_error(r, "usage: solo kick|clap|bass|other|off"); return; }
   for (int l = 0; l < SLOTS; l++) cw_bus_set_solo(M.lane_bus[l], pick == LANE_TRACK[l]);
+  cw_bus_set_solo(M.vocals_bus, pick == TRACK_VOCALS);
   cw_reply_printf(r, "{\"solo\":\"%s\"}", argv[1]);
 }
 /* `missall 1|0`: a miss ducks every lane (the mix gate's control, which must fail) */

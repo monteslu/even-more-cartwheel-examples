@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 
 #include "cartwheel/core.h"
 #include "cartwheel/platform.h"
@@ -252,6 +253,12 @@ static bool load_one(const char *id, song *s) {
       if (!f[0]) { cw_error("%s: no tracks.%s", path, TN[t]); ok = false; }
       snprintf(s->track[t], sizeof s->track[t], "songs/%s/%s", id, f);
     }
+    { /* the vocals: optional */
+      char f[64];
+      jstr(jget(&j, tr, "vocals"), f, sizeof f);
+      s->has_vocals = f[0] != 0;
+      if (s->has_vocals) snprintf(s->track[TRACK_VOCALS], sizeof s->track[TRACK_VOCALS], "songs/%s/%s", id, f);
+    }
     const jv *b = jget(&j, R, "beats");
     if (ok && b && b->type == J_ARR && b->count > 1) {
       s->beat_ms = cw_alloc(sizeof(int32_t) * (size_t)b->count, CW_MEM_GAME);
@@ -325,8 +332,64 @@ static bool load_one(const char *id, song *s) {
   return ok;
 }
 
+/* the song ids a cart lists: every songs/<id>/song.json in the host's listing of the cart's assets (_filelist.txt, the
+ * wasmcart asset ABI), so a cart folder gets a song by having its folder dropped in, no rebuild; songs/order.txt (one id
+ * a line, # comments), when there is one, puts those first in its order, the rest by artist and title */
+static int listed_ids(char ids[][48], int cap) {
+  int n = 0;
+  size_t len = 0;
+  char *lst = cw_asset_size("_filelist.txt") >= 0 ? cw_asset_load("_filelist.txt", &len) : NULL;
+  for (char *p = lst, *end = lst ? lst + len : NULL; p && p < end && n < cap;) {
+    char *nl = memchr(p, '\n', (size_t)(end - p)), *e = nl ? nl : end;
+    size_t l = (size_t)(e - p);
+    while (l && (p[l - 1] == '\r' || p[l - 1] == ' ')) l--;
+    static const char PRE[] = "songs/", SUF[] = "/song.json";
+    if (l > sizeof PRE - 1 + sizeof SUF - 1 && !strncmp(p, PRE, sizeof PRE - 1) && !strncmp(p + l - (sizeof SUF - 1), SUF, sizeof SUF - 1)) {
+      size_t il = l - (sizeof PRE - 1) - (sizeof SUF - 1);
+      if (il < 48 && !memchr(p + sizeof PRE - 1, '/', il)) { memcpy(ids[n], p + sizeof PRE - 1, il); ids[n++][il] = 0; }
+    }
+    p = e + 1;
+  }
+  free(lst);
+  return n;
+}
+static int order_of(const char *id, const char *order) {
+  for (int k = 0; order && *order; k++) {
+    const char *e = strchr(order, '\n');
+    size_t l = e ? (size_t)(e - order) : strlen(order);
+    while (l && (order[l - 1] == '\r' || order[l - 1] == ' ')) l--;
+    if (l && order[0] != '#' && l == strlen(id) && !strncmp(order, id, l)) return k;
+    order = e ? e + 1 : NULL;
+  }
+  return 1 << 30;
+}
+static const char *g_order;
+static int by_order(const void *a, const void *b) {
+  const song *x = a, *y = b;
+  int ox = order_of(x->id, g_order), oy = order_of(y->id, g_order);
+  if (ox != oy) return ox < oy ? -1 : 1;
+  int c = strcasecmp(x->artist, y->artist);
+  return c ? c : strcasecmp(x->title, y->title);
+}
+
 int songs_load(void) {
   nsongs = 0;
+  static char ids[MAX_SONGS][48];
+  int n = listed_ids(ids, MAX_SONGS);
+  if (n) { /* a cart whose assets the host lists: the songs it has */
+    for (int i = 0; i < n && nsongs < MAX_SONGS; i++)
+      if (load_one(ids[i], &SONGS[nsongs])) nsongs++;
+    size_t len = 0;
+    char *order = cw_asset_size("songs/order.txt") >= 0 ? cw_asset_load("songs/order.txt", &len) : NULL;
+    char *z = order ? realloc(order, len + 1) : NULL;
+    if (z) z[len] = 0;
+    g_order = z;
+    qsort(SONGS, (size_t)nsongs, sizeof SONGS[0], by_order);
+    g_order = NULL;
+    free(z);
+    if (nsongs) return nsongs;
+  }
+  /* no listing: the songs the build found (song_list.c) */
   for (int i = 0; i < SONG_COUNT && nsongs < MAX_SONGS; i++)
     if (load_one(SONG_IDS[i], &SONGS[nsongs])) nsongs++;
   return nsongs;

@@ -11,6 +11,7 @@ import { encodeWav } from './wav.mjs';
 import { xcorrLag } from './dsp.mjs';
 
 export const TRACKS = ['kick', 'clap', 'bass', 'other'];
+const TRACKS4 = TRACKS;
 const EXCERPT = 16384;
 
 /**
@@ -23,6 +24,7 @@ export const ENCODE = {
   clap: { channels: 1, kbps: 56 },
   bass: { channels: 1, kbps: 56 },
   other: { channels: 2, kbps: 96 },
+  vocals: { channels: 2, kbps: 96 }, /* written only for a package made with --vocals */
 };
 
 /**
@@ -94,6 +96,8 @@ export function excerptLag(decoded, excerpt, start, maxLag = 2048) {
 export async function writePackage(dir, p) {
   mkdirSync(dir, { recursive: true });
   const n = p.tracks.kick[0].length;
+  // the four tracks, and the vocals when the package keeps them (make-song.mjs --vocals)
+  const TRACKS = [...TRACKS4, ...(p.tracks.vocals ? ['vocals'] : [])];
   for (const t of TRACKS) if (p.tracks[t][0].length !== n) throw new Error(`track ${t} is ${p.tracks[t][0].length} samples, kick ${n}`);
   const encode = p.encode ?? ENCODE;
   const ogg = await encodeVorbis(Object.fromEntries(TRACKS.map((t) => [t, p.tracks[t]])), p.rate, encode);

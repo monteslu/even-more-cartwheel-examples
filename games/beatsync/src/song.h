@@ -15,9 +15,11 @@ enum { LANE_KICK, LANE_CLAP, LANE_BASS, LANE_SYNTH, LANES };
 /* the two-lane game's pairs: the drums (kick and clap, the hats on the clap) and the groove (bass and synth) */
 enum { PAIR_DRUMS, PAIR_GROOVE, PAIRS };
 enum { DIFF_EASY, DIFF_MEDIUM, DIFF_HARD, DIFFS };
-enum { TRACK_KICK, TRACK_CLAP, TRACK_BASS, TRACK_OTHER, TRACKS };
+/* the four tracks every song has, then the vocals, which a song may have (a cart of songs with their vocals: they
+ * play as recorded, never reacting to the player; song.has_vocals) */
+enum { TRACK_KICK, TRACK_CLAP, TRACK_BASS, TRACK_OTHER, TRACKS, TRACK_VOCALS = TRACKS, ALL_TRACKS };
 
-#define MAX_SONGS 32
+#define MAX_SONGS 512 /* songs a cart can list (songs/index.txt can grow without a rebuild) */
 #define MAX_SECTIONS 64
 
 typedef struct note {
@@ -47,7 +49,8 @@ typedef struct song_look {
 
 typedef struct song {
   char id[48], title[64], artist[64];
-  char track[TRACKS][96]; /* asset paths of the four tracks */
+  char track[ALL_TRACKS][96]; /* asset paths of the four tracks and the vocals ("": none) */
+  bool has_vocals;
   float bpm, length_s;
   int32_t *beat_ms; /* every beat */
   int beats, downbeat;
@@ -65,7 +68,10 @@ typedef struct song {
 extern const char *const SONG_IDS[]; /* song_list.c, written by CMakeLists.txt */
 extern const int SONG_COUNT;
 
-/* Loads every listed song's song.json; returns how many loaded (a broken one is logged and left out). */
+/* Loads every song's song.json; returns how many loaded (a broken one is logged and left out). The songs are every
+ * songs/<id>/song.json among the cart's assets (the host lists them: a cart folder gets a song by having its folder
+ * dropped in, no rebuild), in songs/order.txt's order then by artist and title; with no listing, the songs the build
+ * found (song_list.c). */
 int songs_load(void);
 int songs_count(void);
 const song *song_get(int i);

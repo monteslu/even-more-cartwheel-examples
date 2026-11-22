@@ -5,6 +5,8 @@
 #
 # The songs are baked in at build time: every songs/<id>/song.json is listed in the game (song_list.c) and its
 # song.json and tracks are packed. A new song needs a rebuild (CONFIGURE_DEPENDS reruns this when one appears or goes).
+# A cart with songs/index.txt among its assets lists its songs from that instead, at start (src/song.h songs_load):
+# a cart folder gets songs added without a rebuild.
 file(GLOB _found CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/songs/*/song.json)
 list(SORT _found)
 # songs/order.txt puts the songs it names first, in its order; the rest follow by name
@@ -25,6 +27,9 @@ list(APPEND _songs ${_found})
 file(READ ${CMAKE_CURRENT_SOURCE_DIR}/roots.txt _roots)
 set(_ids "")
 string(APPEND _roots "\n# the songs (CMakeLists.txt adds every songs/<id>/)\n")
+if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/songs/order.txt)
+  string(APPEND _roots "songs/order.txt\n") # the game reads it at start (src/song.c songs_load)
+endif()
 foreach(_s ${_songs})
   get_filename_component(_dir ${_s} DIRECTORY)
   get_filename_component(_id ${_dir} NAME)
@@ -39,6 +44,11 @@ foreach(_s ${_songs})
     endif()
     string(APPEND _roots "songs/${_id}/${CMAKE_MATCH_1}\n")
   endforeach()
+  # the vocals, a song may have them
+  string(REGEX MATCH "\"vocals\" *: *\"([^\"]+)\"" _m "${_json}")
+  if(_m)
+    string(APPEND _roots "songs/${_id}/${CMAKE_MATCH_1}\n")
+  endif()
 endforeach()
 if(NOT _songs)
   message(FATAL_ERROR "no songs/<id>/song.json: beatsync needs at least one song")

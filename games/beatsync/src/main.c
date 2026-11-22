@@ -52,6 +52,9 @@
 
 #define LEAD_MS 4000 /* from Play to the song's first frame: the how-to and the count-in, the first notes coming round */
 #define MAX_NOTES 8192
+/* songs with a best kept: the save stays inside the shell's CW_SHELL_GAME_SAVE_MAX, so the first 32 songs played keep
+ * theirs (a cart can list more; a song past these plays without a best) */
+#define SAVE_SONGS 32
 #define TIER_COMBO 16 /* hits a multiplier step: x2 at 16, x3 at 32, x4 at 48 */
 #define MILESTONE 50  /* a streak of every 50 is called out */
 #ifdef GAME_AUTOPILOT
@@ -94,8 +97,8 @@ typedef struct pair_best_entry {
 typedef struct save_data {
   int32_t offset_ms; /* the calibration: how late this device's sound reaches the player */
   int32_t reserved;
-  best_entry best[MAX_SONGS];
-  pair_best_entry pair_best[MAX_SONGS];
+  best_entry best[SAVE_SONGS];
+  pair_best_entry pair_best[SAVE_SONGS];
 } save_data;
 
 static flash_meter fl_glow, fl_fade, fl_tier[MAX_PLAYERS], fl_drain[MAX_PLAYERS];
@@ -165,18 +168,18 @@ static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 
 static pair_best_entry *pair_best_of(const song *s) {
   save_data *sv = save();
-  for (int i = 0; i < MAX_SONGS; i++)
+  for (int i = 0; i < SAVE_SONGS; i++)
     if (sv->pair_best[i].hash == s->hash) return &sv->pair_best[i];
-  for (int i = 0; i < MAX_SONGS; i++)
+  for (int i = 0; i < SAVE_SONGS; i++)
     if (!sv->pair_best[i].hash) { sv->pair_best[i].hash = s->hash; return &sv->pair_best[i]; }
   return NULL;
 }
 
 static best_entry *best_of(const song *s) {
   save_data *sv = save();
-  for (int i = 0; i < MAX_SONGS; i++)
+  for (int i = 0; i < SAVE_SONGS; i++)
     if (sv->best[i].hash == s->hash) return &sv->best[i];
-  for (int i = 0; i < MAX_SONGS; i++)
+  for (int i = 0; i < SAVE_SONGS; i++)
     if (!sv->best[i].hash) { sv->best[i].hash = s->hash; return &sv->best[i]; }
   return NULL;
 }
@@ -1308,6 +1311,7 @@ static void render(void *user, double alpha) {
     cw_r2d_end();
   } else if (cw_shell_hud_shown()) ascii_hud_none();
   cw_shell_draw();
+  cw_audio_update(); /* the game started the mixer (init), so the shell leaves its frame update to the game */
 }
 
 /* ── init ───────────────────────────────────────────────────────────── */
@@ -1427,6 +1431,10 @@ static void init(void *user) {
     lane_act[l] = cw_action_find(LANE_ACTIONS[l]);
   }
   cw_quality_auto(true, 0);
+  /* a song streams four tracks and maybe its vocals; changing songs starts the next while the last still fades out:
+   * twice that, and room to spare (the shell starts the mixer with 8 streams unless the game has; when the game has,
+   * the game updates it each frame, cw_audio_update in render) */
+  cw_audio_init(&(cw_audio_desc){ .max_streams = 2 * ALL_TRACKS + 2 }); /* the game owns the mixer: render() updates it */
   cw_shell_init(&(cw_shell_desc){
     .title = "beatsync",
     .subtitle = "play the kick, the clap and the bass",

@@ -152,7 +152,8 @@ songs/<song-id>/
   kick.ogg         the drum stem's low band (the kick)
   clap.ogg         the drum stem's high band (clap, hats, the rest of the kit)
   bass.ogg         the bass stem
-  other.ogg        the other stem (vocals are never used)
+  other.ogg        the other stem
+  vocals.ogg       optional: the vocals, for a song kept with them (played as recorded, never reacting)
   preview.wav      not shipped: the mix with a click on every Hard note, for checking a chart by ear
   report.json      not shipped: the checks' numbers
 ```
@@ -192,6 +193,13 @@ engine streams that keeps that alignment (Ogg Vorbis or Ogg Opus; FLAC if neithe
   2 bass. Notes are sorted by `t`, at most one per step.
 - `sections`: where the song's parts start (intro, build, drop, break, outro), from the audio, for the visuals.
 - `look`: what the picture reads from the music (below), between `sections` and `charts`.
+- `tracks.vocals`, optional: a song kept with its vocals (`tools/make-song.mjs --vocals`). The game plays it as
+  recorded, on its own bus, never ducked or punched: the player plays the instruments, the singer sings. The songs
+  that ship are instrumental and have none.
+- The song list: the game finds every `songs/<id>/song.json` among its cart's assets when it starts (the host lists
+  them, wasmcart `_filelist.txt`), in `songs/order.txt`'s order, then by artist and title. A cart unpacked to a folder
+  gets a song by having its folder dropped into `assets/songs/`, no rebuild. Up to 512 songs; the save keeps the
+  bests of the first 32 played (the shell caps a game's save at 6 KB).
 - `pairs`: the two-lane charts, after `charts`: `{"drums": {"easy": [...], "medium": [...], "hard": [...]},
   "groove": {...}}`, notes as above with `lane` 0 kick, 1 clap (the drums), 2 bass, 3 synth (the groove).
 

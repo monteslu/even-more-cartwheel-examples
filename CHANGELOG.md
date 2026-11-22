@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.38.0
+
+- **beatsync** finds its songs in its own assets when it starts: every `songs/<id>/song.json` the host lists
+  (wasmcart `_filelist.txt`), in `songs/order.txt`'s order then by artist and title. A cart unpacked to a folder gets
+  a song by having its folder dropped into `assets/songs/`, no rebuild. Up to 512 songs (bests are kept for the first
+  32 played: the shell caps a game's save at 6 KB).
+- A song may carry its vocals (`vocals.ogg`, `tools/make-song.mjs --vocals`): the game plays them as recorded, on their
+  own bus, never reacting to the player. The songs that ship are instrumental.
+- beatsync starts the mixer itself with 12 streams (a song's five tracks while the last one fades out) and updates it
+  each frame: the shell's 8 ran out on a change of song with five tracks, and the new song started silent.
+
 ## 0.37.0
 
 - Engine v0.57.7 (from v0.57.2): the join screen centres its seats for any number of players, program tables stamped

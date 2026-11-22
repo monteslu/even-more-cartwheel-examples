@@ -45,6 +45,12 @@ source must be the very audio the package was made from (it refuses a source of 
 and id, and the flags the package was made with (`--keep-vocals`, the BPM range, kept in `report.json`), carry over
 unless given again.
 
+## A song with its vocals
+
+`make-song.mjs --vocals` keeps the stems' vocals as a fifth track (`vocals.ogg`, stereo, aligned with the rest and
+proved the same way); the analysis and the charts never read it. The game plays it as recorded. The songs in this
+repository are instrumental and never made with it.
+
 ## The two-lane charts
 
 `make-song.mjs` (and `--charts-only`) also writes `pairs`: the drums (kick and clap, the hats on the clap) and the

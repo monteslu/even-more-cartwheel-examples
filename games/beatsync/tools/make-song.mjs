@@ -7,8 +7,9 @@
 // The pipeline (docs/DESIGN.md, "Charts"): decode, split the drum stem at 150 Hz into the kick and clap tracks,
 // track the tempo and beats, find each lane's onsets, quantize them to 16ths, pick the three difficulties, find the
 // sections; then write the four Ogg Vorbis tracks (proved sample-aligned), song.json, preview.wav and report.json.
-// The master and vocals stems are never written (--keep-vocals mixes the vocals stem into the other track, for a
-// split that filed an instrumental lead under vocals). --charts-only re-charts an existing package from its source:
+// The master stem is never written, and the vocals only with --vocals (a fifth track, vocals.ogg, the game plays as
+// recorded and never reacts to; for a song with its vocals, never for the instrumental songs that ship) (--keep-vocals
+// instead mixes the vocals stem into the other track, for a split that filed an instrumental lead under vocals). --charts-only re-charts an existing package from its source:
 // the analysis and charts run again and only song.json, report.json and preview.wav are rewritten; the Ogg tracks
 // and their alignment proof stay as they are (the source must be the same audio: same length in samples).
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -48,6 +49,7 @@ export async function makeSong(input, o) {
       keepVocals: o.keepVocals ?? rep.source?.keep_vocals, bpmMin: o.bpmMin ?? range[0], bpmMax: o.bpmMax ?? range[1] };
   }
   const stems = await readStems(input);
+  if (o.vocals && !stems.tracks.vocals) throw new Error(`${input}: --vocals, but the stems have no vocals`);
   if (o.keepVocals && stems.tracks.vocals) {
     // some splits file a lead line or chops under vocals: fold it into the other track instead of losing it
     stems.tracks.other = stems.tracks.other.map((c, k) => Float32Array.from(c, (v, i) => v + stems.tracks.vocals[k][i]));
@@ -105,6 +107,7 @@ export async function makeSong(input, o) {
   const r = await write(resolve(o.out), {
     id, title, artist: o.artist ?? stems.info?.artist ?? '', rate: a.rate, tracks: a.tracks, bpm: a.bpm, beats: a.beats,
     downbeat: a.downbeat, sections: a.sections, look: lookOf(a.tracks.other, a.rate, a.beats, a.lanes.other.onsets), charts, pairs, report,
+    ...(o.vocals ? { tracks: { ...a.tracks, vocals: stems.tracks.vocals } } : {}),
   });
   return r;
 }
@@ -144,7 +147,7 @@ async function main() {
     allowPositionals: true,
     options: {
       out: { type: 'string' }, id: { type: 'string' }, title: { type: 'string' }, artist: { type: 'string' },
-      'bpm-min': { type: 'string' }, 'bpm-max': { type: 'string' }, 'keep-vocals': { type: 'boolean' },
+      'bpm-min': { type: 'string' }, 'bpm-max': { type: 'string' }, 'keep-vocals': { type: 'boolean' }, vocals: { type: 'boolean' },
       'charts-only': { type: 'boolean' }, 'look-only': { type: 'boolean' },
     },
   });
@@ -162,7 +165,7 @@ async function main() {
     return;
   }
   const { song, report } = await makeSong(input, {
-    out, id: v.id, title: v.title, artist: v.artist, keepVocals: v['keep-vocals'], chartsOnly: v['charts-only'],
+    out, id: v.id, title: v.title, artist: v.artist, keepVocals: v['keep-vocals'], vocals: v.vocals, chartsOnly: v['charts-only'],
     bpmMin: v['bpm-min'] ? Number(v['bpm-min']) : undefined, bpmMax: v['bpm-max'] ? Number(v['bpm-max']) : undefined,
   });
   const bytes = Object.values(report.alignment).reduce((s, x) => s + x.bytes, 0);
