@@ -876,6 +876,60 @@ static void text_at(const char *s, float x, float y, float size, cw_color c, int
   ascii_hud_rect(x, y, m.width, m.height, c.a);
   cw_r2d_text(font(), s, cw_v2(x, y), &st);
 }
+/* A song's name in a box of its own width: one this long fits at this size; a longer one gets a little smaller
+ * (to min_k of the size, never under the engine's text floor: every size here is at least 1.2 times it) and then ends
+ * in an ellipsis. Writes the text to show into out and returns the size to draw it at. */
+static float fit_text(const char *s, float size, float max_w, float min_k, char *out, size_t cap) {
+  snprintf(out, cap, "%s", s);
+  cw_text_style st = ts(size, WHITE);
+  float w = cw_font_measure(font(), out, &st).width;
+  if (w <= max_w) return size;
+  size *= fmaxf(min_k, max_w / w);
+  st = ts(size, WHITE);
+  if (cw_font_measure(font(), out, &st).width <= max_w) return size;
+  size_t n = strlen(out);
+  while (n > 0) {
+    do n--; while (n > 0 && ((unsigned char)out[n] & 0xC0) == 0x80); /* a whole UTF-8 character at a time */
+    size_t m = n;
+    while (m > 0 && (out[m - 1] == ' ' || out[m - 1] == ',' || out[m - 1] == '-')) m--;
+    char tmp[256];
+    snprintf(tmp, sizeof tmp, "%.*s\xE2\x80\xA6", (int)m, s);
+    if (cw_font_measure(font(), tmp, &st).width <= max_w || m == 0) { snprintf(out, cap, "%s", tmp); break; }
+  }
+  return size;
+}
+/* fitted and drawn at x (align as text_at); y keeps the line's middle where the full size would have it */
+static void text_fit(const char *s, float x, float y, float size, float max_w, cw_color c, int align) {
+  char b[256];
+  float k = fit_text(s, size, max_w, 0.8f, b, sizeof b);
+  text_at(b, x, y + (size - k) * 0.5f, k, c, align);
+}
+/* wrapped to max_w on at most two lines (shrunk a little and then cut with an ellipsis past that), boxed, at x, y (left
+ * aligned); returns its height */
+static float text_wrap2(const char *s, float x, float y, float size, float max_w, cw_color c) {
+  char b[256];
+  snprintf(b, sizeof b, "%s", s);
+  cw_text_style st = ts(size, c);
+  st.wrap_width = max_w;
+  cw_text_metrics m = cw_font_measure(font(), b, &st);
+  if (m.lines > 2) { /* a little smaller, then whole words off the end */
+    size *= 0.85f;
+    st = ts(size, c), st.wrap_width = max_w;
+    m = cw_font_measure(font(), b, &st);
+    for (size_t n = strlen(b); m.lines > 2 && n > 0;) {
+      do n--; while (n > 0 && ((unsigned char)b[n] & 0xC0) == 0x80);
+      size_t k = n;
+      while (k > 0 && b[k - 1] == ' ') k--;
+      char tmp[256];
+      snprintf(tmp, sizeof tmp, "%.*s\xE2\x80\xA6", (int)k, s);
+      snprintf(b, sizeof b, "%s", tmp);
+      m = cw_font_measure(font(), b, &st);
+    }
+  }
+  ascii_hud_rect(x, y, fminf(m.width, max_w), m.height, c.a);
+  cw_r2d_text(font(), b, cw_v2(x, y), &st);
+  return m.height;
+}
 static void ptext(const char *s, float x, float y, float size, cw_color c) { /* a prompt line, centred, boxed */
   cw_vec2 sz = cw_prompt_text_size(font(), s, 0, size);
   ascii_hud_rect(x - sz.x * 0.5f, y, sz.x, sz.y, 1);
@@ -907,12 +961,15 @@ static void draw_select(cw_vec2 cv, float size) {
     if (on) select_bar((cw_rect){ lp.x + size * 0.3f, y - size * 0.2f, lp.w - size * 0.6f, row - size * 0.15f });
     if (i < n) {
       const song *s = song_get(i);
-      cw_text_style st = ts(size, on ? WHITE : DIM);
-      cw_r2d_text(font(), s->title, cw_v2(lp.x + size * 0.7f, y), &st);
-      char b[16];
+      char b[16], tb[256];
       snprintf(b, sizeof b, "%.0f", s->bpm);
-      st = ts(size * 0.8f, DIM);
-      cw_r2d_text(font(), b, cw_v2(lp.x + lp.w - size * 0.7f - cw_font_measure(font(), b, &st).width, y + size * 0.1f), &st);
+      cw_text_style st = ts(size * 0.8f, DIM);
+      float bw = cw_font_measure(font(), b, &st).width;
+      cw_r2d_text(font(), b, cw_v2(lp.x + lp.w - size * 0.7f - bw, y + size * 0.1f), &st);
+      /* the title in the room left of its BPM (the panel beside shows it whole) */
+      float k = fit_text(s->title, size, lp.w - size * 1.4f - bw - size * 0.6f, 0.8f, tb, sizeof tb);
+      st = ts(k, on ? WHITE : DIM);
+      cw_r2d_text(font(), tb, cw_v2(lp.x + size * 0.7f, y + (size - k) * 0.5f), &st);
     } else {
       cw_text_style st = ts(size, on ? WHITE : DIM);
       cw_r2d_text(font(), "Timing calibration", cw_v2(lp.x + size * 0.7f, y), &st);
@@ -923,14 +980,16 @@ static void draw_select(cw_vec2 cv, float size) {
   char b[96];
   if (G.sel < n) {
     const song *s = song_get(G.sel);
-    text_at(s->title, rp.x + size * 0.6f, rp.y + size * 0.3f, size * 1.3f, WHITE, -1);
-    if (s->artist[0]) text_at(s->artist, rp.x + size * 0.6f, rp.y + size * 2.0f, size * 0.85f, DIM, -1);
+    /* the whole title here, on two lines if it needs them; the lines under it move down by the second */
+    float th = text_wrap2(s->title, rp.x + size * 0.6f, rp.y + size * 0.3f, size * 1.3f, rp.w - size * 1.2f, WHITE);
+    float dy = fmaxf(0, th - size * 1.3f * 1.3f);
+    if (s->artist[0]) text_fit(s->artist, rp.x + size * 0.6f, rp.y + size * 2.0f + dy, size * 0.85f, rp.w - size * 1.2f, DIM, -1);
     int len = (int)s->length_s;
     snprintf(b, sizeof b, "%.0f BPM    %d:%02d", s->bpm, len / 60, len % 60);
-    text_at(b, rp.x + size * 0.6f, rp.y + size * 3.2f, size * 0.9f, DIM, -1);
+    text_at(b, rp.x + size * 0.6f, rp.y + size * 3.2f + dy, size * 0.9f, DIM, -1);
     best_entry *be = best_of(s);
     for (int d = 0; d < DIFFS; d++) {
-      float y = rp.y + size * (5.0f + (float)d * 1.6f);
+      float y = rp.y + size * (5.0f + (float)d * 1.6f) + dy;
       text_at(diff_name(d), rp.x + size * 0.6f, y, size, WHITE, -1);
       if (be && be->grade[d]) snprintf(b, sizeof b, "%s  %d", GRADES[be->grade[d] - 1], be->score[d]);
       else snprintf(b, sizeof b, "new");
@@ -1011,7 +1070,7 @@ static void draw_diff_duo(cw_vec2 cv, float size, const song *s) {
 static void draw_diff(cw_vec2 cv, float size) {
   const song *s = song_get(G.sel);
   if (!s) return;
-  text_at(s->title, cv.x * 0.5f, cv.y * 0.05f, size * 1.4f, WHITE, 0);
+  text_fit(s->title, cv.x * 0.5f, cv.y * 0.05f, size * 1.4f, cv.x * 0.38f, WHITE, 0); /* between the side cards, clear of them (their boxes would merge with its) */
   if (G.players > 1) draw_diff_duo(cv, size, s);
   else draw_diff_solo(cv, size, s);
 }
@@ -1025,7 +1084,7 @@ static int played_lane(void) {
 static void draw_play(cw_vec2 cv, float size) {
   char b[64];
   if (G.s) { /* the song and how far through it, top left */
-    text_at(G.s->title, size * 0.8f, size * 0.5f, size, WHITE, -1);
+    text_fit(G.s->title, size * 0.8f, size * 0.5f, size, cv.x * 0.28f, WHITE, -1);
     float p = G.s->length_s > 0 ? CW_CLAMP((float)G.song_ms / (G.s->length_s * 1000), 0, 1) : 0, w = cv.x * 0.18f;
     ascii_hud_rect(size * 0.8f, size * 1.9f, w, size * 0.25f, 1);
     cw_r2d_round_rect((cw_rect){ size * 0.8f, size * 1.9f, w, size * 0.25f }, size * 0.12f, 4, cw_rgba(1, 1, 1, 0.18f));
@@ -1170,7 +1229,7 @@ static void draw_results(cw_vec2 cv, float size) {
   float x = r.x + r.w * 0.5f;
   cw_text_style st;
 #define LINE(s, y, sz, c) (st = ts(sz, c), cw_r2d_text(font(), s, cw_v2(x - cw_font_measure(font(), s, &st).width * 0.5f, y), &st))
-  LINE(G.s ? G.s->title : "", r.y + size * 0.6f, size * 1.2f, WHITE);
+  if (G.s) text_fit(G.s->title, x, r.y + size * 0.6f, size * 1.2f, r.w - size * 1.2f, WHITE, 0);
   if (G.mode == MODE_DUO) snprintf(b, sizeof b, "two players  %s", G.failed ? "the floor emptied" : "cleared");
   else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s %s  %s", diff_name(G.diff), pair_name(G.part[0]), G.failed ? "the floor emptied" : "cleared");
   else snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), G.failed ? "the floor emptied" : "cleared");

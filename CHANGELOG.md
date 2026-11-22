@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.41.0
+
+- **beatsync**: long song names fit their boxes everywhere. In the song list a long title gets a little smaller and then
+  ends in an ellipsis, clear of its BPM; the selected song's panel shows the whole title on up to two lines (the lines
+  under it move down); the difficulty screen's heading, the box during play and the results do the same as the list.
+  Never smaller than the engine's text floor.
+- beatsync's song tools: `tools/measure-sustains.mjs` measures how long the bass and the other track hold their
+  notes in packages already made (how many ring a beat or more, a song and a minute), the question before held notes
+  are charted.
+
 ## 0.40.0
 
 - Engine v0.58.0 (from v0.57.7): a game can add its own items to the shell's pause menu; leaving the pause menu starts

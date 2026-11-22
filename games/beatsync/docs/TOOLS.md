@@ -14,6 +14,7 @@ npm ci --prefix tools          # once: the WASM codecs and the stem-mp4 containe
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> [--title ..] [--artist ..]` | the whole pipeline: a song package |
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> --charts-only` | re-chart a package from its source: only `song.json`, `report.json` and `preview.wav` are written, the tracks stay byte for byte |
 | `node tools/make-song.mjs "<file.stem.mp4>" --out songs/<id> --look-only` | add or redo `song.json`'s `look` (the picture's reading of the other track, `docs/DESIGN.md` "The look from the music") from the package's source; every other key, the charts and the tracks stay as they are |
+| `node tools/measure-sustains.mjs <songs dir> [...] [--json out.json]` | how long the bass and the other track hold their notes: each onset rings to 6 dB under its peak or the next onset; the notes of a beat or more, a song and a minute |
 | `node tools/check-songs.mjs [songs/<id> ...]` | the checks over every package (or the ones named), with their controls; exits 1 on a failure |
 | `node tools/make-test-song.mjs [--variants]` | the synthetic house song with known notes (stems, `.stem.mp4`, `truth.json`) |
 | `node tools/eval-accuracy.mjs [--source mp4\|wav]` | the analysis measured against the synthetic songs' ground truth |
