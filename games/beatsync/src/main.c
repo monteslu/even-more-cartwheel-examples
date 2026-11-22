@@ -289,10 +289,15 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   music_play(s, from_ms, lead_ms, volume);
 }
 
+/* the pause menu's own item while a song plays: straight back to the song select, no quitting to the title */
+static const char *const PAUSE_IN_SONG[2] = { "Choose another song", NULL };
+static const char *const PAUSE_NONE[2] = { NULL, NULL };
+
 static void to_screen(int scr) {
   G.screen = scr;
   G.item = 0;
   G.screen_ticks = 0;
+  cw_shell_set_pause_items(scr == SCR_PLAY ? PAUSE_IN_SONG : PAUSE_NONE);
 }
 
 static void start_preview(void) {
@@ -559,6 +564,17 @@ static void set_players(int n) {
 static void players_changed(int players, void *user) {
   (void)user;
   set_players(players);
+}
+
+static void start_preview(void);
+/* the pause menu's "Choose another song": the song stops and the song select comes up on the same song */
+static void pause_item(int index, void *user) {
+  (void)user;
+  if (index != 0 || G.screen != SCR_PLAY) return;
+  music_stop(0.3f);
+  G.failed = 0;
+  to_screen(SCR_SELECT);
+  start_preview();
 }
 
 static void start(int players, void *user) {
@@ -1442,6 +1458,7 @@ static void init(void *user) {
     .game_save_size = sizeof(save_data),
     .game_save_version = 1,
     .start = start,
+    .pause_item = pause_item,
     .players_changed = players_changed,
     .sound = shell_sound,
     .screen_changed = shell_screen,

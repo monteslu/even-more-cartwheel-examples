@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.40.0
+
+- Engine v0.58.0 (from v0.57.7): a game can add its own items to the shell's pause menu; leaving the pause menu starts
+  play on the next tick (a press no longer carries into play). The program tables stand as they were.
+- **beatsync**: Start during a song offers **Choose another song**, straight back to the song select (on the same song),
+  without quitting to the title.
+
 ## 0.39.0
 
 - **beatsync**: one player's two lanes sit closer together (3.2 either side of the middle, from 4.2): their busy
