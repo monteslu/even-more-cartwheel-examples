@@ -64,6 +64,32 @@ hole a few bricks across and knocks a small tower's top off, a heavy ball topple
 thing they touch and push and break everything within about four and a half metres.
 
 
+## The 1-bit look (src/dither.c, a trial)
+
+On this branch every frame is drawn in two colours at the output's full size instead of as characters: each pixel of
+the 3D picture is black or white (`DITHER_TINT 1`: warm white on near black). The scene renders at 100% (no scaler,
+no lower resolution), and one POST pass, last in the chain, does it in two draws, the same shader in GLSL and WGSL:
+
+- **The tone.** Each pixel starts from the finished picture: the grey world by its luma (x `DITHER_WORLD`, 0.8; its
+  highlights, a blast's white core, kept), the landmark's neon hues by their value (x `DITHER_BLOCK`, 1.15), so a
+  block reads bright whatever its hue. A light unsharp mask (radius 2 px, `DITHER_SHARPEN`) crisps edges, the depth
+  draws outlines on the near side of every silhouette and crease (where the depth stops being a plane:
+  `DITHER_OUTLINE`), then gamma (`DITHER_GAMMA` 1.3), contrast (`DITHER_CONTRAST` 1.3) and `DITHER_BIAS`.
+- **The threshold**, anchored to screen pixels so a still camera never crawls (`LOOK`):
+  - `bayer`: the 8x8 ordered matrix (a regular cross-hatch);
+  - `blue`: a 64x64 blue noise matrix, made by void and cluster when the cart starts (a few ms; no asset);
+  - `feedback`: the blue noise threshold, then each pixel's neighbours' quantization error (5x5, Gaussian, the
+    pixel itself left out, `DITHER_FEEDBACK`) added before it is quantized again: one parallel step of error
+    diffusion, with error diffusion's crisper edges and gradients but no serial scan, so it stays the same from frame
+    to frame wherever the picture does.
+  - `ascii`: the characters below.
+
+The HUD and the menus draw after it in the same two colours: every HUD colour goes to the ink or the paper by its
+brightness, and the HUD's boxes are solid paper with a thin ink edge. The selected menu row is the ink at full
+strength, the others at 85% (the shell marks a selection by colour alone).
+
+When cartwheel-engine's look API gains a dither look, this pass moves there.
+
 ## How it is drawn (src/ascii.c)
 
 The 3D scene renders as Destructo's does (three.c, clustered lights, shadows), but nobody sees it: it is only what

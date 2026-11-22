@@ -54,6 +54,7 @@ function cellChange(p0, p1, cw, ch) {
 async function run(gpu, opts) {
   const h = await openCart('detexto_auto', { gpu, tag: 'look' });
   try {
+    await h.command('dm set LOOK ascii'); // (the ASCII look: a 1-bit look may be the default, games/detexto/src/dither.h)
     for (const [k, v] of Object.entries(opts)) await h.command(`dm set ${k} ${v}`);
     await h.step(AT - h.frame);
     const f0 = join(OUT, `${gpu}-${Object.keys(opts).join('-') || 'ascii'}-0.png`), f1 = f0.replace('-0.png', '-1.png');

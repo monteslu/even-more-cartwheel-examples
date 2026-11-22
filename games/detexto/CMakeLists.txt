@@ -5,7 +5,7 @@
 #   detexto_auto     the bot plays it through the controls (for hosts that send no input)
 #   detexto_bench    the perf scene: the bot on Taj Mahal, the collapse in view
 set(DT_SIM src/loader.c src/sim.c src/chunks.c src/levels.c src/landmarks.c src/lm_data.c src/bot.c src/replay.c src/opts.c src/water.c)
-set(DT_SRC src/main.c src/view.c src/ascii.c src/trees.c src/fx.c src/sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${DT_SIM})
+set(DT_SRC src/main.c src/view.c src/ascii.c src/dither.c src/trees.c src/fx.c src/sound.c ${CMAKE_CURRENT_SOURCE_DIR}/../common/coplanar.c ${DT_SIM})
 set(CW_PROGRAMS ${CMAKE_CURRENT_SOURCE_DIR}/programs/detexto.txt)
 cw_add_app(detexto SOURCES ${DT_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)
 cw_add_app(detexto_auto SOURCES ${DT_SRC} PACK ${CMAKE_CURRENT_SOURCE_DIR}/assets/roots.txt)

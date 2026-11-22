@@ -1,5 +1,6 @@
 /* The ASCII renderer (ascii.h). */
 #include "ascii.h"
+#include "dither.h"
 #include "opts.h"
 #include <cartwheel/debug.h>
 #include <cartwheel/gpu.h>
@@ -400,7 +401,7 @@ static float optf(const char *name, float def) {
 
 static bool ascii_active(const cw_pass_ctx *ctx, void *u) {
   (void)ctx, (void)u;
-  return A.on && A.ready;
+  return A.on && A.ready && dither_look() == LOOK_ASCII;
 }
 
 static void programs(void) {
@@ -415,7 +416,7 @@ static void programs(void) {
 /* the scene's share of the output: the characters need only about two scene pixels a region, so the scene renders
  * at SCENE_SCALE of the output (cw_quality_scene_scale), the characters at the output's full size */
 static void apply_scene_scale(void) {
-  float s = A.on ? optf("SCENE_SCALE", 0.35f) : 0;
+  float s = A.on && dither_look() == LOOK_ASCII ? optf("SCENE_SCALE", 0.35f) : 0; /* a dither look: the scene at the output's full size */
   if (s != A.scene_scale) A.scene_scale = s, cw_quality_scene_scale(s);
 }
 
@@ -569,15 +570,24 @@ static void border(cw_rect r, float u, cw_color c) {
 }
 
 /* the boxes go down before the HUD draws (the last frame's: the HUD barely moves), black inside, a neon edge */
+/* one box: under a dither look a solid paper plate with a thin ink edge (two colours), else 70% black with the neon edge */
+static void box(const float *r, float u) {
+  cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
+  if (dither_mono()) {
+    cw_color p = dither_paper(), k = dither_ink();
+    p.a = r[4] >= 0.5f ? 1.0f : r[4] * 2.0f, k.a = r[4] >= 0.5f ? 1.0f : r[4] * 2.0f;
+    cw_r2d_round_rect(rr, 8 * u, 6, p);
+    cw_r2d_round_rect_lines(rr, 8 * u, 2.0f * u, 6, k);
+    return;
+  }
+  cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
+  border(rr, u, (cw_color){ r[5], r[6], r[7], r[4] });
+}
+
 void ascii_hud_begin(cw_vec2 canvas, float u) {
   H.cs = canvas, H.u = u, H.n = 0;
   if (!A.on || opt_on("ASCII_NO_HUD_BOXES")) return;
-  for (int i = 0; i < H.nb; i++) {
-    const float *r = H.b[i];
-    cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
-    border(rr, u, (cw_color){ r[5], r[6], r[7], r[4] });
-  }
+  for (int i = 0; i < H.nb; i++) box(H.b[i], u);
 }
 
 void ascii_hud_rect(float x, float y, float w, float h, float alpha) {
@@ -639,10 +649,5 @@ void ascii_hud_reset(cw_vec2 canvas, float u) {
 
 void ascii_hud_draw(void) {
   if (!A.on || opt_on("ASCII_NO_HUD_BOXES")) return;
-  for (int i = 0; i < H.nb; i++) {
-    const float *r = H.b[i];
-    cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
-    border(rr, H.u, (cw_color){ r[5], r[6], r[7], r[4] });
-  }
+  for (int i = 0; i < H.nb; i++) box(H.b[i], H.u);
 }

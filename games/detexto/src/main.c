@@ -40,6 +40,7 @@
 #include "sound.h"
 #include "view.h"
 #include "ascii.h"
+#include "dither.h"
 #include "../../common/coplanar.h"
 
 #ifndef DETEXTO_BENCH
@@ -419,6 +420,7 @@ static void restart(void) {
 }
 static void option_changed(const char *name) {
   if (!strcmp(name, "ASCII_OFF")) ascii_set_enabled(!opt_on("ASCII_OFF")); /* the plain 3D picture: the control */
+  if (!strcmp(name, "LOOK") || !strcmp(name, "DITHER_TINT")) dither_option_changed(name), ascii_set_enabled(ascii_enabled()); /* the look (dither.h) */
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
   if (!strcmp(name, "OLD_FEEL")) {
     cw_action as[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.orb_l, G.orb_r };
@@ -438,6 +440,8 @@ static bool warmup(void *u) {
     view_init(root);
     fx_init(root);
     ascii_init(cw_scene_app_tree());
+    dither_init(cw_scene_app_tree());
+    ascii_set_enabled(ascii_enabled()); /* the scene's size for the look in use */
   }
   if (!G.have_game) { /* a structure behind the title: built on the job while the engine's loading screen shows its bar */
     G.players = 1;
@@ -502,7 +506,9 @@ static void init(void *u) {
   G.view = cw_action_find("view");
   G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right");
   cw_shell_init(&(cw_shell_desc){ .title = "DETEXTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background });
+                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background,
+                                  /* the menus' selection in the dither look's ink (white is the shell's other rows) */
+                                  .accent = DETEXTO_DEFAULT_LOOK != LOOK_ASCII ? (cw_color){ 1, 1, 1, 1 } : (cw_color){ 0, 0, 0, 0 } });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -974,7 +980,8 @@ static void fixed_update(void *u, double dt) {
 
 /* ── the HUD ─────────────────────────────────────────────────────────── */
 
-static cw_color rgba(float r, float g, float b, float a) { return (cw_color){ r, g, b, a }; }
+/* (under a dither look every HUD colour goes to the look's two: dither.h) */
+static cw_color rgba(float r, float g, float b, float a) { return dither_hud_color((cw_color){ r, g, b, a }); }
 /* HUD text at full opacity (a fade in or out still fades: alpha x 1.8, capped), with a soft glow of its own colour */
 static cw_color hud_col(cw_color c) { c.a = fminf(1, c.a * 1.8f); return c; }
 static cw_text_style tstyle(float size, cw_color c) {
@@ -1000,8 +1007,11 @@ static void panel(float x, float y, float w, float h, float u, cw_color edge) {
   (void)u; /* the box (ascii.h) draws the plate and the edge, in the panel's colour */
   ascii_hud_rect_edge(x, y, w, h, edge.a, edge);
 }
-static const cw_color GOLD = { 1, 0.82f, 0.3f, 1 }, PINK = { 1, 0.4f, 0.85f, 1 }, WHITE = { 1, 1, 1, 0.95f };
-static const cw_color SEAT[MAXP] = { { 1, 0.55f, 0.2f, 1 }, { 0.3f, 0.75f, 1, 1 }, { 0.5f, 0.95f, 0.4f, 1 }, { 1, 0.45f, 0.7f, 1 } };
+#define GOLD rgba(1, 0.82f, 0.3f, 1)
+#define PINK rgba(1, 0.4f, 0.85f, 1)
+#define WHITE rgba(1, 1, 1, 0.95f)
+static const cw_color SEAT_[MAXP] = { { 1, 0.55f, 0.2f, 1 }, { 0.3f, 0.75f, 1, 1 }, { 0.5f, 0.95f, 0.4f, 1 }, { 1, 0.45f, 0.7f, 1 } };
+#define SEAT(i) dither_hud_color(SEAT_[i])
 
 static void star_row(float x, float y, float s, int n, int of) {
   for (int i = 0; i < of; i++) {
@@ -1078,11 +1088,11 @@ static void hud_play(cw_vec2 cs, float u) {
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
     float rx = cs.x - 28 * u - 330 * u, ry = 24 * u;
-    panel(rx, ry, 330 * u, (30 + 46 * g->players) * u, u, SEAT[g->cur]);
+    panel(rx, ry, 330 * u, (30 + 46 * g->players) * u, u, SEAT(g->cur));
     for (int i = 0; i < g->players; i++) {
       bool now = i == g->cur;
       snprintf(b, sizeof b, "%sPlayer %d", now ? "> " : "", i + 1);
-      text(b, rx + 18 * u, ry + (14 + 46 * i) * u, 28 * u, now ? SEAT[i] : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
+      text(b, rx + 18 * u, ry + (14 + 46 * i) * u, 28 * u, now ? SEAT(i) : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
       if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", g->P[i].out ? "out" : g->P[i].strikes ? "1 strike" : "in");
       else snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
       text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
@@ -1091,7 +1101,7 @@ static void hud_play(cw_vec2 cs, float u) {
   if (G.turn_banner > 0 && g->players > 1) {
     snprintf(b, sizeof b, "Player %d", g->cur + 1);
     float a = fminf(1, G.turn_banner / 20.0f);
-    cw_color c = SEAT[g->cur];
+    cw_color c = SEAT(g->cur);
     c.a = a;
     text(b, cs.x * 0.5f, cs.y * 0.18f, 64 * u, c, CW_ALIGN_CENTER);
   }
@@ -1124,7 +1134,7 @@ static void hud_play(cw_vec2 cs, float u) {
     if (G.players > 1 && G.mode != MODE_COOP && seat_away()) {
       char aw[64];
       snprintf(aw, sizeof aw, "Player %d is away: any pad can take this turn", g->cur + 1);
-      text(aw, cs.x * 0.5f, cs.y * 0.3f, 30 * u, SEAT[g->cur], CW_ALIGN_CENTER);
+      text(aw, cs.x * 0.5f, cs.y * 0.3f, 30 * u, SEAT(g->cur), CW_ALIGN_CENTER);
     }
     hud_hint(cs, u, seat);
   }
@@ -1154,12 +1164,12 @@ static void hud_result(cw_vec2 cs, float u) {
     int win = g->party_winner;
     if (win >= 0) snprintf(b, sizeof b, "PLAYER %d STAYS STEADY", win + 1);
     else snprintf(b, sizeof b, "EVERYONE IS OUT");
-    text(b, cx, y + 22 * u, 40 * u, win >= 0 ? SEAT[win] : head, CW_ALIGN_CENTER);
+    text(b, cx, y + 22 * u, 40 * u, win >= 0 ? SEAT(win) : head, CW_ALIGN_CENTER);
     for (int k = 1, line = 0; k <= g->players; k++)
       for (int p = 0; p < g->players; p++) {
         if (g->P[p].out_order != k) continue;
         snprintf(b, sizeof b, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
-        text(b, cx, y + (100 + 40 * line++) * u + o, 26 * u, SEAT[p], CW_ALIGN_CENTER);
+        text(b, cx, y + (100 + 40 * line++) * u + o, 26 * u, SEAT(p), CW_ALIGN_CENTER);
       }
     if (G.phase_t > 6) {
       if (!G.replayed && replay_ready())
@@ -1184,7 +1194,7 @@ static void hud_result(cw_vec2 cs, float u) {
     int best = 0;
     for (int i = 1; i < g->players; i++) if (g->P[i].score > g->P[best].score) best = i;
     snprintf(b, sizeof b, "Player %d has the most points: %d", best + 1, g->P[best].score);
-    text(b, cx, ty + 112 * u, 26 * u, SEAT[best], CW_ALIGN_CENTER);
+    text(b, cx, ty + 112 * u, 26 * u, SEAT(best), CW_ALIGN_CENTER);
   }
   if (G.phase_t > 6) {
     if (!G.replayed && replay_ready())
