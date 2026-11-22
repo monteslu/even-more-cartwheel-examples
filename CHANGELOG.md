@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.39.0
+
+- **beatsync**: one player's two lanes sit closer together (3.2 either side of the middle, from 4.2): their busy
+  notes are drawn dimmer since 0.36.0, so the closer rivers stay under the flicker bound on the densest groove (0.013
+  against 0.02; at 2.8 it was 0.028).
+
 ## 0.38.0
 
 - **beatsync** finds its songs in its own assets when it starts: every `songs/<id>/song.json` the host lists

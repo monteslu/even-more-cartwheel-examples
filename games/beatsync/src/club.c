@@ -46,7 +46,7 @@
 #define GATE_Y (-4.7f)   /* the gate line */
 #define TOP_Y 6.6f       /* where a river starts (its far end, `ahead` beats up), under the horizon */
 #define LANE_DX 4.9f     /* the three-lane game's rivers' centres at the gate: -LANE_DX, 0, LANE_DX */
-#define PAIR_DX 4.2f     /* one player's two rivers: -PAIR_DX, PAIR_DX (apart: two rivers of notes in one sixth of the screen were a flicker) */
+#define PAIR_DX 3.2f     /* one player's two rivers: -PAIR_DX, PAIR_DX (close together; their busy notes are drawn dimmer, so two rivers side by side are no flicker) */
 #define DUO_C 6.2f       /* two players: each player's road at the gates, its own highway converging to its own point */
 #define DUO_HALF 2.1f    /* and its two rivers either side of that centre */
 #define DUO_VP 4.6f      /* the point each road converges to: a little inside its centre, so the two roads lean in together */
