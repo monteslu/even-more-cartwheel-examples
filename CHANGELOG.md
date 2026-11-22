@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.44.0
+
+- **Detexto** is drawn in one bit by default: every pixel of the 3D picture is black or white at the screen's full
+  resolution, a blue noise dither anchored to the screen (a still camera gives a still picture), after a tone step that
+  reads the landmark's hues by their value, sharpens edges lightly and outlines every silhouette from the depth. The
+  HUD and the game's own screens are in the same two colours; the structure select draws solid tiles with the choice
+  inverted. A new Settings row, **Look** (saved), picks **Dither**, **Dither warm** (warm white on near black),
+  **Dither grid** (an ordered cross-hatch) or **ASCII**, the neon characters as before. The desert levels lift the
+  landmark against its sand, so one lit from behind no longer reads darker than the ground; dust, smoke and the
+  collapse plume draw at half opacity under the 1-bit looks, so a structure reads through them. The pass costs about
+  0.3 to 0.5 ms a frame on a Radeon 890M at 1080p (GL and WebGPU); the scene renders at full size under the 1-bit
+  looks (ASCII keeps 35%). New gate: tests/detexto-dither.mjs (two colours, the patterns, no crawl with a still
+  camera, the Settings row; each with a control that must fail), on GL and WebGPU. The launcher art and the README's
+  picture are taken in the new look. The cart smoke check counts a dithered two-colour picture as a picture (two
+  colours, each a real share of the frame); a blank or single-colour frame still fails.
+
 ## 0.43.0
 
 - **beatsync**: visual styles that change with the music. A style is a look (the ASCII pass on or off), a backdrop, a

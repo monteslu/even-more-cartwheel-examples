@@ -418,9 +418,16 @@ static void restart(void) {
   if (opt_on("ASYNC_RESTART")) { G.loading = 0; request_level(start_level()); } /* (a gate: the loading screen, as a player gets it) */
   else begin_level_now(start_level());
 }
+/* the look changed (the Settings row or the run option LOOK): the scene at the size the look draws it, the clouds as
+ * light as the look wants them (a 1-bit look: half, DITHER_CLOUDS) */
+static void look_changed(void) {
+  ascii_set_enabled(ascii_enabled());
+  const char *c = opt_get("DITHER_CLOUDS");
+  fx_set_cloud_opacity(dither_mono() ? (c ? (float)atof(c) : 0.5f) : 1.0f);
+}
 static void option_changed(const char *name) {
   if (!strcmp(name, "ASCII_OFF")) ascii_set_enabled(!opt_on("ASCII_OFF")); /* the plain 3D picture: the control */
-  if (!strcmp(name, "LOOK") || !strcmp(name, "DITHER_TINT")) dither_option_changed(name), ascii_set_enabled(ascii_enabled()); /* the look (dither.h) */
+  if (!strcmp(name, "LOOK") || !strcmp(name, "DITHER_CLOUDS")) dither_option_changed(name), look_changed(); /* the look (dither.h) */
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
   if (!strcmp(name, "OLD_FEEL")) {
     cw_action as[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.orb_l, G.orb_r };
@@ -441,7 +448,7 @@ static bool warmup(void *u) {
     fx_init(root);
     ascii_init(cw_scene_app_tree());
     dither_init(cw_scene_app_tree());
-    ascii_set_enabled(ascii_enabled()); /* the scene's size for the look in use */
+    look_changed(); /* the scene's size and the clouds for the look in use */
   }
   if (!G.have_game) { /* a structure behind the title: built on the job while the engine's loading screen shows its bar */
     G.players = 1;
@@ -498,17 +505,25 @@ static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
   cw_prompt_text(font, "{fire}: fire   {ammo_prev|ammo}: change ammunition   {view}: wide view", -1, cw_v2(x, y + 2 * dy), s, c, CW_ALIGN_CENTER);
 }
 
+/* the Settings row "Look" (dither.h): a change shows at once, the scene at the size the look draws it */
+static const cw_shell_setting SETTINGS[] = { { .label = "Look", .key = "look", .value = NULL, .choices = LOOK_NAMES, .count = LOOK_COUNT } };
+static void settings_changed(int index, int value, void *u) {
+  (void)u;
+  if (index == 0) dither_set_look(value), look_changed();
+}
+
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
+  cw_shell_setting rows[1] = { SETTINGS[0] };
+  rows[0].value = dither_look_value();
   G.aim_l = cw_action_find("aim_left"), G.aim_r = cw_action_find("aim_right"), G.aim_u = cw_action_find("aim_up"), G.aim_d = cw_action_find("aim_down");
   G.fire = cw_action_find("fire"), G.ammo = cw_action_find("ammo"), G.ammo_p = cw_action_find("ammo_prev");
   G.view = cw_action_find("view");
   G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right");
   cw_shell_init(&(cw_shell_desc){ .title = "DETEXTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background,
-                                  /* the menus' selection in the dither look's ink (white is the shell's other rows) */
-                                  .accent = DETEXTO_DEFAULT_LOOK != LOOK_ASCII ? (cw_color){ 1, 1, 1, 1 } : (cw_color){ 0, 0, 0, 0 } });
+                                  .settings_items = rows, .settings_item_count = 1, .settings_changed = settings_changed });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -1228,7 +1243,11 @@ static void hud_select(cw_vec2 cs, float u) {
     bool sel = i == G.sel, lock = i > open;
     float mp = sel ? G.menu_pop / 7.0f : 0; /* a pressed state: the chosen tile swells and lights, then settles */
     if (sel && G.menu_pop > 0 && !G.cue_draw[2]) G.cue_draw[2] = (int32_t)R.frame + 1;
-    cw_r2d_round_rect(cw_rect_make(x - mp * 6 * u, y - mp * 6 * u, cw + mp * 12 * u, ch + mp * 12 * u), 12 * u, 6, sel ? rgba(0.95f + 0.05f * mp, 0.6f + 0.3f * mp, 0.2f + 0.5f * mp, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f));
+    cw_rect tr = cw_rect_make(x - mp * 6 * u, y - mp * 6 * u, cw + mp * 12 * u, ch + mp * 12 * u);
+    cw_color plate = sel ? rgba(0.95f + 0.05f * mp, 0.6f + 0.3f * mp, 0.2f + 0.5f * mp, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f);
+    if (dither_mono()) plate.a = 1; /* a 1-bit look: solid plates (the choice an ink plate, the rest paper with an ink edge), no dots through them */
+    cw_r2d_round_rect(tr, 12 * u, 6, plate);
+    if (dither_mono() && !sel) cw_r2d_round_rect_lines(tr, 12 * u, 2 * u, 6, rgba(1, 1, 1, 1));
     char b[64];
     cw_color ink = sel ? rgba(0.08f, 0.05f, 0.02f, 1) : lock ? rgba(0.78f, 0.78f, 0.82f, 1) : WHITE;
     snprintf(b, sizeof b, "%d", i + 1);
@@ -1318,6 +1337,7 @@ static void hud(void) {
 static void render(void *u, double alpha) {
   (void)u;
   double t_render = perf_now();
+  dither_set_level(G.have_game ? G.g.level : -1); /* the level in view's tone (dither.h) */
   LG.drawn = false;
   if (LG.active && LG.n < LOG_MAX) { /* (the gap to the render before: a blocked main thread shows here) */
     LG.last_gap = LG.last_render > 0 ? (float)(t_render - LG.last_render) : 0;

@@ -2,7 +2,8 @@
 // runs FRAMES frames headless in wasmcart's Node host (`wasmcart play
 // --frames N --shot out.png`) and must exit cleanly, report every frame, and
 // leave a picture that is the cart's size and not blank (a cart that renders
-// nothing, or only a clear colour, fails). CI runs it on Mesa's software
+// nothing, or only a clear colour, fails; a dithered 1-bit picture, two colours each a real share of the frame,
+// is a picture). CI runs it on Mesa's software
 // Vulkan (lavapipe), so the cart takes its WebGPU path.
 //
 //   node tests/cart-smoke.mjs [--frames N] [--carts <dir>] [--out <dir>] [game ...]
@@ -38,13 +39,15 @@ function colours(file) {
   }
   if (type !== 2) throw new Error(`${file}: colour type ${type}, expected RGB`);
   const raw = inflateSync(Buffer.concat(idat));
-  const seen = new Set();
+  const seen = new Map();
   for (let y = 0; y < h; y++) {
     const row = y * (1 + w * 3);
     if (raw[row] !== 0) throw new Error(`${file}: row filter ${raw[row]}, expected none`);
-    for (let x = 0; x < w; x += 2) seen.add((raw[row + 1 + x * 3] << 16) | (raw[row + 2 + x * 3] << 8) | raw[row + 3 + x * 3]);
+    for (let x = 0; x < w; x += 2) { const c = (raw[row + 1 + x * 3] << 16) | (raw[row + 2 + x * 3] << 8) | raw[row + 3 + x * 3]; seen.set(c, (seen.get(c) || 0) + 1); }
   }
-  return { w, h, n: seen.size };
+  // the two commonest colours' shares (a 1-bit look: ink and paper make nearly all of it)
+  const top = [...seen.values()].sort((p, q) => q - p), all = top.reduce((p, q) => p + q, 0);
+  return { w, h, n: seen.size, ink: (top[0] || 0) / all, paper: (top[1] || 0) / all };
 }
 
 mkdirSync(OUT, { recursive: true });
@@ -69,11 +72,13 @@ for (const game of games.length ? games : ALL) {
   if (existsSync(shot)) {
     pic = colours(shot);
     if (ran && (pic.w !== +ran[2] || pic.h !== +ran[3])) problems.push(`picture ${pic.w}x${pic.h}, the cart ran at ${ran[2]}x${ran[3]}`);
-    if (pic.n < 1000) problems.push(`picture has only ${pic.n} colours (blank or nearly)`);
+    // a picture, or a dithered 1-bit picture (two colours, each a real share of the frame: Detexto's default look)
+    const oneBit = pic.ink + pic.paper >= 0.9 && pic.paper >= 0.05;
+    if (pic.n < 1000 && !oneBit) problems.push(`picture has only ${pic.n} colours (blank or nearly)`);
   } else problems.push('wrote no picture');
   if (problems.length) {
     failed++;
     console.error(`${game}: FAIL (${secs} s)\n  ${problems.join('\n  ')}\n${out.split('\n').filter((l) => !/\[debug\]/.test(l)).slice(-15).join('\n')}`);
-  } else console.log(`${game}: ok (${FRAMES} frames, ${pic.w}x${pic.h}, ${pic.n} colours, ${secs} s)`);
+  } else console.log(`${game}: ok (${FRAMES} frames, ${pic.w}x${pic.h}, ${pic.n} colours${pic.n < 1000 ? `, 1-bit: the two commonest ${(100 * (pic.ink + pic.paper)).toFixed(1)}%, the second ${(100 * pic.paper).toFixed(1)}%` : ''}, ${secs} s)`);
 }
 process.exit(failed ? 1 : 0);

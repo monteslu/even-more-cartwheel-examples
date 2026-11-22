@@ -1,5 +1,6 @@
-/* The 1-bit look (dither.h). */
+/* The 1-bit looks (dither.h). */
 #include "dither.h"
+#include "game.h"
 #include "opts.h"
 #include <cartwheel/debug.h>
 #include <cartwheel/gpu.h>
@@ -15,13 +16,14 @@
 static struct {
   cw_tree *tree;
   bool ready;
-  int look;
+  int look, level;
+  unsigned frames;
   unsigned bayer_tex, blue_tex; /* RGBA8: the threshold's high byte in r, low byte in g */
   unsigned prog_tone, prog_quant;
   /* debug fields */
   int dbg_look, dbg_w, dbg_h;
-  float dbg_ms;
-} D = { .look = DETEXTO_DEFAULT_LOOK, .dbg_look = DETEXTO_DEFAULT_LOOK };
+  float dbg_ms, dbg_world, dbg_block;
+} D = { .look = LOOK_DITHER, .level = -1 };
 
 static float optf(const char *name, float def) {
   const char *s = opt_get(name);
@@ -158,7 +160,8 @@ static const char *TONE_WGSL =
     "  return vec4f(v, 0.0, 0.0, 1.0);\n"
     "}\n";
 
-/* quantize: u_q threshold matrix side, method (1 bayer, 2 blue, 3 feedback), feedback gain; u_ink, u_paper */
+/* quantize: u_q.x the threshold matrix's side, u_q.yz its offset in pixels (0: anchored to the screen; the gate's
+ * crawl control moves it every frame); u_ink, u_paper */
 static const char *QUANT_GLSL =
     "uniform sampler2D u_tonetex; uniform sampler2D u_thr; uniform vec4 u_q; uniform vec4 u_ink; uniform vec4 u_paper;\n"
     "out vec4 o;\n"
@@ -167,17 +170,7 @@ static const char *QUANT_GLSL =
     "void main() {\n"
     "  ivec2 p = ivec2(gl_FragCoord.xy);\n"
     "  float v = V(p);\n"
-    "  if (u_q.y > 2.5) {\n"
-    "    float e = 0.0;\n"
-    "    for (int j = -2; j <= 2; j++) for (int i = -2; i <= 2; i++) {\n"
-    "      if (i == 0 && j == 0) continue;\n"
-    "      ivec2 q = p + ivec2(i, j);\n"
-    "      float vq = V(q); float w = exp(-float(i * i + j * j) * 0.35);\n"
-    "      e += w * (vq - step(T(q), vq));\n"
-    "    }\n"
-    "    v += e * u_q.z / 4.43;\n"
-    "  }\n"
-    "  float b = v > T(p) ? 1.0 : 0.0;\n"
+    "  float b = v > T(p + ivec2(u_q.yz)) ? 1.0 : 0.0;\n"
     "  o = vec4(mix(u_paper.rgb, u_ink.rgb, b), 1.0);\n"
     "}\n";
 
@@ -190,29 +183,21 @@ static const char *QUANT_WGSL =
     "fn V(q0: vec2i) -> f32 { let q = clamp(q0, vec2i(0), vec2i(textureDimensions(u_tonetex)) - 1); return textureLoad(u_tonetex, q, 0).r; }\n"
     "@fragment fn fs(@builtin(position) pos: vec4f, @location(0) uv: vec2f) -> @location(0) vec4f {\n"
     "  let p = vec2i(cw_frag_coord(pos));\n"
-    "  var v = V(p);\n"
-    "  if (u.u_q.y > 2.5) {\n"
-    "    var e = 0.0;\n"
-    "    for (var j = -2; j <= 2; j++) { for (var i = -2; i <= 2; i++) {\n"
-    "      if (i == 0 && j == 0) { continue; }\n"
-    "      let q = p + vec2i(i, j);\n"
-    "      let vq = V(q); let w = exp(-f32(i * i + j * j) * 0.35);\n"
-    "      e += w * (vq - step(T(q), vq));\n"
-    "    } }\n"
-    "    v += e * u.u_q.z / 4.43;\n"
-    "  }\n"
-    "  let b = select(0.0, 1.0, v > T(p));\n"
+    "  let v = V(p);\n"
+    "  let b = select(0.0, 1.0, v > T(p + vec2i(u.u_q.yz)));\n"
     "  return vec4f(mix(u.u_paper.rgb, u.u_ink.rgb, b), 1.0);\n"
     "}\n";
 
 /* ── the pass ────────────────────────────────────────────────────────── */
 
-cw_color dither_ink(void) { return opt_on("DITHER_TINT") ? (cw_color){ 1.0f, 0.9f, 0.74f, 1 } : (cw_color){ 1, 1, 1, 1 }; }
-cw_color dither_paper(void) { return opt_on("DITHER_TINT") ? (cw_color){ 0.035f, 0.03f, 0.025f, 1 } : (cw_color){ 0, 0, 0, 1 }; }
+const char *const LOOK_NAMES[LOOK_COUNT] = { "Dither", "Dither warm", "Dither grid", "ASCII" };
+
+cw_color dither_ink(void) { return D.look == LOOK_WARM ? (cw_color){ 1.0f, 0.9f, 0.74f, 1 } : (cw_color){ 1, 1, 1, 1 }; }
+cw_color dither_paper(void) { return D.look == LOOK_WARM ? (cw_color){ 0.035f, 0.03f, 0.025f, 1 } : (cw_color){ 0, 0, 0, 1 }; }
 
 static bool dither_active(const cw_pass_ctx *ctx, void *u) {
   (void)ctx, (void)u;
-  return D.ready && D.look != LOOK_ASCII;
+  return D.ready && D.look != LOOK_ASCII && !opt_on("DITHER_OFF"); /* (DITHER_OFF: the plain picture, a gate's control) */
 }
 
 static void programs(void) {
@@ -222,6 +207,14 @@ static void programs(void) {
   D.prog_quant = wg ? cw_pass_program_wgsl("dt_dither_quant", QUANT_WGSL) : cw_pass_program("dt_dither_quant", QUANT_GLSL);
 }
 
+/* a level's tone: the world's gain, the landmark's gain and the bias, times / plus the run options' (1, 1, 0 for most) */
+static void level_tone(float *world, float *block, float *bias) {
+  *world = 1, *block = 1, *bias = 0;
+  if (D.level < 0 || D.level >= NLEVELS) return;
+  if (level_setting(&LEVELS[D.level]) == ST_DESERT) /* pale sand round a landmark the sun lights from behind */
+    *world = optf("DITHER_DESERT_WORLD", 0.62f), *block = optf("DITHER_DESERT_BLOCK", 1.45f);
+}
+
 static void dither_exec(cw_pass_ctx *ctx, void *u) {
   (void)u;
   bool wg = cw_gpu_backend() == CW_GPU_WEBGPU;
@@ -229,27 +222,32 @@ static void dither_exec(cw_pass_ctx *ctx, void *u) {
   if (!D.prog_tone || !D.prog_quant) return;
   D.dbg_w = ctx->width, D.dbg_h = ctx->height;
   const cw_rt *tone = cw_pass_rt(ctx, ctx->width, ctx->height, CW_RT_R16F, false);
-  float lin[3];
+  float lin[3], wk, bk, bb;
+  level_tone(&wk, &bk, &bb);
+  D.dbg_world = optf("DITHER_WORLD", 0.8f) * wk, D.dbg_block = optf("DITHER_BLOCK", 1.15f) * bk;
   cw_pass_linear_depth_params(ctx, lin);
   cw_pass_bind_target(ctx, tone);
   cw_pass_use(D.prog_tone);
   cw_pass_bind_texture(0, ctx->src->tex);
   cw_pass_bind_texture(1, ctx->depth_tex);
   if (!wg) cw_pass_uniform1i(D.prog_tone, "u_src", 0), cw_pass_uniform1i(D.prog_tone, "u_depth", 1);
-  cw_pass_uniform4f(D.prog_tone, "u_tone", optf("DITHER_GAMMA", 1.3f), optf("DITHER_CONTRAST", 1.3f), optf("DITHER_BIAS", 0.0f),
+  cw_pass_uniform4f(D.prog_tone, "u_tone", optf("DITHER_GAMMA", 1.3f), optf("DITHER_CONTRAST", 1.3f), optf("DITHER_BIAS", 0.0f) + bb,
                     optf("DITHER_SHARPEN", 0.9f));
   cw_pass_uniform4f(D.prog_tone, "u_edge", optf("DITHER_OUTLINE", 1.0f), optf("DITHER_OUTLINE_FROM", 0.02f), optf("DITHER_OUTLINE_TO", 0.08f), 0);
   cw_pass_uniform4f(D.prog_tone, "u_lin", lin[0], lin[1], lin[2], 0);
-  cw_pass_uniform4f(D.prog_tone, "u_key", optf("DITHER_WORLD", 0.8f), optf("DITHER_BLOCK", 1.15f), 0, 0);
+  cw_pass_uniform4f(D.prog_tone, "u_key", D.dbg_world, D.dbg_block, 0, 0);
   cw_pass_fullscreen();
 
   cw_pass_bind_target(ctx, ctx->dst);
   cw_pass_use(D.prog_quant);
   cw_pass_bind_texture(0, tone->tex);
-  bool bay = D.look == LOOK_BAYER;
-  cw_pass_bind_texture(1, bay ? D.bayer_tex : D.blue_tex);
+  bool grid = D.look == LOOK_GRID;
+  cw_pass_bind_texture(1, grid ? D.bayer_tex : D.blue_tex);
   if (!wg) cw_pass_uniform1i(D.prog_quant, "u_tonetex", 0), cw_pass_uniform1i(D.prog_quant, "u_thr", 1);
-  cw_pass_uniform4f(D.prog_quant, "u_q", bay ? 8.0f : (float)BN, (float)D.look, optf("DITHER_FEEDBACK", 1.0f), 0);
+  /* DITHER_CRAWL 1, the no-crawl gate's control: the threshold moved every frame, as a dither tied to time would */
+  float off = opt_on("DITHER_CRAWL") ? (float)((D.frames * 37) % 64) : 0;
+  D.frames++;
+  cw_pass_uniform4f(D.prog_quant, "u_q", grid ? 8.0f : (float)BN, off, off * 0.5f, 0);
   cw_color ink = dither_ink(), paper = dither_paper();
   cw_pass_uniform4f(D.prog_quant, "u_ink", ink.r, ink.g, ink.b, 1);
   cw_pass_uniform4f(D.prog_quant, "u_paper", paper.r, paper.g, paper.b, 1);
@@ -263,14 +261,14 @@ static void dither_exec(cw_pass_ctx *ctx, void *u) {
     if (st[i].name && !strcmp(st[i].name, "dither")) D.dbg_ms = st[i].gpu_ms_avg;
 }
 
+/* a LOOK run option: a name (the old trial's names too) or a number */
 static int parse_look(const char *s) {
-  if (!s) return DETEXTO_DEFAULT_LOOK;
+  if (!strcmp(s, "dither") || !strcmp(s, "blue")) return LOOK_DITHER;
+  if (!strcmp(s, "warm")) return LOOK_WARM;
+  if (!strcmp(s, "grid") || !strcmp(s, "bayer")) return LOOK_GRID;
   if (!strcmp(s, "ascii")) return LOOK_ASCII;
-  if (!strcmp(s, "bayer")) return LOOK_BAYER;
-  if (!strcmp(s, "blue")) return LOOK_BLUE;
-  if (!strcmp(s, "feedback")) return LOOK_FEEDBACK;
   int k = atoi(s);
-  return k >= 0 && k < LOOK_COUNT ? k : DETEXTO_DEFAULT_LOOK;
+  return k >= 0 && k < LOOK_COUNT ? k : LOOK_DITHER;
 }
 
 void dither_init(cw_tree *tree) {
@@ -287,14 +285,18 @@ void dither_init(cw_tree *tree) {
   cw_debug_i32("dt.dither.w", &D.dbg_w);
   cw_debug_i32("dt.dither.h", &D.dbg_h);
   cw_debug_f32("dt.dither.gpu_ms", &D.dbg_ms);
+  cw_debug_f32("dt.dither.world", &D.dbg_world);
+  cw_debug_f32("dt.dither.block", &D.dbg_block);
 }
 
+int *dither_look_value(void) { return &D.look; }
 int dither_look(void) { return D.look; }
-void dither_set_look(int look) { D.look = look, D.dbg_look = look; }
+void dither_set_look(int look) { D.look = look >= 0 && look < LOOK_COUNT ? look : LOOK_DITHER, D.dbg_look = D.look; }
 bool dither_mono(void) { return D.look != LOOK_ASCII; }
+void dither_set_level(int level) { D.level = level; }
 
 void dither_option_changed(const char *name) {
-  if (!name || !strcmp(name, "LOOK")) dither_set_look(parse_look(opt_get("LOOK")));
+  if ((!name || !strcmp(name, "LOOK")) && opt_get("LOOK")) dither_set_look(parse_look(opt_get("LOOK")));
 }
 
 cw_color dither_hud_color(cw_color c) {

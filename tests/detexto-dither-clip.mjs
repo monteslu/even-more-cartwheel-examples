@@ -3,7 +3,7 @@
 // charge picked (west twice) and fired at the foot on the aim the level opens with, a second charge a little higher
 // while the rubble falls, then heavy balls. romdev's frame record captures every frame on the fixed clock (one
 // call), and ffmpeg makes a 60 fps MP4 of it (real speed). The raw dump is deleted once encoded.
-//   node tests/detexto-dither-clip.mjs <out dir> [--gpu gl|webgpu] [--looks ascii,bayer,blue,feedback] [--frames 540]
+//   node tests/detexto-dither-clip.mjs <out dir> [--gpu gl|webgpu] [--looks dither,warm,grid,ascii] [--frames 540]
 //     [--set KEY=VALUE,...] [--tag name] [--flash] (the flash check of the same play instead of a clip)
 import { mkdirSync, rmSync, writeFileSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -14,7 +14,7 @@ const a = process.argv.slice(2);
 const arg = (k, d) => { const i = a.indexOf(k); return i >= 0 ? a[i + 1] : d; };
 const gpu = arg('--gpu', 'gl');
 const out = resolve(a[0]);
-const looks = arg('--looks', 'ascii,bayer,blue,feedback').split(',');
+const looks = arg('--looks', 'dither,warm,grid,ascii').split(',');
 const frames = +arg('--frames', 540);
 const extra = Object.fromEntries((arg('--set', '') || '').split(',').filter(Boolean).map((kv) => kv.split('=')));
 const tag = arg('--tag', '');

@@ -90,17 +90,18 @@ fall to the bot within par.
 
 ### Detexto
 
-![Detexto: a landmark in glowing magenta characters on black, the launcher arc in yellow](docs/screenshots/detexto.jpg)
+![Detexto: a landmark coming down in black and white dither, every silhouette outlined](docs/screenshots/detexto.jpg)
 
-Destructo drawn as neon text. The same landmarks, launcher, ammunition and
-physics, for one to four players taking turns, with every frame turned into
-glowing characters on black: each landmark a tower of characters in its
-material's colour, the crystals magenta, the world a dim matrix green, and the
-characters tumbling with the blocks when a charge goes off. A pass picks a
-character for each cell from the 3D scene by its shape (the font's glyphs
-measured in six regions), holds it against shimmer, and draws it crisp at the
-output's full size over a soft glow; the HUD sits in neon-edged boxes of 70%
-black, the characters showing faintly through.
+Destructo drawn in one bit. The same landmarks, launcher, ammunition and
+physics, for one to four players taking turns, with every pixel black or
+white: a blue noise dither at the screen's full resolution, anchored to the
+screen so a still camera holds still, over a tone step that keeps the landmark
+bright against its ground and outlines every silhouette from the depth. The HUD
+is in the same two colours. Settings picks the look: Dither, Dither
+warm (warm white on near black), Dither grid (an ordered cross-hatch), or ASCII,
+the original look: every frame as glowing characters on black, each landmark a
+tower of characters in its material's colour, picked for each cell by its shape
+and drawn crisp at the output's full size over a soft glow.
 
 ### Ember Throne
 

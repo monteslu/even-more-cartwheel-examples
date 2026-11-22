@@ -5,9 +5,9 @@
   "logo": "logo.png",
   "title": "title.jpg",
   "screenshots": [
-    { "path": "shot-1.jpg", "label": "Hoover Dam in neon text: a breach opens and the lake spills through" },
-    { "path": "shot-2.jpg", "label": "Taj Mahal in neon text: the dome opens and the marble comes down" },
-    { "path": "shot-3.jpg", "label": "Mount Rushmore in neon text: a charge goes off at the foot of the carved faces" },
-    { "path": "shot-4.jpg", "label": "Iron Lady in neon text: the shot strikes the lattice tower" }
+    { "path": "shot-1.jpg", "label": "Hoover Dam in one bit: a breach opens and the lake spills through" },
+    { "path": "shot-2.jpg", "label": "Taj Mahal in one bit: the dome opens and the marble comes down" },
+    { "path": "shot-3.jpg", "label": "Mount Rushmore in one bit: a charge goes off at the foot of the carved faces" },
+    { "path": "shot-4.jpg", "label": "Iron Lady in one bit: the shot strikes the lattice tower" }
   ]
 }

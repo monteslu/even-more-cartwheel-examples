@@ -1,12 +1,12 @@
 # Detexto
 
-Famous buildings of the world, brought down in neon text. Detexto is the destruction game of
+Famous buildings of the world, brought down in one bit. Detexto is the destruction game of
 [Destructo](../destructo/) (the same landmarks, launcher, ammunition, physics and modes, for one to four players
-taking turns) with every frame drawn as glowing characters on black: each landmark is a tower of characters in its
-material's colour (stone cyan, steel violet, glass pale mint, wood amber, red paint hot pink, gold yellow), the
-crystals glow magenta, the launcher's arc yellow, and the world round the field is a dim matrix green. When a charge
-goes off the characters tumble and scatter with the blocks. The HUD and the menus stay clear: they sit in boxes with
-a neon edge, 70% black over the characters, which show through dimmed.
+taking turns) drawn in two colours: every pixel of the picture is black or white, a fine dither of blue noise at the
+screen's full resolution, with the landmark bright against its ground and every silhouette outlined. Settings has
+the look (**Look**, saved): **Dither** (black and white, the default), **Dither warm** (warm white on near black),
+**Dither grid** (an ordered cross-hatch) and **ASCII**, the original look: every frame as glowing characters on
+black, each landmark a tower of characters in its material's colour.
 
 ## Playing
 
@@ -64,33 +64,34 @@ hole a few bricks across and knocks a small tower's top off, a heavy ball topple
 thing they touch and push and break everything within about four and a half metres.
 
 
-## The 1-bit look (src/dither.c, a trial)
+## The 1-bit looks (src/dither.c)
 
-On this branch every frame is drawn in two colours at the output's full size instead of as characters: each pixel of
-the 3D picture is black or white (`DITHER_TINT 1`: warm white on near black). The scene renders at 100% (no scaler,
-no lower resolution), and one POST pass, last in the chain, does it in two draws, the same shader in GLSL and WGSL:
+Every pixel of the 3D picture is ink or paper at the output's full size: black and white, or warm white
+(1, 0.9, 0.74) on near black for Dither warm. The scene renders at 100% (no scaler, no lower resolution), and one POST
+pass, last in the chain (after the tone map, the grade and the lens), does it in two draws, the same shader in GLSL
+and WGSL:
 
 - **The tone.** Each pixel starts from the finished picture: the grey world by its luma (x `DITHER_WORLD`, 0.8; its
-  highlights, a blast's white core, kept), the landmark's neon hues by their value (x `DITHER_BLOCK`, 1.15), so a
-  block reads bright whatever its hue. A light unsharp mask (radius 2 px, `DITHER_SHARPEN`) crisps edges, the depth
-  draws outlines on the near side of every silhouette and crease (where the depth stops being a plane:
-  `DITHER_OUTLINE`), then gamma (`DITHER_GAMMA` 1.3), contrast (`DITHER_CONTRAST` 1.3) and `DITHER_BIAS`.
-- **The threshold**, anchored to screen pixels so a still camera never crawls (`LOOK`):
-  - `bayer`: the 8x8 ordered matrix (a regular cross-hatch);
-  - `blue`: a 64x64 blue noise matrix, made by void and cluster when the cart starts (a few ms; no asset);
-  - `feedback`: the blue noise threshold, then each pixel's neighbours' quantization error (5x5, Gaussian, the
-    pixel itself left out, `DITHER_FEEDBACK`) added before it is quantized again: one parallel step of error
-    diffusion, with error diffusion's crisper edges and gradients but no serial scan, so it stays the same from frame
-    to frame wherever the picture does.
-  - `ascii`: the characters below.
+  highlights, a blast's white core, kept), the landmark's hues by their value (x `DITHER_BLOCK`, 1.15), so a
+  block reads bright whatever its hue. A light unsharp mask (radius 2 px, `DITHER_SHARPEN` 0.9) crisps edges, the
+  depth draws outlines on the near side of every silhouette and crease (where the depth stops being a plane:
+  `DITHER_OUTLINE`), then gamma (`DITHER_GAMMA` 1.3), contrast (`DITHER_CONTRAST` 1.3) and `DITHER_BIAS`. The
+  desert levels (the sun low behind pale sand) take the world at 0.62 of that and the landmark at 1.45
+  (`DITHER_DESERT_WORLD`, `DITHER_DESERT_BLOCK`), so a landmark lit from behind still reads brighter than its sand.
+- **The threshold**, anchored to the screen's pixels, so a still camera gives a still picture: a 64x64 blue noise
+  matrix (Dither, Dither warm), made by void and cluster when the cart starts (a few ms, no asset), or the 8x8 ordered
+  matrix (Dither grid).
 
-The HUD and the menus draw after it in the same two colours: every HUD colour goes to the ink or the paper by its
-brightness, and the HUD's boxes are solid paper with a thin ink edge. The selected menu row is the ink at full
-strength, the others at 85% (the shell marks a selection by colour alone).
+The HUD and the game's own screens draw after it in the same two colours: every HUD colour goes to the ink or the
+paper by its brightness, the HUD's boxes are solid paper with a thin ink edge, and a selected tile (the structure
+select, the ammunition bar) is inverted: an ink plate with paper text. The shell's menus mark their selected row in
+the shell's accent colour. Dust, smoke and the collapse plume draw at half their opacity under a 1-bit look
+(`DITHER_CLOUDS`), so a structure reads through a cloud rather than behind a field of dots.
 
-When cartwheel-engine's look API gains a dither look, this pass moves there.
+Run options: `LOOK` (dither, warm, grid, ascii) picks the look as the Settings row does; `DITHER_OFF 1` shows the
+plain picture and `DITHER_CRAWL 1` moves the threshold every frame (the gates' controls).
 
-## How it is drawn (src/ascii.c)
+## The ASCII look (src/ascii.c)
 
 The 3D scene renders as Destructo's does (three.c, clustered lights, shadows), but nobody sees it: it is only what
 the characters are chosen from. Two passes on the engine's render pipeline, the same shader in GLSL and WGSL:
@@ -131,5 +132,13 @@ frame, interleaved rounds with an A/A pair): the scene at 100% 4.42 ms, at 35% 1
 
 `tests/detexto-look.mjs` (romdev, GL and WebGPU): the frame is characters on black (over 55% black, 2 to 30% lit),
 the scene renders at 35% while the cells are sized from the output, the grid covers the frame, and at most 6% of the lit characters change between two frames while the camera moves.
-Controls that must fail: the pass off (the plain picture) and the hold off (`ASCII_KEEP 1`, more change). The
+Controls that must fail: the pass off (the plain picture) and the hold off (`ASCII_KEEP 1`, more change).
+
+`tests/detexto-dither.mjs` (romdev, GL and WebGPU): each 1-bit look draws only its ink and paper (at least 99.5% of
+the pixels without the HUD; control: the pass off), Dither and Dither grid draw different patterns and Dither warm
+the Dither pattern in its own pair, a still camera changes at most 0.5% of the pixels a frame (control: the
+threshold moved every frame, `DITHER_CRAWL 1`, at least ten times as many), and the Settings row steps the looks
+from Dither to ASCII and stops at the ends, ASCII putting the scene back at 35%. `tests/detexto-dither-shots.mjs`,
+`-clip.mjs` (`--flash` for the flash check of real play per look) and `-timing.mjs` make the stills, clips and GPU
+times the looks were judged by. The
 simulation, levels and physics are Destructo's and are gated there (`tests/destructo-*.mjs`).

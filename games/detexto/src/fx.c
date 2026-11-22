@@ -33,7 +33,7 @@
 static struct {
   bool ready;
   cw_node root;
-  cw_node boom[BOOMS];
+  cw_node boom[BOOMS], boom_smoke[BOOMS];
   int nboom;
   cw_node mist, spray, dust_warm, dust_pale, dust_big, plume, chips[M_COUNT], sparks, glass, sparkle, muzzle, smoke;
   cw_node light[LIGHTS];
@@ -173,7 +173,7 @@ static const char *const K_HAZE[] = { "amount", "24", "lifetime", "2.0", "explos
   "turbulence", "0.7", "blend", "DISTORT", "distort_strength", "0.12", "size", "4", "size_curve", "\"0 0.6, 1 1.6\"",
   "color_ramp", "\"0 1 1 1 0, 0.15 1 1 1 1, 1 1 1 1 0\"", NULL };
 
-static cw_node boom_node(int seed) {
+static cw_node boom_node(int seed, cw_node *smoke) {
   cw_node e = cw_node_new("Explosion3D", "Blast");
   /* the scorch sheet is named before the node enters the tree: since engine v0.46.2 a decal loads its image as its
    * node enters, and the kit's default 'scorch.png' is not in the pack */
@@ -191,7 +191,7 @@ static cw_node boom_node(int seed) {
   cw_node_set(e, "scorch_glow", cw_val_float(2.5f));
   cw_node_set(e, "shake_amount", cw_val_float(0)); /* never shake the camera: the pad rumbles */
   cw_node3d_set_position(e, (t3_vec3){ 0, -60, 0 });
-  pnode(e, "Fire", K_FIRE, seed), pnode(e, "Smoke", K_SMOKE, seed + 1), pnode(e, "Sparks", K_SPARKS, seed + 2);
+  pnode(e, "Fire", K_FIRE, seed), *smoke = pnode(e, "Smoke", K_SMOKE, seed + 1), pnode(e, "Sparks", K_SPARKS, seed + 2);
   pnode(e, "Embers", K_EMBERS, seed + 3), pnode(e, "Haze", K_HAZE, seed + 4);
   cw_node w = cw_node_new("Shockwave3D", "Wave");
   cw_node_add_child(e, w);
@@ -208,7 +208,7 @@ void fx_init(cw_node root) {
   memset(&FX, 0, sizeof FX);
   FX.root = cw_node_new("Node3D", "FX");
   cw_node_add_child(root, FX.root);
-  for (int i = 0; i < BOOMS; i++) FX.boom[i] = boom_node(100 + i * 10);
+  for (int i = 0; i < BOOMS; i++) FX.boom[i] = boom_node(100 + i * 10, &FX.boom_smoke[i]);
   FX.dust_warm = bnode("DustWarm", DUST_WARM, 300, 24);
   FX.dust_pale = bnode("DustPale", DUST_PALE, 330, 24);
   FX.dust_big = bnode("DustBig", DUST_BIG, 360, 10);
@@ -457,4 +457,11 @@ void fx_prime(t3_vec3 under) {
   cw_particles_burst(FX.muzzle, under, up), cw_particles_burst(FX.smoke, under, up);
   /* no priming decal: since engine v0.46.2 a decal's image loads as its node enters the tree and the atlas's first
    * image no longer costs the blast's frame */
+}
+
+void fx_set_cloud_opacity(float a) {
+  if (!FX.ready) return;
+  cw_node n[] = { FX.dust_warm, FX.dust_pale, FX.dust_big, FX.plume, FX.smoke, FX.mist, FX.boom_smoke[0], FX.boom_smoke[1], FX.boom_smoke[2] };
+  for (size_t i = 0; i < sizeof n / sizeof n[0]; i++)
+    if (cw_node_valid(n[i])) cw_node_set(n[i], "color", cw_val_color(1, 1, 1, a));
 }
