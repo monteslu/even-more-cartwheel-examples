@@ -9,8 +9,13 @@ characters.
   build has three touch zones across the bottom of the screen; J K L on a keyboard.
 - **One or two players**: one player on the three lanes, or on two lanes (the drums: kick and clap; or the groove:
   bass and the synth, the chords and stabs of the record); two players side by side on their own pads, each on a pair on their own road
-  at their own difficulty, each with their own streak, one score between them. Two lanes play on West or the left shoulder and
-  South or the right shoulder, both at once, and carry more notes a button than the three-lane game.
+  at their own difficulty, each with their own streak, one score between them. Two lanes play on West and South, both at once,
+  and carry more notes a button than the three-lane game.
+- **Tempo on the shoulders**: while a song plays, L slows it and R speeds it up, 5% a press from 70% to 130%, on
+  either pad, and the song keeps its pitch (a time stretch, the engine's keylock: no chipmunk voices). The BPM as
+  played shows under the difficulty. The notes, the judgement and the clock all follow the tempo; the windows stay the
+  same in real time, and the score counts each hit times the tempo, so a faster song is worth more. The tempo carries
+  from song to song.
 - **The song reacts**: each part sits a little under the record until you play it; every note you hit punches its
   part to full and opens its top. A miss drops only that part (a short dip with a low-pass) and it comes back by
   itself over a beat. Too many misses and the floor empties.

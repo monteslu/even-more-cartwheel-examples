@@ -50,6 +50,10 @@
 #include "song.h"
 
 
+/* the tempo on the shoulders, in percent of the song's own */
+#define TEMPO_MIN 70
+#define TEMPO_MAX 130
+#define TEMPO_STEP 5
 #define LEAD_MS 4000 /* from Play to the song's first frame: the how-to and the count-in, the first notes coming round */
 #define MAX_NOTES 8192
 /* songs with a best kept: the save stays inside the shell's CW_SHELL_GAME_SAVE_MAX, so the first 32 songs played keep
@@ -120,6 +124,7 @@ static struct {
   int32_t next;                         /* first note not judged yet */
   int32_t song_ms, raw_ms, done, failed, ended_ticks;
   int32_t total, hit, perfect, good, miss, score, best_score, new_best;
+  int32_t tempo_pct, tempo_ticks; /* the tempo on the shoulders (percent of the song's own) and ticks since its last change */
   float energy;
   float level[LANES], gain[LANES];
   int32_t cue_lane, cue_ms;
@@ -160,7 +165,7 @@ static struct {
   float gap_fill, gap_alpha;
 } G;
 
-static cw_action lane_act[SOLO_LANES], hand_act[2], acc, back, up, down, left, right;
+static cw_action lane_act[SOLO_LANES], hand_act[2], tempo_act[2], acc, back, up, down, left, right;
 static cw_sound snd_move, snd_select, snd_back, snd_click, snd_fail, snd_cheer;
 static int touch_zone[SOLO_LANES];
 
@@ -211,8 +216,11 @@ static const int32_t GOOD_WIN[DIFFS] = { 150, 110, 85 };
 static int player_of(int lane) { return lane >= 0 && lane < LANES && G.owner[lane] > 0 ? G.owner[lane] : 0; }
 static int diff_of(int lane) { return player_of(lane) ? G.pdiff[1] : G.diff; }
 /* the `rules old` request (the forgiving gate's control): the windows and the wrong-button miss as they were */
-static int32_t perfect_ms(int lane) { return G.old_rules ? 35 : PERFECT_WIN[diff_of(lane)]; }
-static int32_t good_ms(int lane) { return G.old_rules ? 70 : GOOD_WIN[diff_of(lane)]; }
+/* the windows are in the player's time: in song time (what a note's time and the clock count) they are the tempo times
+ * as wide, so a faster song is judged as strictly as one at its own speed, not more */
+static int32_t song_ms_of(int32_t real_ms) { return (int32_t)lroundf((float)real_ms * music_tempo()); }
+static int32_t perfect_ms(int lane) { return song_ms_of(G.old_rules ? 35 : PERFECT_WIN[diff_of(lane)]); }
+static int32_t good_ms(int lane) { return song_ms_of(G.old_rules ? 70 : GOOD_WIN[diff_of(lane)]); }
 
 static const note *chart(void) { return G.s ? G.notes : NULL; }
 static int chart_count(void) { return G.s ? G.n_notes : 0; }
@@ -286,6 +294,7 @@ static void begin_song(const song *s, int d, int32_t from_ms, int32_t lead_ms, f
   }
   music_set_player(!G.demo);
   music_set_played(G.demo ? (1u << SOLO_LANES) - 1 : played_mask());
+  music_set_tempo(G.demo ? 1 : (float)G.tempo_pct / 100); /* the player's tempo carries from song to song; previews as recorded */
   music_play(s, from_ms, lead_ms, volume);
 }
 
@@ -394,7 +403,8 @@ static void judged(int i, int j, int32_t err) {
   int mult = mult_of(S->combo);
   if (mult > mult_of(S->combo - 1)) S->tier_t = 0, S->tier_seq++; /* a multiplier step: a band rises up the player's rivers */
   if (S->combo % MILESTONE == 0 && !G.demo) S->milestone = S->combo, S->milestone_ticks = 100;
-  G.score += (j == J_PERFECT ? 300 : 100) * mult; /* one score, each player's notes at their own multiplier */
+  /* one score, each player's notes at their own multiplier, and the tempo's: a song played faster is worth more */
+  G.score += (int32_t)lroundf((float)((j == J_PERFECT ? 300 : 100) * mult) * (float)G.tempo_pct / 100);
   G.energy = fminf(1, G.energy + (j == J_PERFECT ? 0.03f : 0.015f));
   G.err_sum += (float)err;
   G.err_sq += (float)err * err;
@@ -479,8 +489,14 @@ static void tick_song(float dt, bool player) {
   for (int l = 0; l < LANES; l++) G.level[l] = music_lane_level(l), G.gain[l] = music_lane_gain(l);
   G.song_ms = (int32_t)lround(music_ms());
   G.raw_ms = (int32_t)lround(music_raw_ms());
-  int32_t t = G.song_ms - (player ? G.offset_ms : 0);
+  int32_t t = G.song_ms - (player ? song_ms_of(G.offset_ms) : 0);
   const note *c = chart();
+  if (player) { /* the shoulders on either pad: the tempo, a step a press, the pitch kept */
+    int step = 0;
+    for (int p = 0; p < MAX_PLAYERS; p++) step += cw_action_just_pressed(p, tempo_act[1]) - cw_action_just_pressed(p, tempo_act[0]);
+    int pct = CW_CLAMP(G.tempo_pct + TEMPO_STEP * CW_CLAMP(step, -1, 1), TEMPO_MIN, TEMPO_MAX);
+    if (pct != G.tempo_pct) G.tempo_pct = pct, G.tempo_ticks = 0, music_set_tempo((float)pct / 100);
+  }
   int n = chart_count();
   if (player) {
 #ifdef GAME_AUTOPILOT
@@ -525,7 +541,7 @@ static void tick_song(float dt, bool player) {
     music_set_other_break(brk);
   } else music_set_other_break(false);
   /* notes past the Good window are missed */
-  for (int i = G.next; i < n && c[i].ms < t - 70; i++) /* 70: the narrowest Good window */
+  for (int i = G.next; i < n && c[i].ms < t - 49; i++) /* 49: the narrowest Good window (70) at the slowest tempo */
     if ((G.state[i] == NOTE_PENDING || G.state[i] == NOTE_SKIPPED) && c[i].ms < t - good_ms(c[i].lane)) judged(i, J_MISS, 0);
   while (G.next < n && G.state[G.next] != NOTE_PENDING && G.state[G.next] != NOTE_SKIPPED) G.next++;
   G.cue_lane = G.next < n ? c[G.next].lane : -1;
@@ -753,7 +769,7 @@ static float view_ahead(void);
 static void gap_tick(float dt) {
   const note *c = chart();
   float beat = G.s && G.s->bpm > 0 ? 60000.0f / G.s->bpm : 500;
-  float t = (float)(G.song_ms - G.offset_ms);
+  float t = (float)(G.song_ms - song_ms_of(G.offset_ms));
   int last = G.next - 1;
   while (last >= 0 && G.state[last] == NOTE_GONE) last--;
   float prev = last >= 0 ? (float)c[last].ms : (float)G.from_ms, next = (float)G.cue_ms;
@@ -832,7 +848,7 @@ static void fixed_update(void *user, double dt) {
   (void)user;
   bool playing = cw_shell_update();
   G.ticks++;
-  G.screen_ticks++;
+  G.screen_ticks++, G.tempo_ticks++;
   cw_shell_screen sh = cw_shell_screen_now();
   (void)sh;
   if (!playing) return; /* (the scene app does not call this while the shell's menus are up: update() runs the title's demo) */
@@ -1093,6 +1109,17 @@ static void draw_play(cw_vec2 cv, float size) {
     else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), pair_name(G.part[0]));
     else snprintf(b, sizeof b, "%s", diff_name(G.diff));
     text_at(b, size * 0.8f, size * 2.5f, size * 0.8f, DIM, -1);
+    /* the tempo: the BPM as played, and how far from the song's own when changed; a change swells it in */
+    float bpm = G.s->bpm * (float)G.tempo_pct / 100, sw = fmaxf(0, 1 - (float)G.tempo_ticks / 30.0f);
+    if (G.tempo_pct != 100) snprintf(b, sizeof b, "%.0f BPM  %d%%", bpm, G.tempo_pct);
+    else snprintf(b, sizeof b, "%.0f BPM", bpm);
+    text_at(b, size * 0.8f, size * 3.5f, size * 0.8f * (1 + 0.15f * sw), G.tempo_pct != 100 ? ACCENT : DIM, -1);
+    if (G.song_ms < 0) { /* the count-in says how */
+      snprintf(b, sizeof b, "{tempo_down} {tempo_up} tempo");
+      cw_vec2 ps = cw_prompt_text_size(font(), b, 0, size * 0.7f);
+      ascii_hud_rect(size * 0.8f, size * 4.6f, ps.x, ps.y, 1);
+      cw_prompt_text(font(), b, 0, cw_v2(size * 0.8f, size * 4.6f), size * 0.7f, DIM, CW_ALIGN_LEFT);
+    }
   }
   snprintf(b, sizeof b, "%d", G.score); /* the score and the streak, top right */
   text_at(b, cv.x - size * 0.8f, size * 0.4f, size * 1.4f, WHITE, 1);
@@ -1233,6 +1260,7 @@ static void draw_results(cw_vec2 cv, float size) {
   if (G.mode == MODE_DUO) snprintf(b, sizeof b, "two players  %s", G.failed ? "the floor emptied" : "cleared");
   else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s %s  %s", diff_name(G.diff), pair_name(G.part[0]), G.failed ? "the floor emptied" : "cleared");
   else snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), G.failed ? "the floor emptied" : "cleared");
+  if (G.tempo_pct != 100) { size_t k = strlen(b); snprintf(b + k, sizeof b - k, "  at %d%%", G.tempo_pct); }
   LINE(b, r.y + size * 2.2f, size * 0.85f, DIM);
   LINE(GRADES[grade_of()], r.y + size * 3.4f, size * 3.6f, ACCENT);
   snprintf(b, sizeof b, "%d", G.score);
@@ -1347,7 +1375,7 @@ static void render(void *user, double alpha) {
   bool menu = G.screen == SCR_SELECT || G.screen == SCR_DIFF || G.screen == SCR_CALIB || G.screen == SCR_RESULTS;
   club_view v = {
     .s = G.s, .notes = chart(), .state = G.state, .count = chart_count(),
-    .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : G.offset_ms) : 0,
+    .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : song_ms_of(G.offset_ms)) : 0,
     .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = view_ahead(), .note_light = view_note_light(), .t = G.vis_t, .layout = view_layout(),
     .gap_fill = G.screen == SCR_PLAY ? G.gap_fill : 0, .gap_alpha = G.screen == SCR_PLAY ? G.gap_alpha : 0,
   };
@@ -1500,6 +1528,8 @@ static void init(void *user) {
   static const char *const LANE_ACTIONS[SOLO_LANES] = { "lane_kick", "lane_clap", "lane_bass" };
   hand_act[0] = cw_action_find("hand_left");
   hand_act[1] = cw_action_find("hand_right");
+  tempo_act[0] = cw_action_find("tempo_down");
+  tempo_act[1] = cw_action_find("tempo_up");
   for (int l = 0; l < SOLO_LANES; l++) {
     /* native builds: three touch zones, laid out every frame (touch_layout); in a cart the host draws the pad */
     touch_zone[l] = cw_touch_controls_on() ? cw_touch_add_button(0, 0, 1, 1) : -1;
@@ -1540,6 +1570,7 @@ static void init(void *user) {
   snd_cheer = tone(523, 0.6f, 1046, 0.2f, 2);
   if (!songs_load()) cw_error("no song loaded: songs/<id>/song.json (docs/DESIGN.md)");
   G.offset_ms = save()->offset_ms;
+  G.tempo_pct = 100;
   G.cue_lane = -1;
   cw_debug_i32("game.screen", &G.screen);
   cw_debug_i32("game.mode", &G.mode);
@@ -1583,6 +1614,7 @@ static void init(void *user) {
   cw_debug_i32("bot.late_ms", &G.bot_late_ms);
   cw_debug_i32("bot.skipped_ms", &G.bot_skipped_ms);
   cw_debug_i32("game.offset_ms", &G.offset_ms);
+  cw_debug_i32("game.tempo_pct", &G.tempo_pct);
   cw_debug_i32("game.ticks", &G.ticks);
   (void)lane_level_dbg, (void)lane_level_f;
   music_register_debug();

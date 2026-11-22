@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.42.0
+
+- **beatsync**: the shoulders change the tempo while a song plays: L slower, R faster, 5% a press from 70% to 130%,
+  on either pad, with the pitch kept (cartwheel-engine 0.59.1's time stretch). The HUD shows the BPM as played and
+  the percent; the count-in shows the two buttons. The notes, the clock and the judgement follow the tempo (the windows
+  stay the same in real time) and a hit scores times the tempo. The two-lane game plays on West and South only. New
+  gate: tests/beatsync-tempo.mjs (in time at 120%, the kick heard where the clock says, the pitch kept).
+- Every game on cartwheel-engine 0.59.1.
+
 ## 0.41.0
 
 - **beatsync**: long song names fit their boxes everywhere. In the song list a long title gets a little smaller and then

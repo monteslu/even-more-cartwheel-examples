@@ -116,9 +116,15 @@ players jam together, each on two.
 - **One player** chooses on the difficulty screen: three lanes (kick, clap, bass on West, South, East, as before), or
   two lanes on the drums or the groove. **Two players** each play one pair on their own pad (the drums and the groove
   by default; left or right swaps them), each at their own difficulty, and both press ready.
-- **Buttons for two lanes.** A pair's left lane is West or the left shoulder, its right lane South or the right
-  shoulder, both always live: one thumb rocking between two neighbouring buttons, or a hand each on the shoulders.
-  East stays the three-lane game's bass. Keyboard fallback: J and K. No touch layout of the game's own: a touch
+- **Buttons for two lanes.** A pair's left lane is West, its right lane South: one thumb rocking between two
+  neighbouring buttons. East stays the three-lane game's bass.
+- **Tempo on the shoulders.** L slower, R faster, 5% a press, 70% to 130%, either pad, in play only (the count-in shows
+  the two buttons; the HUD the BPM as played and the percent, in the accent colour while it is not 100%). Every track
+  takes the change in one engine command (cw_voices_set_tempo: the stems stay locked to the sample) with the pitch
+  kept; the song clock counts song time, so the charts need nothing; the judgement windows are in real time (scaled
+  by the tempo in song time); the device offset too. A hit scores its points times the tempo. Previews and the title
+  play as recorded. Gate: tests/beatsync-tempo.mjs (sync at 120% with an open-loop bot, the kick heard on the clock,
+  the pitch kept; controls: the bot at the song's own speed, the chart moved, the tempo by playback rate). Keyboard fallback: J and K. No touch layout of the game's own: a touch
   device gets the host's gamepad overlay, which draws every button the input map names.
 - **Joining.** Play opens the shell's join screen: South takes a seat, Start plays (alone, Start plays at once). A
   second pad can also join with one press on the song select or the difficulties. A pad that goes away frees its

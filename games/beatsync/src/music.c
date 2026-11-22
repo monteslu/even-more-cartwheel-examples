@@ -79,6 +79,10 @@ static struct {
   bool no_reward; /* the `reward 0` request: the lanes sit at full between hits, as 0.31 did (the reward gate's control) */
   unsigned played; /* the lanes someone plays (music_set_played): the rest sit at full, the other track as the backing */
   float song_level, song_target, song_rate;
+  /* the tempo (speed with the pitch kept, cartwheel/audio.h Tempo): asked for, and the one the clock runs at, which
+   * follows a change when it is heard (the stretcher takes TEMPO_HEARD_S to play it) */
+  float tempo, clock_tempo, tempo_wait;
+  bool rate_tempo; /* the `tempomode rate` request: the speed by playback rate, the pitch moving with it (the tempo gate's control) */
 } M;
 
 /* a slot's level between hits, the top of its punch and its dulled top, as the player hears it (the demo and the
@@ -108,6 +112,7 @@ void music_init(void) {
   M.other_idle = 1;
   M.played = (1u << LANE_KICK) | (1u << LANE_CLAP) | (1u << LANE_BASS);
   M.song_level = M.song_target = 1;
+  M.tempo = M.clock_tempo = 1;
 }
 
 void music_stop(float fade_s) {
@@ -152,9 +157,11 @@ void music_play(const song *s, int32_t from_ms, int32_t lead_ms, float volume) {
     if (t == TRACK_VOCALS && !M.s->has_vocals) { M.v[t] = (cw_voice){ 0 }; continue; }
     cw_bus bus = t == TRACK_VOCALS ? M.vocals_bus : M.lane_bus[t]; /* LANE_TRACK: track t is lane t's slot */
     M.v[t] = cw_audio_play(M.snd[t], &(cw_play_desc){ .bus = bus, .start_frame = M.start_frame, .offset = M.offset, .priority = 10,
-                                              .fade_in = M.offset > 0 ? 1.0f : 0 }); /* a start part way in swells up, never a cut in */
+                                              .fade_in = M.offset > 0 ? 1.0f : 0,
+                                              .tempo = M.rate_tempo ? 0 : M.tempo, .pitch = M.rate_tempo ? M.tempo : 0 }); /* a start part way in swells up, never a cut in */
   }
-  M.clock = M.raw = from_ms - (double)lead * 1000 / mix;
+  M.clock_tempo = M.tempo, M.tempo_wait = 0;
+  M.clock = M.raw = from_ms - (double)lead * 1000 / mix * M.tempo; /* the lead-in counts in song time too */
   M.last_seen = -1;
   M.playing = true;
   M.paused = M.ended = M.started = false;
@@ -198,12 +205,30 @@ static int64_t audio_pos(double *ms) {
   }
   int mix = cw_audio_sample_rate() > 0 ? cw_audio_sample_rate() : 48000;
   int64_t mf = cw_audio_mixed_frames();
-  *ms = M.from_ms + (double)(mf - M.start_frame) * 1000.0 / mix;
+  *ms = M.from_ms + (double)(mf - M.start_frame) * 1000.0 / mix * M.clock_tempo;
   if (*ms > M.from_ms) *ms = M.from_ms; /* started on this block: the voice's count shows it next block */
   return -2 - mf;
 }
 
 void music_set_other_break(bool on) { M.other_break = on; }
+
+/* the song's speed, the pitch kept: every track in one command (they stay locked to the sample); the clock follows
+ * when the change is heard */
+#define TEMPO_HEARD_S 0.09f /* 4320 mixer frames: a stretching voice plays a change that much later */
+void music_set_tempo(float tempo) {
+  tempo = fminf(2.0f, fmaxf(0.5f, tempo));
+  if (tempo == M.tempo) return;
+  M.tempo = tempo;
+  cw_voice live[ALL_TRACKS];
+  int n = 0;
+  for (int t = 0; t < ALL_TRACKS; t++)
+    if (M.v[t].id) live[n++] = M.v[t];
+  if (M.rate_tempo) for (int i = 0; i < n; i++) cw_voice_set_pitch(live[i], tempo);
+  else if (n) cw_voices_set_tempo(live, n, tempo);
+  M.tempo_wait = M.playing && M.started ? TEMPO_HEARD_S : 0;
+  if (!M.tempo_wait) M.clock_tempo = tempo;
+}
+float music_tempo(void) { return M.tempo; }
 
 void music_tick(float dt) {
   {
@@ -245,7 +270,8 @@ void music_tick(float dt) {
     cw_bus_set_volume(M.song_bus, M.song_level);
   }
   if (!M.playing || M.paused) return;
-  M.clock += dt * 1000.0;
+  if (M.tempo_wait > 0 && (M.tempo_wait -= dt) <= 0) M.clock_tempo = M.tempo;
+  M.clock += dt * 1000.0 * M.clock_tempo;
   double ms;
   int64_t pos = audio_pos(&ms);
   if (pos == -1) { /* the track has ended: the clock runs on */
@@ -292,7 +318,14 @@ static void cmd_reward(int argc, const char **argv, cw_reply *r) {
   M.no_reward = argc > 1 && atoi(argv[1]) == 0;
   cw_reply_printf(r, "{\"reward\":%d}", !M.no_reward);
 }
+static void cmd_tempomode(int argc, const char **argv, cw_reply *r) {
+  if (argc > 1) M.rate_tempo = !strcmp(argv[1], "rate");
+  cw_reply_printf(r, "{\"tempomode\":\"%s\"}", M.rate_tempo ? "rate" : "keylock");
+}
 void music_register_debug(void) {
+  cw_debug_command("tempomode", "tempomode keylock|rate: the speed with the pitch kept (the game) or by playback rate, the pitch moving with it (the tempo gate's control), from the next song", cmd_tempomode);
+  cw_debug_f32("music.tempo", &M.tempo);
+  cw_debug_f32("music.clock_tempo", &M.clock_tempo);
   cw_debug_command("bassmix", "bassmix old|new: the bass lane at the kick and clap's levels (old, the bass gate's control) or its own wider reward", cmd_bassmix);
   cw_debug_command("reward", "reward 1|0: 0 keeps every lane at full between hits, from the next song (the reward gate's control)", cmd_reward);
   cw_debug_command("solo", "solo kick|clap|bass|other|off: hear one track alone (src/music.c)", cmd_solo);

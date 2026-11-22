@@ -38,6 +38,9 @@ void music_hit(int lane);
 void music_miss(int lane);
 float music_lane_level(int lane); /* 0..1, how far a lane is from a miss (1 none): the river's light */
 float music_lane_gain(int lane);  /* the lane's level as it is heard, 0..1 (debug field lane.gain) */
+/* the song's speed, the pitch kept (0.5 .. 2, 1 as recorded): every track at once, the clock in song time */
+void music_set_tempo(float tempo);
+float music_tempo(void);
 void music_set_fade(float level, float seconds); /* the whole song (the failed song's fade out) */
 void music_register_debug(void); /* the `solo` debug command */
 

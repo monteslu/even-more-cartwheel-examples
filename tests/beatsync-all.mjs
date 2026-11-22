@@ -1,5 +1,6 @@
 // beatsync's gates for one GPU, several at once (each its own romdev host); the wall-clock sync gate and cart smoke
-// last and alone, GL only (as are the recorded-sound gates mix and bass).
+// last and alone, GL only (as are the recorded-sound gates mix and bass); the tempo gate last on both (its recordings
+// on GL).
 //
 //   node tests/beatsync-all.mjs gl|webgpu [jobs]   (inside the GPU lock, or on a remote lane: one hold, not one a gate)
 import { spawn } from 'node:child_process';
@@ -7,7 +8,8 @@ const gpu = process.argv[2], jobs = +(process.argv[3] || 4);
 const par = ['duo', 'land', 'streak', 'layout', 'depth', 'wait', 'forgiving', 'newcomer', 'text', 'programs', 'look', 'flash',
   ...(gpu === 'gl' ? ['mix', 'bass'] : [])].map((g) => ['node', [`tests/beatsync-${g}.mjs`, '--gpu', gpu], g]);
 par.push(['node', ['tests/gate.mjs', '--gates-file', 'beatsync-gates.json', '--hosts', 'romdev', '--gpu', gpu], 'gates']);
-const last = gpu === 'gl' ? [['node', ['tests/beatsync-sync.mjs', '--gpu', 'gl'], 'sync'], ['node', ['tests/cart-smoke.mjs', 'beatsync'], 'smoke']] : [];
+const last = [['node', ['tests/beatsync-tempo.mjs', '--gpu', gpu], 'tempo'],
+  ...(gpu === 'gl' ? [['node', ['tests/beatsync-sync.mjs', '--gpu', 'gl'], 'sync'], ['node', ['tests/cart-smoke.mjs', 'beatsync'], 'smoke']] : [])];
 const results = [];
 const run = ([cmd, args, name]) => new Promise((done) => {
   const t0 = Date.now(), p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
