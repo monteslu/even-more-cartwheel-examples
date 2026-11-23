@@ -40,10 +40,12 @@ bool dither_mono(void);
 /* the level in view (levels.h index, -1 for none): its tone (a desert's bright ground under a landmark lit from
  * behind takes less of the world's gain and more of the landmark's) */
 void dither_set_level(int level);
-/* a HUD colour in the look's two colours: light colours take the ink, dark ones the paper, alpha kept. Unchanged
- * under the ASCII look. */
+/* a HUD colour in the look's two colours: light colours take the ink, dark ones the paper, opaque (alpha half or more)
+ * or not drawn (less): no pixel blends the two. Unchanged under the ASCII look. */
 cw_color dither_hud_color(cw_color c);
 /* the ink and the paper (LOOK_WARM: warm white on near black) */
 cw_color dither_ink(void);
 cw_color dither_paper(void);
+/* a rect snapped to whole window pixels (a 1-bit look: no edge pixel half covered) */
+cw_rect dither_snap(cw_rect r);
 #endif

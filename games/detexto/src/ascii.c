@@ -570,14 +570,14 @@ static void border(cw_rect r, float u, cw_color c) {
 }
 
 /* the boxes go down before the HUD draws (the last frame's: the HUD barely moves), black inside, a neon edge */
-/* one box: under a dither look a solid paper plate with a thin ink edge (two colours), else 70% black with the neon edge */
+/* one box: under a dither look a solid square paper plate with a thin ink edge (two colours), else 70% black with the neon edge */
 static void box(const float *r, float u) {
   cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-  if (dither_mono()) {
-    cw_color p = dither_paper(), k = dither_ink();
-    p.a = r[4] >= 0.5f ? 1.0f : r[4] * 2.0f, k.a = r[4] >= 0.5f ? 1.0f : r[4] * 2.0f;
-    cw_r2d_round_rect(rr, 8 * u, 6, p);
-    cw_r2d_round_rect_lines(rr, 8 * u, 2.0f * u, 6, k);
+  if (dither_mono()) { /* square, on whole pixels, opaque: no edge pixel between the two colours */
+    if (r[4] < 0.5f) return;
+    rr = dither_snap(rr);
+    cw_r2d_rect(rr, dither_paper());
+    cw_r2d_rect_lines(rr, fmaxf(2.0f, roundf(2.0f * u)), dither_ink());
     return;
   }
   cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });

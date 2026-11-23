@@ -29,9 +29,11 @@ static float optf(const char *name, float def) {
 
 const char *const LOOK_NAMES[LOOK_COUNT] = { "Dither", "Dither warm", "Dither grid", "ASCII" };
 
-/* the two colours as the screen shows them (sRGB display values, as the HUD draws them) */
-cw_color dither_ink(void) { return D.look == LOOK_WARM ? (cw_color){ 1.0f, 0.9f, 0.74f, 1 } : (cw_color){ 1, 1, 1, 1 }; }
-cw_color dither_paper(void) { return D.look == LOOK_WARM ? (cw_color){ 0.035f, 0.03f, 0.025f, 1 } : (cw_color){ 0, 0, 0, 1 }; }
+/* the two colours as the screen shows them (sRGB display values, as the HUD and the menus draw them): whole bytes, so
+ * the look (which writes them through linear light) and the 2D draws land on the same values (warm 255 229 189 on
+ * 9 8 6) */
+cw_color dither_ink(void) { return D.look == LOOK_WARM ? (cw_color){ 1.0f, 229 / 255.0f, 189 / 255.0f, 1 } : (cw_color){ 1, 1, 1, 1 }; }
+cw_color dither_paper(void) { return D.look == LOOK_WARM ? (cw_color){ 9 / 255.0f, 8 / 255.0f, 6 / 255.0f, 1 } : (cw_color){ 0, 0, 0, 1 }; }
 
 /* a display value in linear light (the DISPLAY stage writes a look's colours as that linear colour shows on screen) */
 static float to_linear(float d) { return d <= 0.04045f ? d / 12.92f : powf((d + 0.055f) / 1.055f, 2.4f); }
@@ -148,6 +150,12 @@ cw_color dither_hud_color(cw_color c) {
   if (!dither_mono()) return c;
   float l = 0.2126f * c.r + 0.7152f * c.g + 0.0722f * c.b;
   cw_color k = l >= 0.33f ? dither_ink() : dither_paper();
-  k.a = c.a;
+  k.a = c.a >= 0.5f ? 1.0f : 0.0f; /* opaque or not drawn: no blend of the two */
   return k;
+}
+
+cw_rect dither_snap(cw_rect r) { /* (the canvas can be smaller than the window: snapped in window pixels) */
+  cw_vec2 a = cw_r2d_canvas_to_window(cw_v2(r.x, r.y)), b = cw_r2d_canvas_to_window(cw_v2(r.x + r.w, r.y + r.h));
+  a = cw_r2d_window_to_canvas(cw_v2(roundf(a.x), roundf(a.y))), b = cw_r2d_window_to_canvas(cw_v2(roundf(b.x), roundf(b.y)));
+  return cw_rect_make(a.x, a.y, b.x - a.x, b.y - a.y);
 }

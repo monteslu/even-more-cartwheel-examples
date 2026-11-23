@@ -67,7 +67,7 @@ thing they touch and push and break everything within about four and a half metr
 ## The 1-bit looks (src/dither.c)
 
 Every pixel of the 3D picture is ink or paper at the output's full size: black and white, or warm white
-(1, 0.9, 0.74) on near black for Dither warm. The scene renders at 100% (no scaler, no lower resolution), and the
+(255 229 189) on near black (9 8 6) for Dither warm. The scene renders at 100% (no scaler, no lower resolution), and the
 engine's one-bit dither (`cartwheel/look.h`, `CW_LOOK_DITHER_ORDERED`) draws it at the DISPLAY stage: last in the post
 chain (after the tone map, the grade and the lens), on the finished picture, one dither pixel a screen pixel
 (`output_pixels`), so nothing after it adds a third colour. The game sets its tone options:
@@ -83,15 +83,22 @@ chain (after the tone map, the grade and the lens), on the finished picture, one
   blue noise (Dither, Dither warm) or the 8x8 ordered matrix (Dither grid).
 
 The HUD and the game's own screens draw after it in the same two colours: every HUD colour goes to the ink or the
-paper by its brightness, the HUD's boxes are solid paper with a thin ink edge, and a selected tile (the structure
-select, the ammunition bar) is inverted: an ink plate with paper text. The shell's menus (title, pause, Settings, the
-Graphics page) show their selected row the same way (`CW_SHELL_SELECT_INVERSE`: a white plate, black text); the
-shell still dims the picture behind its menus and draws its other rows in white at 85%. Dust, smoke and the collapse
+paper by its brightness, opaque (a colour under half alpha is not drawn), the HUD's boxes and plates are square
+paper with a thin ink edge on whole pixels, text has a thin outline of the other colour instead of a soft glow, and a
+selected tile (the structure select, the ammunition bar) is inverted: an ink plate with paper text. The engine's menus
+(loading, title, pause, Settings, the Graphics page) are in the look's two colours too (`cw_shell_desc.two_colour`
+with the look's ink and paper): no dimming, each line of text on a paper plate over the picture, one-bit text edges,
+the selected row an ink plate. Changing the Look in Settings changes the menus on the next frame
+(`cw_shell_set_colours`, `cw_shell_set_two_colour`); under ASCII the menus are the engine's own with the selected
+row on a white plate (`CW_SHELL_SELECT_INVERSE`). Every screen of the game's own (the HUD, the result card, the
+structure select, the pause screen's controls card) lays its lines out by their measured size, so at 200% text
+nothing overlaps and the boxes grow round it. Dust, smoke and the collapse
 plume draw at half their opacity under a 1-bit look (`DITHER_CLOUDS`), so a structure reads through a cloud rather
 than behind a field of dots.
 
 Run options: `LOOK` (dither, warm, grid, ascii) picks the look as the Settings row does; `DITHER_OFF 1` shows the
-plain picture (a gate's control). The engine's test switch `CW_TEST_LOOK_CRAWL=1` moves the threshold every frame
+plain picture (a gate's control); `MENUS_TWO_OFF 1` leaves the engine's menus in their own colours under a 1-bit
+look (the menus gate's control). The engine's test switch `CW_TEST_LOOK_CRAWL=1` moves the threshold every frame
 (the no-crawl gate's control).
 
 ## The ASCII look (src/ascii.c)

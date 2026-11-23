@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.49.0
+
+- **Detexto**'s whole picture is two colours under its 1-bit looks. The engine's menus (loading, title, pause,
+  Settings, the Graphics page) draw in the look's ink and paper (`cw_shell_desc.two_colour`): no see-through dimming,
+  each line of text on a paper plate over the picture, one-bit text edges, the selected row an ink plate. The HUD, the
+  result card, the structure select and the pause screen's controls card draw with one-bit edges
+  (`cw_r2d_set_one_bit`, outlines in the paper) and their button prompts in the same two colours
+  (`cw_prompt_set_two_colour`); plates and frames are square on whole pixels and a colour under half alpha is left
+  out. Every pixel of those screens is the look's ink or paper, at 100% and 200% text, on GL and WebGPU. Changing the
+  Look in Settings changes the menus on the next frame; ASCII keeps the engine's menus with the selected row on a
+  white plate. Dither warm's ink is 255 229 189 on 9 8 6, the bytes its picture already showed.
+- **Detexto** at 200% text: the HUD, the result card, the structure select and the pause screen's controls card lay
+  their lines out by their measured size, so nothing overlaps and the plates and boxes grow round the text; the
+  structure select shows as many rows as fit and wraps long names; the boxes behind the engine's menus grow with the
+  text.
+- tests/detexto-dither.mjs: the menus check covers the title, the HUD (aiming, and over the result card), pause,
+  Settings and the Graphics page in every 1-bit look at 100% and 200% text: every pixel exactly ink or paper, each
+  line's ink within 8% of the blended text's coverage, with controls that must fail (the menus and HUD in their own
+  colours and edges, `MENUS_TWO_OFF 1`; one-bit edges cut at 0.95 coverage); a Look change in Settings shows in the
+  new colours on the next frame, and ASCII turns the mode off.
+- Every game on cartwheel-engine 0.67.0 (from 0.64.1). The program tables were current. Checks on this pin: every game
+  builds; the program survey of all nine dual carts on GL and WebGPU hosts at every preset (no state missing; the GL
+  host's no-seed player run of Destructo and Detexto never leaves the loading screen in 900 frames, on 0.64.1 as well);
+  the cart smoke, version, art and prompt checks of all nine games; every other game's frames in play and in its pause
+  menu byte for byte the same as on 0.64.1, GL and WebGPU (the engine's new two-colour and one-bit drawing is off unless
+  a game asks); skate's gates and look check and beatsync's style survey (the games that hide nodes); Detexto's look
+  gate and its flash check, GL and WebGPU, each with its strobe control failing.
+
 ## 0.48.0
 
 - **beatsync**: nothing in a backdrop reads as a note. The arcade maze's bright critters and the pellets down its rivers

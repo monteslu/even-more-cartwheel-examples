@@ -419,9 +419,24 @@ static void restart(void) {
   if (opt_on("ASYNC_RESTART")) { G.loading = 0; request_level(start_level()); } /* (a gate: the loading screen, as a player gets it) */
   else begin_level_now(start_level());
 }
+/* the engine's menus in the look's colours: under a 1-bit look two colours (cw_shell_desc.two_colour), the look's ink
+ * and paper, the selection an ink plate; under ASCII the menus as they are, the selected row on a white plate
+ * (INVERSE). From the next frame the shell draws. Run option MENUS_TWO_OFF (the dither gate's control): the 1-bit
+ * looks with the shell in its own colours. */
+static int menus_applied = -1;
+static void menus_look(void) {
+  bool two = dither_mono() && !opt_on("MENUS_TWO_OFF");
+  int key = dither_look() * 2 + two;
+  if (key == menus_applied) return;
+  menus_applied = key;
+  cw_shell_set_colours((cw_color){ 1, 1, 1, 1 }, (cw_color){ 0, 0, 0, 1 }, two ? dither_ink() : (cw_color){ 0 }, two ? dither_paper() : (cw_color){ 0 });
+  cw_shell_set_two_colour(two);
+  cw_prompt_set_two_colour(two, dither_ink(), dither_paper()); /* the HUD's button prompts in the same two */
+}
 /* the look changed (the Settings row or the run option LOOK): the scene at the size the look draws it, the clouds as
- * light as the look wants them (a 1-bit look: half, DITHER_CLOUDS) */
+ * light as the look wants them (a 1-bit look: half, DITHER_CLOUDS), the menus in its colours */
 static void look_changed(void) {
+  menus_look();
   ascii_set_enabled(ascii_enabled());
   const char *c = opt_get("DITHER_CLOUDS");
   fx_set_cloud_opacity(dither_mono() ? (c ? (float)atof(c) : 0.5f) : 1.0f);
@@ -429,6 +444,7 @@ static void look_changed(void) {
 static void option_changed(const char *name) {
   if (!strcmp(name, "ASCII_OFF")) ascii_set_enabled(!opt_on("ASCII_OFF")); /* the plain 3D picture: the control */
   if (!strcmp(name, "LOOK") || !strcmp(name, "DITHER_CLOUDS")) dither_option_changed(name), look_changed(); /* the look (dither.h) */
+  if (!strcmp(name, "MENUS_TWO_OFF")) menus_look();
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
   if (!strcmp(name, "OLD_FEEL")) {
     cw_action as[] = { G.aim_l, G.aim_r, G.aim_u, G.aim_d, G.orb_l, G.orb_r };
@@ -484,28 +500,43 @@ static void cmd_freefire(int argc, const char **argv, cw_reply *r) {
   cw_reply_printf(r, "{\"free_fire\":%d}", G.free_fire);
 }
 
-/* behind the pause menu: the controls, once, in one card (the sticks, the d-pad and the face buttons: nothing else is read) */
+/* behind the pause menu: the controls, once, in one card (the sticks, the d-pad and the face buttons: nothing else is
+ * read). The card's lines stack by their measured heights and the boxes grow with the text size, so at 200% nothing
+ * overlaps and every line stays in its box. */
 static cw_color rgba(float r, float g, float b, float a);
+static void two_colour_pass(void);
+static const char *const PAUSE_CARD[3] = {
+  "{aim_left|aim_right|aim_up|aim_down}: aim (left stick or d-pad)",
+  "{orbit_left|orbit_right}: go round the structure (right stick)",
+  "{fire}: fire   {ammo_prev|ammo}: change ammunition   {view}: wide view",
+};
+static float pause_card_bottom; /* debug field ui.pause_card_bottom: the card's foot, a share of the canvas height (0: not drawn) */
 static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
   (void)u;
+  pause_card_bottom = 0;
+  two_colour_pass(); /* (the shell's pass: its own menus turn one-bit on again for theirs) */
+  float k = cs.y / 1080.0f, ts = cw_text_scale(), s = 30 * k, y0 = cs.y * 0.015f, gap = 4 * k;
+  cw_vec2 sz[3];
+  float cw = 0, ch = 0;
+  for (int i = 0; i < 3; i++) sz[i] = cw_prompt_text_size(font, PAUSE_CARD[i], -1, s), cw = fmaxf(cw, sz[i].x), ch += sz[i].y + (i ? gap : 0);
   { /* the shell's screens on clean black: a box behind the title and menu column, one behind the prompt line at the
-     * foot, and on the pause screen one behind the controls card at the top (ascii.h) */
-    float k = cs.y / 1080.0f;
+     * foot, and on the pause screen one behind the controls card at the top (ascii.h); wider and taller with the text */
     ascii_hud_reset(cs, k);
     /* (the Graphics page: its rows and their selection plate are wider than the shell's own lists) */
     float bx = screen == CW_SHELL_SETTINGS && cw_quality_menu_is_open() ? 0.13f : 0.25f;
+    bx = fmaxf(0.03f, bx - 0.2f * (ts - 1)); /* 200%: the column all but the width of the screen */
+    float hw = fminf(0.96f, 0.46f * ts), hh = 0.075f * fminf(ts, 1.6f);
     ascii_hud_rect(cs.x * bx, cs.y * 0.05f, cs.x * (1 - 2 * bx), cs.y * 0.76f, 1);
-    ascii_hud_rect(cs.x * 0.27f, cs.y * 0.895f, cs.x * 0.46f, cs.y * 0.075f, 1);
-    if (screen == CW_SHELL_PAUSE) ascii_hud_rect(cs.x * 0.14f, cs.y * 0.02f, cs.x * 0.72f, 140 * k, 1);
+    ascii_hud_rect(cs.x * (0.5f - hw * 0.5f), cs.y * (0.97f - hh), cs.x * hw, cs.y * hh, 1);
+    if (screen == CW_SHELL_PAUSE) ascii_hud_rect(cs.x * 0.5f - cw * 0.5f - 40 * k, y0, cw + 80 * k, ch, 1);
     ascii_hud_end();
     ascii_hud_draw();
   }
   if (screen != CW_SHELL_PAUSE) return;
-  float k = cs.y / 1080.0f, x = cs.x * 0.5f, y = cs.y * 0.03f, s = 30 * k, dy = 44 * k;
   const cw_color c = rgba(1, 0.92f, 0.65f, 1);
-  cw_prompt_text(font, "{aim_left|aim_right|aim_up|aim_down}: aim (left stick or d-pad)", -1, cw_v2(x, y), s, c, CW_ALIGN_CENTER);
-  cw_prompt_text(font, "{orbit_left|orbit_right}: go round the structure (right stick)", -1, cw_v2(x, y + dy), s, c, CW_ALIGN_CENTER);
-  cw_prompt_text(font, "{fire}: fire   {ammo_prev|ammo}: change ammunition   {view}: wide view", -1, cw_v2(x, y + 2 * dy), s, c, CW_ALIGN_CENTER);
+  float y = y0;
+  for (int i = 0; i < 3; i++) cw_prompt_text(font, PAUSE_CARD[i], -1, cw_v2(cs.x * 0.5f, y), s, c, CW_ALIGN_CENTER), y += sz[i].y + gap;
+  pause_card_bottom = y / cs.y;
 }
 
 /* the Settings row "Look" (dither.h): a change shows at once, the scene at the size the look draws it */
@@ -529,6 +560,7 @@ static void init(void *u) {
                                   .settings_items = rows, .settings_item_count = 1, .settings_changed = settings_changed,
                                   /* the selected row on a plate of the ink, its text in the paper: the menus in the look's two colours */
                                   .accent = { 1, 1, 1, 1 }, .selection = CW_SHELL_SELECT_INVERSE, .selection_text = { 0, 0, 0, 1 } });
+  menus_look(); /* the saved look's colours (the shell read the saved choice into the row's value) */
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -565,6 +597,7 @@ static void init(void *u) {
   cw_debug_field("ui.log_frame", LG.frame, CW_DBG_I32, LOG_MAX), cw_debug_field("ui.log_shown", LG.shown, CW_DBG_I32, LOG_MAX);
   cw_debug_field("ui.log_progress", LG.progress, CW_DBG_F32, LOG_MAX), cw_debug_field("ui.log_gap_ms", LG.gap_ms, CW_DBG_F32, LOG_MAX);
   cw_debug_i32("game.phase", &G.phase_dbg);
+  cw_debug_f32("ui.pause_card_bottom", &pause_card_bottom);
   cw_debug_i32("game.level", &G.level);
   cw_debug_i32("menu.sel", &G.sel);
   cw_debug_i32("game.ready", &G.ready_dbg); /* the aim is open under the settling rubble (coop and free fire) */
@@ -1006,19 +1039,41 @@ static cw_color rgba(float r, float g, float b, float a) { return dither_hud_col
 static cw_color hud_col(cw_color c) { c.a = fminf(1, c.a * 1.8f); return c; }
 static cw_text_style tstyle(float size, cw_color c) {
   c = hud_col(c);
+  if (dither_mono()) { /* a 1-bit look: a thin outline of the other colour (paper round ink; ink round paper text on an ink plate), no soft glow (it would blend the two) */
+    cw_color p = dither_paper();
+    bool on_ink = c.r == p.r && c.g == p.g && c.b == p.b;
+    return (cw_text_style){ .size = size, .color = c, .outline_width = size * 0.06f, .outline_color = on_ink ? dither_ink() : p, .own_backdrop = true };
+  }
   return (cw_text_style){ .size = size, .color = c, .shadow_color = rgba(c.r, c.g, c.b, 0.42f * c.a), .shadow_spread = size * 0.04f,
                           .shadow_softness = size * 0.2f, .own_backdrop = true };
+}
+/* a line of HUD text; under a 1-bit look its outline (and the player's Text background) in the paper, or in the ink
+ * round paper text on an ink plate (one-bit edges: cw_r2d_set_one_bit, set for the pass in hud and draw_background) */
+static cw_text_metrics draw_text(const char *s, float x, float y, const cw_text_style *st) {
+  cw_color k = dither_ink();
+  bool flip = dither_mono() && st->outline_color.r == k.r && st->outline_color.g == k.g && st->outline_color.b == k.b;
+  if (flip) cw_r2d_set_one_bit_paper(k);
+  cw_text_metrics m = cw_r2d_text(font, s, cw_v2(x, y), st);
+  if (flip) cw_r2d_set_one_bit_paper(dither_paper());
+  return m;
+}
+/* the HUD's pass in the look's two colours: one-bit edges on every text, shape and prompt drawn after (a 1-bit look) */
+static void two_colour_pass(void) {
+  if (!dither_mono() || opt_on("MENUS_TWO_OFF")) return; /* (MENUS_TWO_OFF: the gate's control, blended edges) */
+  cw_r2d_set_one_bit(true);
+  cw_r2d_set_one_bit_paper(dither_paper());
 }
 static cw_text_metrics text(const char *s, float x, float y, float size, cw_color c, cw_text_align al) {
   cw_text_style st = tstyle(size, c);
   cw_text_metrics m = cw_font_measure(font, s, &st);
   if (al != CW_ALIGN_LEFT) x -= al == CW_ALIGN_CENTER ? m.width * 0.5f : m.width;
   ascii_hud_rect(x, y, m.width, m.height, c.a); /* its box: black under it, no characters (ascii.h) */
-  return cw_r2d_text(font, s, cw_v2(x, y), &st);
+  return draw_text(s, x, y, &st);
 }
 /* a prompt line, boxed the same way */
 static cw_vec2 ptext(cw_font f, const char *s, int seat, cw_vec2 pos, float size, cw_color c, cw_text_align al) {
   cw_vec2 sz = cw_prompt_text_size(f, s, seat, size);
+  if (dither_mono() && c.a <= 0) return sz; /* (faded out: two-colour prompts draw in the ink whatever the colour) */
   float x = al == CW_ALIGN_CENTER ? pos.x - sz.x * 0.5f : al == CW_ALIGN_RIGHT ? pos.x - sz.x : pos.x;
   ascii_hud_rect(x, pos.y, sz.x, sz.y, c.a);
   return cw_prompt_text(f, s, seat, pos, size, hud_col(c), al);
@@ -1027,13 +1082,23 @@ static void panel(float x, float y, float w, float h, float u, cw_color edge) {
   (void)u; /* the box (ascii.h) draws the plate and the edge, in the panel's colour */
   ascii_hud_rect_edge(x, y, w, h, edge.a, edge);
 }
+/* a plate and its outline: rounded, or under a 1-bit look square on whole pixels (no edge pixel between the two colours) */
+static void rrect(cw_rect r, float radius, cw_color c) {
+  if (dither_mono()) { if (c.a > 0) cw_r2d_rect(dither_snap(r), c); }
+  else cw_r2d_round_rect(r, radius, 6, c);
+}
+static void rrect_lines(cw_rect r, float radius, float width, cw_color c) {
+  if (dither_mono()) { if (c.a > 0) cw_r2d_rect_lines(dither_snap(r), fmaxf(2.0f, roundf(width)), c); }
+  else cw_r2d_round_rect_lines(r, radius, width, 6, c);
+}
 #define GOLD rgba(1, 0.82f, 0.3f, 1)
 #define PINK rgba(1, 0.4f, 0.85f, 1)
 #define WHITE rgba(1, 1, 1, 0.95f)
 static const cw_color SEAT_[MAXP] = { { 1, 0.55f, 0.2f, 1 }, { 0.3f, 0.75f, 1, 1 }, { 0.5f, 0.95f, 0.4f, 1 }, { 1, 0.45f, 0.7f, 1 } };
 #define SEAT(i) dither_hud_color(SEAT_[i])
 
-static void star_row(float x, float y, float s, int n, int of) {
+/* on_ink: on an ink plate (a 1-bit look's chosen tile): the stars in paper */
+static void star_row(float x, float y, float s, int n, int of, bool on_ink) {
   for (int i = 0; i < of; i++) {
     float cx = x + (i - (of - 1) * 0.5f) * s * 1.15f;
     cw_vec2 pts[10];
@@ -1042,7 +1107,9 @@ static void star_row(float x, float y, float s, int n, int of) {
       pts[k] = cw_v2(cx + cosf(a) * r, y + sinf(a) * r);
     }
     cw_color c = i < n ? GOLD : rgba(0.3f, 0.3f, 0.35f, 0.8f);
-    cw_r2d_polygon(pts, 10, c);
+    cw_color fg = on_ink ? dither_paper() : dither_ink();
+    if (dither_mono() && i >= n) cw_r2d_polygon_lines(pts, 10, fmaxf(2.0f, s * 0.06f), fg); /* a star not won: its outline */
+    else cw_r2d_polygon(pts, 10, dither_mono() ? fg : c);
   }
 }
 
@@ -1069,7 +1136,7 @@ static void hud_hint(cw_vec2 cs, float u, int seat) {
     if (k > H_FIRE && !((G.used >> H_FIRE) & 1) && G.g.shots == 0 && k != H_AMMO) continue; /* aim, then fire, before the rest */
     G.hint_t[k]++;
     float a = fminf(1, fminf(G.hint_t[k] / 30.0f, (HINT_TICKS - G.hint_t[k]) / 30.0f));
-    ptext(font, TXT[k], seat, cw_v2(cs.x * 0.5f, cs.y - 190 * u), 30 * u, rgba(1, 0.92f, 0.65f, a), CW_ALIGN_CENTER);
+    ptext(font, TXT[k], seat, cw_v2(cs.x * 0.5f, cs.y - (190 + 70 * (cw_text_scale() - 1)) * u), 30 * u, rgba(1, 0.92f, 0.65f, a), CW_ALIGN_CENTER); /* (above the ammunition row, which grows with the text) */
     return;
   }
 }
@@ -1084,13 +1151,15 @@ static void hud_play(cw_vec2 cs, float u) {
   float share = G.share, mark = game_mark(g);
   float bw = 520 * u, bx = cs.x * 0.5f - bw * 0.5f, by = 30 * u;
   ascii_hud_rect(bx, by, bw, 14 * u, 1);
-  cw_r2d_round_rect(cw_rect_make(bx, by, bw, 14 * u), 7 * u, 6, rgba(0.05f, 0.06f, 0.1f, 0.7f));
-  cw_r2d_round_rect(cw_rect_make(bx, by, bw * fminf(1, share / mark), 14 * u), 7 * u, 6, share >= mark ? GOLD : rgba(0.95f, 0.62f, 0.2f, 0.95f));
+  rrect(cw_rect_make(bx, by, bw, 14 * u), 7 * u, rgba(0.05f, 0.06f, 0.1f, 0.7f));
+  if (dither_mono()) rrect_lines(cw_rect_make(bx, by, bw, 14 * u), 7 * u, 2 * u, dither_ink()); /* the track: paper in an ink frame */
+  rrect(cw_rect_make(bx, by, bw * fminf(1, share / mark), 14 * u), 7 * u, share >= mark ? GOLD : rgba(0.95f, 0.62f, 0.2f, 0.95f));
   snprintf(b, sizeof b, "%d%%", (int)(share * 100 + 0.5f));
-  text(b, bx + bw + 14 * u, by - 9 * u, 32 * u, share >= mark ? GOLD : WHITE, CW_ALIGN_LEFT);
+  float row = text(b, bx + bw + 14 * u, by - 9 * u, 32 * u, share >= mark ? GOLD : WHITE, CW_ALIGN_LEFT).height; /* (the row's height: the text size) */
   if (!plain) snprintf(b, sizeof b, "Shots %d / %d", g->shots, g->L->par);
   else snprintf(b, sizeof b, "Shots %d", g->shots);
   text(b, bx - 14 * u, by - 9 * u, 32 * u, !plain && g->shots > g->L->par ? rgba(1, 0.6f, 0.45f, 1) : WHITE, CW_ALIGN_RIGHT);
+  float under = by - 9 * u + row; /* the foot of the top row */
   /* the crystals: a gem and the count left, top left */
   gem(52 * u, 50 * u, 20 * u, PINK);
   snprintf(b, sizeof b, "%d", g->tgt_left);
@@ -1098,24 +1167,31 @@ static void hud_play(cw_vec2 cs, float u) {
   /* the level's name and par: three seconds, faded in and out */
   if (G.phase == PH_PLAY && G.phase_t < 180) {
     float a = fminf(1, fminf(G.phase_t / 20.0f, (180 - G.phase_t) / 30.0f));
+    /* the lines stacked by their heights under the top row (at a large text size they move down, never overlap) */
+    float ty = fmaxf(70 * u, under + 12 * u);
     snprintf(b, sizeof b, "%d  %s", g->level + 1, g->L->name);
-    text(b, cs.x * 0.5f, 70 * u, 40 * u, rgba(1, 0.82f, 0.3f, a), CW_ALIGN_CENTER);
-    if (g->L->place) text(g->L->place, cs.x * 0.5f, 122 * u, 26 * u, rgba(0.9f, 0.88f, 0.82f, a), CW_ALIGN_CENTER);
+    ty += text(b, cs.x * 0.5f, ty, 40 * u, rgba(1, 0.82f, 0.3f, a), CW_ALIGN_CENTER).height + 6 * u;
+    if (g->L->place) ty += text(g->L->place, cs.x * 0.5f, ty, 26 * u, rgba(0.9f, 0.88f, 0.82f, a), CW_ALIGN_CENTER).height;
     if (!plain) snprintf(b, sizeof b, "par %d", g->L->par);
     else snprintf(b, sizeof b, g->sandbox ? "free fire" : "steady hands");
-    text(b, cs.x * 0.5f, (g->L->place ? 158 : 122) * u, 26 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
+    text(b, cs.x * 0.5f, ty, 26 * u, rgba(1, 1, 1, a), CW_ALIGN_CENTER);
   }
   /* the players (versus: each one's score; co-op: the team's) */
   if (g->players > 1) {
-    float rx = cs.x - 28 * u - 330 * u, ry = 24 * u;
-    panel(rx, ry, 330 * u, (30 + 46 * g->players) * u, u, SEAT(g->cur));
+    cw_text_style ms = tstyle(28 * u, WHITE);
+    cw_text_metrics mm = cw_font_measure(font, "> Player 4  steady", &ms);
+    float rh = fmaxf(46 * u, mm.height + 10 * u), pw = fmaxf(330 * u, mm.width + 60 * u); /* rows as tall as the text */
+    /* at a large text size the level's name in the middle reaches the corner: the panel goes to the left, under the name */
+    bool left = cw_text_scale() > 1.3f;
+    float rx = left ? 28 * u : cs.x - 28 * u - pw, ry = left ? fmaxf(under + 40 * u, cs.y * 0.3f) : 24 * u; /* (below the name and par) */
+    panel(rx, ry, pw, 30 * u + rh * g->players, u, SEAT(g->cur));
     for (int i = 0; i < g->players; i++) {
       bool now = i == g->cur;
       snprintf(b, sizeof b, "%sPlayer %d", now ? "> " : "", i + 1);
-      text(b, rx + 18 * u, ry + (14 + 46 * i) * u, 28 * u, now ? SEAT(i) : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
+      text(b, rx + 18 * u, ry + 14 * u + rh * i, 28 * u, now ? SEAT(i) : rgba(0.8f, 0.8f, 0.85f, 1), CW_ALIGN_LEFT);
       if (g->mode == MODE_PARTY) snprintf(b, sizeof b, "%s", g->P[i].out ? "out" : g->P[i].strikes ? "1 strike" : "in");
       else snprintf(b, sizeof b, "%d", g->mode == MODE_VERSUS ? g->P[i].score : g->P[i].shots);
-      text(b, rx + 312 * u, ry + (14 + 46 * i) * u, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
+      text(b, rx + pw - 18 * u, ry + 14 * u + rh * i, 28 * u, g->mode == MODE_PARTY && g->P[i].out ? rgba(0.6f, 0.6f, 0.65f, 0.8f) : WHITE, CW_ALIGN_RIGHT);
     }
   }
   if (G.turn_banner > 0 && g->players > 1) {
@@ -1129,26 +1205,38 @@ static void hud_play(cw_vec2 cs, float u) {
   if (g->fire_buf > 0 && !old_feel()) {
     float pulse = 0.5f + 0.5f * sinf((float)G.phase_t * 0.35f);
     cw_color qc = rgba(1, 0.85f, 0.35f, 0.75f + 0.25f * pulse);
-    text("FIRE QUEUED", cs.x * 0.5f, cs.y - 150 * u, 34 * u, qc, CW_ALIGN_CENTER);
-    cw_r2d_round_rect_lines(cw_rect_make(cs.x * 0.5f - 130 * u, cs.y - 160 * u, 260 * u, 58 * u), 14 * u, 3 * u, 6, qc);
+    float fy = cs.y - 150 * u * cw_text_scale(); /* (above the hint and the ammunition, which grow with the text) */
+    cw_text_metrics fm = text("FIRE QUEUED", cs.x * 0.5f, fy, 34 * u, qc, CW_ALIGN_CENTER);
+    float fw = fmaxf(260 * u, fm.width + 40 * u), fh = fmaxf(58 * u, fm.height + 20 * u); /* the ring round the text at any size */
+    rrect_lines(cw_rect_make(cs.x * 0.5f - fw * 0.5f, fy - 10 * u, fw, fh), 14 * u, 3 * u, qc);
     if (!G.cue_draw[0]) G.cue_draw[0] = (int32_t)R.frame + 1;
   }
   /* the ammunition: three icons low in the corner (a tap picks one), the chosen one lit with its count */
   if (game_aiming(g)) {
-    float cw = 190 * u, ch = 56 * u, gap = 10 * u, x0 = 28 * u, y0 = cs.y - ch - 28 * u;
+    /* each plate as wide as its label and as tall as the text (at a large text size the row grows) */
+    char lab[NAMMO][48];
+    float lw[NAMMO], ch = 56 * u, gap = 10 * u, x0 = 28 * u;
     for (int a = 0; a < NAMMO; a++) {
-      float cx = x0 + a * (cw + gap);
+      if (plain) snprintf(lab[a], sizeof lab[a], "%s", AMMO[a].name);
+      else snprintf(lab[a], sizeof lab[a], "%s  %d", AMMO[a].name, g->ammo[a]);
+      cw_text_style ls = tstyle(30 * u, WHITE);
+      cw_text_metrics lm = cw_font_measure(font, lab[a], &ls);
+      lw[a] = fmaxf(190 * u, lm.width + 30 * u), ch = fmaxf(ch, lm.height + 20 * u);
+    }
+    float y0 = cs.y - ch - 28 * u, cx = x0;
+    for (int a = 0; a < NAMMO; a++) {
+      float cw = lw[a];
+      if (a) cx += lw[a - 1] + gap;
       bool sel = a == g->ammo_sel;
       G.ammo_rect[a] = cw_rect_make(cx, y0, cw, ch);
       float pop = sel ? G.ammo_pop / 8.0f : 0; /* a pressed state: the chosen one swells a little and brightens, and settles */
       cw_rect rr = G.ammo_rect[a];
       ascii_hud_rect(rr.x, rr.y, rr.w, rr.h, 1);
       rr.x -= pop * 7 * u, rr.y -= pop * 7 * u, rr.w += pop * 14 * u, rr.h += pop * 14 * u;
-      cw_r2d_round_rect(rr, 10 * u, 6, sel ? rgba(0.95f + 0.05f * pop, 0.62f + 0.3f * pop, 0.2f + 0.5f * pop, 0.92f) : rgba(0.05f, 0.06f, 0.1f, 0.7f));
+      rrect(rr, 10 * u, sel ? rgba(0.95f + 0.05f * pop, 0.62f + 0.3f * pop, 0.2f + 0.5f * pop, 0.92f) : rgba(0.05f, 0.06f, 0.1f, 0.7f));
+      if (dither_mono() && !sel) rrect_lines(rr, 10 * u, 2 * u, dither_ink());
       if (sel && G.ammo_pop > 0 && !G.cue_draw[1]) G.cue_draw[1] = (int32_t)R.frame + 1;
-      if (plain) snprintf(b, sizeof b, "%s", AMMO[a].name);
-      else snprintf(b, sizeof b, "%s  %d", AMMO[a].name, g->ammo[a]);
-      text(b, cx + cw * 0.5f, y0 + 10 * u, 30 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
+      text(lab[a], cx + cw * 0.5f, y0 + 10 * u, 30 * u, g->ammo[a] ? (sel ? rgba(0.08f, 0.05f, 0.02f, 1) : WHITE) : rgba(0.6f, 0.6f, 0.6f, 0.7f), CW_ALIGN_CENTER);
     }
     int seat = G.players > 1 && G.mode != MODE_COOP && !seat_away() ? g->cur : -1;
     if (G.players > 1 && G.mode != MODE_COOP && seat_away()) {
@@ -1161,66 +1249,74 @@ static void hud_play(cw_vec2 cs, float u) {
 }
 
 /* the result: judged once the world is still (game_over), on a card that slides in at the right edge, clear of
- * the pile in the middle of the picture */
+ * the pile in the middle of the picture. Its lines stack by their measured heights, so at a large text size they
+ * still stand apart and the card grows round them. */
+typedef struct { int kind; char s[128]; float size; cw_color c; float gap; } rline; /* kind 0 text, 1 prompt text, 2 stars (size: the star's size) */
 static void hud_result(cw_vec2 cs, float u) {
   const game *g = &G.g;
   int res = game_result(g);
   bool won = g->state == GS_WON;
-  const float o = 46 * u; /* the landmark's name under the heading: what came down */
-  float w = 560 * u, h = (g->players > 1 && g->mode == MODE_VERSUS ? 420 : 380) * u + o;
-  float k = fminf(1, G.phase_t / 24.0f);
-  k = 1 - (1 - k) * (1 - k) * (1 - k); /* eases in */
-  float x = cs.x - (w + 28 * u) * k, y = cs.y * 0.5f - h * 0.5f, cx = x + w * 0.5f;
+  rline L[12];
+  int n = 0;
+#define LINE(k, sz, col, gp, ...) (L[n] = (rline){ .kind = (k), .size = (sz), .c = (col), .gap = (gp) }, snprintf(L[n].s, sizeof L[n].s, __VA_ARGS__), n++)
   cw_color head = res == RES_BROUGHT_DOWN || res == RES_PARTY ? GOLD : res == RES_CLEARED ? rgba(0.75f, 0.9f, 1, 1) : rgba(1, 0.55f, 0.45f, 1);
-  panel(x, y, w, h, u, head);
-  { /* the landmark by name, and where it stands */
-    char nm[128];
-    if (g->L->place) snprintf(nm, sizeof nm, "%s, %s", g->L->name, g->L->place);
-    else snprintf(nm, sizeof nm, "%s", g->L->name);
-    text(nm, cx, y + (res == RES_PARTY ? 70 : 78) * u, 26 * u, rgba(0.85f, 0.95f, 1, 1), CW_ALIGN_CENTER);
-  }
   if (res == RES_PARTY) { /* steady hands: who stayed in, and how the others went out */
-    char b[96];
     int win = g->party_winner;
-    if (win >= 0) snprintf(b, sizeof b, "PLAYER %d STAYS STEADY", win + 1);
-    else snprintf(b, sizeof b, "EVERYONE IS OUT");
-    text(b, cx, y + 22 * u, 40 * u, win >= 0 ? SEAT(win) : head, CW_ALIGN_CENTER);
-    for (int k = 1, line = 0; k <= g->players; k++)
+    if (win >= 0) LINE(0, 40 * u, SEAT(win), 0, "PLAYER %d STAYS STEADY", win + 1);
+    else LINE(0, 40 * u, head, 0, "EVERYONE IS OUT");
+  } else LINE(0, 46 * u, head, 0, "%s", res == RES_BROUGHT_DOWN ? "BROUGHT DOWN" : res == RES_CLEARED ? "CRYSTALS DOWN" : "OUT OF AMMUNITION");
+  /* the landmark by name, and where it stands */
+  if (g->L->place) LINE(0, 26 * u, rgba(0.85f, 0.95f, 1, 1), 6 * u, "%s, %s", g->L->name, g->L->place);
+  else LINE(0, 26 * u, rgba(0.85f, 0.95f, 1, 1), 6 * u, "%s", g->L->name);
+  if (res == RES_PARTY) {
+    for (int k = 1, first = 1; k <= g->players; k++)
       for (int p = 0; p < g->players; p++) {
         if (g->P[p].out_order != k) continue;
-        snprintf(b, sizeof b, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
-        text(b, cx, y + (100 + 40 * line++) * u + o, 26 * u, SEAT(p), CW_ALIGN_CENTER);
+        LINE(0, 26 * u, SEAT(p), (first ? 30 : 10) * u, "Player %d out: %s", p + 1, g->P[p].out == 1 ? "dropped a crystal" : "two turns with nothing down");
+        first = 0;
       }
-    if (G.phase_t > 6) {
-      if (!G.replayed && replay_ready())
-        ptext(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
-      ptext(font, "{ui_accept}: next structure   {ui_back}: levels", -1, cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
+  } else {
+    if (won) {
+      LINE(2, 60 * u, GOLD, 22 * u, "%d", game_stars(g));
+      LINE(0, 28 * u, WHITE, 18 * u, "%d %s, par %d", g->shots, g->shots == 1 ? "shot" : "shots", g->L->par);
+    } else LINE(0, 28 * u, WHITE, 40 * u, "%d of %d crystals still stand", g->tgt_left, g->ntgt);
+    LINE(0, 26 * u, g->judged_share >= game_mark(g) ? GOLD : WHITE, 10 * u, "%d%% of the structure down (mark %d%%)", (int)(g->judged_share * 100 + 0.5f), (int)(game_mark(g) * 100 + 0.5f));
+    if (won && g->shots <= g->L->par && g->judged_share < game_mark(g)) LINE(0, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), 10 * u, "bring more of it down for the third star");
+    if (g->players > 1 && g->mode == MODE_VERSUS) {
+      int best = 0;
+      for (int i = 1; i < g->players; i++) if (g->P[i].score > g->P[best].score) best = i;
+      LINE(0, 26 * u, SEAT(best), 10 * u, "Player %d has the most points: %d", best + 1, g->P[best].score);
     }
-    return;
   }
-  text(res == RES_BROUGHT_DOWN ? "BROUGHT DOWN" : res == RES_CLEARED ? "CRYSTALS DOWN" : "OUT OF AMMUNITION", cx, y + 22 * u, 46 * u, head, CW_ALIGN_CENTER);
-  char b[96];
-  float ty = y + 160 * u;
-  if (won) {
-    star_row(cx, y + 118 * u + o, 60 * u, game_stars(g), 3);
-    snprintf(b, sizeof b, "%d %s, par %d", g->shots, g->shots == 1 ? "shot" : "shots", g->L->par);
-    ty = y + 168 * u + o;
-  } else ty += o, snprintf(b, sizeof b, "%d of %d crystals still stand", g->tgt_left, g->ntgt);
-  text(b, cx, ty, 28 * u, WHITE, CW_ALIGN_CENTER);
-  snprintf(b, sizeof b, "%d%% of the structure down (mark %d%%)", (int)(g->judged_share * 100 + 0.5f), (int)(game_mark(g) * 100 + 0.5f));
-  text(b, cx, ty + 40 * u, 26 * u, g->judged_share >= game_mark(g) ? GOLD : WHITE, CW_ALIGN_CENTER);
-  if (won && g->shots <= g->L->par && g->judged_share < game_mark(g)) text("bring more of it down for the third star", cx, ty + 76 * u, 22 * u, rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
-  if (g->players > 1 && g->mode == MODE_VERSUS) {
-    int best = 0;
-    for (int i = 1; i < g->players; i++) if (g->P[i].score > g->P[best].score) best = i;
-    snprintf(b, sizeof b, "Player %d has the most points: %d", best + 1, g->P[best].score);
-    text(b, cx, ty + 112 * u, 26 * u, SEAT(best), CW_ALIGN_CENTER);
+  /* the prompts at the foot, once the card has settled (their room is kept from the start, so the card does not grow) */
+  bool prompts = G.phase_t > 6;
+  int foot = n;
+  if (!G.replayed && replay_ready()) LINE(1, 24 * u, rgba(1, 0.92f, 0.65f, 1), 30 * u, "{ammo}: watch the last shot again");
+  if (res == RES_PARTY) LINE(1, 24 * u, WHITE, n == foot ? 30 * u : 10 * u, "{ui_accept}: next structure   {ui_back}: levels");
+  else LINE(1, 24 * u, WHITE, n == foot ? 30 * u : 10 * u, "%s", won ? "{ui_accept}: next level   {ui_back}: levels" : "{ui_accept}: try again   {ui_back}: levels");
+#undef LINE
+  /* measure */
+  float hgt[12], wmax = 0, total = 0;
+  for (int i = 0; i < n; i++) {
+    float w;
+    if (L[i].kind == 2) w = L[i].size * 1.15f * 3, hgt[i] = L[i].size;
+    else if (L[i].kind == 1) { cw_vec2 sz = cw_prompt_text_size(font, L[i].s, -1, L[i].size); w = sz.x, hgt[i] = sz.y; }
+    else { cw_text_style st = tstyle(L[i].size, L[i].c); cw_text_metrics m = cw_font_measure(font, L[i].s, &st); w = m.width, hgt[i] = m.height; }
+    wmax = fmaxf(wmax, w), total += L[i].gap + hgt[i];
   }
-  if (G.phase_t > 6) {
-    if (!G.replayed && replay_ready())
-      ptext(font, "{ammo}: watch the last shot again", -1, cw_v2(cx, y + h - 84 * u), 24 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
-    ptext(font, won ? "{ui_accept}: next level   {ui_back}: levels" : "{ui_accept}: try again   {ui_back}: levels", -1,
-                   cw_v2(cx, y + h - 48 * u), 24 * u, WHITE, CW_ALIGN_CENTER);
+  const float pad = 26 * u;
+  float w = fminf(fmaxf(560 * u, wmax + 2 * pad), cs.x * 0.6f), h = total + 2 * pad;
+  float k = fminf(1, G.phase_t / 24.0f);
+  k = 1 - (1 - k) * (1 - k) * (1 - k); /* eases in */
+  float x = cs.x - (w + 28 * u) * k, y = fmaxf(10 * u, cs.y * 0.5f - h * 0.5f), cx = x + w * 0.5f;
+  panel(x, y, w, h, u, head);
+  float ty = y + pad;
+  for (int i = 0; i < n; i++) {
+    ty += L[i].gap;
+    if (L[i].kind == 2) star_row(cx, ty + hgt[i] * 0.5f, L[i].size, atoi(L[i].s), 3, false);
+    else if (L[i].kind == 1) { if (prompts) ptext(font, L[i].s, -1, cw_v2(cx, ty), L[i].size, L[i].c, CW_ALIGN_CENTER); }
+    else text(L[i].s, cx, ty, L[i].size, L[i].c, CW_ALIGN_CENTER);
+    ty += hgt[i];
   }
 }
 
@@ -1233,17 +1329,43 @@ static void hud_replay(cw_vec2 cs, float u) {
   ptext(font, "{fire}: skip", -1, cw_v2(cs.x - 40 * u, cs.y - 60 * u), 24 * u, rgba(1, 1, 1, 0.8f), CW_ALIGN_RIGHT);
 }
 
+/* the level select: a grid of SEL_COLS columns, the tiles as tall as their text (a name wraps to a second line at a
+ * large text size) and as many rows in view as fit over the prompts, scrolled to keep the choice in view */
+static cw_text_metrics text_wrap(const char *s, float x, float y, float size, cw_color c, float wrap) {
+  cw_text_style st = tstyle(size, c);
+  st.wrap_width = wrap;
+  cw_text_metrics m = cw_font_measure(font, s, &st);
+  ascii_hud_rect(x, y, m.width, m.height, c.a);
+  return draw_text(s, x, y, &st);
+}
 static void hud_select(cw_vec2 cs, float u) {
   float y0 = 40 * u;
-  text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
-  float cw = 400 * u, ch = 118 * u, gap = 16 * u;
-  float gx = cs.x * 0.5f - (SEL_COLS * cw + (SEL_COLS - 1) * gap) * 0.5f, gy = y0 + 84 * u;
+  cw_text_metrics hm = text("CHOOSE A STRUCTURE", cs.x * 0.5f, y0, 46 * u, GOLD, CW_ALIGN_CENTER);
+  float gap = 16 * u, cw = fminf(400 * u, (cs.x - 80 * u - (SEL_COLS - 1) * gap) / SEL_COLS);
+  /* a tile's height: the number, then the longest name wrapped to the tile */
+  cw_text_style ns = tstyle(40 * u, WHITE), ls = tstyle(30 * u, WHITE);
+  float nh = cw_font_measure(font, "16", &ns).height, name_h = 0;
+  ls.wrap_width = cw - 32 * u;
+  for (int i = 0; i < NLEVELS; i++) name_h = fmaxf(name_h, cw_font_measure(font, LEVELS[i].name, &ls).height);
+  float ch = fmaxf(118 * u, 8 * u + nh + 14 * u + name_h + 10 * u), name_y = fmaxf(62 * u, 8 * u + nh + 14 * u);
+  /* the prompts under the grid */
+  char b[128];
+  const char *ff = G.free_fire ? "{view}: free fire ON (every structure, ammunition without end)" : "{view}: free fire";
+  if (G.players > 1)
+    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,
+             G.mode == MODE_PARTY ? "party: steady hands" : G.mode == MODE_VERSUS ? "versus" : "co-op");
+  float h0 = G.players > 1 ? cw_prompt_text_size(font, b, -1, 26 * u).y : 0, h1 = cw_prompt_text_size(font, ff, -1, 24 * u).y,
+        h2 = cw_prompt_text_size(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, 30 * u).y;
+  float foot = (h0 > 0 ? h0 + 8 * u : 0) + h1 + 8 * u + h2 + 20 * u;
+  float gx = cs.x * 0.5f - (SEL_COLS * cw + (SEL_COLS - 1) * gap) * 0.5f, gy = fmaxf(y0 + 84 * u, y0 + hm.height + 24 * u);
   int open = G.free_fire ? NLEVELS - 1 : unlocked(); /* free fire: every structure */
-  /* four rows in view, scrolled to keep the choice in view */
-  int rows = (NLEVELS + SEL_COLS - 1) / SEL_COLS, first = CW_CLAMP(G.sel / SEL_COLS - 1, 0, rows - SEL_ROWS);
+  int rows = (NLEVELS + SEL_COLS - 1) / SEL_COLS, vis = CW_CLAMP((int)((cs.y - gy - foot - 10 * u) / (ch + gap)), 1, SEL_ROWS);
+  int srow = G.sel / SEL_COLS, first = CW_CLAMP(srow - 1, 0, CW_MAX(0, rows - vis));
+  if (srow >= first + vis) first = srow - vis + 1;
+  if (srow < first) first = srow;
   if (first > 0) cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f + 18 * u, gy - 10 * u), cw_v2(cs.x * 0.5f, gy - 26 * u) }, 3, rgba(1, 0.82f, 0.3f, 0.9f));
-  if (first + SEL_ROWS < rows) { float by = gy + SEL_ROWS * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
-  for (int i = first * SEL_COLS; i < NLEVELS && i < (first + SEL_ROWS) * SEL_COLS; i++) {
+  if (first + vis < rows) { float by = gy + vis * (ch + gap) - 4 * u; cw_r2d_polygon((cw_vec2[]){ cw_v2(cs.x * 0.5f - 18 * u, by), cw_v2(cs.x * 0.5f, by + 16 * u), cw_v2(cs.x * 0.5f + 18 * u, by) }, 3, rgba(1, 0.82f, 0.3f, 0.9f)); }
+  for (int i = first * SEL_COLS; i < NLEVELS && i < (first + vis) * SEL_COLS; i++) {
     float x = gx + (i % SEL_COLS) * (cw + gap), y = gy + (i / SEL_COLS - first) * (ch + gap);
     bool sel = i == G.sel, lock = i > open;
     float mp = sel ? G.menu_pop / 7.0f : 0; /* a pressed state: the chosen tile swells and lights, then settles */
@@ -1251,30 +1373,22 @@ static void hud_select(cw_vec2 cs, float u) {
     cw_rect tr = cw_rect_make(x - mp * 6 * u, y - mp * 6 * u, cw + mp * 12 * u, ch + mp * 12 * u);
     cw_color plate = sel ? rgba(0.95f + 0.05f * mp, 0.6f + 0.3f * mp, 0.2f + 0.5f * mp, 0.96f) : lock ? rgba(0.16f, 0.16f, 0.19f, 0.9f) : rgba(0.06f, 0.07f, 0.12f, 0.9f);
     if (dither_mono()) plate.a = 1; /* a 1-bit look: solid plates (the choice an ink plate, the rest paper with an ink edge), no dots through them */
-    cw_r2d_round_rect(tr, 12 * u, 6, plate);
-    if (dither_mono() && !sel) cw_r2d_round_rect_lines(tr, 12 * u, 2 * u, 6, rgba(1, 1, 1, 1));
-    char b[64];
+    rrect(tr, 12 * u, plate);
+    if (dither_mono() && !sel) rrect_lines(tr, 12 * u, 2 * u, rgba(1, 1, 1, 1));
     cw_color ink = sel ? rgba(0.08f, 0.05f, 0.02f, 1) : lock ? rgba(0.78f, 0.78f, 0.82f, 1) : WHITE;
     snprintf(b, sizeof b, "%d", i + 1);
     text(b, x + 16 * u, y + 8 * u, 40 * u, sel ? ink : lock ? ink : GOLD, CW_ALIGN_LEFT);
-    text(LEVELS[i].name, x + 16 * u, y + 62 * u, 30 * u, ink, CW_ALIGN_LEFT);
-    if (!lock) star_row(x + cw - 74 * u, y + 32 * u, 38 * u, save()->stars[i], 3);
+    text_wrap(LEVELS[i].name, x + 16 * u, y + name_y, 30 * u, ink, cw - 32 * u);
+    if (!lock) star_row(x + cw - 74 * u, y + 32 * u, 38 * u, save()->stars[i], 3, sel);
     else { /* a padlock: a body and a shackle */
-      cw_r2d_round_rect(cw_rect_make(x + cw - 62 * u, y + 28 * u, 34 * u, 26 * u), 5 * u, 6, ink);
-      cw_r2d_round_rect_lines(cw_rect_make(x + cw - 58 * u, y + 10 * u, 26 * u, 28 * u), 11 * u, 4 * u, 6, ink);
+      rrect(cw_rect_make(x + cw - 62 * u, y + 28 * u, 34 * u, 26 * u), 5 * u, ink);
+      rrect_lines(cw_rect_make(x + cw - 58 * u, y + 10 * u, 26 * u, 28 * u), 11 * u, 4 * u, ink);
     }
   }
-  float y = gy + SEL_ROWS * (ch + gap) + 10 * u;
-  char b[128];
-  if (G.players > 1) {
-    snprintf(b, sizeof b, "%d players, %s  ({ammo}: co-op, versus or party)", G.players,
-             G.mode == MODE_PARTY ? "party: steady hands" : G.mode == MODE_VERSUS ? "versus" : "co-op");
-    ptext(font, b, -1, cw_v2(cs.x * 0.5f, y), 26 * u, WHITE, CW_ALIGN_CENTER);
-    y += 40 * u;
-  }
-  ptext(font, G.free_fire ? "{view}: free fire ON (every structure, ammunition without end)" : "{view}: free fire", -1, cw_v2(cs.x * 0.5f, y), 24 * u,
-                 G.free_fire ? GOLD : rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
-  y += 38 * u;
+  float y = gy + vis * (ch + gap) + 10 * u;
+  if (G.players > 1) ptext(font, b, -1, cw_v2(cs.x * 0.5f, y), 26 * u, WHITE, CW_ALIGN_CENTER), y += h0 + 8 * u;
+  ptext(font, ff, -1, cw_v2(cs.x * 0.5f, y), 24 * u, G.free_fire ? GOLD : rgba(0.85f, 0.85f, 0.9f, 0.9f), CW_ALIGN_CENTER);
+  y += h1 + 8 * u;
   ptext(font, "{ui_left|ui_right}: choose   {ui_accept}: play", -1, cw_v2(cs.x * 0.5f, y), 30 * u, rgba(1, 0.92f, 0.65f, 1), CW_ALIGN_CENTER);
 }
 
@@ -1289,7 +1403,8 @@ static void hud_loading(cw_vec2 cs, float u) {
   cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0.02f, 0.03f, 0.06f, 0.72f));
   float cx = cs.x * 0.5f, cy = cs.y * 0.4f, R = 70 * u, W = 14 * u;
   cw_vec2 c = cw_v2(cx, cy);
-  cw_r2d_arc(c, R - W, R, 0, 6.2831853f, 64, rgba(1, 1, 1, 0.14f));
+  if (dither_mono()) cw_r2d_arc(c, R - 2 * u, R, 0, 6.2831853f, 64, dither_ink()), cw_r2d_arc(c, R - W, R - W + 2 * u, 0, 6.2831853f, 64, dither_ink()); /* the track as two ink rings */
+  else cw_r2d_arc(c, R - W, R, 0, 6.2831853f, 64, rgba(1, 1, 1, 0.14f));
   double t = perf_now() * 1e-3;
   float head = (float)(fmod(t / 1.1, 1.0) * 6.2831853);
   for (int i = 0; i < 14; i++) { /* a comet: the head bright, the tail fading */
@@ -1302,8 +1417,9 @@ static void hud_loading(cw_vec2 cs, float u) {
   cw_text_metrics m = cw_font_measure(font, b, &st);
   text(b, cx, cy + R + 36 * u, 44 * u, WHITE, CW_ALIGN_CENTER);
   float bw = 560 * u, bh = 14 * u, bx = cx - bw * 0.5f, by = cy + R + 36 * u + m.height + 26 * u;
-  cw_r2d_round_rect(cw_rect_make(bx, by, bw, bh), bh * 0.5f, 6, rgba(1, 1, 1, 0.16f));
-  if (p > 0.005f) cw_r2d_round_rect(cw_rect_make(bx, by, fmaxf(bh, bw * p), bh), bh * 0.5f, 6, GOLD);
+  rrect(cw_rect_make(bx, by, bw, bh), bh * 0.5f, rgba(1, 1, 1, 0.16f));
+  if (dither_mono()) rrect_lines(cw_rect_make(bx, by, bw, bh), bh * 0.5f, 2 * u, dither_ink());
+  if (p > 0.005f) rrect(cw_rect_make(bx, by, fmaxf(bh, bw * p), bh), bh * 0.5f, GOLD);
   if (nb > 0 && phase == LP_BLOCKS) snprintf(b, sizeof b, "%s: %d blocks", loader_phase_name(phase), nb);
   else snprintf(b, sizeof b, "%s", loader_phase_name(phase));
   text(b, cx, by + bh + 14 * u, 26 * u, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
@@ -1317,6 +1433,7 @@ static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f;
   cw_r2d_begin(NULL);
+  two_colour_pass();
   ascii_hud_begin(cs, u);
   { /* every glyph the HUD can show, baked in its first frame off the screen: a glyph first seen mid-play (the percent
      * of the structure down, from the charge on) took a millisecond of that frame to bake */
@@ -1343,6 +1460,7 @@ static void render(void *u, double alpha) {
   (void)u;
   double t_render = perf_now();
   dither_set_level(G.have_game ? G.g.level : -1); /* the level in view's tone (dither.h) */
+  menus_look(); /* (a look set any other way, a loaded save: the menus follow; nothing when it is unchanged) */
   LG.drawn = false;
   if (LG.active && LG.n < LOG_MAX) { /* (the gap to the render before: a blocked main thread shows here) */
     LG.last_gap = LG.last_render > 0 ? (float)(t_render - LG.last_render) : 0;
