@@ -20,6 +20,7 @@
 // Run: node tests/coplanar.mjs [game ...] [--unfixed] [--jobs N]   (holds the GPU suite lock)
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { availableParallelism } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,7 +37,16 @@ if (!process.env.CW_GPU_SUITE_INNER) { /* one hold of the lock a game (a hold is
 }
 const args = process.argv.slice(2);
 const UNFIXED = args.includes('--unfixed');
-const JOBS = Number(args[args.indexOf('--jobs') + 1]) || 4;
+// The runs share the machine's CPUs: llvmpipe keeps all of a run's threads busy, so runs beyond the CPUs do not finish
+// sooner, each only takes longer, and every run's time limit counts from its own start. Four runs of four threads on
+// a 4-CPU CI runner made each run about four times slower: park 3 of skate (144k faces, 150 frames) took 500 s of its
+// 600 s on a fast 4-CPU machine and went over on the slower runners (an EPYC 7763 or a Xeon 8370C), 2 runs in 20.
+// So at most one llvmpipe thread a CPU in all: two runs of two threads on the runner, park 3 in 170 to 310 s, the
+// whole scan no slower.
+const CPUS = availableParallelism();
+const JOBS = Number(args[args.indexOf('--jobs') + 1]) || Math.max(1, Math.min(4, Math.floor(CPUS / 2)));
+const THREADS = Math.max(1, Math.floor(CPUS / JOBS));
+const LIMIT_S = 600; /* a run's time limit (the longest, park 3 of skate, takes about 110 s on 4 fast CPUs of its own) */
 const only = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--jobs');
 
 const range = (n, f) => Array.from({ length: n }, (_, i) => f(i));
@@ -59,7 +69,7 @@ function binary(app) {
 /** one native run on the software rasterizer: the replies of CW_DEBUG_CMDS, in order */
 function run(app, frames, env, cmds) {
   const e = { ...process.env, ...env, CW_FRAMES: String(frames), CW_DEBUG_CMDS: cmds.join(';'), CW_GPU: 'gl', LIBGL_ALWAYS_SOFTWARE: '1',
-    SDL_VIDEODRIVER: 'offscreen', SDL_AUDIODRIVER: 'dummy', LP_NUM_THREADS: '4', CW_WARMUP_SPREAD: '0' };
+    SDL_VIDEODRIVER: 'offscreen', SDL_AUDIODRIVER: 'dummy', LP_NUM_THREADS: String(THREADS), CW_WARMUP_SPREAD: '0' };
   for (const k of ['DISPLAY', 'WAYLAND_DISPLAY', 'XAUTHORITY', 'DRI_PRIME', 'CW_SCREENSHOT', 'CW_FRAME_DUMP']) delete e[k];
   if (!UNFIXED) delete e.COPLANAR_SEPARATE;
   return new Promise((ok, no) => {
@@ -68,13 +78,16 @@ function run(app, frames, env, cmds) {
     p.stdout.on('data', (d) => { out += d; });
     let glLine = '';
     p.stderr.on('data', (d) => { err = (err + d).slice(-4000); if (!glLine) glLine = (/GL: [^|\n]*\| ([^|\n]*)/.exec(err) || [])[1] || ''; });
-    const t = setTimeout(() => p.kill('SIGKILL'), 600000);
-    p.on('exit', (c) => {
+    const t0 = Date.now();
+    let killed = false;
+    const t = setTimeout(() => { killed = true; p.kill('SIGKILL'); }, LIMIT_S * 1000);
+    p.on('exit', (c, sig) => {
       clearTimeout(t);
+      const secs = Math.round((Date.now() - t0) / 1000);
       const replies = (out + '\n' + err).split('\n').filter((l) => l.startsWith('{')).map((l) => JSON.parse(l));
       if (!/llvmpipe|softpipe/.test(glLine)) { no(new Error(`${app}: drew on ${glLine.trim() || 'no GL renderer it named'}, not the software rasterizer`)); return; }
-      if (c !== 0 || replies.length < cmds.length) no(new Error(`${app} ${JSON.stringify(env)}: exit ${c}, ${replies.length} replies of ${cmds.length}: ${err.trim().split('\n').slice(-3).join(' | ')}`));
-      else ok(replies.slice(-cmds.length));
+      if (c !== 0 || replies.length < cmds.length) no(new Error(`${app} ${JSON.stringify(env)}: ${killed ? `over its ${LIMIT_S} s limit (${JOBS} runs of ${THREADS} threads on ${CPUS} CPUs)` : sig ? `killed by ${sig} after ${secs} s` : `exit ${c} after ${secs} s`}, ${replies.length} replies of ${cmds.length}: ${err.trim().split('\n').slice(-3).join(' | ')}`));
+      else ok(Object.assign(replies.slice(-cmds.length), { secs }));
     });
   });
 }
@@ -87,6 +100,7 @@ async function pool(jobs, n, fn) {
 }
 
 const names = only.length ? only : Object.keys(GAMES);
+console.log(`${JOBS} runs at a time, ${THREADS} llvmpipe threads each, on ${CPUS} CPUs; a run's limit ${LIMIT_S} s`);
 let bad = 0;
 const totals = {};
 for (const game of names) {
@@ -109,7 +123,7 @@ for (const game of names) {
     }
     const [sc, fl] = r;
     totals[game] += sc.pairs;
-    const where = `${game} ${j.s.name} (${j.s.field} ${JSON.stringify(fl[j.s.field])}): ${sc.meshes} meshes, ${sc.faces} faces`;
+    const where = `${game} ${j.s.name} (${j.s.field} ${JSON.stringify(fl[j.s.field])}, ${r.secs} s): ${sc.meshes} meshes, ${sc.faces} faces`;
     if (!sc.faces) { bad++; console.log(`FAIL ${where}: nothing drawn to check`); continue; }
     if (!sc.pairs) { console.log(`ok   ${where}, no pairs${sc.moved ? ` (${sc.moved} vertices moved apart at the build)` : ''}`); continue; }
     const allow = !UNFIXED && SETTLED[game] ? SETTLED[game][scenes.indexOf(j.s)] : undefined;
