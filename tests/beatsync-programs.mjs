@@ -40,8 +40,12 @@ const PRESETS = ['verylow', 'low', 'medium', 'high', 'ultra'];
  * a long bytes field short, which once fed the table half a state), else the cw.three.missing_states field */
 async function missingStates(r) {
   const rep = await r.command('pipeline');
-  if (rep && typeof rep.missing_states === 'string') return rep.missing_states.split('\n').map((l) => l.trim()).filter(Boolean);
-  return missing(await r.fields());
+  const out = new Set(rep && typeof rep.missing_states === 'string' ? rep.missing_states.split('\n').map((l) => l.trim()).filter(Boolean) : missing(await r.fields()));
+  // and every state the cart's log names as NOT DRAWN: a Backdrop's world's states reach the pipeline's list only from
+  // cartwheel-engine 0.65.1 (before, the list held the last tree to change, and the worlds' draws went unreported)
+  const ev = await r.call('wasm', { op: 'events' });
+  for (const e of (ev && ev.log) || []) { const m = /program state (\S+) is in none/.exec(e.text || ''); if (m) out.add(m[1]); }
+  return [...out];
 }
 function missing(f) {
   const v = f['cw.three.missing_states'];

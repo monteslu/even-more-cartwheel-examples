@@ -1,0 +1,85 @@
+[scene format=1]
+
+; The lava backdrop (src/worlds.c builds the plain, its lava rivers, the volcano and its glow): a plain of black basalt
+; split by rivers of lava running toward the camera, a volcano on the horizon with lava pouring down its flanks under
+; a plume of ash lit red from below, embers drifting. Seen in half blocks of a warm palette (src/styles.c PX_LAVA).
+
+[node name="Lava" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.01, 0.003, 0.002, 1)
+use_background = true
+ambient_color = color(1, 0.4, 0.2, 1)
+ambient_energy = 0.05
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 7, 24)
+rotation = vec3(-0.02, 0, 0)
+fov = 56
+near = 0.5
+far = 2500
+
+[node name="Glow" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.15, 0, 0)
+color = color(1, 0.35, 0.12, 1)
+energy = 0.5
+
+[node name="Ash" parent="." type="GPUParticles3D"]
+position = vec3(60, 120, -700)
+amount = 70
+lifetime = 12
+emission_shape = SPHERE
+emission_radius = 14
+direction = vec3(0.3, 1, 0)
+spread = 18
+speed_min = 6
+speed_max = 10
+gravity = vec3(2.5, 0.8, 0)
+damping = 0.15
+turbulence = 0.6
+turbulence_scale = 0.02
+turbulence_speed = 0.05
+blend = ALPHA
+size = 70
+size_random = 0.35
+size_curve = "0 0.4, 0.4 1, 1 1.6"
+color_ramp = "0 0.5 0.12 0.03 0, 0.1 0.25 0.07 0.03 0.85, 0.5 0.06 0.035 0.03 0.75, 1 0.03 0.02 0.02 0"
+texture = "fx/smoke.png"
+motion_texture = "fx/smoke_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.03
+preprocess = 12
+seed = 701
+
+[node name="Embers" parent="." type="GPUParticles3D"]
+position = vec3(0, 2, -40)
+amount = 500
+lifetime = 5
+lifetime_random = 0.5
+emission_shape = BOX
+emission_extents = vec3(70, 2, 70)
+direction = vec3(0.2, 1, 0)
+spread = 35
+speed_min = 2
+speed_max = 6
+gravity = vec3(1.0, 1.0, 0)
+damping = 0.2
+turbulence = 2.5
+turbulence_scale = 0.08
+turbulence_speed = 0.3
+draw_mode = STRETCHED
+stretch = 0.05
+size = 0.15
+size_random = 0.6
+color_ramp = "0 1 0.55 0.15 0, 0.08 1 0.45 0.1 1, 0.6 1 0.3 0.05 0.9, 1 0.7 0.12 0.03 0"
+energy = 2.5
+camera_fade = 14
+preprocess = 5
+seed = 702

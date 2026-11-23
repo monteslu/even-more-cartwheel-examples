@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.48.0
+
+- **beatsync**: nothing in a backdrop reads as a note. The arcade maze's bright critters and the pellets down its rivers
+  are gone; faint trails of light run its halls instead, a cell a beat, turning at the junctions. Lit windows are tall
+  narrow panes, street lamps wide low glows, the forest's and the desert's moons crescents, the fire's ground glow and
+  the lava's embers dimmer. The readability check finds each style's most note-like shape with the field hidden and
+  holds it under half the notes' own contrast (its control, the old maze, must fail). A new style, **Metal hall**:
+  brushed steel plates, chrome columns ringed in gold, gunmetal beams, all reflecting the hall's light, two lights
+  crossing it slowly in time with the music.
+- **beatsync**: every river's note is as big a target. The bass note is a triangle (it was a flat bar across its
+  river, about four fifths of the others' area) and the synth's a square, each of the same area as the round kick and
+  the clap's diamond; their gems a triangular prism and a square slab. tests/beatsync-footprint.mjs counts each river's
+  note pixels on black from the play camera (its control, the old bar, must come out smaller).
+- **beatsync**: no stutter when the style changes. A world or a look drawn for the first time made its programs,
+  pipelines, particle buffers and targets on that frame (20 to 350 ms the first time each style showed), and the fire
+  restarted its particles every time it came back (85 to 350 ms each time). Now every world and every kind of fade is
+  drawn once behind the loading screen before a song (now over black: the changing worlds showed round its panel),
+  and a world that leaves comes back where it left off.
+  tests/beatsync-hitch.mjs times every frame of two rounds of all the styles fading in and holds each to a 60 Hz frame
+  of CPU and of GPU, on GL and WebGPU (its control, a cart with no prewarm, must go over).
+- **beatsync**: twenty-one styles. Eight new here (and Metal hall above): **Aurora** (curtains of aurora folding
+  and rippling slowly over a snow field, dark pines, a far range under snow), **Deep space** (a nebula of glowing
+  gas, three depths of stars, a ringed planet lit from the side with a thin atmosphere, dust streaming past),
+  **Rain city** (towers lit window by window, neon blade signs, rain, the wet street a mirror of it all with rain rings on it), **Night forest** (moonlit pines,
+  shafts of moonlight, low mist, fireflies glowing up and down), **Underwater** (caustics dancing on the sand, shafts
+  from the rippling surface, kelp swaying, a school of fish, bubbles, the water thickening with distance), **Desert
+  night** (dunes under a low moon in amber dither), **Newsprint** (the rain city in ink on paper) and **Lava** (rivers
+  of lava creeping toward the camera and a volcano pouring lava, in half blocks). The older styles reworked:
+  **Fire** is walls of real flame (curtains of tall licking tongues with white-hot feet, from a flame flipbook baked
+  by `tools/bake-flames.mjs`, under a sky of smoke that now draws: a map that repeated one way only was skipped); the
+  **Rock stage** frames the band closer, rims each player with the back light and moves them more (hips swaying, the
+  weight shifting, the nod deeper in loud stretches, the singer's free arm out to the crowd); the crowds at the club
+  and the stage dance, hands going up as the music gets louder, and are rimmed against the haze; the **Synthwave
+  grid**'s sun sits half set and its roads are near opaque (notes 6.6:1, from 4.8:1); the **Night sea**'s near swells
+  are navy; **Clean**'s valley opens onto a massif with two great snow-shouldered horns. The scheduler never fades
+  between two worlds whose costs add up to more than 8.5 ms on a Radeon 890M (the worst fade measured at High: 7.1 ms
+  GL, 6.2 ms WebGPU). tests/beatsync-styles.mjs holds the notes to 4:1 (from 3:1) in every style, each with its own
+  readability control, and each style's fade in and out to the flash rules with its one-frame-cut control. The program
+  table covers every world's draws at every preset (the programs gate also reads the cart log's NOT DRAWN states: a
+  world's states reached the engine's list only from 0.65.1).
+
 ## 0.47.0
 
 - **beatsync**: the styles rebuilt as a showcase. Every backdrop is now a world of its own behind the field

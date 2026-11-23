@@ -160,6 +160,20 @@ BPM on Easy, Medium and Hard, with scores, grades and bests saved. The song
 tooling that makes a song from a stems file (tempo, beats, bars, onsets per
 lane and the three charts) is in the game's folder.
 
+The picture changes with the music: every eight bars, and at each drop, the
+highway fades into another of twenty-one styles, each a world of its own behind
+the rivers. A canyon walled with licking flame, a club in laser haze with a
+dancing crowd, a band on a rock stage, a synthwave grid, a night sea, a valley
+under twin snow peaks, aurora over a snow field, deep space with a ringed
+planet, a rain-soaked neon street mirrored in the wet road, a moonlit forest
+of fireflies, the sea floor under shafts of light, a hall of brushed and
+polished metal, and looks drawn by the
+engine: neon characters, terminal green, half blocks, an arcade maze in
+chunky pixels, a one-bit print, a desert night in amber dither, a newsprint
+city in ink on paper and lava in half blocks. The rivers and notes never
+fade, and every style is held to a contrast bound for the notes and to the
+photosensitive flash rules. Settings can hold one style instead.
+
 More games are on the way.
 
 ## Building

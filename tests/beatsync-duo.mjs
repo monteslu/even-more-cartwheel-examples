@@ -70,7 +70,9 @@ const press = (a, b, gap = 24) => [{ pads: two(a, b), frames: 4 }, { pads: two()
 async function toDuoDiff(gpu, tag) {
   const r = await openBeatsync('beatsync', { gpu, tag });
   await r.command('crowdstays 1'); // player 1 stays idle in the pad check: the song must not end on its misses
-  await r.run([{ pads: two(), frames: 100 }]);
+  // the loading screen (every world and look drawn once behind it) until the title, then a moment
+  await r.run([{ pads: two(), frames: 3000 }], { stopWhen: { field: 'shell.screen', equals: 1 } });
+  await r.run([{ pads: two(), frames: 60 }]);
   for (const [a, b] of [[['south'], []], [['south'], []], [[], ['south']], [['start'], []]]) await r.run(press(a, b));
   await r.run([{ pads: two(), frames: 30 }]);
   await r.run(press(['south'], [])); // Test Groove, the first song

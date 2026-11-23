@@ -31,7 +31,7 @@ msaa = 1
 exposure_ev = -0.3
 
 [node name="Air" parent="." type="HeightFog"]
-density = 0.004
+density = 0.0028
 height_falloff = 0.03
 base_height = 0
 use_sky_color = true

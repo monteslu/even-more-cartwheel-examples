@@ -23,6 +23,7 @@
 #include "backdrop.h"
 #include "club.h"
 #include "flash_meter.h"
+#include "worlds.h"
 
 typedef struct style_def {
   const char *id, *title;
@@ -35,14 +36,26 @@ typedef struct style_def {
   int px;        /* PX_*: an engine look over the picture (cartwheel/look.h): 0 none, PX_HALF half blocks */
 } style_def;
 
+/* each style's GPU cost alone at High on a Radeon 890M at 1080p (ms, GL, romdev frame timing; the field included): a
+ * fade draws two worlds, about the sum less the field (1.5), so the scheduler never fades between two whose costs add
+ * up to more than PAIR_BUDGET (the worst fade stays under 8 ms there; Auto steps down on slower GPUs) */
+static const float COST[STYLE_COUNT] = { [STYLE_NEON] = 0.45f, [STYLE_CLEAN] = 2.3f, [STYLE_FIRE] = 3.1f, [STYLE_WATER] = 1.9f, [STYLE_GRID] = 1.35f,
+  [STYLE_TERMINAL] = 0.4f, [STYLE_LASERS] = 3.25f, [STYLE_STAGE] = 4.4f, [STYLE_HALF] = 1.55f, [STYLE_MAZE] = 1.4f, [STYLE_BIT] = 4.7f,
+  [STYLE_AURORA] = 1.5f, [STYLE_SPACE] = 1.7f, [STYLE_CITY] = 2.0f, [STYLE_FOREST] = 1.9f, [STYLE_DEEP] = 2.25f, [STYLE_DESERT] = 1.4f,
+  [STYLE_NEWS] = 2.7f, [STYLE_LAVA] = 1.8f, [STYLE_METAL] = 1.7f };
+#define PAIR_BUDGET 8.5f
+
 /* the palettes: each set apart from its backdrop, so the notes read against it (the readability gate measures it) */
 #define ICE { { 0.3f, 0.85f, 1 }, { 0.9f, 0.95f, 1 }, { 0.6f, 0.5f, 1 }, { 0.45f, 1, 0.8f } }
 #define EMBER { { 1, 0.5f, 0.15f }, { 1, 0.88f, 0.35f }, { 1, 0.3f, 0.6f }, { 0.6f, 1, 0.4f } }
 #define SYNTH { { 0.2f, 0.95f, 1 }, { 1, 0.9f, 0.35f }, { 0.55f, 1, 0.35f }, { 1, 0.55f, 0.2f } }
 #define PHOSPHOR { { 0.25f, 1, 0.35f }, { 0.65f, 1, 0.25f }, { 0.2f, 1, 0.7f }, { 0.45f, 1, 0.45f } }
-enum { PX_NONE, PX_HALF, PX_MAZE, PX_BIT, PX_COUNT };
+enum { PX_NONE, PX_HALF, PX_MAZE, PX_BIT, PX_AMBER, PX_NEWS, PX_LAVA, PX_COUNT };
 #define ARCADE { { 1, 0.3f, 0.35f }, { 1, 0.85f, 0.3f }, { 0.3f, 1, 0.5f }, { 0.5f, 0.9f, 1 } }
 #define SUNSET { { 1, 0.45f, 0.2f }, { 1, 0.95f, 0.75f }, { 0.35f, 0.7f, 1 }, { 0.5f, 1, 0.5f } }
+#define CORAL { { 1, 0.45f, 0.3f }, { 1, 0.88f, 0.4f }, { 1, 0.35f, 0.75f }, { 0.6f, 1, 0.4f } }
+#define NEON { { 0.25f, 0.95f, 1 }, { 1, 0.95f, 0.85f }, { 1, 0.3f, 0.75f }, { 1, 0.75f, 0.25f } }
+#define GOLD { { 1, 0.75f, 0.25f }, { 1, 0.97f, 0.88f }, { 0.4f, 1, 0.55f }, { 0.4f, 0.8f, 1 } }
 #define STAGE { { 1, 0.55f, 0.12f }, { 1, 0.95f, 0.65f }, { 1, 0.28f, 0.35f }, { 0.4f, 0.8f, 1 } }
 
 /* the night sea: the engine's water lit by the world's moonlight with no ProceduralSky (cartwheel-engine 0.63.0) */
@@ -66,7 +79,7 @@ static const style_def STYLES[STYLE_COUNT] = {
                       .lit = 1, .key = { 1.0f, 1.2f, 1.6f }, .fill_l = { 0.4f, 0.6f, 1.4f }, .fill_r = { 1.2f, 0.7f, 0.5f }, .sweep = 0.15f },
                     0.22f, 0.8f, false, WATER_HELD },
   [STYLE_GRID] = { "grid", "Synthwave grid", 0, BD_GRID,
-                   { .pal = 1, .lane = SYNTH, .land_tint = 1, .land_rgb = { 0.55f, 0.1f, 0.6f }, .land_body = 0.05f, .land_alpha = 1, .ridge = 0.9f, .land_no_mid = 1, .plate = 0.93f, .burst = 0.5f, .flow = 1, .note_light = 0.8f, .pocket = 1,
+                   { .pal = 1, .lane = SYNTH, .land_tint = 1, .land_rgb = { 0.55f, 0.1f, 0.6f }, .land_body = 0.05f, .land_alpha = 1, .ridge = 0.9f, .land_no_mid = 1, .plate = 0.985f, .burst = 0.5f, .flow = 1, .note_light = 0.8f, .pocket = 1,
                      .lit = 1, .key = { 1.2f, 1.0f, 1.4f }, .fill_l = { 2.4f, 0.4f, 2.0f }, .fill_r = { 0.3f, 1.6f, 2.4f }, .sweep = 0.5f },
                    0.24f, 0.8f, true },
   [STYLE_TERMINAL] = { "terminal", "Terminal green", 1, BD_NONE,
@@ -81,18 +94,54 @@ static const style_def STYLES[STYLE_COUNT] = {
                       .lit = 1, .key = { 1.6f, 1.3f, 1.0f }, .fill_l = { 2.6f, 1.3f, 0.5f }, .fill_r = { 0.6f, 0.9f, 2.6f }, .sweep = 0.6f },
                     0.22f, 0.8f, true },
   [STYLE_HALF] = { "halfblock", "Half blocks", 0, BD_GRID,
-                   { .pal = 1, .lane = SYNTH, .land_alpha = 0, .ridge = 0, /* no land: its dark rows riding over the sun, in big pixels, were flashes */ .plate = 0.9f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                   { .pal = 1, .lane = SYNTH, .land_alpha = 0, .ridge = 0, /* no land: its dark rows riding over the sun, in big pixels, were flashes */ .plate = 0.975f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
                      .lit = 1, .key = { 1.2f, 1.0f, 1.4f }, .fill_l = { 2.4f, 0.4f, 2.0f }, .fill_r = { 0.3f, 1.6f, 2.4f }, .sweep = 0.5f },
                    0.2f, 0.8f, false, false, PX_HALF },
   [STYLE_MAZE] = { "maze", "Arcade maze", 0, BD_MAZE,
                    { .pal = 1, .lane = ARCADE, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
                      .lit = 1, .key = { 1.2f, 1.1f, 1.0f }, .fill_l = { 0.4f, 0.6f, 2.4f }, .fill_r = { 0.4f, 0.6f, 2.4f }, .sweep = 0.3f,
-                     .pellets = 1, .bank_tint = 1, .bank_rgb = { 0.12f, 0.22f, 1.6f } },
+                     .bank_tint = 1, .bank_rgb = { 0.12f, 0.22f, 1.6f } }, /* (no pellets: dots in a river read as notes) */
                    0.3f, 0.7f, true, false, PX_MAZE },
   [STYLE_BIT] = { "onebit", "One bit", 0, BD_STAGE,
                   { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.85f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
                     .lit = 1, .key = { 1.6f, 1.3f, 1.0f }, .fill_l = { 2.6f, 1.3f, 0.5f }, .fill_r = { 0.6f, 0.9f, 2.6f }, .sweep = 0.6f },
                   0.2f, 0.8f, false, false, PX_BIT },
+  [STYLE_AURORA] = { "aurora", "Aurora", 0, BD_AURORA,
+                     { .pal = 1, .lane = CORAL, .land_alpha = 0, .ridge = 0, .plate = 0.85f, .burst = 0.5f, .flow = 1, .note_light = 0.85f, .pocket = 1,
+                       .lit = 1, .key = { 0.9f, 1.1f, 1.3f }, .fill_l = { 0.3f, 1.8f, 1.0f }, .fill_r = { 1.2f, 0.4f, 1.8f }, .sweep = 0.2f },
+                     0.24f, 0.8f, false },
+  [STYLE_SPACE] = { "space", "Deep space", 0, BD_SPACE,
+                    { .pal = 1, .lane = GOLD, .land_alpha = 0, .ridge = 0, .plate = 0.88f, .burst = 0.5f, .flow = 1, .note_light = 0.85f, .pocket = 1,
+                      .lit = 1, .key = { 1.3f, 1.2f, 1.1f }, .fill_l = { 1.8f, 0.4f, 2.2f }, .fill_r = { 0.3f, 1.4f, 2.2f }, .sweep = 0.3f },
+                    0.26f, 0.8f, true },
+  [STYLE_CITY] = { "city", "Rain city", 0, BD_CITY,
+                   { .pal = 1, .lane = NEON, .land_alpha = 0, .ridge = 0, .plate = 0.88f, .burst = 0.5f, .flow = 1, .note_light = 0.85f, .pocket = 1,
+                     .lit = 1, .key = { 0.9f, 0.9f, 1.3f }, .fill_l = { 2.4f, 0.4f, 1.4f }, .fill_r = { 0.3f, 1.6f, 2.4f }, .sweep = 0.25f },
+                   0.24f, 0.8f, false },
+  [STYLE_FOREST] = { "forest", "Night forest", 0, BD_FOREST,
+                     { .pal = 1, .lane = EMBER, .land_alpha = 0, .ridge = 0, .plate = 0.85f, .burst = 0.5f, .flow = 1, .note_light = 0.85f, .pocket = 1,
+                       .lit = 1, .key = { 0.8f, 0.95f, 1.3f }, .fill_l = { 0.8f, 1.6f, 0.5f }, .fill_r = { 0.5f, 0.8f, 1.8f }, .sweep = 0.15f },
+                     0.22f, 0.8f, false },
+  [STYLE_DEEP] = { "deep", "Underwater", 0, BD_DEEP,
+                   { .pal = 1, .lane = CORAL, .land_alpha = 0, .ridge = 0, .plate = 0.9f, .burst = 0.5f, .flow = 1, .note_light = 0.85f, .pocket = 1,
+                     .lit = 1, .key = { 0.8f, 1.2f, 1.4f }, .fill_l = { 0.3f, 1.4f, 2.0f }, .fill_r = { 0.3f, 1.8f, 1.6f }, .sweep = 0.25f },
+                   0.22f, 0.8f, false },
+  [STYLE_DESERT] = { "desert", "Desert night", 0, BD_DUNES,
+                     { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.96f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                       .lit = 1, .key = { 1.4f, 1.3f, 1.1f }, .fill_l = { 1.6f, 1.1f, 0.5f }, .fill_r = { 1.6f, 1.1f, 0.5f }, .sweep = 0.2f },
+                     0.2f, 0.8f, false, false, PX_AMBER },
+  [STYLE_NEWS] = { "newsprint", "Newsprint", 0, BD_CITY,
+                   { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.97f, .burst = 0.3f /* a hit's flare prints as a solid white disc: at 0.5 the hats on two players flickered at 4 Hz */, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                     .lit = 1, .key = { 1.4f, 1.3f, 1.2f }, .fill_l = { 1.2f, 1.2f, 1.2f }, .fill_r = { 1.2f, 1.2f, 1.2f }, .sweep = 0.2f },
+                   0.2f, 0.8f, false, false, PX_NEWS },
+  [STYLE_LAVA] = { "lava", "Lava", 0, BD_LAVA,
+                   { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.28f /* a hit's glow over the lava, a sixth of the screen, rose too fast at 0.5 */, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                     .lit = 1, .key = { 1.3f, 1.1f, 1.0f }, .fill_l = { 3.0f, 0.9f, 0.2f }, .fill_r = { 3.0f, 0.9f, 0.2f }, .sweep = 0.3f },
+                   0.22f, 0.8f, true, false, PX_LAVA },
+  [STYLE_METAL] = { "metal", "Metal hall", 0, BD_METAL,
+                    { .pal = 1, .lane = NEON, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                      .lit = 1, .key = { 1.2f, 1.2f, 1.3f }, .fill_l = { 1.8f, 1.4f, 0.8f }, .fill_r = { 0.9f, 1.2f, 1.8f }, .sweep = 0.4f },
+                    0.22f, 0.8f, true },
 };
 
 const char *style_title(int i) { return i >= 0 && i < STYLE_COUNT ? STYLES[i].title : "All styles"; }
@@ -119,7 +168,7 @@ static struct {
   cw_look px_a, px_b; float px_t; bool px_set;
   float pin_t; /* the `style pin` request: a fade held at this t (-1: none), for measuring two worlds at once */
   float bloom_set, thr_set;
-  bool built;
+  bool built, no_prewarm, blank;
 } S;
 static flash_meter fl_style;
 
@@ -155,6 +204,17 @@ static int next_style(bool drop) {
   for (int i = 0; i < STYLE_COUNT; i++) all |= (uint32_t)!STYLES[i].held << i;
   if (((S.played | (1u << S.cur)) & all) == all) S.played = 1u << S.cur; /* every one played: round again */
   int pick = -1;
+  /* first a style whose fade from this one fits the budget (two worlds at once; the same world drawn once) */
+  for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
+    int k = S.order[i];
+    bool fits = COST[S.cur] + COST[k] <= PAIR_BUDGET || STYLES[k].backdrop == STYLES[S.cur].backdrop;
+    if (k != S.cur && !STYLES[k].held && !(S.played >> k & 1) && (!drop || STYLES[k].big) && fits) pick = k;
+  }
+  for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
+    int k = S.order[i];
+    bool fits = COST[S.cur] + COST[k] <= PAIR_BUDGET || STYLES[k].backdrop == STYLES[S.cur].backdrop;
+    if (k != S.cur && !STYLES[k].held && !(S.played >> k & 1) && fits) pick = k;
+  }
   for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
     int k = S.order[i];
     if (k != S.cur && !STYLES[k].held && !(S.played >> k & 1) && (!drop || STYLES[k].big)) pick = k;
@@ -223,18 +283,62 @@ void styles_tick(const song *s, double ms, float tempo, float dt) {
   if (S.pending >= 0 || S.t < 1) S.prepare = 1;
 }
 
+/* the prewarm, before anything is shown (the play cart's loading screen covers it; the autopilot does it in its first
+ * frames): every world drawn, two at a time as a fade draws them (each on top in its turn), then a fade held half way
+ * between every two kinds of picture (each look, the characters or neither, from and to: one style of each kind) drawn
+ * as the game draws it, so every program, pipeline, render target and particle system is made and simulated before a
+ * song: a style change in play is never a first use (a first use was a hitch of 20 to 350 ms). */
+#define PREWARM_WORLD_FRAMES 2
+#define PREWARM_PAIR_FRAMES 1
+static int prewarm_frame, pw_kinds[STYLE_COUNT], pw_nkinds = -1;
+static int prewarm_frames(void) { return (BD_COUNT - 1) * PREWARM_WORLD_FRAMES + pw_nkinds * (pw_nkinds - 1) * PREWARM_PAIR_FRAMES + 2; }
+/* 0: done; 1: this frame drawn (worlds); 2: draw the pair now in S.from, S.cur at half way */
+static int prewarm_step(float vis_t) {
+  if (pw_nkinds < 0) { /* one style of each kind of picture: its look and whether the characters draw it */
+    pw_nkinds = 0;
+    for (int i = 0; i < STYLE_COUNT; i++) {
+      bool seen = false;
+      for (int k = 0; k < pw_nkinds; k++) seen |= STYLES[pw_kinds[k]].px == STYLES[i].px && (STYLES[pw_kinds[k]].ascii > 0) == (STYLES[i].ascii > 0);
+      if (!seen) pw_kinds[pw_nkinds++] = i;
+    }
+  }
+  int nw = BD_COUNT - 1, wf = nw * PREWARM_WORLD_FRAMES, f = prewarm_frame++;
+  if (f > prewarm_frames()) return 0;
+  if (f == prewarm_frames()) { S.from = S.cur = STYLE_NEON, S.t = 1, S.prepare = 0; return 0; } /* (once: back to the game's own) */
+  if (f < wf) { /* world w with the next one round, each the one on top in its turn */
+    for (int i = 0; i < BD_COUNT; i++) S.bd_w[i] = 0;
+    int w = 1 + f / PREWARM_WORLD_FRAMES, w2 = 1 + (w % nw);
+    S.bd_w[w] = 0.5f, S.bd_w[w2] = 0.5f;
+    backdrop_update(S.bd_w, (f % 2) ? w : w2, NULL, vis_t * 2, vis_t, 0.5f);
+    return 1;
+  }
+  int q = (f - wf) / PREWARM_PAIR_FRAMES, n = pw_nkinds * (pw_nkinds - 1);
+  if (q >= n) { S.from = S.cur = STYLE_NEON, S.t = 1; return 2; }
+  int x = q / (pw_nkinds - 1), y = q % (pw_nkinds - 1);
+  if (y >= x) y++;
+  S.from = pw_kinds[x], S.cur = pw_kinds[y], S.t = 0.5f, S.prepare = 1;
+  return 2;
+}
+bool styles_prewarming(void) { return pw_nkinds < 0 || prewarm_frame <= prewarm_frames(); }
+float styles_prewarm_progress(void) { return pw_nkinds < 0 ? 0 : fminf(1, (float)prewarm_frame / (float)prewarm_frames()); }
+
 void styles_apply(float vis_t) {
-  float k = smooth01(flash_meter_feed(&fl_style, S.t));
+  int pw = S.no_prewarm ? 0 : prewarm_step(vis_t);
+  if (pw == 1) return;
+  float k = pw == 2 ? 0.5f : smooth01(flash_meter_feed(&fl_style, S.t));
   if (S.pin_t >= 0) k = S.pin_t;
   const style_def *a = &STYLES[S.from], *b = &STYLES[S.cur];
   club_style la = a->look, lb = b->look;
   if (S.readctl) la.plate = lb.plate = la.pocket = lb.pocket = 0; /* the readability gate's control: no roads or pockets, the notes dimmed (club.c) */
   club_set_style(&la, &lb, k);
   club_set_note_gain(S.readctl ? 0.2f : 1);
-  ascii_set_mix(a->ascii + (b->ascii - a->ascii) * k, S.prepare != 0);
+  ascii_set_mix(S.blank ? 0 : a->ascii + (b->ascii - a->ascii) * k, S.prepare != 0);
   for (int i = 0; i < BD_COUNT; i++) S.bd_w[i] = 0;
   S.bd_w[a->backdrop] += 1 - k;
   S.bd_w[b->backdrop] += k;
+  if (S.blank) for (int i = 0; i < BD_COUNT; i++) S.bd_w[i] = 0;
+  /* the city's windows a third as bright in print (lit windows printed as solid paper blocks read as notes) */
+  world_city_windows((a->px == PX_NEWS ? 0.3f : 1.0f) * (1 - k) + (b->px == PX_NEWS ? 0.3f : 1.0f) * k);
   backdrop_update(S.bd_w, b->backdrop, S.s, S.s ? S.beat : vis_t * 2, vis_t, S.energy);
   /* an engine look over the picture (half blocks): set when the pair or the blend changes; it comes in by a dissolve
    * (each pixel turning over as a soft noise passes, never the whole screen at once); the HUD's boxes stay clean */
@@ -297,6 +401,10 @@ static void cmd_style(int argc, const char **argv, cw_reply *r) {
       S.from = a, S.cur = b, S.t = 1, S.pending = -1, S.mode = b, S.pin_t = fminf(1, fmaxf(0, (float)atof(argv[4])));
     }
     else if (!strcmp(argv[1], "pin")) S.pin_t = -1;
+    else if (!strcmp(argv[1], "blank") && argc >= 3) S.blank = atoi(argv[2]) != 0; /* `style blank 1`: no backdrop, look or characters (the footprint gate counts the notes' pixels on black) */
+    else if (!strcmp(argv[1], "noprewarm")) S.no_prewarm = true; /* the hitch check's control (sent before the first frame:
+                                                                     * romdev loadMedia firstCommand): no prewarm, every
+                                                                     * world and look first drawn in play */
     else if (!strcmp(argv[1], "tour")) S.tour = 1; /* every style in turn, one about every 1.25 s */
     else {
       int k = style_arg(argv[1]);
@@ -309,8 +417,8 @@ static void cmd_style(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2) { cw_reply_printf(r, "}"); return; } /* the table only when asked with no argument */
   cw_reply_printf(r, ",\"styles\":[");
   for (int i = 0; i < STYLE_COUNT; i++)
-    cw_reply_printf(r, "%s{\"id\":\"%s\",\"title\":\"%s\",\"ascii\":%d,\"backdrop\":\"%s\",\"big\":%d,\"held\":%d}", i ? "," : "", STYLES[i].id, STYLES[i].title,
-                    STYLES[i].ascii > 0, backdrop_name(STYLES[i].backdrop), STYLES[i].big, STYLES[i].held);
+    cw_reply_printf(r, "%s{\"id\":\"%s\",\"title\":\"%s\",\"ascii\":%d,\"backdrop\":\"%s\",\"bd\":%d,\"look\":%d,\"big\":%d,\"held\":%d}", i ? "," : "", STYLES[i].id, STYLES[i].title,
+                    STYLES[i].ascii > 0, backdrop_name(STYLES[i].backdrop), STYLES[i].backdrop, STYLES[i].px, STYLES[i].big, STYLES[i].held);
   cw_reply_printf(r, "]}");
 }
 
@@ -340,7 +448,8 @@ void styles_build(cw_node level) {
   /* the arcade maze's chunky pixels: 90 rows of half blocks (180 pixels down, 6 a pixel at 1080) on a small palette:
    * black, the maze's blues, pellet peach, white and the lanes' colours */
   static const float MAZE_PAL[] = { 0, 0, 0, 0.003f, 0.005f, 0.04f, 0.02f, 0.05f, 0.9f, 0.25f, 0.4f, 1, 1, 0.6f, 0.42f, 1, 1, 1,
-                                    1, 0.06f, 0.08f, 1, 0.65f, 0.05f, 0.05f, 1, 0.2f, 0.2f, 0.8f, 1, 1, 0.3f, 0.6f, 0.4f, 0.12f, 0.15f };
+                                    1, 0.06f, 0.08f, 1, 0.65f, 0.05f, 0.05f, 1, 0.2f, 0.2f, 0.8f, 1, 1, 0.3f, 0.6f, 0.4f, 0.12f, 0.15f,
+                                    0.04f, 0.035f, 0.07f, 0.09f, 0.08f, 0.16f, 0.16f, 0.14f, 0.27f }; /* (the travellers' dim violet-greys) */
   cw_look_desc dm = cw_look_default(CW_LOOK_HALFBLOCK);
   dm.halfblock.rows = 90, dm.halfblock.palette = MAZE_PAL, dm.halfblock.palette_count = (int)(sizeof MAZE_PAL / sizeof MAZE_PAL[0] / 3);
   S.px[PX_MAZE] = cw_look_new(&dm);
@@ -352,8 +461,31 @@ void styles_build(cw_node level) {
   db.dither.pixel = 2;
   db.dither.light[0] = 1.0f, db.dither.light[1] = 0.93f, db.dither.light[2] = 0.8f;
   db.dither.dark[0] = 0.012f, db.dither.dark[1] = 0.01f, db.dither.dark[2] = 0.016f;
-  db.dither.hue_value = 1.15f, db.dither.grey_gain = 0.8f, db.dither.sharpen = 0.9f, db.dither.outline = 1;
+  db.dither.hue_value = 1.15f, db.dither.grey_gain = 0.8f, db.dither.outline = 1; /* (no sharpen: it costs about 3 ms on a Radeon 890M, an engine gap sent) */
   db.dither.gamma = 1.25f, db.dither.contrast = 1.25f;
   S.px[PX_BIT] = cw_look_new(&db);
+  /* desert night: the dunes in amber dither (an ordered blue noise at the DISPLAY stage: every pixel deep brown or
+   * amber), the moon's light and the crests amber, the shadows the dark */
+  cw_look_desc da = db;
+  da.dither.pattern = CW_DITHER_BLUE_NOISE;
+  da.dither.pixel = 2;
+  da.dither.light[0] = 1.0f, da.dither.light[1] = 0.62f, da.dither.light[2] = 0.2f;
+  da.dither.dark[0] = 0.03f, da.dither.dark[1] = 0.012f, da.dither.dark[2] = 0.004f;
+  da.dither.outline = 0, da.dither.gamma = 0.75f, da.dither.contrast = 1.5f, da.dither.sharpen = 0, da.dither.bias = 0.05f;
+  S.px[PX_AMBER] = cw_look_new(&da);
+  /* newsprint: the rain city printed in ink on paper, by error diffusion (no pattern: dots spread as a press does) */
+  cw_look_desc dn = cw_look_default(CW_LOOK_DITHER_DIFFUSE);
+  dn.stage = CW_LOOK_STAGE_DISPLAY;
+  dn.dither.pixel = 2, dn.dither.sweeps = 3;
+  dn.dither.light[0] = 0.93f, dn.dither.light[1] = 0.9f, dn.dither.light[2] = 0.82f;
+  dn.dither.dark[0] = 0.05f, dn.dither.dark[1] = 0.045f, dn.dither.dark[2] = 0.06f;
+  dn.dither.hue_value = 1.1f, dn.dither.grey_gain = 1.6f, dn.dither.outline = 1;
+  dn.dither.gamma = 1.0f, dn.dither.contrast = 0.95f, dn.dither.bias = 0.0f; /* (soft: no lit window prints solid, a note-like block) */
+  S.px[PX_NEWS] = cw_look_new(&dn);
+  /* lava: half blocks (110 rows) of the scene's own colours: on a palette, a hit's glow at the middle gate snapped a
+   * wide block to a far brighter colour in one frame (a hard onset over the flash bound) */
+  cw_look_desc dl = cw_look_default(CW_LOOK_HALFBLOCK);
+  dl.halfblock.rows = 110, dl.halfblock.levels = 0;
+  S.px[PX_LAVA] = cw_look_new(&dl);
   backdrop_build(level);
 }

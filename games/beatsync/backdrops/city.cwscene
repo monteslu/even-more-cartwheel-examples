@@ -1,0 +1,76 @@
+[scene format=1]
+
+; The rain city backdrop (src/worlds.c builds the buildings, their windows, the neon signs and the street lights): a
+; street at night in the rain, towers either side lit window by window, neon blade signs hanging over the street in
+; pink, cyan and amber, the wet street a mirror of all of it, rings of rain on the puddles, rain falling through the
+; light.
+
+[node name="City" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.006, 0.006, 0.016, 1)
+use_background = true
+ambient_color = color(0.4, 0.4, 0.8, 1)
+ambient_energy = 0.04
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 3.2, 24)
+rotation = vec3(0.02, 0, 0)
+fov = 56
+near = 0.5
+far = 1500
+
+[node name="Moon" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.6, 0.4, 0)
+color = color(0.45, 0.5, 0.9, 1)
+energy = 0.25
+
+; the wet street: still water, a mirror for the signs and windows, rain ringing it
+; the wet street: still water, a mirror for the signs and windows, rain ringing it
+[node name="Street" parent="." type="Water3D"]
+position = vec3(0, 0.05, -180)
+size = vec2(19, 420)
+wave0 = vec4(30, 6, 0.01, 0.2)
+wave1 = vec4(70, 3, 0.006, 0.3)
+wave2 = vec4(-40, 1.5, 0.003, 0.3)
+wave_speed = 0.4
+color = color(0.012, 0.012, 0.02, 1)
+deep_color = color(0.004, 0.004, 0.008, 1)
+reflectivity = 0.6
+roughness = 0.06
+refraction = false
+floor_map_size = 0
+caustics = 0
+shore_foam = 0
+crest_foam = 0
+underwater = false
+rain = 0.6
+rain_size = 0.35
+rain_strength = 0.04
+
+[node name="Rain" parent="." type="GPUParticles3D"]
+position = vec3(0, 26, -20)
+amount = 1400
+lifetime = 1.2
+emission_shape = BOX
+emission_extents = vec3(40, 4, 60)
+direction = vec3(0.08, -1, 0)
+spread = 2
+speed_min = 22
+speed_max = 28
+gravity = vec3(0, -10, 0)
+draw_mode = STRETCHED
+stretch = 0.03
+size = 0.03
+size_random = 0.4
+color_ramp = "0 0.7 0.75 0.9 0, 0.1 0.7 0.75 0.9 0.6, 0.9 0.7 0.75 0.9 0.6, 1 0.7 0.75 0.9 0"
+energy = 0.9
+camera_fade = 8
+preprocess = 2
+seed = 401

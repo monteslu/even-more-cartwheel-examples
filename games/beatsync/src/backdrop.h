@@ -10,6 +10,8 @@
  *   BD_STAGE   a rock stage: the band playing on a riser, moving spots in haze, a lit wall, the crowd in front
  *   BD_CLEAN   a lit landscape under an evening sky: the other track as hills riding toward the camera
  *   BD_MAZE    an arcade maze: double neon walls on black seen at a tilt, riding toward the camera, critters wandering it
+ *   BD_AURORA .. BD_LAVA  the newer worlds (worlds.h): aurora, space, rain city, night forest, underwater, desert
+ *              night, lava, metal
  *
  * At most two show at once (one style fading into the next): the one coming in is drawn over the one going out. */
 #ifndef BEATSYNC_BACKDROP_H
@@ -18,7 +20,7 @@
 
 #include "song.h"
 
-enum { BD_NONE, BD_FIRE, BD_SEA, BD_GRID, BD_LASERS, BD_STAGE, BD_CLEAN, BD_MAZE, BD_COUNT };
+enum { BD_NONE, BD_FIRE, BD_SEA, BD_GRID, BD_LASERS, BD_STAGE, BD_CLEAN, BD_MAZE, BD_AURORA, BD_SPACE, BD_CITY, BD_FOREST, BD_DEEP, BD_DUNES, BD_LAVA, BD_METAL, BD_COUNT };
 
 void backdrop_build(cw_node level);
 /* every frame: each backdrop's weight (at most two above 0), which one is coming in (drawn on top), the song (NULL

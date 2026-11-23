@@ -5,10 +5,10 @@
 //   node tests/beatsync-all.mjs gl|webgpu [jobs]   (inside the GPU lock, or on a remote lane: one hold, not one a gate)
 import { spawn } from 'node:child_process';
 const gpu = process.argv[2], jobs = +(process.argv[3] || 4);
-const par = ['haptics', 'duo', 'land', 'streak', 'layout', 'depth', 'wait', 'forgiving', 'newcomer', 'text', 'programs', 'look', 'flash', 'styles',
+const par = ['haptics', 'footprint', 'duo', 'land', 'streak', 'layout', 'depth', 'wait', 'forgiving', 'newcomer', 'text', 'programs', 'look', 'flash', 'styles',
   ...(gpu === 'gl' ? ['mix', 'bass'] : [])].map((g) => ['node', [`tests/beatsync-${g}.mjs`, '--gpu', gpu], g]);
 par.push(['node', ['tests/gate.mjs', '--gates-file', 'beatsync-gates.json', '--hosts', 'romdev', '--gpu', gpu], 'gates']);
-const last = [['node', ['tests/beatsync-tempo.mjs', '--gpu', gpu], 'tempo'],
+const last = [['node', ['tests/beatsync-tempo.mjs', '--gpu', gpu], 'tempo'], ['node', ['tests/beatsync-hitch.mjs', '--gpu', gpu], 'hitch'],
   ...(gpu === 'gl' ? [['node', ['tests/beatsync-sync.mjs', '--gpu', 'gl'], 'sync'], ['node', ['tests/cart-smoke.mjs', 'beatsync'], 'smoke']] : [])];
 const results = [];
 const run = ([cmd, args, name]) => new Promise((done) => {

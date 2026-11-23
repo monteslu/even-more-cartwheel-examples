@@ -1,0 +1,39 @@
+[scene format=1]
+
+; The aurora backdrop (src/worlds.c builds the sky, the curtains, the range, the pines and the snow's glow): a snow
+; field under a polar night, curtains of aurora rippling slowly across the sky in green going to violet at their
+; tops, their light lying faintly on the snow, dark pines either side of the valley, a far range under snow.
+
+[node name="Aurora" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.002, 0.004, 0.012, 1)
+use_background = true
+ambient_color = color(0.4, 0.6, 1, 1)
+ambient_energy = 0.05
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 3, 24)
+rotation = vec3(0.04, 0, 0)
+fov = 56
+near = 0.5
+far = 2500
+
+; the sky's light on the snow: cold, from high behind the curtains
+[node name="Skylight" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.5, 0.3, 0)
+color = color(0.5, 0.85, 0.75, 1)
+energy = 0.6
+
+[node name="Snow" parent="." type="MeshInstance3D"]
+primitive = PLANE
+position = vec3(0, 0, -600)
+size = vec3(3000, 1, 1400)
+color = color(0.7, 0.8, 0.95, 1)
+roughness = 0.5

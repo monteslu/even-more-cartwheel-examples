@@ -31,9 +31,9 @@ volumetric_ambient = 0.02
 sky_distance = 0
 
 [node name="Camera" parent="." type="Camera3D"]
-position = vec3(0, 2.8, 6)
-rotation = vec3(0.02, 0, 0)
-fov = 50
+position = vec3(0, 2.6, 6.5)
+rotation = vec3(0.0, 0, 0)
+fov = 34
 near = 0.2
 far = 200
 
@@ -56,7 +56,7 @@ cast_shadow = true
 position = vec3(0, 1.19, -1.02)
 size = vec3(22, 0.06, 0.06)
 color = color(0, 0, 0, 1)
-emissive = color(1.2, 0.55, 0.2, 1)
+emissive = color(0.6, 0.28, 0.1, 1)
 
 [node name="Riser" parent="." type="MeshInstance3D"]
 position = vec3(0, 1.6, -9)

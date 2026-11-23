@@ -77,4 +77,44 @@ scene = "backdrops/maze.cwscene"
 camera = "Camera"
 opacity = 0
 
+[node name="BdAurora" parent="." type="Backdrop"]
+scene = "backdrops/aurora.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdSpace" parent="." type="Backdrop"]
+scene = "backdrops/space.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdCity" parent="." type="Backdrop"]
+scene = "backdrops/city.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdForest" parent="." type="Backdrop"]
+scene = "backdrops/forest.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdDeep" parent="." type="Backdrop"]
+scene = "backdrops/deep.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdDunes" parent="." type="Backdrop"]
+scene = "backdrops/dunes.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdLava" parent="." type="Backdrop"]
+scene = "backdrops/lava.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdMetal" parent="." type="Backdrop"]
+scene = "backdrops/metal.cwscene"
+camera = "Camera"
+opacity = 0
+
 [node name="Field" parent="." type="Node3D" groups="airborne"]

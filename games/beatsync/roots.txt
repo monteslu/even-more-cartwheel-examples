@@ -2,8 +2,8 @@ project.cwproj
 main.cwscene
 fonts/FiraMono-Regular.ttf
 fonts/FiraMono-OFL.txt
-fx/fire.png
-fx/fire_mv.png
+fx/flame.png
+fx/flame_mv.png
 backdrops/fire.cwscene
 backdrops/sea.cwscene
 backdrops/grid.cwscene
@@ -17,3 +17,12 @@ models/band_singer.glb
 models/band_bass.glb
 models/band_drums.glb
 backdrops/maze.cwscene
+backdrops/aurora.cwscene
+backdrops/space.cwscene
+backdrops/city.cwscene
+backdrops/forest.cwscene
+backdrops/deep.cwscene
+backdrops/dunes.cwscene
+backdrops/lava.cwscene
+backdrops/metal.cwscene
+fx/bubble.png

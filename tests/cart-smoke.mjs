@@ -20,6 +20,9 @@ const argv = process.argv.slice(2);
 const opt = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const VALUED = new Set(['--frames', '--carts', '--out']);
 const FRAMES = +opt('--frames', 60);
+// a game whose cart draws every world once under a loading screen first runs at least this many frames, so the shot
+// is of the game, not the loading bar (beatsync: its style prewarm, about 90 frames)
+const LOADING = { beatsync: 150 };
 const CARTS = resolve(opt('--carts', join(ROOT, 'build/cart-wgpu/carts')));
 const OUT = resolve(opt('--out', join(ROOT, 'out/cart-smoke')));
 const PLAYER = (process.env.WASMCART || 'npx --yes wasmcart@0.36.2').split(' ');
@@ -58,14 +61,15 @@ for (const game of games.length ? games : ALL) {
   const cart = existsSync(auto) ? auto : join(CARTS, `${game}.wasc`), shot = join(OUT, `${game}.png`);
   if (!existsSync(cart)) { console.error(`${game}: no ${cart}`); failed++; continue; }
   const t0 = Date.now();
-  const r = spawnSync(PLAYER[0], [...PLAYER.slice(1), 'play', cart, '--frames', String(FRAMES), '--shot', shot],
+  const frames = Math.max(FRAMES, LOADING[game] || 0);
+  const r = spawnSync(PLAYER[0], [...PLAYER.slice(1), 'play', cart, '--frames', String(frames), '--shot', shot],
     { encoding: 'utf8', timeout: +(process.env.CW_RUN_TIMEOUT_MS || 900000), maxBuffer: 64 << 20 });
   const secs = ((Date.now() - t0) / 1000).toFixed(1);
   const out = `${r.stdout || ''}${r.stderr || ''}`;
   const problems = [];
   if (r.error || r.status !== 0) problems.push(r.error ? r.error.message : `exited ${r.status ?? r.signal}`);
   const ran = /ran (\d+) frames\s+(\d+)x(\d+)/.exec(r.stdout || '');
-  if (!ran || +ran[1] !== FRAMES) problems.push(`did not report ${FRAMES} frames`);
+  if (!ran || +ran[1] !== frames) problems.push(`did not report ${frames} frames`);
   if (!/render pipeline \(WebGPU\)/.test(out)) problems.push('did not start its WebGPU pipeline');
   if (/no program and are not drawn|\[error\]/.test(out)) problems.push('logged an error');
   let pic = null;
@@ -79,6 +83,6 @@ for (const game of games.length ? games : ALL) {
   if (problems.length) {
     failed++;
     console.error(`${game}: FAIL (${secs} s)\n  ${problems.join('\n  ')}\n${out.split('\n').filter((l) => !/\[debug\]/.test(l)).slice(-15).join('\n')}`);
-  } else console.log(`${game}: ok (${FRAMES} frames, ${pic.w}x${pic.h}, ${pic.n} colours${pic.n < 1000 ? `, 1-bit: the two commonest ${(100 * (pic.ink + pic.paper)).toFixed(1)}%, the second ${(100 * pic.paper).toFixed(1)}%` : ''}, ${secs} s)`);
+  } else console.log(`${game}: ok (${frames} frames, ${pic.w}x${pic.h}, ${pic.n} colours${pic.n < 1000 ? `, 1-bit: the two commonest ${(100 * (pic.ink + pic.paper)).toFixed(1)}%, the second ${(100 * pic.paper).toFixed(1)}%` : ''}, ${secs} s)`);
 }
 process.exit(failed ? 1 : 0);

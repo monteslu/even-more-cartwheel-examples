@@ -1372,6 +1372,8 @@ static void draw_calib(cw_vec2 cv, float size) {
 static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *user) {
   (void)user;
   float k = cs.y / 1080.0f;
+  /* the loading screen over black: behind it the prewarm (styles.c) changes the worlds and looks every frame or two */
+  if (screen == CW_SHELL_LOADING) cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, cw_rgba(0, 0, 0, 1));
   ascii_hud_reset(cs, k);
   if (screen == CW_SHELL_JOIN) { /* a box behind each seat, the heading and the hints, where the shell draws them */
     float u = cs.y / 20.0f;
@@ -1434,6 +1436,15 @@ static void render(void *user, double alpha) {
     v.level[l] = G.level[l];
   }
   styles_apply(G.vis_t);
+#ifndef GAME_AUTOPILOT
+  {
+    static bool loaded;
+    if (!loaded) {
+      if (styles_prewarming()) cw_shell_loading(styles_prewarm_progress());
+      else loaded = true, cw_shell_loaded();
+    }
+  }
+#endif
   club_update(&v);
   if (cw_shell_hud_shown() && G.screen != SCR_NONE) {
     cw_r2d_begin(NULL);
@@ -1452,6 +1463,24 @@ static void render(void *user, double alpha) {
     ascii_hud_end();
     cw_r2d_end();
   } else if (cw_shell_hud_shown()) ascii_hud_none();
+#ifdef GAME_AUTOPILOT
+  { /* the prewarm (styles.c) changes the worlds and looks every frame or two: under a black sheet, which then fades away
+     * over half a second, a progress bar on it meanwhile (the autopilot has no loading screen; the play cart's loading
+     * screen is drawn over black, draw_background) */
+    static float sheet = 1;
+    if (!styles_prewarming()) sheet = fmaxf(0, sheet - (1.0f / 30.0f));
+    if (sheet > 0) {
+      cw_r2d_begin(NULL);
+      cw_vec2 cv = cw_r2d_canvas_size();
+      float a = sheet * sheet * (3 - 2 * sheet);
+      cw_r2d_rect((cw_rect){ 0, 0, cv.x, cv.y }, cw_rgba(0, 0, 0, a));
+      float w = cv.x * 0.3f, h = cv.y * 0.008f, x = (cv.x - w) * 0.5f, y = cv.y * 0.5f;
+      cw_r2d_rect((cw_rect){ x, y, w, h }, cw_rgba(0.16f, 0.16f, 0.2f, a));
+      cw_r2d_rect((cw_rect){ x, y, w * (styles_prewarming() ? styles_prewarm_progress() : 1), h }, cw_rgba(0.75f, 0.5f, 1.0f, a));
+      cw_r2d_end();
+    }
+  }
+#endif
   cw_shell_draw();
   cw_audio_update(); /* the game started the mixer (init), so the shell leaves its frame update to the game */
 }
@@ -1600,6 +1629,9 @@ static void init(void *user) {
     .settings_item_count = 1,
     .settings_changed = settings_changed,
     .accent = { 0.75f, 0.5f, 1.0f, 1 },
+#ifndef GAME_AUTOPILOT
+    .loading = true, /* behind it every world and look is drawn once (styles.c prewarm): no first use in a song */
+#endif
   });
   acc = cw_action_find("ui_accept");
   back = cw_action_find("ui_back");

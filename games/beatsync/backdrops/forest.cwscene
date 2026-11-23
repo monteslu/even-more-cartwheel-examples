@@ -1,0 +1,64 @@
+[scene format=1]
+
+; The night forest backdrop (src/worlds.c builds the trees, the sky, the moon, its shafts and the mist): a clearing in
+; a pine forest under a full moon, the trunks dark and rimmed with moonlight, shafts of it slanting through, mist lying
+; low between the trees, fireflies drifting and glowing softly in and out.
+
+[node name="Forest" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.003, 0.006, 0.012, 1)
+use_background = true
+ambient_color = color(0.3, 0.45, 0.6, 1)
+ambient_energy = 0.04
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 2.4, 22)
+rotation = vec3(0.03, 0, 0)
+fov = 56
+near = 0.3
+far = 900
+
+[node name="Moonlight" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.45, 2.8, 0)
+color = color(0.6, 0.75, 1, 1)
+energy = 0.5
+
+[node name="Ground" parent="." type="MeshInstance3D"]
+primitive = PLANE
+position = vec3(0, 0, -300)
+size = vec3(1200, 1, 800)
+color = color(0.03, 0.045, 0.03, 1)
+roughness = 0.95
+
+; fireflies: soft yellow-green lights drifting on the air, each glowing up and dimming over its two-to-four second
+; life (never a blink: their light swells and fades)
+[node name="Fireflies" parent="." type="GPUParticles3D"]
+position = vec3(0, 2.5, -10)
+amount = 160
+lifetime = 3.5
+lifetime_random = 0.4
+emission_shape = BOX
+emission_extents = vec3(30, 2.2, 26)
+direction = vec3(0, 1, 0)
+spread = 90
+speed_min = 0.05
+speed_max = 0.3
+gravity = vec3(0, 0.02, 0)
+damping = 0.5
+turbulence = 0.6
+turbulence_scale = 0.15
+turbulence_speed = 0.12
+size = 0.13
+size_random = 0.4
+color_ramp = "0 0.7 1 0.3 0, 0.35 0.8 1 0.35 1, 0.65 0.8 1 0.35 1, 1 0.7 1 0.3 0"
+energy = 3.5
+camera_fade = 8
+preprocess = 4
+seed = 501

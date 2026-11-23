@@ -116,12 +116,17 @@ static struct {
   struct land_probe { float beat, height, hue, bands[3]; int stab; bool crest; } land_probe[LAND_ROWS];
   int land_n;
   int notescale; /* 0 the game; 1 flat, 2 reversed: the size gate's controls */
+  bool notes_solo; /* the `notes solo 1` request: only the notes drawn (the footprint gate counts their pixels on black) */
+  bool old_shapes; /* the `notes old` request: the bass a flat bar and the synth a hexagon again (the footprint gate's control) */
+  t3_instanced_mesh *old_bass, *old_synth;
   struct probe { uint8_t lane; float ahead, x, y, px, bright; } probe[PROBE_MAX];
   int probe_n;
   bool built;
 } C;
 /* each note shape's width in units at scale 1 (the geometries in club_build) */
-static const float NOTE_W[LANES] = { 1.44f, 1.76f, 2.0f, 1.6f };
+static const float NOTE_W[LANES] = { 1.46f, 1.84f, 1.975f, 1.3f };
+/* each flat shape's area in units at scale 1: every river's note at least the area of the biggest before (the synth's
+ * hexagon, 1.66), so none reads as the smaller target (the bass was a bar of 1.32) */
 
 static uint32_t hash(uint32_t a, uint32_t b) {
   uint32_t h = a * 374761393u + b * 668265263u;
@@ -233,8 +238,7 @@ static int lit_off; /* the `lit` request: parts of the lit picture left out (1 g
 #define PELLETS 40 /* a river's pellets in the arcade maze, one each half beat */
 /* ── the lit picture (club_style.lit) ──────────────────────────────────────────────────────────────────────────────
  * The characters read flat shapes; the plain picture lights them. Each note gets a gem in front of its flat shape (the
- * kick a polished orb, the clap a cut diamond, the bass a glassy capsule across its river, the synth a hexagonal
- * prism) in a clear-coated material lit by the field's lights and reflecting a studio of soft boxes, so it carries
+ * kick a polished orb, the clap a cut diamond, the bass a triangular prism, the synth a square slab) in a clear-coated material lit by the field's lights and reflecting a studio of soft boxes, so it carries
  * highlights and a bright rim; a soft halo of its colour sits under it (the bloom takes it). The banks get a glow along
  * them; the roads under the rivers are dark glass with a clear coat, so the field's low lights slide across them. The
  * field's lights (main.cwscene: Key, FillL, FillR) take the style's colours, the low ones those of its backdrop. */
@@ -282,22 +286,17 @@ static t3_instanced_mesh *soft(t3_geometry *g, t3_texture *tex, int n) {
   t3_material_set_map(im->mesh.materials[0], tex), t3_release(tex);
   return im;
 }
-/* a capsule along x: a lathe about y, turned on its side by the instance (its length 2, its radius r) */
-static t3_geometry *capsule(float r, float len) {
-  t3_vec2 p[26];
-  int n = 0;
-  for (int i = 0; i <= 12; i++) { float a = -PI_F / 2 + PI_F / 2 * (float)i / 12; p[n++] = (t3_vec2){ r * cosf(a), -len / 2 + r * sinf(a) + r }; }
-  for (int i = 0; i <= 12; i++) { float a = PI_F / 2 * (float)i / 12; p[n++] = (t3_vec2){ r * cosf(a), len / 2 - r + r * sinf(a) }; }
-  return t3_lathe_geometry_new(p, n, 24, 0, 2 * PI_F);
-}
 static void lit_build(cw_node level) {
   C.env = studio();
   t3_geometry *g[LANES] = {
     t3_sphere_geometry_new(0.62f, 32, 20),          /* kick: a polished orb */
-    t3_octahedron_geometry_new(0.84f, 0),           /* clap: a cut diamond (its points up, down and to the sides) */
-    capsule(0.3f, 2.0f),                            /* bass: a capsule across its river */
-    t3_cylinder_geometry_new(0.68f, 0.68f, 0.5f, 6, 1, false), /* synth: a hexagonal prism, face on */
+    t3_octahedron_geometry_new(0.88f, 0),           /* clap: a cut diamond (its points up, down and to the sides) */
+    t3_cylinder_geometry_new(0.98f, 0.98f, 0.5f, 3, 1, false), /* bass: a triangular prism, face on, a point away */
+    t3_box_geometry_new(1.12f, 1.12f, 0.5f, 1, 1, 1), /* synth: a square slab, face on */
   };
+  /* the prism stood face on (its axis toward the camera), one point up the river */
+  t3_geometry_rotate_y(g[LANE_BASS], PI_F);
+  t3_geometry_rotate_x(g[LANE_BASS], PI_F / 2);
   for (int l = 0; l < LANES; l++) {
     t3_material *m = t3_mesh_physical_material_new(0xffffff);
     m->roughness = l == LANE_CLAP ? 0.06f : 0.14f, m->metalness = 0.05f;
@@ -359,11 +358,19 @@ void club_build(void) {
   C.camera = cw_node_get(level, "Camera");
   C.zoom = 1, C.spread = 1, C.ahead = 3;
   for (int l = 0; l < SOLO_LANES; l++) C.place[l] = l;
-  /* the notes: kick round, clap a diamond, bass a long bar across its river, the synth a hexagon */
-  C.notes[LANE_KICK] = instanced(t3_circle_geometry_new(0.72f, 24), MAX_NOTES_SHOWN);
-  C.notes[LANE_CLAP] = instanced(t3_circle_geometry_new(0.88f, 4), MAX_NOTES_SHOWN);
-  C.notes[LANE_BASS] = instanced(t3_plane_geometry_new(2.0f, 0.66f, 1, 1), MAX_NOTES_SHOWN);
-  C.notes[LANE_SYNTH] = instanced(t3_circle_geometry_new(0.8f, 6), MAX_NOTES_SHOWN);
+  /* the notes: kick round, clap a diamond, bass a triangle (its point away from the player), the synth a square; each of
+   * about the same area (1.67 to 1.69 units: NOTE_W), so every river's note is as big a target */
+  C.notes[LANE_KICK] = instanced(t3_circle_geometry_new(0.73f, 24), MAX_NOTES_SHOWN);
+  C.notes[LANE_CLAP] = instanced(t3_circle_geometry_new(0.92f, 4), MAX_NOTES_SHOWN);
+  {
+    t3_geometry *tri = t3_circle_geometry_new(1.14f, 3);
+    t3_geometry_rotate_z(tri, PI_F / 2);
+    C.notes[LANE_BASS] = instanced(tri, MAX_NOTES_SHOWN);
+  }
+  C.notes[LANE_SYNTH] = instanced(t3_plane_geometry_new(1.3f, 1.3f, 1, 1), MAX_NOTES_SHOWN);
+  C.old_bass = instanced(t3_plane_geometry_new(2.0f, 0.66f, 1, 1), MAX_NOTES_SHOWN);
+  C.old_synth = instanced(t3_circle_geometry_new(0.8f, 6), MAX_NOTES_SHOWN);
+  C.old_bass->count = C.old_synth->count = 0;
   C.flow = instanced(t3_plane_geometry_new(0.55f, 0.12f, 1, 1), FLOW * LANES);
   C.banks = instanced(t3_plane_geometry_new(0.14f, 1.0f, 1, 1), BANK_SEGS * 2 * LANES);
   C.ticks = instanced(t3_plane_geometry_new(1.0f, 0.1f, 1, 1), TICKS * LANES);
@@ -827,13 +834,13 @@ void club_update(const club_view *v) {
     if (cnt[l] >= MAX_NOTES_SHOWN || C.on[l] < 0.01f) continue; /* a river not shown carries no notes */
     float in = fminf(1, (C.ahead - ahead) / 0.5f);    /* they fade in at the far end */
     float nl = v->note_light > 0 ? v->note_light : 1, nb0 = NB0 * nl;
-    /* the bass bar spans its river: on a run of eighths it is the most light passing the gate, so it is drawn a little
-     * dimmer than the round notes (the flash check's regular-flicker bound on the densest song) */
-    if (v->notes[i].lane == LANE_BASS) nb0 *= 0.8f;
+    /* the bass note is the widest across its river: on a run of eighths it is the most light passing the gate, so it is
+     * drawn a little dimmer than the round notes (the flash check's regular-flicker bound on the densest song) */
+    if (v->notes[i].lane == LANE_BASS) nb0 *= 0.62f; /* (the triangle is the bar's area times 1.28: its light the bar's) */
     /* on two lanes the clap river carries the hats too, a note on every eighth: drawn dimmer still (the densest drums
      * on two lanes flickered at 0.043 against the 0.02 bound with the clap at full) */
     if (v->notes[i].lane == LANE_CLAP && v->layout != CLUB_SOLO) nb0 *= 0.5f;
-    if (v->notes[i].lane == LANE_BASS && v->layout != CLUB_SOLO) nb0 *= 0.6f;  /* the groove's Hard bass runs in sixteenths */
+    if (v->notes[i].lane == LANE_BASS && v->layout != CLUB_SOLO) nb0 *= 0.4f;  /* the groove's Hard bass runs in sixteenths */
     if (v->notes[i].lane == LANE_SYNTH) nb0 *= 0.7f;
     /* a run of eighths on one river (Hard's claps in a busy stretch) passes each point of it four times a second: drawn
      * at 60% so the run is a steady light, not a regular flicker over the 0.02 bound (it read 0.029 on Test Groove's
@@ -871,34 +878,37 @@ void club_update(const club_view *v) {
       float gs = size * (0.4f + 0.6f * gk);
       /* a slow rock about the upright, each note its own phase, so the highlights travel across it */
       float wob = 0.35f * sinf(v->t * 1.3f + (float)i * 0.9f);
-      t3_quat q = l == LANE_BASS ? t3_quat_from_axis_angle((t3_vec3){ 0, 0, 1 }, PI_F / 2)
-                : l == LANE_SYNTH ? t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, PI_F / 2)
-                : t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, wob + (l == LANE_CLAP ? PI_F / 4 : 0));
-      if (l == LANE_BASS) q = t3_quat_multiply(t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, wob), q);
+      t3_quat q = t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, (l == LANE_BASS || l == LANE_SYNTH ? 0.6f : 1) * wob + (l == LANE_CLAP ? PI_F / 4 : 0));
       set_inst_q(C.gem[l], ngem[l], (t3_vec3){ at.x, at.y, at.z + 0.75f * gs }, q, (t3_vec3){ gs, gs, gs });
       /* the gem's own colour, a little brighter than the flat note (the light falls off its sides) */
       t3_instanced_mesh_set_color_at(C.gem[l], ngem[l]++, scale(C.p.lane[l], fminf(1.2f, bright * dim * ((lit_off & 64) ? 0.4f : 1.1f)) * gk) /* the note's own light (a run of eighths dimmer) */);
       if (nhalo < MAX_NOTES_SHOWN * LANES && !(lit_off & 2)) {
         float hs = size * NOTE_W[l] * 1.7f;
-        set_inst(C.halo, nhalo, (t3_vec3){ at.x, at.y, at.z - 0.02f }, 0, (t3_vec3){ hs, l == LANE_BASS ? hs * 0.5f : hs, 1 });
+        set_inst(C.halo, nhalo, (t3_vec3){ at.x, at.y, at.z - 0.02f }, 0, (t3_vec3){ hs, hs, 1 });
         t3_instanced_mesh_set_color_at(C.halo, nhalo++, scale(C.p.lane[l], 0.35f * bright * dim * gk));
       }
     }
     /* the flat note gives way to its gem: it shrinks out (drawn black behind the gem, its rim passing over the river
      * on every note of a run was a dark regular flicker) */
     float fsz = size * (1 - gk);
-    set_inst(C.notes[l], cnt[l], at, 0, (t3_vec3){ fsz, fsz, 1 });
-    t3_instanced_mesh_set_color_at(C.notes[l], cnt[l]++, c);
+    t3_instanced_mesh *nm = C.old_shapes && l == LANE_BASS ? C.old_bass : C.old_shapes && l == LANE_SYNTH ? C.old_synth : C.notes[l];
+    set_inst(nm, cnt[l], at, 0, (t3_vec3){ fsz, fsz, 1 });
+    t3_instanced_mesh_set_color_at(nm, cnt[l]++, c);
     float pk = sty(pocket) * in * C.on[l] * (1 - 0.35f * P); /* a gem has a rim of its own: a smaller pocket */
     if (st == NOTE_PENDING && pk > 0.01f && npk < MAX_NOTES_SHOWN * LANES) {
-      float rx = 0.5f * NOTE_W[l] * size * 1.45f * pk, ry = l == LANE_BASS ? 0.33f * size * 1.9f * pk : rx;
+      /* the pocket the size of a round note's under every shape: the triangle's own width made a dark disc a quarter
+       * wider passing the bass gate in sixteenths (a regular flicker over the bound on two lanes) */
+      float rx = 0.5f * fminf(NOTE_W[l], NOTE_W[LANE_KICK]) * size * 1.45f * pk, ry = C.old_shapes && l == LANE_BASS ? 0.33f * size * 1.9f * pk : rx;
       set_inst(C.pocket, npk++, on_river(l, d, 0, 0.04f), 0, (t3_vec3){ rx, ry, 1 });
     }
   }
   for (int l = 0; l < LANES; l++) {
-    C.notes[l]->count = cnt[l];
-    changed(C.notes[l]);
+    t3_instanced_mesh *nm = C.old_shapes && l == LANE_BASS ? C.old_bass : C.old_shapes && l == LANE_SYNTH ? C.old_synth : C.notes[l];
+    nm->count = cnt[l];
+    changed(nm);
+    if (nm != C.notes[l] && C.notes[l]->count) C.notes[l]->count = 0, changed(C.notes[l]);
   }
+  if (!C.old_shapes && (C.old_bass->count || C.old_synth->count)) C.old_bass->count = C.old_synth->count = 0, changed(C.old_bass), changed(C.old_synth);
   C.pocket->count = npk;
   for (int l = 0; l < LANES; l++) {
     /* the gem glows its lane's colour from within; the lights and the studio add the highlights over it */
@@ -956,6 +966,13 @@ void club_update(const club_view *v) {
 
   land_update(v, beat, now, dim);
   streak_update(v, now, dim);
+  if (C.notes_solo) /* only the notes (the footprint gate) */
+    for (int k = 0; k < C.root->child_count; k++) {
+      t3_object *o = C.root->children[k];
+      bool note = o == T3_OBJ(C.old_bass) || o == T3_OBJ(C.old_synth);
+      for (int l = 0; l < LANES; l++) note |= o == T3_OBJ(C.notes[l]);
+      o->visible = note;
+    }
 }
 
 /* the camera: z 22 looking at the origin, 40 degrees: the plane z = 0 spans VIEW_HALF_H up and down */
@@ -1001,12 +1018,28 @@ static void cmd_rivers(int argc, const char **argv, cw_reply *r) {
  * brightness}); `notescale game|flat|reverse`: how a note's size follows its distance (flat and reverse are the size
  * gate's controls, tests/beatsync-depth.mjs) */
 static void cmd_notes(int argc, const char **argv, cw_reply *r) {
-  (void)argc, (void)argv;
+  if (argc >= 3 && !strcmp(argv[1], "hide")) { /* `notes hide 1`: the whole field hidden (the readability gate looks for note-like shapes in the backdrop alone) */
+    cw_node lv = cw_node_get(cw_tree_root(cw_scene_app_tree()), "Level");
+    cw_node_set(cw_node_get(lv, "Field"), "visible", cw_val_bool(atoi(argv[2]) == 0));
+    cw_reply_printf(r, "{\"hidden\":%d}", atoi(argv[2]) != 0);
+    return;
+  }
+  if (argc >= 3 && !strcmp(argv[1], "solo")) {
+    C.notes_solo = atoi(argv[2]) != 0;
+    for (int i = 0; i < C.root->child_count; i++) C.root->children[i]->visible = true;
+    cw_reply_printf(r, "{\"solo\":%d}", C.notes_solo);
+    return;
+  }
+  if (argc >= 2 && (!strcmp(argv[1], "old") || !strcmp(argv[1], "new"))) { /* `notes old`: the old bass bar and synth hexagon (the footprint gate's control) */
+    C.old_shapes = !strcmp(argv[1], "old");
+    cw_reply_printf(r, "{\"old\":%d}", C.old_shapes);
+    return;
+  }
   float gx, gy;
   to_canvas(on_river(0, 0, 0, 0), 1920, 1080, &gx, &gy);
   cw_reply_printf(r, "{\"notescale\":%d,\"ahead\":%.3f,\"gate_y\":%.1f,\"notes\":[", C.notescale, C.ahead, gy);
   for (int i = 0; i < C.probe_n; i++)
-    cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"x\":%.1f,\"y\":%.1f,\"px\":%.2f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].x, C.probe[i].y, C.probe[i].px, C.probe[i].bright);
+    cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"x\":%.1f,\"y\":%.1f,\"px\":%.2f,\"unit\":%.3f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].x, C.probe[i].y, C.probe[i].px, C.probe[i].px / NOTE_W[C.probe[i].lane], C.probe[i].bright);
   cw_reply_printf(r, "]}");
 }
 static void cmd_lit(int argc, const char **argv, cw_reply *r) {

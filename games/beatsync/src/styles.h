@@ -5,8 +5,8 @@
  * song plays the scheduler changes style at phrase boundaries (every 8 bars on the song's beat grid) and at a drop,
  * with a fade measured in beats (2, or 1 at a drop, never under half a second). The rivers, notes and gates never
  * fade: only what is round them changes. Each song starts in the neon characters; after that the song's own seed
- * fixes the order, every style once before any repeats, a drop taking a big one (fire, lasers, the grid) when one is
- * left. A player can pin one style instead (styles_set_mode). */
+ * fixes the order, every style once before any repeats, a drop taking a big one (fire, lasers, the grid, the stage, the maze, space, lava) when
+ * one is left. A player can pin one style instead (styles_set_mode). */
 #ifndef BEATSYNC_STYLES_H
 #define BEATSYNC_STYLES_H
 #include <stdbool.h>
@@ -15,7 +15,8 @@
 
 #include "song.h"
 
-enum { STYLE_NEON, STYLE_CLEAN, STYLE_FIRE, STYLE_WATER, STYLE_GRID, STYLE_TERMINAL, STYLE_LASERS, STYLE_STAGE, STYLE_HALF, STYLE_MAZE, STYLE_BIT, STYLE_COUNT };
+enum { STYLE_NEON, STYLE_CLEAN, STYLE_FIRE, STYLE_WATER, STYLE_GRID, STYLE_TERMINAL, STYLE_LASERS, STYLE_STAGE, STYLE_HALF, STYLE_MAZE, STYLE_BIT,
+       STYLE_AURORA, STYLE_SPACE, STYLE_CITY, STYLE_FOREST, STYLE_DEEP, STYLE_DESERT, STYLE_NEWS, STYLE_LAVA, STYLE_METAL, STYLE_COUNT };
 
 /* init: the debug requests and fields (before the scene is up) */
 void styles_init(void);
@@ -32,4 +33,7 @@ int styles_mode(void);
 const char *style_title(int i);
 const char *style_id(int i);
 bool style_held(int i); /* built but out of the rotation and the setting */
+/* the prewarm (every world, look and pair of looks drawn once before a song) is still running; its progress 0..1 */
+bool styles_prewarming(void);
+float styles_prewarm_progress(void);
 #endif

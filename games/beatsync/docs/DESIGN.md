@@ -63,7 +63,8 @@ needs something different.
     above the screen: a river's far end is a quarter of its width at the gate, high up the screen, and the current,
     banks and beat lines fade into a haze there, so the road reads as going away into the dark.
   - **The notes** ride the current down and reach the gate exactly on their beat (kick round, clap a diamond, bass a
-    bar across its river). A note takes the river's perspective: a quarter of its gate size at the far end, growing
+    triangle, its point up the river; each of about the same area, so no river's note is the smaller target:
+    `tests/beatsync-footprint.mjs` counts each river's note pixels on black, its control the old bass bar). A note takes the river's perspective: a quarter of its gate size at the far end, growing
     all the way to the gate. Its brightness is a little higher far off (there it is smaller than a character and needs
     the light to show) and steady over its last beat, so its light near the gate grows only with its size, never in a
     burst on the beat: a run of notes riding down stays a steady light, not a regular flicker. How far ahead a river
@@ -143,7 +144,7 @@ players jam together, each on two.
   own road converging to its own vanishing point (player 1 on the left), the land filling between the roads as well
   as outside them; the shared streak badge in the middle, over the land between the roads. The rivers glide
   to the layout chosen on the difficulty screen. The synth river is its own colour in every section's palette and
-  its notes are hexagons. With two players at two difficulties the rivers show the slower one's beats ahead, so both
+  its notes are squares. With two players at two difficulties the rivers show the slower one's beats ahead, so both
   read their notes at least as early as their own level would.
 - **The mix.** A part nobody plays sits at full, like the record. When the synth is played the other track becomes
   a lane: under the record between hits, punched up by a hit, dipped by a miss.
@@ -241,23 +242,33 @@ notes and gates never fade: only what is round them changes.
 | Style | Look | Backdrop | Palette |
 |---|---|---|---|
 | Neon characters | characters | the land | the sections' |
-| Clean | plain picture | a lit landscape: the other track as hills riding toward the camera either side of a valley with a still river, a low sun under a procedural sky, the air thickening with distance | sunset: orange, cream, sky blue |
-| Fire | plain picture | a canyon of fire walls receding to a burning horizon over cracked glowing ground, smoke lit from below, an ember storm, heat shimmer | ice: cyan, white, violet |
-| Synthwave grid | plain picture | a neon grid floor running to a striped sun between wire mountains, stars; the land as a dark skyline with lit tops | cyan, yellow, lime |
+| Clean | plain picture | a lit landscape: the other track as hills riding toward the camera either side of a valley with a still river, a low sun under a procedural sky between the two snow-shouldered horns of a far massif, jagged ranges running off to the sides | sunset: orange, cream, sky blue |
+| Fire | plain picture | a canyon walled with flame: curtains of tall licking tongues (a baked flipbook of one tongue's life, `tools/bake-flames.mjs`) with white-hot feet, one behind the other down both sides to a burning horizon, cracked glowing ground, dark smoke rising into a black sky, an ember storm | ice: cyan, white, violet |
+| Synthwave grid | plain picture | a neon grid floor running to a striped sun half set on the horizon between wire mountains, stars; the land as a dark skyline with lit tops; the roads nearly opaque over the sun | cyan, yellow, lime |
 | Terminal green | characters | the land | green phosphor |
-| Club lasers | plain picture | a club in haze: laser fans from the back wall sweeping over the crowd, three moving heads throwing volumetric beams | warm: orange, white, red |
-| Rock stage | plain picture | a band playing on a stage in haze (guitar, vocals, bass, drums), three moving spots, an LED wall, the crowd in front | ice: cyan, white, violet |
+| Club lasers | plain picture | a club in haze: laser fans from the back wall sweeping over the crowd, three moving heads throwing volumetric beams; the crowd dancing (hands going up as the music gets louder), every head and pair of shoulders rimmed in the fans' colours against the haze | warm: orange, white, red |
+| Rock stage | plain picture | a band playing on a stage in haze (guitar, vocals, bass, drums), framed close either side of the rivers, each rimmed by the back light (cold stage left, warm stage right), swaying and nodding harder in the loud stretches; three moving spots, an LED wall, a dancing crowd rimmed in warm light in front | ice: cyan, white, violet |
 | Half blocks | the engine's half blocks (two square pixels a character cell, each the mean of its square) | the synthwave grid | cyan, yellow, lime |
-| Arcade maze | the engine's half blocks, chunkier (90 rows) on a small palette: black, the maze's blues, pellet peach, white and the lanes' colours | a maze of double neon walls on black seen at a tilt, riding toward the camera a cell a beat, little star critters hopping its halls; the rivers are corridors with a line of pellets down each, the banks the maze's blue | cherry, gold, green |
+| Arcade maze | the engine's half blocks, chunkier (90 rows) on a small palette: black, the maze's blues, the travellers' dim violet-greys, white and the lanes' colours | a maze of double neon walls on black seen at a tilt, riding toward the camera a cell every two beats, faint trails of light running its halls a cell a beat and turning at its junctions; the banks the maze's blue | cherry, gold, green |
 | One bit | the engine's ordered dither at the DISPLAY stage (every pixel warm white or near black after the tone curve, an 8x8 Bayer cross-hatch of two-pixel dots anchored to the screen, outlines from the depth) | the rock stage | ice |
-| Night sea | plain picture | the engine's water under a low moon, its path glittering down the swell, harbour lights along the horizon | warm: orange, gold, pink |
+| Night sea | plain picture | the engine's water under a low moon, its path glittering down the swell, harbour lights along the horizon; the near swells navy (no daylight turquoise) | warm: orange, gold, pink |
+| Aurora | plain picture | a snow field under a polar night: curtains of aurora folding and rippling slowly across the sky, green at their hems going to violet at their tops, their light lying faintly on the snow, dark pines either side, a far range under snow | coral: coral, gold, pink |
+| Deep space | plain picture | a nebula of glowing gas in three layers, three depths of stars with glints on the brightest, a banded ringed planet lit from the side with a thin blue atmosphere, dust streaming past toward the camera | gold: amber, white, green |
+| Rain city | plain picture | a street at night in the rain: towers either side lit window by window, neon blade signs (shapes, no words) in pink, cyan and amber, street lamps, the wet street a mirror (the engine's water, still, its rain rings), rain falling through the light | neon: cyan, cream, pink |
+| Night forest | plain picture | a clearing in a pine forest under a full moon: dark trunks and crowns faintly rimmed with moonlight, shafts of it slanting through, mist lying low, fireflies drifting and glowing up and down over seconds | ember: orange, gold, pink |
+| Underwater | plain picture | a sandy floor under clear blue water: two caustic webs scrolling across each other on the sand, shafts from the rippling surface overhead, kelp swaying in chains either side, a school of fish turning far off, bubbles rising | coral |
+| Desert night | the engine's blue-noise dither at the DISPLAY stage, amber on deep brown | dunes with sharp crests under a low moon, the Milky Way across the stars | (amber) |
+| Newsprint | the engine's error-diffusion dither at the DISPLAY stage, ink on paper | the rain city | (ink) |
+| Lava | the engine's half blocks (110 rows), the scene's own colours | a black basalt plain split by rivers of lava creeping toward the camera, a volcano pouring lava down its flanks under a plume of ash lit red, embers | ice |
+| Metal hall | plain picture | a hall of brushed and polished metal: brushed steel floor plates, polished chrome columns ringed in gold down both sides, gunmetal beams and a fluted far wall, everything reflecting the hall's own light (an environment of soft strips and a warm gold band), two lights crossing it slowly over eight bars | neon: cyan, cream, pink |
 
 **Backdrops are worlds.** Each backdrop is a Backdrop node of `main.cwscene` (cartwheel-engine 0.61.0,
 `cartwheel/backdrop.h`) with a world of its own in `backdrops/<name>.cwscene`: its own camera, lights, fog (the club
-and the stage in volumetric haze, three shadowed spots each), particles and water, drawn behind the field at the full
+and the stage in volumetric haze, three shadowed spots each), particles and water (twenty-one styles on fifteen worlds), drawn behind the field at the full
 resolution and blended in by its opacity. The scene files hold what stands still; `src/backdrop.c` builds what code
 makes (skies, the crack-lit ground, grids, laser fans, the crowd, the LED wall, the hills) and moves it on the beat's
-clock. A fade between two backdrops keeps the one going out at full opacity under the one coming in, which rises by
+clock; `src/worlds.c` builds the seven newer worlds (aurora, space, city, forest, deep, dunes, lava) from the same
+building blocks (`src/bd_kit.h`). A fade between two backdrops keeps the one going out at full opacity under the one coming in, which rises by
 the fade's weight: a straight cross-fade, never more than two worlds drawn, and a world at opacity 0 costs nothing.
 `bdcam <backdrop> [x y z pitch yaw]` moves a world's camera for a closer look and `bdset <backdrop> <node> <prop> <value>`
 sets a property in it (the cost survey turns parts off with it).
@@ -268,11 +279,13 @@ pose a frame from the beat: the strumming hand on the eighths, the bass plucked 
 eighths and the backbeat, heads nodding on the beat, a sway over the bar and a phrase over eight bars (the singer's
 free arm rising, the guitarist turning to the crowd). The hands are placed by a two-bone reach solved in the chest's
 frame: on the neck and at the strings, on the mic, over the drums. They stand either side of the middle, where the
-rivers leave the stage in view.
+rivers leave the stage in view, the camera framing them close (a narrower lens); each carries a rim of the back
+light (cartwheel/rim_light.h on its own materials), and the whole body moves: the hips sway over the bar and shift the
+weight over two, the nod deepening with the music's loudness.
 
 **The lit field.** In every style that is not characters (`club_style.lit`), each coming note is a gem in front of its
-flat shape: the kick a polished orb, the clap a cut diamond, the bass a glassy capsule across its river, the synth a
-hexagonal prism, in a clear-coated material that glows its lane's colour, rocks slowly and reflects a studio of soft
+flat shape: the kick a polished orb, the clap a cut diamond, the bass a triangular prism, the synth a
+square slab, in a clear-coated material that glows its lane's colour, rocks slowly and reflects a studio of soft
 boxes; a soft halo of its colour lies under it. The banks glow along their length, the gates carry a soft glow, and the
 roads are dark clear-coated glass. The field's three lights (`main.cwscene` Key, FillL, FillR) take the style's colours,
 the two low ones those of its backdrop, sweeping slowly across the field over eight bars so the highlights slide over
@@ -282,9 +295,11 @@ regular flicker), so a played note opens out flat in its burst; a missed one sta
 leaves parts of the lit picture out (1 gems, 2 halos, 4 gate glow, 8 bank glow, 16 the low lights, 32 the gems' own
 glow, 64 their colour dimmed, 128 the key light), to see what each adds.
 
-**The arcade maze** is an original style after the early arcade maze games (nothing of any one game: no characters, sprites, sounds or names of one). Its walls are a depth-first maze carved over a band that wraps along its length (a few more walls knocked out for loops), drawn as pairs of thin glowing lines; the critters are four-pointed stars hopping a cell each half beat along open halls (eased, never a jump). The field's params `pellets` (a line of pellets down each river, one each half beat, in place of the current) and `bank_tint` / `bank_rgb` (the banks in the maze's blue) make the rivers corridors; a hit's burst throws its shards as the pixel look draws them.
+**The arcade maze** is an original style after the early arcade maze games (nothing of any one game: no characters, sprites, sounds or names of one). Its walls are a depth-first maze carved over a band that wraps along its length (a few more walls knocked out for loops), drawn as pairs of thin glowing lines; travellers run its halls, each a faint streak of violet-grey light a cell and a half long gliding a cell a beat and choosing a way at each junction (never back the way it came while it can go on). Nothing in it is a dot or a blob: bright critters and pellets down the rivers were taken for notes. `bank_tint` / `bank_rgb` (the banks in the maze's blue) make the rivers corridors; a hit's burst throws its shards as the pixel look draws them. `maze old 1` brings the old critters back (the note-like check's control).
 
-**Half blocks, the arcade maze and one bit** use the engine's looks (cartwheel-engine 0.62.0 and 0.64.0, `cartwheel/look.h`; one bit draws at the DISPLAY stage, after the tone curve and the grade, so it stays strictly two colours; the HUD keeps its colours): a fade into or out of them is
+**Nothing in a backdrop reads as a note.** No backdrop shape is a round, diamond, triangle or square blob in a note's colours as bright as a note: lit windows are tall narrow panes and dimmer (dimmer still and the street's mirror faint in Newsprint, where a lit block prints solid), street lamps are wide low glows, the moons of the forest and the desert are crescents, the fire's ground glow and the lava's embers are dimmer and orange. The readability check finds each style's most note-like shape on a frame with the field hidden (`notes hide 1`): a compact blob 28 to 160 pixels across in a note's colour, scored against the darkest-standing side round it, which must stay under half the notes' own contrast; its control is the old maze's critters.
+
+**Half blocks, the arcade maze, one bit, desert night, newsprint and lava** use the engine's looks (cartwheel-engine 0.62.0 and 0.64.0, `cartwheel/look.h`; one bit draws at the DISPLAY stage, after the tone curve and the grade, so it stays strictly two colours; the HUD keeps its colours): a fade into or out of them is
 the look pass's dissolve (each pixel turning over as a soft noise passes, never the whole screen at once), and the HUD's
 boxes are left clean. The game's own ASCII pass stays the characters' look: side by side over the same frame, the engine's ASCII look at its
 defaults loses most of the land and sets the notes back into the rivers' strokes, where the game's pass (tuned with the
@@ -298,8 +313,11 @@ after the world loads drew nothing.
 **When it changes.** While a song plays (the title's demo and the song select's preview too) the style changes at a
 phrase boundary, every 8 bars on the song's own beat grid (from its first downbeat), and at the start of a drop
 (`song.json` sections), once it has held at least 8 bars (4 before a drop). Every song starts in the neon characters;
-after that the song's seed (its id's hash) fixes the order, every style once before any comes round again, and a drop
-takes a big one (fire, lasers, the grid, the rock stage, the arcade maze) while one is left. The same song always looks the same.
+after that the song's seed (its id's hash) fixes the order, every style once before any comes round again, never a
+fade between two worlds whose GPU costs add up to more than 8.5 ms on a Radeon 890M (each style's cost at High is in
+`src/styles.c` COST; a fade draws both, about the sum less the field's 1 ms, so the worst fade stays under 8 ms
+there; Auto quality steps down on slower GPUs), and a drop
+takes a big one (fire, lasers, the grid, the rock stage, the arcade maze, deep space, lava, the metal hall) while one is left. The same song always looks the same.
 
 **The fades.** A change fades over 2 beats, a drop's over 1, never under half a second, in song time, so it follows the
 BPM and the tempo on the shoulders; the blend is eased (smoothstep) and fed through a flash meter (`fl.style`). What
@@ -307,6 +325,22 @@ fades: the ASCII pass's share (the characters thin out as the plain picture show
 the output's size from a beat and a half before a change can come, so the fade starts from the same characters), each
 backdrop's weight (its own colours, its particles' energy, its lights, its fog), the palette, the land and the roads,
 and the bloom. One fade at a time: a change asked for during a fade waits for it.
+
+**No hitch at a change.** A world or a look drawn for the first time costs its programs, pipelines, particle buffers,
+fog grids and targets on that frame (20 to 350 ms measured, the first time each style showed). So before anything
+is shown every world is drawn, two at a time as a fade draws them, and a fade is held half way between every two kinds
+of picture (each look, the characters, neither) for a frame each (`src/styles.c` prewarm_step, about 90 frames; to go
+when the engine prewarms by itself). All of it under black: the play cart's loading screen is drawn over black (the
+shell's panel alone let the changing worlds show round it), the autopilot's under a black sheet with a progress bar
+that fades away after. A world that leaves pauses and comes back where it left off (its particles are not restarted: a restart
+simulated each system's preprocess seconds in one frame). `tests/beatsync-hitch.mjs` times every frame of two rounds of
+all the styles fading in (each first showing included) and holds each to a 60 Hz frame of CPU and of GPU; its
+control, a cart loaded with `style noprewarm`, must go over.
+
+**Checked.** `tests/beatsync-styles.mjs` holds every style to a contrast of 4:1 between the notes and their river (each
+style with its own control: no roads and dim notes must fall under it), to the flash rules over every style fading in
+and out (each with its control: the same changes as one-frame cuts must fail) and over a run of the scheduler's fades,
+and keeps a still and motion frames of each for review.
 
 **Readable over any backdrop.** Every coming note rides in a dark pocket a little larger than itself, which clears the
 current round it (a gem's pocket is a third smaller: it has a rim of its own). A style with a backdrop lays a road of
@@ -327,7 +361,8 @@ neon characters (`style neon`), as the look gate does. The land draws without de
 **Debug.** `style` (the state and the table), `style <name|index>` (that style only, faded in), `style auto` (every
 style with the song), `style next [drop]` (the next change now), `style cut 1` (every change a one-frame cut: the flash
 check's control), `style readctl 1` (no roads or pockets, dim notes: the readability check's control), `style tour` (every style in
-turn about every 1.25 s: the program table's survey). Fields: `style.cur`, `style.from`, `style.t`, `style.mode`,
+turn about every 1.25 s: the program table's survey and the hitch check), `style noprewarm` (sent before the first
+frame: no prewarm, the hitch check's control). Fields: `style.cur`, `style.from`, `style.t`, `style.mode`,
 `style.changes`, `style.prepare`, `style.backdrop` (each backdrop's weight), `ascii.mix`. `style pin <from> <to> <t>` holds a fade
 at t (two worlds at once, for measuring their cost; `style pin off` lets it go). `hud old 1` puts the multiplier and
 the streak callout back where they overlapped the middle judgement (the HUD gate's control); `hud.overlap` and

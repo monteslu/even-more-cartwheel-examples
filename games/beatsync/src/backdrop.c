@@ -22,15 +22,19 @@
 #include "cartwheel/debug.h"
 #include "cartwheel/noise.h"
 #include "cartwheel/particles.h"
+#include "cartwheel/rim_light.h"
 #include "cartwheel/scene.h"
 
 #include "band.h"
+#include "bd_kit.h"
+#include "worlds.h"
 
-#define PI 3.14159265f
 
-static const char *const NAMES[BD_COUNT] = { "none", "fire", "sea", "grid", "lasers", "stage", "clean", "maze" };
-static const char *const NODES[BD_COUNT] = { "", "BdFire", "BdSea", "BdGrid", "BdLasers", "BdStage", "BdClean", "BdMaze" };
+static const char *const NAMES[BD_COUNT] = { "none", "fire", "sea", "grid", "lasers", "stage", "clean", "maze", "aurora", "space", "city", "forest", "deep", "dunes", "lava", "metal" };
+static const char *const NODES[BD_COUNT] = { "", "BdFire", "BdSea", "BdGrid", "BdLasers", "BdStage", "BdClean", "BdMaze", "BdAurora", "BdSpace", "BdCity", "BdForest", "BdDeep", "BdDunes", "BdLava", "BdMetal" };
 const char *backdrop_name(int bd) { return bd >= 0 && bd < BD_COUNT ? NAMES[bd] : "?"; }
+
+typedef struct crowd { t3_instanced_mesh *body, *arm; t3_material *mat; } crowd;
 
 static struct {
   bool built;
@@ -48,159 +52,25 @@ static struct {
   t3_instanced_mesh *grid_long, *grid_cross, *grid_stars, *peaks;
   t3_mesh *sun, *grid_sky, *grid_floor, *horizon, *haze_band;
   /* lasers */
-  t3_instanced_mesh *rays, *ray_glow, *heads, *crowd_l;
+  t3_instanced_mesh *rays, *ray_glow, *heads;
+  crowd crowd_l, crowd_s;
   t3_mesh *booth_wall;
   cw_node head[3];
   /* stage */
-  t3_instanced_mesh *crowd_s, *wall_px;
+  t3_instanced_mesh *wall_px;
   cw_node spot[3];
   /* clean */
   t3_mesh *hills, *range;
   t3_geometry *hills_g;
   float *hill_h;
   /* maze */
-  t3_instanced_mesh *walls, *critters, *crit_glow;
+  t3_instanced_mesh *walls, *critters, *crit_glow, *trails;
+  bool maze_old; /* the `maze old 1` request: the old bright critters (the readability gate's note-likeness control) */
   t3_object *maze_root;
 } B;
 
-/* ── building blocks ─────────────────────────────────────────────────── */
-
-static void setf(cw_node n, const char *p, double v) { cw_node_set(n, p, cw_val_float(v)); }
-static void setc(cw_node n, const char *p, float r, float g, float b) { cw_node_set(n, p, cw_val_color(r, g, b, 1)); }
-
 static t3_object *obj(int bd) { return cw_node3d_object(B.root[bd]); }
 
-/* a texture from a function of (u, v), v 0 at the top: white light whose brightness is the function, alpha 1 */
-typedef float (*tex_fn)(float u, float v);
-static t3_texture *texture(int w, int h, tex_fn f) {
-  uint8_t *px = malloc((size_t)w * h * 4);
-  for (int y = 0; y < h; y++)
-    for (int x = 0; x < w; x++) {
-      float k = f(((float)x + 0.5f) / (float)w, ((float)y + 0.5f) / (float)h);
-      uint8_t c = (uint8_t)lrintf(fminf(1, fmaxf(0, k)) * 255.0f);
-      uint8_t *p = px + ((size_t)y * w + x) * 4;
-      p[0] = p[1] = p[2] = c, p[3] = 255;
-    }
-  t3_texture *t = t3_texture_new(w, h, px);
-  free(px);
-  return t;
-}
-typedef void (*tex_rgb_fn)(float u, float v, float out[3]);
-static t3_texture *texture_rgb(int w, int h, tex_rgb_fn f) {
-  uint8_t *px = malloc((size_t)w * h * 4);
-  for (int y = 0; y < h; y++)
-    for (int x = 0; x < w; x++) {
-      float c[3];
-      f(((float)x + 0.5f) / (float)w, ((float)y + 0.5f) / (float)h, c);
-      uint8_t *p = px + ((size_t)y * w + x) * 4;
-      for (int k = 0; k < 3; k++) p[k] = (uint8_t)lrintf(fminf(1, fmaxf(0, c[k])) * 255.0f);
-      p[3] = 255;
-    }
-  t3_texture *t = t3_texture_new(w, h, px);
-  free(px);
-  return t;
-}
-
-/* additive light, its colour set every frame */
-static t3_material *light_mat(t3_texture *tex) {
-  t3_material *m = t3_mesh_basic_material_new(0x000000);
-  m->blending = T3_ADDITIVE_BLENDING, m->transparent = true, m->depth_write = false;
-  if (tex) t3_material_set_map(m, tex), t3_release(tex);
-  return m;
-}
-static t3_mesh *add_mesh(t3_object *at, t3_geometry *g, t3_material *m, t3_vec3 pos) {
-  t3_mesh *q = t3_mesh_new(g, m);
-  t3_release(g), t3_release(m);
-  T3_OBJ(q)->position = pos;
-  T3_OBJ(q)->frustum_culled = false;
-  t3_object_add(at, q);
-  t3_release(q);
-  return q;
-}
-static t3_mesh *quad(t3_object *at, float w, float h, t3_texture *tex, t3_vec3 pos) {
-  return add_mesh(at, t3_plane_geometry_new(w, h, 1, 1), light_mat(tex), pos);
-}
-static void tint(t3_mesh *q, float r, float g, float b, float k) { q->materials[0]->color = (t3_color){ r * k, g * k, b * k }; }
-static t3_instanced_mesh *many_m(t3_object *at, t3_geometry *g, t3_material *m, int n) {
-  t3_instanced_mesh *im = t3_instanced_mesh_new(g, m, n);
-  t3_release(g), t3_release(m);
-  T3_OBJ(im)->frustum_culled = false;
-  t3_object_add(at, im);
-  t3_release(im);
-  return im;
-}
-static t3_instanced_mesh *many(t3_object *at, t3_geometry *g, t3_texture *tex, int n) {
-  t3_material *m = light_mat(tex);
-  m->color = (t3_color){ 1, 1, 1 };
-  return many_m(at, g, m, n);
-}
-static void place(t3_instanced_mesh *im, int i, t3_vec3 p, t3_quat q, t3_vec3 s, t3_color c) {
-  t3_mat4 m;
-  t3_mat4_compose(&m, p, q, s);
-  t3_instanced_mesh_set_matrix_at(im, i, &m);
-  t3_instanced_mesh_set_color_at(im, i, c);
-}
-/* a beam: a quad from 'from' along unit 'dir' for len, turned about its own axis to face the camera at 'eye' */
-static void place_beam(t3_instanced_mesh *im, int i, t3_vec3 from, t3_vec3 dir, float len, float width, t3_vec3 eye, t3_color c) {
-  t3_vec3 mid = { from.x + dir.x * len * 0.5f, from.y + dir.y * len * 0.5f, from.z + dir.z * len * 0.5f };
-  t3_vec3 tc = { eye.x - mid.x, eye.y - mid.y, eye.z - mid.z };
-  /* x = tc x dir: with y along -dir that leaves +z (the quad's front) toward the camera */
-  t3_vec3 x = { tc.y * dir.z - tc.z * dir.y, tc.z * dir.x - tc.x * dir.z, tc.x * dir.y - tc.y * dir.x };
-  float xl = sqrtf(x.x * x.x + x.y * x.y + x.z * x.z);
-  if (xl < 1e-5f) x = (t3_vec3){ 1, 0, 0 }, xl = 1;
-  x = (t3_vec3){ x.x / xl, x.y / xl, x.z / xl };
-  t3_vec3 z = { dir.y * x.z - dir.z * x.y, dir.z * x.x - dir.x * x.z, dir.x * x.y - dir.y * x.x }; /* x * (-dir) */
-  /* the plane's +y (v 0, the head) at 'from': y runs from the far end to the head */
-  t3_mat4 m = { { x.x * width, x.y * width, x.z * width, 0, -dir.x * len, -dir.y * len, -dir.z * len, 0, z.x, z.y, z.z, 0, mid.x, mid.y, mid.z, 1 } };
-  t3_instanced_mesh_set_matrix_at(im, i, &m);
-  t3_instanced_mesh_set_color_at(im, i, c);
-}
-static void done(t3_instanced_mesh *im) {
-  im->instance_matrix->version++;
-  if (im->instance_color) im->instance_color->version++;
-}
-static t3_quat about(float x, float y, float z, float a) { return t3_quat_from_axis_angle((t3_vec3){ x, y, z }, a); }
-static t3_quat qmul(t3_quat a, t3_quat b) {
-  return (t3_quat){ a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y, a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
-                    a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w, a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z };
-}
-static uint32_t hsh(uint32_t a, uint32_t b) {
-  uint32_t h = a * 374761393u + b * 668265263u;
-  h = (h ^ (h >> 13)) * 1274126177u;
-  return h ^ (h >> 16);
-}
-static float rnd(uint32_t a, uint32_t b) { return (float)(hsh(a, b) & 0xffffff) / 16777216.0f; }
-static float smooth(float e0, float e1, float x) {
-  float t = fminf(1, fmaxf(0, (x - e0) / (e1 - e0)));
-  return t * t * (3 - 2 * t);
-}
-/* a node's -Z along a direction (yaw then pitch) */
-static void aim(cw_node n, t3_vec3 d) {
-  float len = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z);
-  float yaw = atan2f(-d.x, -d.z), pitch = asinf(d.y / fmaxf(len, 1e-6f));
-  cw_node3d_set_rotation(n, (t3_vec3){ pitch, yaw, 0 });
-}
-
-/* the textures */
-static float tx_horizon(float u, float v) { (void)u; return expf(-fabsf(v - 0.5f) * 9.0f); }
-static float tx_beam(float u, float v) { /* a laser: a hard bright core in a soft sheath, fading along its length */
-  float a = expf(-powf((u - 0.5f) * 6.0f, 2)), core = expf(-powf((u - 0.5f) * 30.0f, 2));
-  return (0.35f * a + 1.0f * core) * powf(1 - v, 0.7f) * smooth(0, 0.02f, v);
-}
-static float tx_dot(float u, float v) {
-  float d = sqrtf((u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f)) * 2;
-  return expf(-d * d * 5.0f);
-}
-static float tx_disc(float u, float v) {
-  float x = (u - 0.5f) * 2, y = (v - 0.5f) * 2, d = sqrtf(x * x + y * y);
-  float edge = 1 - smooth(0.92f, 1.0f, d);
-  float maria = 0.86f + 0.14f * sinf(x * 7.1f + 1.3f) * sinf(y * 5.3f - 0.4f) - 0.1f * expf(-((x + 0.3f) * (x + 0.3f) + (y + 0.2f) * (y + 0.2f)) * 9);
-  return edge * maria * (0.8f + 0.2f * sqrtf(fmaxf(0, 1 - d * d)));
-}
-static float tx_halo(float u, float v) {
-  float d = sqrtf((u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f)) * 2;
-  return d >= 1 ? 0 : powf(1 - d, 3.0f);
-}
 static void tx_sun(float u, float v, float c[3]) { /* yellow to magenta, cut by bands that widen toward its foot */
   float x = (u - 0.5f) * 2, y = (v - 0.5f) * 2, d = sqrtf(x * x + y * y);
   float disc = 1 - smooth(0.97f, 1.0f, d);
@@ -227,7 +97,7 @@ static void tx_fire_sky(float u, float v, float c[3]) {
   float wx = x, wy = y;
   cw_noise_warp_2d(&smoke_w, &wx, &wy);
   float n = 0.5f + 0.5f * cw_noise_2d(&smoke_n, wx, wy * 1.8f);           /* billows */
-  float low = 0.12f + 0.88f * powf(v, 1.4f);                              /* lit from below: the horizon is v 1 */
+  float low = 0.03f + 0.97f * powf(v, 3.2f);                              /* lit from below: the horizon is v 1, dark overhead */
   float lit = low * (0.2f + 1.2f * n * n);
   float rim = smooth(0.55f, 0.85f, n) * low * 0.5f;                        /* the billows' lit undersides */
   c[0] = 0.9f * lit + rim, c[1] = 0.26f * lit + 0.35f * rim, c[2] = 0.06f * lit + 0.08f * rim;
@@ -251,7 +121,7 @@ static void build_fire(void) {
   smoke_w = cw_noise_default(), smoke_w.seed = 10, smoke_w.frequency = 0.006f, smoke_w.warp_amp = 60;
   /* the sky: a vast card far behind the horizon fire, the smoke lit from below (it wraps: a slow drift sideways) */
   t3_texture *sky = texture_rgb(512, 256, tx_fire_sky);
-  sky->wrap_s = T3_REPEAT;
+  sky->wrap_s = sky->wrap_t = T3_REPEAT; /* (both: the generated programs take a map that repeats both ways or neither) */
   B.fire_sky = quad(at, 2600, 700, sky, (t3_vec3){ 0, 200, -700 });
   B.fire_sky->materials[0]->fog = false;
   /* the horizon's glow over the far fire */
@@ -268,7 +138,7 @@ static void build_fire(void) {
     t3_material *m = t3_mesh_standard_material_new(0xffffff);
     m->color = (t3_color){ 0.05f, 0.035f, 0.03f };
     m->roughness = 0.8f;
-    m->emissive = (t3_color){ 3.0f, 0.7f, 0.12f };
+    m->emissive = (t3_color){ 2.0f, 0.47f, 0.08f };
     t3_material_set_map(m, crust), t3_release(crust);
     t3_material_set_texture(m, T3_EMISSIVE_MAP, glow), t3_release(glow);
     t3_mesh *g = add_mesh(at, t3_plane_geometry_new(4000, 3000, 1, 1), m, (t3_vec3){ 0, 0, -1400 });
@@ -281,11 +151,11 @@ static void build_fire(void) {
 static void update_fire(float beat, float t, float energy) {
   (void)beat;
   float e = 0.85f + 0.3f * energy;
-  tint(B.fire_sky, 1, 1, 1, 1.8f * e);
+  tint(B.fire_sky, 1, 1, 1, 1.1f * e);
   B.fire_sky->materials[0]->map->offset.x = fmodf(t * 0.004f, 1.0f); /* the smoke drifts on the wind */
   tint(B.fire_glow, 1.0f, 0.35f, 0.08f, 0.7f * e);
   /* the fires' light breathes slowly, each its own phase (never a flicker: periods of seconds) */
-  static const float BASE[5] = { 900, 900, 1600, 1600, 9000 };
+  static const float BASE[5] = { 550, 550, 1600, 1600, 9000 };
   for (int i = 0; i < 5; i++)
     if (B.fire_light[i].id) setf(B.fire_light[i], "energy", BASE[i] * e * (0.85f + 0.15f * sinf(t * 0.9f + (float)i * 1.7f)));
 }
@@ -348,7 +218,7 @@ static void build_grid(void) {
     place(B.grid_stars, i, (t3_vec3){ x, y + GRID_Y, -515 }, about(0, 0, 1, 0), (t3_vec3){ s, s, 1 }, (t3_color){ b * 0.9f, b * 0.8f, b });
   }
   done(B.grid_stars);
-  B.sun = quad(at, 150, 150, texture_rgb(256, 256, tx_sun), (t3_vec3){ 0, 48 + GRID_Y, -500 });
+  B.sun = quad(at, 170, 170, texture_rgb(256, 256, tx_sun), (t3_vec3){ 0, 30 + GRID_Y, -500 });
   T3_OBJ(B.sun)->render_order = -3;
   /* the wire mountains: triangles of glowing line along the horizon either side of the sun, dark inside (a black
    * triangle in front of the sky, its two edges lit) */
@@ -421,35 +291,76 @@ static void update_grid(float beat, float energy) {
   done(B.grid_cross);
 }
 
-/* ── the crowd: people as dark shapes against the light, swaying with the music (shared by the club and the stage) ── */
+/* ── the crowd: people as dark shapes against the light, rim-lit by the room's beams, swaying and dancing with the
+ * music (shared by the club and the stage) ── */
 
 #define CROWD 150
-static t3_instanced_mesh *build_crowd(t3_object *at, float z0, float depth, float width, uint32_t seed) {
-  /* one body: a torso (a stretched capsule-ish lathe), a head; the arms come and go with the hands-up share */
+static crowd build_crowd(t3_object *at, t3_color rim) {
+  /* one body: a torso (a lathe from the hips to the crown: shoulders, a neck, a head); two arms each, a tapered limb
+   * hung from the shoulder, raised overhead by those who have their hands up */
   t3_material *m = t3_mesh_standard_material_new(0x000000);
   m->color = (t3_color){ 0.012f, 0.012f, 0.014f };
   m->roughness = 0.7f;
   t3_vec2 prof[12];
-  for (int i = 0; i < 12; i++) { /* a body from the hips to the crown: shoulders, a neck, a head */
+  for (int i = 0; i < 12; i++) {
     static const float P[12][2] = { { 0, 0 }, { 0.2f, 0.02f }, { 0.24f, 0.5f }, { 0.27f, 0.9f }, { 0.26f, 1.1f }, { 0.12f, 1.2f },
                                     { 0.08f, 1.26f }, { 0.12f, 1.32f }, { 0.13f, 1.42f }, { 0.11f, 1.52f }, { 0.06f, 1.58f }, { 0, 1.6f } };
     prof[i] = (t3_vec2){ P[i][0], P[i][1] };
   }
-  t3_instanced_mesh *im = many_m(at, t3_lathe_geometry_new(prof, 12, 10, 0, 2 * PI), m, CROWD);
-  (void)seed, (void)z0, (void)depth, (void)width;
-  return im;
+  /* the rim: the edges facing away from the camera catch the beams behind them, so each head and pair of shoulders
+   * reads against the haze (cartwheel/rim_light.h; full strength at every distance: the crowd is all far off) */
+  cw_rim_light_desc rd = cw_rim_light_default();
+  rd.color = rim, rd.strength = 1.6f, rd.power = 2.6f, rd.near = 0, rd.far = 1, rd.close = 1;
+  cw_rim_light_apply(m, &rd);
+  crowd c;
+  t3_retain(m);
+  c.mat = m;
+  c.body = many_m(at, t3_lathe_geometry_new(prof, 12, 10, 0, 2 * PI), m, CROWD);
+  t3_retain(m);
+  /* an arm: a limb 0.62 long, its top (the shoulder) at the origin */
+  t3_geometry *ag = t3_cylinder_geometry_new(0.055f, 0.04f, 0.62f, 6, 1, false);
+  t3_geometry_translate(ag, 0, -0.31f, 0);
+  c.arm = many_m(at, ag, m, CROWD * 2);
+  return c;
 }
-static void update_crowd(t3_instanced_mesh *im, float beat, float z0, float depth, float width, uint32_t seed, float y0) {
+/* the crowd at the beat: each person bobs a little off the beat and sways over two bars; a share of them (more as the
+ * music gets louder) have their hands up, pumping slowly on the beat; the rest have them down at their sides, swinging
+ * a little. Every motion a sine (never a jump), each person in their own phase. */
+static void update_crowd(crowd *c, float beat, float z0, float depth, float width, uint32_t seed, float y0, float energy) {
+  float share = 0.18f + 0.5f * fmaxf(0, energy);
   for (int i = 0; i < CROWD; i++) {
-    float r1 = rnd(seed, (uint32_t)i), r2 = rnd(seed + 1, (uint32_t)i), r3 = rnd(seed + 2, (uint32_t)i);
+    float r1 = rnd(seed, (uint32_t)i), r2 = rnd(seed + 1, (uint32_t)i), r3 = rnd(seed + 2, (uint32_t)i), r4 = rnd(seed + 3, (uint32_t)i);
     float z = z0 - depth * r2, x = (r1 - 0.5f) * width * (1 + 0.3f * (1 - r2));
-    float hgt = 1.6f + 0.35f * r3;
-    /* a bob on the beat, smooth (a sine, never a jump), each a little off the beat */
+    float s = (1.6f + 0.35f * r3) / 1.6f * 1.05f;
     float ph = 2 * PI * (beat + 0.15f * r3);
-    float bob = 0.05f * (0.5f + 0.5f * sinf(ph)), sway = 0.06f * sinf(PI * beat * 0.5f + r1 * 6);
-    place(im, i, (t3_vec3){ x, y0 + bob, z }, about(0, 0, 1, sway), (t3_vec3){ 1.05f, hgt / 1.6f * 1.05f, 1.05f }, (t3_color){ 1, 1, 1 });
+    float bob = 0.06f * (0.5f + 0.5f * sinf(ph)), sway = 0.07f * sinf(PI * beat * 0.5f + r1 * 6);
+    t3_quat q = about(0, 0, 1, sway);
+    place(c->body, i, (t3_vec3){ x, y0 + bob, z }, q, (t3_vec3){ 1.05f, s, 1.05f }, (t3_color){ 1, 1, 1 });
+    /* hands up: a smooth share (a person lifts their arms over a couple of beats as the share passes them) */
+    float up = smooth(r4 - 0.08f, r4 + 0.08f, share);
+    for (int k = 0; k < 2; k++) {
+      float side = k ? 1.0f : -1.0f;
+      /* the shoulder, in the body's frame (sway turns it) */
+      float sx = side * 0.25f * 1.05f, sy = 1.12f * s;
+      float cs = cosf(sway), sn = sinf(sway);
+      t3_vec3 sh = { x + sx * cs - sy * sn, y0 + bob + sx * sn + sy * cs, z };
+      /* down: hanging, swinging a little; up: raised overhead and out, pumping on the beat */
+      float pump = 0.18f * sinf(ph + (float)k * 0.6f);
+      float down_a = side * (0.12f + 0.06f * sinf(ph * 0.5f + r1 * 4));
+      float up_a = side * (2.65f + 0.25f * r3) - side * pump;
+      float a2 = down_a + (up_a - down_a) * up + sway;
+      place(c->arm, i * 2 + k, sh, about(0, 0, 1, a2), (t3_vec3){ 1, s, 1 }, (t3_color){ 1, 1, 1 });
+    }
   }
-  done(im);
+  done(c->body);
+  done(c->arm);
+}
+/* the rim's colour now (the beams' colour drifting) */
+static void crowd_rim(crowd *c, t3_color col, float k) {
+  cw_rim_light_desc rd;
+  if (!cw_rim_light_get(c->mat, &rd)) return;
+  rd.color = col, rd.strength = k;
+  cw_rim_light_apply(c->mat, &rd);
 }
 
 /* ── lasers ──────────────────────────────────────────────────────────── */
@@ -473,7 +384,7 @@ static void build_lasers(void) {
     static const char *const H[3] = { "HeadA", "HeadB", "HeadC" };
     B.head[k] = cw_node_get(B.root[BD_LASERS], H[k]);
   }
-  B.crowd_l = build_crowd(at, 6, 22, 40, 50);
+  B.crowd_l = build_crowd(at, (t3_color){ 0.8f, 0.3f, 1.0f });
 }
 
 static void update_lasers(float beat, float energy) {
@@ -511,7 +422,14 @@ static void update_lasers(float beat, float energy) {
     aim(B.head[k], d);
     setf(B.head[k], "energy", 3000 * e);
   }
-  update_crowd(B.crowd_l, beat, 6, 22, 40, 50, 0);
+  update_crowd(&B.crowd_l, beat, 6, 22, 40, 50, 0, energy);
+  { /* the rim takes the fans' colours in turn, slowly (a whole turn over 32 bars) */
+    float u = fmodf(beat / 128.0f, 1.0f) * FANS;
+    int k0 = (int)u % FANS, k1 = (k0 + 1) % FANS;
+    float f = smooth(0, 1, u - floorf(u));
+    t3_color c = { FAN_COL[k0][0] + (FAN_COL[k1][0] - FAN_COL[k0][0]) * f, FAN_COL[k0][1] + (FAN_COL[k1][1] - FAN_COL[k0][1]) * f, FAN_COL[k0][2] + (FAN_COL[k1][2] - FAN_COL[k0][2]) * f };
+    crowd_rim(&B.crowd_l, c, 1.8f * e);
+  }
 }
 
 /* ── stage ───────────────────────────────────────────────────────────── */
@@ -526,7 +444,8 @@ static void build_stage(void) {
     static const char *const S[3] = { "SpotA", "SpotB", "SpotC" };
     B.spot[k] = cw_node_get(B.root[BD_STAGE], S[k]);
   }
-  B.crowd_s = build_crowd(at, 9, 8, 26, 60);
+  B.crowd_s = build_crowd(at, (t3_color){ 0.35f, 0.2f, 0.12f });
+  B.crowd_s.mat->color = (t3_color){ 0.003f, 0.003f, 0.004f }, B.crowd_s.mat->roughness = 0.95f; /* silhouettes: the front key reaches them */
   band_build(B.root[BD_STAGE]);
 }
 
@@ -549,7 +468,7 @@ static void update_stage(float beat, float t, float energy) {
     aim(B.spot[k], d);
     setf(B.spot[k], "energy", 2000 * e);
   }
-  update_crowd(B.crowd_s, beat, 9, 8, 26, 60, 0);
+  update_crowd(&B.crowd_s, beat, 2.6f, 3.2f, 18, 60, -0.45f, energy * 0.5f - 0.05f); /* close in front of the deck: heads and shoulders along the foot of the picture, fewer hands up */
   band_update(beat, t, energy);
 }
 
@@ -593,23 +512,37 @@ static void build_clean(void) {
   B.hills = add_mesh(at, g, m, (t3_vec3){ 0, 0, 0 });
   T3_OBJ(B.hills)->cast_shadow = true, T3_OBJ(B.hills)->receive_shadow = true;
   B.hill_h = calloc((size_t)nv, sizeof(float));
-  /* the far range: a fixed wall of ridged mountains along the horizon */
+  /* the far range: a massif along the horizon that the valley opens onto, its two great horns standing either side of the
+   * rivers' far end (the low sun sets between them), sharp ridged rock with snow on its shoulders and in its gullies,
+   * lower jagged ranges running off to the sides */
   {
-    const int RX = 160, RZ = 24;
+    const int RX = 300, RZ = 44;
     float *p = calloc((size_t)RX * RZ * 3, sizeof(float)), *c = calloc((size_t)RX * RZ * 3, sizeof(float));
-    cw_noise rn = cw_noise_default();
-    rn.seed = 22, rn.frequency = 0.004f, rn.fractal = CW_NOISE_FRACTAL_FBM, rn.octaves = 5;
+    cw_noise rn = cw_noise_default(), gn = cw_noise_default();
+    rn.seed = 22, rn.frequency = 0.0035f, rn.fractal = CW_NOISE_FRACTAL_RIDGED, rn.octaves = 6;
+    gn.seed = 23, gn.frequency = 0.02f, gn.fractal = CW_NOISE_FRACTAL_FBM, gn.octaves = 3;
+    /* the horns: x, z, height, base radius */
+    static const float HORN[4][4] = { { -330, -1180, 430, 260 }, { 300, -1260, 360, 240 }, { -760, -1300, 280, 300 }, { 820, -1220, 250, 280 } };
     for (int z = 0; z < RZ; z++)
       for (int x = 0; x < RX; x++) {
-        float X = -1600 + 3200 * (float)x / (RX - 1), Z = -900 - 500 * (float)z / (RZ - 1);
-        float n = 0.5f + 0.5f * cw_noise_2d(&rn, X, Z);
-        float H = 20 + 220 * n * smooth(-900, -1050, Z);
+        float X = -1800 + 3600 * (float)x / (RX - 1), Z = -880 - 640 * (float)z / (RZ - 1);
+        float n = cw_noise_2d(&rn, X, Z) * 0.5f + 0.5f;                     /* ridged: sharp crests */
+        float H = (30 + 170 * n * n) * smooth(-880, -1060, Z);
+        for (int k = 0; k < 4; k++) { /* a horn: a steep pyramid of ridges, its faces cut by the ridged noise */
+          float dx = X - HORN[k][0], dz = (Z - HORN[k][1]) * 1.3f, d = sqrtf(dx * dx + dz * dz) / HORN[k][3];
+          /* faces and aretes: the cone pinched along four ridges turning with the peak, and cut by the noise's gullies */
+          float ang = atan2f(dz, dx) + (float)k * 0.7f, arete = 0.82f + 0.18f * fabsf(cosf(ang * 2.0f));
+          float face = fmaxf(0, 1 - d / arete);
+          H = fmaxf(H, HORN[k][2] * powf(face, 1.45f) * (0.7f + 0.45f * n));
+        }
         float *pp = p + (z * RX + x) * 3;
         pp[0] = X, pp[1] = H, pp[2] = Z;
         float cc[3];
-        hill_colour(H * 0.25f, 0.6f, cc);
-        float sn = smooth(150, 230, H);
-        for (int k = 0; k < 3; k++) c[(z * RX + x) * 3 + k] = cc[k] * (1 - sn) + 0.9f * sn;
+        hill_colour(fminf(H * 0.25f, 50), 0.6f, cc); /* (the range's own snow below) */
+        /* snow: above a line that dips into the gullies (the noise), bare rock on the steepest crests */
+        float g = cw_noise_2d(&gn, X, Z) * 0.5f + 0.5f;
+        float sn = smooth(200 + 90 * g, 250 + 90 * g, H) * smooth(0.8f, 0.5f, n); /* the crests' rock stays bare */
+        for (int k = 0; k < 3; k++) c[(z * RX + x) * 3 + k] = cc[k] * (1 - sn) + (k == 2 ? 0.95f : 0.9f) * sn;
       }
     uint32_t *ix = malloc(sizeof(uint32_t) * (size_t)(RX - 1) * (RZ - 1) * 6);
     int n2 = 0;
@@ -699,7 +632,10 @@ static void update_clean(const song *s, float beat) {
 }
 
 static void cmd_bdcam(int argc, const char **argv, cw_reply *r);
+static void cmd_maze(int argc, const char **argv, cw_reply *r);
 static void cmd_bdset(int argc, const char **argv, cw_reply *r);
+
+static float tx_trail(float u, float v) { float x = (u - 0.5f) * 2; return expf(-x * x * 4) * powf(1 - v, 1.6f); }
 
 /* ── maze ────────────────────────────────────────────────────────────── */
 
@@ -709,6 +645,7 @@ static void cmd_bdset(int argc, const char **argv, cw_reply *r);
 #define MZ_CELL 10.0f
 #define MZ_WALLS (MZ_W * MZ_SHOW * 2 * 2 + 64)
 #define CRITTERS 8
+#define TRAVELLERS 10
 static uint8_t mz[MZ_H][MZ_W]; /* bit 0: a wall on the cell's near side (+z), bit 1: on its left (-x) */
 static int mz_built_row = -1000000;
 static struct { int cx, cy, px, py; float t0; } crit[CRITTERS];
@@ -752,6 +689,10 @@ static void build_maze(void) {
   /* the walls: each a pair of thin glowing lines lying on the floor, deep blue (the bloom gives them their glow) */
   B.walls = many(B.maze_root, t3_plane_geometry_new(1, 1, 1, 1), texture(4, 16, tx_horizon), MZ_WALLS);
   B.critters = many(at, t3_circle_geometry_new(1, 4), NULL, CRITTERS * 2);
+  B.critters->count = 0;
+  /* the travellers: trails of faint light running the halls, a long thin streak fading back from its head (a line along
+   * the corridor: no note is a line; dim violet-grey, a colour no river uses) */
+  B.trails = many(B.maze_root, t3_plane_geometry_new(1, 1, 1, 1), texture(8, 64, tx_trail), TRAVELLERS * 3);
   for (int i = 0; i < CRITTERS; i++) crit[i].cx = crit[i].px = 2 + (i * 7) % (MZ_W - 4), crit[i].cy = crit[i].py = 6 + i * 4, crit[i].t0 = 0;
 }
 
@@ -787,36 +728,92 @@ static void update_maze(float beat, float energy) {
     B.walls->count = n;
     done(B.walls);
   }
-  /* the critters: four-pointed stars hopping cell to cell along open halls, a cell every half beat, eased (never a jump) */
-  static const float CC[4][3] = { { 1, 0.35f, 0.6f }, { 0.4f, 1, 0.6f }, { 1, 0.7f, 0.25f }, { 0.5f, 0.8f, 1 } };
-  for (int i = 0; i < CRITTERS; i++) {
-    float step = beat * 2 + (float)i * 0.37f;
-    int k = (int)floorf(step);
-    if (k != (int)crit[i].t0) {
-      crit[i].t0 = (float)k, crit[i].px = crit[i].cx, crit[i].py = crit[i].cy;
-      int cx = crit[i].cx, cy = crit[i].cy;
-      int yy = ((cy) % MZ_H + MZ_H) % MZ_H;
-      int opts[4][2], no = 0;
-      if (cx + 1 < MZ_W && !(mz[yy][cx + 1] & 2)) opts[no][0] = cx + 1, opts[no++][1] = cy;
-      if (cx > 0 && !(mz[yy][cx] & 2)) opts[no][0] = cx - 1, opts[no++][1] = cy;
-      if (!(mz[yy][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy - 1;
-      if (!(mz[(yy + 1) % MZ_H][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy + 1;
-      if (no) { int p = (int)(hsh((uint32_t)k, (uint32_t)i) % (uint32_t)no); crit[i].cx = opts[p][0], crit[i].cy = opts[p][1]; }
+  if (B.maze_old) {
+    B.critters->count = CRITTERS * 2;
+    /* the critters: four-pointed stars hopping cell to cell along open halls, a cell every half beat, eased (never a jump) */
+    static const float CC[4][3] = { { 1, 0.35f, 0.6f }, { 0.4f, 1, 0.6f }, { 1, 0.7f, 0.25f }, { 0.5f, 0.8f, 1 } };
+    for (int i = 0; i < CRITTERS; i++) {
+      float step = beat * 2 + (float)i * 0.37f;
+      int k = (int)floorf(step);
+      if (k != (int)crit[i].t0) {
+        crit[i].t0 = (float)k, crit[i].px = crit[i].cx, crit[i].py = crit[i].cy;
+        int cx = crit[i].cx, cy = crit[i].cy;
+        int yy = ((cy) % MZ_H + MZ_H) % MZ_H;
+        int opts[4][2], no = 0;
+        if (cx + 1 < MZ_W && !(mz[yy][cx + 1] & 2)) opts[no][0] = cx + 1, opts[no++][1] = cy;
+        if (cx > 0 && !(mz[yy][cx] & 2)) opts[no][0] = cx - 1, opts[no++][1] = cy;
+        if (!(mz[yy][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy - 1;
+        if (!(mz[(yy + 1) % MZ_H][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy + 1;
+        if (no) { int p = (int)(hsh((uint32_t)k, (uint32_t)i) % (uint32_t)no); crit[i].cx = opts[p][0], crit[i].cy = opts[p][1]; }
+      }
+      float u = step - floorf(step);
+      u = u * u * (3 - 2 * u);
+      float gx = mz_x(crit[i].px) + (mz_x(crit[i].cx) - mz_x(crit[i].px)) * u;
+      float gy = (float)crit[i].py + (float)(crit[i].cy - crit[i].py) * u;
+      /* stay on screen: the maze rides toward the camera, so a critter that falls behind is carried to the far rows */
+      float rr = gy - (float)row - frac;
+      if (rr < 1 || rr > MZ_SHOW - 6) { crit[i].cy = crit[i].py = row + 12 + (int)(hsh(i, (uint32_t)row) % 20u); continue; }
+      float z = 40.0f - rr * MZ_CELL, e2 = 0.75f + 0.2f * energy;
+      const float *c = CC[i % 4];
+      float spin = beat * 1.5f + (float)i;
+      place(B.critters, i * 2, (t3_vec3){ gx, 2.4f, z }, qmul(about(1, 0, 0, -0.78f), about(0, 0, 1, spin)), (t3_vec3){ 2.6f, 2.6f, 1 }, (t3_color){ c[0] * e2, c[1] * e2, c[2] * e2 });
+      place(B.critters, i * 2 + 1, (t3_vec3){ gx, 2.45f, z + 0.1f }, qmul(about(1, 0, 0, -0.78f), about(0, 0, 1, -spin * 0.7f)), (t3_vec3){ 1.1f, 1.1f, 1 }, (t3_color){ 0.05f, 0.05f, 0.08f });
     }
-    float u = step - floorf(step);
-    u = u * u * (3 - 2 * u);
-    float gx = mz_x(crit[i].px) + (mz_x(crit[i].cx) - mz_x(crit[i].px)) * u;
-    float gy = (float)crit[i].py + (float)(crit[i].cy - crit[i].py) * u;
-    /* stay on screen: the maze rides toward the camera, so a critter that falls behind is carried to the far rows */
-    float rr = gy - (float)row - frac;
-    if (rr < 1 || rr > MZ_SHOW - 6) { crit[i].cy = crit[i].py = row + 12 + (int)(hsh(i, (uint32_t)row) % 20u); continue; }
-    float z = 40.0f - rr * MZ_CELL, e2 = 0.75f + 0.2f * energy;
-    const float *c = CC[i % 4];
-    float spin = beat * 1.5f + (float)i;
-    place(B.critters, i * 2, (t3_vec3){ gx, 2.4f, z }, qmul(about(1, 0, 0, -0.78f), about(0, 0, 1, spin)), (t3_vec3){ 2.6f, 2.6f, 1 }, (t3_color){ c[0] * e2, c[1] * e2, c[2] * e2 });
-    place(B.critters, i * 2 + 1, (t3_vec3){ gx, 2.45f, z + 0.1f }, qmul(about(1, 0, 0, -0.78f), about(0, 0, 1, -spin * 0.7f)), (t3_vec3){ 1.1f, 1.1f, 1 }, (t3_color){ 0.05f, 0.05f, 0.08f });
-  }
-  done(B.critters);
+
+    done(B.critters);
+  } else if (B.critters->count) B.critters->count = 0, done(B.critters);
+  /* the travellers: each runs the halls a cell a beat, choosing a way at each junction (never straight back unless it
+   * must), drawn as a streak of light from where it was a cell and a half ago to where it is now, eased between cells so
+   * it glides; the maze rides toward the camera and a traveller rides with it (it lives in the maze's own frame) */
+  if (!B.maze_old) {
+    static struct { int cx, cy, px, py, ppx, ppy; int k; } tr[TRAVELLERS];
+    static bool tr_init;
+    if (!tr_init) {
+      tr_init = true;
+      for (int i = 0; i < TRAVELLERS; i++) { int x = 1 + (i * 5) % (MZ_W - 2), y = row + 4 + i * 2; tr[i] = (typeof(tr[0])){ x, y, x, y, x, y, -1 }; }
+    }
+    int n = 0;
+    t3_quat flat = about(1, 0, 0, -PI / 2);
+    for (int i = 0; i < TRAVELLERS; i++) {
+      float step = beat + (float)i * 0.31f;
+      int k = (int)floorf(step);
+      if (k != tr[i].k) {
+        tr[i].k = k;
+        tr[i].ppx = tr[i].px, tr[i].ppy = tr[i].py, tr[i].px = tr[i].cx, tr[i].py = tr[i].cy;
+        int cx = tr[i].cx, cy = tr[i].cy, yy = ((cy % MZ_H) + MZ_H) % MZ_H;
+        int opts[4][2], no = 0;
+        if (cx + 1 < MZ_W && !(mz[yy][cx + 1] & 2)) opts[no][0] = cx + 1, opts[no++][1] = cy;
+        if (cx > 0 && !(mz[yy][cx] & 2)) opts[no][0] = cx - 1, opts[no++][1] = cy;
+        if (!(mz[yy][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy - 1;
+        if (!(mz[(yy + 1) % MZ_H][cx] & 1)) opts[no][0] = cx, opts[no++][1] = cy + 1;
+        int fwd[4][2], nf = 0;
+        for (int o = 0; o < no; o++) if (opts[o][0] != tr[i].ppx || opts[o][1] != tr[i].ppy) fwd[nf][0] = opts[o][0], fwd[nf++][1] = opts[o][1];
+        if (nf) { int p = (int)(hsh((uint32_t)k, (uint32_t)i + 99) % (uint32_t)nf); tr[i].cx = fwd[p][0], tr[i].cy = fwd[p][1]; }
+        else if (no) tr[i].cx = opts[0][0], tr[i].cy = opts[0][1];
+        /* kept on screen: one fallen behind the near rows is carried to the far ones */
+        float rr = (float)tr[i].cy - (float)row;
+        if (rr < 2 || rr > MZ_SHOW - 6) { int y = row + 10 + (int)(hsh((uint32_t)i, (uint32_t)row) % 14u); tr[i].cy = tr[i].py = tr[i].ppy = y, tr[i].px = tr[i].ppx = tr[i].cx; }
+      }
+      float u = step - floorf(step);
+      u = u * u * (3 - 2 * u);
+      /* the head between the last cell and the next; the tail back through the cell before */
+      float hx = mz_x(tr[i].px) + (mz_x(tr[i].cx) - mz_x(tr[i].px)) * u, hz = mz_z(tr[i].py - row) + (mz_z(tr[i].cy - row) - mz_z(tr[i].py - row)) * u;
+      float pts[3][2] = { { hx, hz }, { mz_x(tr[i].px), mz_z(tr[i].py - row) }, { mz_x(tr[i].ppx), mz_z(tr[i].ppy - row) } };
+      float fade = 1;
+      for (int sgi = 0; sgi < 2; sgi++) {
+        float ax = pts[sgi][0], az = pts[sgi][1], bx = pts[sgi + 1][0], bz = pts[sgi + 1][1];
+        float dx = bx - ax, dz = bz - az, len = sqrtf(dx * dx + dz * dz);
+        if (len < 0.01f) continue;
+        float b = (sgi == 0 ? 0.7f : 0.32f) * fade * (0.8f + 0.2f * energy);
+        /* lying on the floor along the hall, its head (v 0) at a */
+        t3_quat q = qmul(about(0, 1, 0, atan2f(-dx, -dz)), flat);
+        place(B.trails, n++, (t3_vec3){ (ax + bx) * 0.5f, 0.05f, (az + bz) * 0.5f }, q, (t3_vec3){ 1.3f, len, 1 }, (t3_color){ b * 0.55f, b * 0.5f, b * 0.85f });
+        fade *= 0.5f;
+      }
+    }
+    B.trails->count = n;
+    done(B.trails);
+  } else if (B.trails->count) B.trails->count = 0, done(B.trails);
 }
 
 /* ── the backdrops ───────────────────────────────────────────────────── */
@@ -834,6 +831,7 @@ void backdrop_build(cw_node level) {
     B.op_set[i] = 0;
   }
   cw_debug_command("bdset", "bdset <backdrop> <node path> <property> <value>: set a property in a backdrop's world (looking at its cost and its parts)", cmd_bdset);
+  cw_debug_command("maze", "maze old 1|0: the arcade maze's old bright critters (the readability gate's note-likeness control)", cmd_maze);
   cw_debug_command("bdcam", "bdcam <backdrop> [x y z pitch yaw]: a backdrop's camera, read or moved (a closer look at its world)", cmd_bdcam);
   if (B.root[BD_FIRE].id) build_fire();
   if (B.root[BD_SEA].id) build_sea();
@@ -842,6 +840,14 @@ void backdrop_build(cw_node level) {
   if (B.root[BD_STAGE].id) build_stage();
   if (B.root[BD_CLEAN].id) build_clean();
   if (B.root[BD_MAZE].id) build_maze();
+  if (B.root[BD_AURORA].id) world_aurora_build(B.root[BD_AURORA]);
+  if (B.root[BD_SPACE].id) world_space_build(B.root[BD_SPACE]);
+  if (B.root[BD_CITY].id) world_city_build(B.root[BD_CITY]);
+  if (B.root[BD_FOREST].id) world_forest_build(B.root[BD_FOREST]);
+  if (B.root[BD_DEEP].id) world_deep_build(B.root[BD_DEEP]);
+  if (B.root[BD_DUNES].id) world_dunes_build(B.root[BD_DUNES]);
+  if (B.root[BD_LAVA].id) world_lava_build(B.root[BD_LAVA]);
+  if (B.root[BD_METAL].id) world_metal_build(B.root[BD_METAL]);
 }
 
 int backdrop_drawn(void) { return B.drawn; }
@@ -850,7 +856,7 @@ int backdrop_drawn(void) { return B.drawn; }
 static void cmd_bdcam(int argc, const char **argv, cw_reply *r) {
   int i = 1;
   while (i < BD_COUNT && (argc < 2 || strcmp(argv[1], NAMES[i]))) i++;
-  if (i >= BD_COUNT || !B.root[i].id) { cw_reply_error(r, "bdcam <fire|sea|grid|lasers|stage|clean|maze> [x y z pitch yaw]"); return; }
+  if (i >= BD_COUNT || !B.root[i].id) { cw_reply_error(r, "bdcam <backdrop> [x y z pitch yaw]"); return; }
   cw_node cam = cw_node_get(B.root[i], "Camera");
   if (argc >= 7) {
     cw_node3d_set_position(cam, (t3_vec3){ (float)atof(argv[2]), (float)atof(argv[3]), (float)atof(argv[4]) });
@@ -881,11 +887,8 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
   for (int i = 1; i < BD_COUNT; i++) {
     if (!B.node[i].id) continue;
     if (op[i] != B.op_set[i]) {
-      if (op[i] > 0 && B.op_set[i] <= 0 && i == BD_FIRE) /* a fire coming back starts already burning */
-        for (int c = 0; c < cw_node_child_count(B.root[i]); c++) {
-          cw_node ch = cw_node_child(B.root[i], c);
-          if (cw_node_is(ch, "GPUParticles3D")) cw_particles_restart(ch);
-        }
+      /* (no restart of a world's particles when it comes back: a hidden world pauses, so a fire comes back burning where it
+       * left off; a restart simulated each system's preprocess seconds in one frame, a hitch of 85 to 350 ms) */
       cw_backdrop_set_opacity(B.node[i], op[i]);
       /* a world out of sight is hidden as well (cartwheel-engine 0.64.1): opacity 0 already draws nothing, hidden it does
        * not tick either (its particles pause, its water and lights stop); shown again the moment it fades in */
@@ -902,8 +905,21 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
     case BD_STAGE: update_stage(beat, t, energy); break;
     case BD_CLEAN: update_clean(s, beat); break;
     case BD_MAZE: update_maze(beat, energy); break;
+    case BD_AURORA: world_aurora_update(beat, t, energy); break;
+    case BD_SPACE: world_space_update(beat, t, energy); break;
+    case BD_CITY: world_city_update(beat, t, energy); break;
+    case BD_FOREST: world_forest_update(beat, t, energy); break;
+    case BD_DEEP: world_deep_update(beat, t, energy); break;
+    case BD_DUNES: world_dunes_update(beat, t, energy); break;
+    case BD_LAVA: world_lava_update(beat, t, energy); break;
+    case BD_METAL: world_metal_update(beat, t, energy); break;
     }
   }
+}
+
+static void cmd_maze(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 3 && !strcmp(argv[1], "old")) B.maze_old = atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"old\":%d}", B.maze_old);
 }
 
 /* `bdset <backdrop> <node> <prop> <value>`: a property of a node in a backdrop's world, set (its text as the scene file writes it) */

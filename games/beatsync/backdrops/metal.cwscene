@@ -1,0 +1,61 @@
+[scene format=1]
+
+; The metal backdrop (src/worlds.c builds the hall, its columns, beams and fluted far wall, its environment map, and
+; sweeps the lights): a hall of brushed and polished metal, a floor of brushed steel plates, chrome columns ringed in
+; gold down both sides, gunmetal beams overhead, slow lights sweeping across it all in time with the music.
+
+[node name="Metal" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.008, 0.009, 0.012, 1)
+use_background = true
+ambient_color = color(0.6, 0.65, 0.8, 1)
+ambient_energy = 0.06
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 3.4, 24)
+rotation = vec3(0.03, 0, 0)
+fov = 56
+near = 0.5
+far = 1200
+
+[node name="Key" parent="." type="DirectionalLight3D"]
+rotation = vec3(-0.6, 0.4, 0)
+color = color(0.85, 0.9, 1, 1)
+energy = 0.8
+
+; the sweeps: two lights high over the hall, each crossing it slowly (src/worlds.c moves them over eight bars)
+[node name="SweepA" parent="." type="SpotLight3D"]
+position = vec3(-20, 30, -40)
+rotation = vec3(-1.2, 0, 0)
+color = color(1, 0.78, 0.45, 1)
+energy = 1800
+range = 120
+angle = 0.35
+penumbra = 0.7
+
+[node name="SweepB" parent="." type="SpotLight3D"]
+position = vec3(20, 30, -90)
+rotation = vec3(-1.2, 0, 0)
+color = color(0.7, 0.85, 1, 1)
+energy = 1800
+range = 140
+angle = 0.35
+penumbra = 0.7
+
+; the hall reflects itself: a captured probe over the near hall (columns, beams, floor), box projected so the floor and
+; the chrome mirror the hall as it stands; captured once (nothing in it moves but the lights)
+[node name="Probe" parent="." type="ReflectionProbe3D"]
+position = vec3(0, 12, -40)
+size = vec3(40, 40, 160)
+box_projection = true
+intensity = 1
+resolution = 256
+update_mode = ONCE
+far = 500

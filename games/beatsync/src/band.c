@@ -18,13 +18,14 @@
 
 #include "cartwheel/core.h"
 #include "cartwheel/resource.h"
+#include "cartwheel/rim_light.h"
 #include "cartwheel/scene.h"
 
 #define PI 3.14159265f
 enum { GUITAR, SINGER, BASS, DRUMS, PLAYERS };
 static const char *const FILES[PLAYERS] = { "models/band_guitar.glb", "models/band_singer.glb", "models/band_bass.glb", "models/band_drums.glb" };
 /* where each stands on the deck (its top is at 1.2), and which way it faces (a little toward the middle) */
-static const float AT[PLAYERS][4] = { { -8.2f, 1.2f, -4.6f, 0.35f }, { -5.4f, 1.2f, -3.2f, 0.2f }, { 5.6f, 1.2f, -3.6f, -0.25f }, { 8.4f, 2.0f, -8.2f, -0.3f } };
+static const float AT[PLAYERS][4] = { { -5.3f, 1.2f, -4.4f, 0.4f }, { -3.55f, 1.2f, -2.6f, 0.25f }, { 3.7f, 1.2f, -3.3f, -0.3f }, { 5.4f, 2.0f, -7.0f, -0.35f } };
 
 #define AXE_AT ((t3_vec3){ -0.1f, -0.3f, 0.19f }) /* the instrument on its strap, in the chest frame */
 #define AXE_ANGLE 0.5f
@@ -119,6 +120,14 @@ void band_build(cw_node stage_root) {
     cw_node3d_set_rotation(n, (t3_vec3){ 0, AT[p][3], 0 });
     t3_object *o = cw_gltf_instantiate(N.res[p]);
     cw_node3d_set_object(n, o);
+    /* a rim of the back light round each player, cold on the left of the stage and warm on the right as the back
+     * lights are, so each reads as a figure against the dark wall (each player's own materials: its own glTF) */
+    {
+      cw_rim_light_desc rd = cw_rim_light_default();
+      rd.color = p == GUITAR || p == SINGER ? (t3_color){ 0.45f, 0.65f, 1.0f } : (t3_color){ 1.0f, 0.45f, 0.6f };
+      rd.strength = 1.3f, rd.power = 2.8f, rd.near = 0, rd.far = 1, rd.close = 1;
+      cw_rim_light_apply_tree(o, &rd);
+    }
     t3_release(o);
     for (int b = 0; b < BONES; b++) N.bone[p][b] = t3_object_get_by_name(o, BONE[b]);
     if (N.bone[p][B_HIPS]) N.hips0[p] = N.bone[p][B_HIPS]->position;
@@ -150,8 +159,8 @@ void band_build(cw_node stage_root) {
   /* amps behind the guitar and the bass: black boxes with a grille */
   for (int s = -1; s <= 1; s += 2) {
     t3_object *at = cw_node3d_object(stage_root);
-    part(at, t3_box_geometry_new(1.1f, 1.3f, 0.6f, 1, 1, 1), black, (t3_vec3){ (float)s * 7.0f, 1.2f + 0.65f, -7.5f }, qa(0, 1, 0, -(float)s * 0.2f));
-    part(at, t3_box_geometry_new(0.95f, 1.0f, 0.02f, 1, 1, 1), dark, (t3_vec3){ (float)s * 7.0f - (float)s * 0.06f, 1.2f + 0.6f, -7.19f }, qa(0, 1, 0, -(float)s * 0.2f));
+    part(at, t3_box_geometry_new(1.1f, 1.3f, 0.6f, 1, 1, 1), black, (t3_vec3){ (float)s * 4.5f, 1.2f + 0.65f, -6.6f }, qa(0, 1, 0, -(float)s * 0.2f));
+    part(at, t3_box_geometry_new(0.95f, 1.0f, 0.02f, 1, 1, 1), dark, (t3_vec3){ (float)s * 4.5f - (float)s * 0.06f, 1.2f + 0.6f, -6.29f }, qa(0, 1, 0, -(float)s * 0.2f));
   }
   t3_release(red), t3_release(sunburst), t3_release(dark), t3_release(metal), t3_release(black);
 }
@@ -164,6 +173,15 @@ static void pose_player(int p, float beat, float energy, pose *o) {
   memset(o, 0, sizeof *o);
   float nod = hit(beat) * (0.6f + 0.4f * energy), bar = sinf(2 * PI * beat / 4), phrase = wave(beat / 32);
   float (*r)[3] = o->r;
+  /* the whole body moves: the hips sway over the bar and shift the weight from foot to foot over two, the louder the
+   * song the deeper the nod (a head-bang in a drop, still a smooth curve of the beat) */
+  float shift = sinf(PI * beat / 4);
+  if (p != DRUMS) {
+    r[B_HIPS][1] = 0.12f * bar, r[B_HIPS][2] = 0.05f * shift;
+    r[B_ULL][0] += -0.06f * fmaxf(0, shift), r[B_LLL][0] += 0.12f * fmaxf(0, shift);
+    r[B_ULR][0] += -0.06f * fmaxf(0, -shift), r[B_LLR][0] += 0.12f * fmaxf(0, -shift);
+  }
+  nod *= 0.7f + 0.6f * energy;
   switch (p) {
   case GUITAR: {
     float strum = sinf(2 * PI * beat * 2) * 0.5f; /* down and up on the eighths */
@@ -191,7 +209,8 @@ static void pose_player(int p, float beat, float energy, pose *o) {
     r[B_SPINE][0] = 0.05f + 0.05f * nod, r[B_SPINE][2] = 0.06f * bar;
     r[B_HEAD][0] = -0.05f + 0.18f * nod, r[B_HEAD][1] = 0.08f * bar;
     r[B_UAR][0] = -1.15f, r[B_UAR][2] = -0.15f, r[B_LAR][0] = -1.65f; /* holding the mic */
-    r[B_UAL][0] = -0.3f - 1.6f * lift, r[B_UAL][2] = 0.25f + 0.4f * lift, r[B_LAL][0] = -0.4f - 0.4f * (1 - lift);
+    /* raised out to the side toward the crowd, clear of the face */
+    r[B_UAL][0] = -0.25f - 0.75f * lift, r[B_UAL][2] = 0.3f + 1.35f * lift, r[B_LAL][0] = -0.25f - 0.45f * (1 - lift);
     r[B_ULL][2] = 0.1f, r[B_ULR][2] = -0.1f, r[B_LLL][0] = 0.15f * nod, r[B_LLR][0] = 0.15f * nod;
     o->hips_dy = -0.03f * nod;
     break;
