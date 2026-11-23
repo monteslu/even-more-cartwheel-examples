@@ -50,6 +50,7 @@ static struct {
   int frame;
   /* debug fields */
   int dbg_cols, dbg_rows, dbg_cw, dbg_ch, dbg_on, dbg_boxes;
+  int32_t hud_overlap, hud_overlap_max; /* HUD text lines drawn over each other this frame, and the most since the last ask */
   float dbg_mix;
   /* the HUD boxes the pass keeps black (fractions of the frame, top left origin: x0, y0, x1, y1) */
   float mask[MAXMASK][4];
@@ -589,6 +590,8 @@ void ascii_init(cw_tree *tree) {
   cw_debug_f32("ascii.mix", &A.dbg_mix);
   A.dbg_mix = mix_now();
   cw_debug_i32("ascii.hud_boxes", &A.dbg_boxes);
+  cw_debug_i32("hud.overlap", &A.hud_overlap);
+  cw_debug_i32("hud.overlap_max", &A.hud_overlap_max);
   A.dbg_on = A.on;
   cw_debug_command("ascii", "ascii set NAME VALUE | ascii on | ascii off: the ASCII pass (src/ascii.c)", cmd_ascii);
 }
@@ -621,7 +624,8 @@ static struct {
   int n;
   float r[MAXREC][9]; /* x0, y0, x1, y1, alpha, edge r, g, b, edge given */
   int nb;
-  float b[MAXREC][9];  /* last frame's merged boxes: drawn first, under this frame's HUD */
+  float b[MAXREC][9];
+  bool text[MAXREC]; /* this frame's rectangle i is a line of text (ascii_hud_text) */  /* last frame's merged boxes: drawn first, under this frame's HUD */
 } H;
 
 /* the neon border: a thin bright line with two soft passes of the same colour round it */
@@ -646,6 +650,12 @@ void ascii_hud_begin(cw_vec2 canvas, float u) {
   }
 }
 
+void ascii_hud_text(float x, float y, float w, float h, float alpha) {
+  int n = H.n;
+  ascii_hud_rect_edge(x, y, w, h, alpha, (cw_color){ 0, 0, 0, 0 });
+  if (H.n > n) H.text[n] = true;
+}
+
 void ascii_hud_rect(float x, float y, float w, float h, float alpha) {
   ascii_hud_rect_edge(x, y, w, h, alpha, (cw_color){ 0, 0, 0, 0 });
 }
@@ -654,6 +664,7 @@ void ascii_hud_rect_edge(float x, float y, float w, float h, float alpha, cw_col
   if (alpha < 0.05f || w <= 0 || h <= 0) return;
   if (x + w < 0 || y + h < 0 || x > H.cs.x || y > H.cs.y) return; /* off the screen (the glyph bake) */
   if (H.n >= MAXREC) return;
+  H.text[H.n] = false;
   float *r = H.r[H.n++];
   r[0] = x, r[1] = y, r[2] = x + w, r[3] = y + h, r[4] = alpha;
   bool given = edge.a > 0;
@@ -661,6 +672,15 @@ void ascii_hud_rect_edge(float x, float y, float w, float h, float alpha, cw_col
 }
 
 void ascii_hud_end(void) {
+  /* lines of text drawn over each other (their own rectangles, before the padding): the HUD gate counts them */
+  A.hud_overlap = 0;
+  for (int i = 0; i < H.n; i++)
+    for (int j = i + 1; j < H.n; j++) {
+      if (!H.text[i] || !H.text[j]) continue;
+      const float *p = H.r[i], *q = H.r[j];
+      if (p[0] < q[2] && q[0] < p[2] && p[1] < q[3] && q[1] < p[3]) A.hud_overlap++;
+    }
+  if (A.hud_overlap > A.hud_overlap_max) A.hud_overlap_max = A.hud_overlap;
   float pad = 14 * H.u, gap = 18 * H.u;
   /* pad every element, then merge boxes that touch (within gap) until none do */
   for (int i = 0; i < H.n; i++) H.r[i][0] -= pad, H.r[i][1] -= pad * 0.6f, H.r[i][2] += pad, H.r[i][3] += pad * 0.6f;
@@ -711,4 +731,15 @@ void ascii_hud_draw(void) {
     cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
     border(rr, H.u, (cw_color){ r[5], r[6], r[7], r[4] });
   }
+}
+
+int ascii_hud_boxes(float out[][4], int max) {
+  int n = 0;
+  for (int i = 0; i < H.nb && n < max; i++) {
+    const float *r = H.b[i];
+    if (r[4] < 0.3f || H.cs.x <= 0 || H.cs.y <= 0) continue;
+    out[n][0] = r[0] / H.cs.x, out[n][1] = r[1] / H.cs.y, out[n][2] = (r[2] - r[0]) / H.cs.x, out[n][3] = (r[3] - r[1]) / H.cs.y;
+    n++;
+  }
+  return n;
 }

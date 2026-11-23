@@ -1,0 +1,162 @@
+[scene format=1]
+
+; The rock stage backdrop (src/backdrop.c builds the band, the kit, the amps, the LED wall and the crowd, and moves
+; the spots): a stage in haze seen from behind the crowd, the band on it playing, three moving spots throwing
+; volumetric beams, warm and cold back light round the players.
+
+[node name="Stage" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.002, 0.002, 0.004, 1)
+use_background = true
+ambient_color = color(0.5, 0.45, 0.6, 1)
+ambient_energy = 0.05
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Haze" parent="." type="HeightFog"]
+volumetric = true
+density = 0.03
+height_falloff = 0.03
+base_height = 0
+use_sky_color = false
+color = color(0.012, 0.011, 0.015, 1)
+sun_g = 0.6
+volumetric_distance = 30
+volumetric_ambient = 0.02
+sky_distance = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 2.8, 6)
+rotation = vec3(0.02, 0, 0)
+fov = 50
+near = 0.2
+far = 200
+
+[node name="Floor" parent="." type="MeshInstance3D"]
+primitive = PLANE
+position = vec3(0, 0, 0)
+size = vec3(80, 1, 60)
+color = color(0.02, 0.02, 0.022, 1)
+roughness = 0.6
+
+[node name="Deck" parent="." type="MeshInstance3D"]
+position = vec3(0, 0.6, -6)
+size = vec3(22, 1.2, 10)
+color = color(0.05, 0.045, 0.045, 1)
+roughness = 0.45
+receive_shadow = true
+cast_shadow = true
+
+[node name="DeckEdge" parent="." type="MeshInstance3D"]
+position = vec3(0, 1.19, -1.02)
+size = vec3(22, 0.06, 0.06)
+color = color(0, 0, 0, 1)
+emissive = color(1.2, 0.55, 0.2, 1)
+
+[node name="Riser" parent="." type="MeshInstance3D"]
+position = vec3(0, 1.6, -9)
+size = vec3(5, 0.8, 3.4)
+color = color(0.06, 0.055, 0.055, 1)
+roughness = 0.5
+receive_shadow = true
+cast_shadow = true
+
+[node name="BackWall" parent="." type="MeshInstance3D"]
+position = vec3(0, 8, -14)
+size = vec3(60, 16, 0.4)
+color = color(0.01, 0.01, 0.012, 1)
+roughness = 0.9
+receive_shadow = true
+
+[node name="TowerL" parent="." type="MeshInstance3D"]
+position = vec3(-10.5, 5, -7)
+size = vec3(0.5, 10, 0.5)
+color = color(0.22, 0.22, 0.24, 1)
+metalness = 0.8
+roughness = 0.35
+cast_shadow = true
+
+[node name="TowerR" parent="." type="MeshInstance3D"]
+position = vec3(10.5, 5, -7)
+size = vec3(0.5, 10, 0.5)
+color = color(0.22, 0.22, 0.24, 1)
+metalness = 0.8
+roughness = 0.35
+cast_shadow = true
+
+[node name="Truss" parent="." type="MeshInstance3D"]
+position = vec3(0, 10, -5)
+size = vec3(22, 0.5, 0.5)
+color = color(0.22, 0.22, 0.24, 1)
+metalness = 0.8
+roughness = 0.35
+cast_shadow = true
+
+[node name="SpotA" parent="." type="SpotLight3D"]
+position = vec3(-7, 9.7, -5)
+rotation = vec3(-1.25, 0.25, 0)
+color = color(1, 0.55, 0.2, 1)
+energy = 700
+range = 30
+angle = 0.11
+penumbra = 0.2
+shadow = true
+shadow_size = 512
+fog_energy = 8
+
+[node name="SpotB" parent="." type="SpotLight3D"]
+position = vec3(0, 9.7, -5)
+rotation = vec3(-1.4, 0, 0)
+color = color(0.9, 0.9, 1, 1)
+energy = 700
+range = 30
+angle = 0.11
+penumbra = 0.2
+shadow = true
+shadow_size = 512
+fog_energy = 8
+
+[node name="SpotC" parent="." type="SpotLight3D"]
+position = vec3(7, 9.7, -5)
+rotation = vec3(-1.25, -0.25, 0)
+color = color(0.35, 0.5, 1, 1)
+energy = 700
+range = 30
+angle = 0.11
+penumbra = 0.2
+shadow = true
+shadow_size = 512
+fog_energy = 8
+
+; the band's light: a warm key from the front of house, cold back light rimming them against the wall
+[node name="FrontKey" parent="." type="SpotLight3D"]
+position = vec3(0, 7, 6)
+rotation = vec3(-0.55, 0, 0)
+color = color(1, 0.8, 0.6, 1)
+energy = 600
+range = 30
+angle = 0.55
+penumbra = 0.6
+
+[node name="BackL" parent="." type="OmniLight3D"]
+position = vec3(-5, 4.5, -11)
+color = color(0.3, 0.45, 1, 1)
+energy = 90
+range = 14
+
+[node name="BackR" parent="." type="OmniLight3D"]
+position = vec3(5, 4.5, -11)
+color = color(1, 0.3, 0.55, 1)
+energy = 90
+range = 14
+
+[node name="Amps" parent="." type="OmniLight3D"]
+position = vec3(0, 1.8, -3)
+color = color(1, 0.6, 0.3, 1)
+energy = 30
+range = 8

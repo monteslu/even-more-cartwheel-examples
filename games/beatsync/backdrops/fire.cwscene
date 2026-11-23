@@ -1,0 +1,534 @@
+[scene format=1]
+
+; The fire backdrop (src/bd_fire.c builds the sky, the ground's glow and drives the lights): a canyon of fire walls
+; receding to a burning horizon under a sky of smoke lit from below, embers storming up through it. Seen from a little
+; above the ground, the horizon two thirds up the screen, as the rivers recede.
+
+[node name="Fire" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.012, 0.004, 0.002, 1)
+use_background = true
+ambient_color = color(1, 0.45, 0.2, 1)
+ambient_energy = 0.04
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Smoke" parent="." type="HeightFog"]
+density = 0.012
+height_falloff = 0.05
+base_height = 0
+color = color(0.32, 0.09, 0.025, 1)
+use_sky_color = false
+max_opacity = 0.85
+start_distance = 20
+sky_distance = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 4, 24)
+rotation = vec3(0.0, 0, 0)
+fov = 56
+near = 0.5
+far = 900
+
+; the canyon's walls: fronts of the engine's baked fire flipbook on each side, further and further back, bigger with
+; distance so each still reads as a wall far off; the far wall burns across the horizon
+
+[node name="WallL0" parent="." type="GPUParticles3D"]
+position = vec3(-20, 0, -8)
+amount = 116
+lifetime = 2.2
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(5.0, 0.5, 6)
+direction = vec3(0.12, 1, 0)
+spread = 12
+speed_min = 3.5
+speed_max = 7.0
+gravity = vec3(0.5, 3.0, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.060
+turbulence_speed = 0.12
+size = 7
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 101
+
+[node name="WallR0" parent="." type="GPUParticles3D"]
+position = vec3(20, 0, -8)
+amount = 116
+lifetime = 2.2
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(5.0, 0.5, 6)
+direction = vec3(-0.12, 1, 0)
+spread = 12
+speed_min = 3.5
+speed_max = 7.0
+gravity = vec3(-0.5, 3.0, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.060
+turbulence_speed = 0.12
+size = 7
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 102
+
+[node name="WallL1" parent="." type="GPUParticles3D"]
+position = vec3(-24, 0, -40)
+amount = 99
+lifetime = 2.6
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(7.0, 0.5, 14)
+direction = vec3(0.12, 1, 0)
+spread = 12
+speed_min = 4.9
+speed_max = 9.8
+gravity = vec3(0.5, 4.2, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.043
+turbulence_speed = 0.12
+size = 10
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 103
+
+[node name="WallR1" parent="." type="GPUParticles3D"]
+position = vec3(24, 0, -40)
+amount = 99
+lifetime = 2.6
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(7.0, 0.5, 14)
+direction = vec3(-0.12, 1, 0)
+spread = 12
+speed_min = 4.9
+speed_max = 9.8
+gravity = vec3(-0.5, 4.2, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.043
+turbulence_speed = 0.12
+size = 10
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 104
+
+[node name="WallL2" parent="." type="GPUParticles3D"]
+position = vec3(-30, 0, -85)
+amount = 91
+lifetime = 2.9
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(9.5, 0.5, 22)
+direction = vec3(0.12, 1, 0)
+spread = 12
+speed_min = 6.6
+speed_max = 13.3
+gravity = vec3(0.5, 5.7, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.032
+turbulence_speed = 0.12
+size = 13
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 105
+
+[node name="WallR2" parent="." type="GPUParticles3D"]
+position = vec3(30, 0, -85)
+amount = 91
+lifetime = 2.9
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(9.5, 0.5, 22)
+direction = vec3(-0.12, 1, 0)
+spread = 12
+speed_min = 6.6
+speed_max = 13.3
+gravity = vec3(-0.5, 5.7, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.032
+turbulence_speed = 0.12
+size = 13
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 106
+
+[node name="WallL3" parent="." type="GPUParticles3D"]
+position = vec3(-38, 0, -145)
+amount = 83
+lifetime = 3.2
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(13.0, 0.5, 30)
+direction = vec3(0.12, 1, 0)
+spread = 12
+speed_min = 9.1
+speed_max = 18.2
+gravity = vec3(0.5, 7.8, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.023
+turbulence_speed = 0.12
+size = 18
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 107
+
+[node name="WallR3" parent="." type="GPUParticles3D"]
+position = vec3(38, 0, -145)
+amount = 83
+lifetime = 3.2
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(13.0, 0.5, 30)
+direction = vec3(-0.12, 1, 0)
+spread = 12
+speed_min = 9.1
+speed_max = 18.2
+gravity = vec3(-0.5, 7.8, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.023
+turbulence_speed = 0.12
+size = 18
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 108
+
+[node name="WallL4" parent="." type="GPUParticles3D"]
+position = vec3(-50, 0, -225)
+amount = 74
+lifetime = 3.4
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(17.0, 0.5, 40)
+direction = vec3(0.12, 1, 0)
+spread = 12
+speed_min = 11.9
+speed_max = 23.8
+gravity = vec3(0.5, 10.2, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.018
+turbulence_speed = 0.12
+size = 24
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 109
+
+[node name="WallR4" parent="." type="GPUParticles3D"]
+position = vec3(50, 0, -225)
+amount = 74
+lifetime = 3.4
+lifetime_random = 0.35
+emission_shape = BOX
+emission_extents = vec3(17.0, 0.5, 40)
+direction = vec3(-0.12, 1, 0)
+spread = 12
+speed_min = 11.9
+speed_max = 23.8
+gravity = vec3(-0.5, 10.2, 0)
+damping = 0.4
+turbulence = 1.4
+turbulence_scale = 0.018
+turbulence_speed = 0.12
+size = 24
+size_random = 0.45
+size_curve = "0 0.45, 0.3 1, 1 0.7"
+color_ramp = "0 1 0.7 0.3 0, 0.08 1 0.5 0.15 1, 0.5 0.9 0.22 0.05 0.85, 1 0.3 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.12
+soft_distance = 2
+preprocess = 3
+seed = 110
+
+[node name="Horizon" parent="." type="GPUParticles3D"]
+position = vec3(0, 0, -330)
+amount = 300
+lifetime = 3.6
+lifetime_random = 0.3
+emission_shape = BOX
+emission_extents = vec3(300, 1, 30)
+direction = vec3(0, 1, 0)
+spread = 8
+speed_min = 10
+speed_max = 18
+gravity = vec3(0, 6, 0)
+damping = 0.3
+turbulence = 1.2
+turbulence_scale = 0.02
+turbulence_speed = 0.08
+size = 36
+size_random = 0.4
+size_curve = "0 0.5, 0.3 1, 1 0.85"
+color_ramp = "0 1 0.75 0.4 0, 0.1 1 0.55 0.2 1, 0.6 0.85 0.25 0.06 0.8, 1 0.25 0.04 0.02 0"
+energy = 0.6
+texture = "fx/fire.png"
+motion_texture = "fx/fire_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.06
+preprocess = 4
+seed = 120
+
+; smoke rolling up off the walls into the sky: dark, alpha blended, lit only by the fires' colour in its ramp
+[node name="SmokeL" parent="." type="GPUParticles3D"]
+position = vec3(-40, 26, -110)
+amount = 58
+lifetime = 7
+lifetime_random = 0.3
+emission_shape = BOX
+emission_extents = vec3(14, 4, 70)
+direction = vec3(0.3, 1, 0)
+spread = 20
+speed_min = 2
+speed_max = 4
+gravity = vec3(0.8, 1.2, 0)
+damping = 0.3
+turbulence = 0.8
+turbulence_scale = 0.04
+turbulence_speed = 0.06
+blend = ALPHA
+size = 21
+size_random = 0.35
+size_curve = "0 0.5, 0.4 1, 1 1.5"
+color_ramp = "0 0.35 0.12 0.05 0, 0.2 0.16 0.07 0.04 0.7, 0.7 0.06 0.035 0.03 0.6, 1 0.03 0.02 0.02 0"
+energy = 1
+texture = "fx/smoke.png"
+motion_texture = "fx/smoke_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.05
+preprocess = 8
+seed = 106
+
+[node name="SmokeR" parent="." type="GPUParticles3D"]
+position = vec3(40, 26, -110)
+amount = 58
+lifetime = 7
+lifetime_random = 0.3
+emission_shape = BOX
+emission_extents = vec3(14, 4, 70)
+direction = vec3(-0.3, 1, 0)
+spread = 20
+speed_min = 2
+speed_max = 4
+gravity = vec3(-0.8, 1.2, 0)
+damping = 0.3
+turbulence = 0.8
+turbulence_scale = 0.04
+turbulence_speed = 0.06
+blend = ALPHA
+size = 21
+size_random = 0.35
+size_curve = "0 0.5, 0.4 1, 1 1.5"
+color_ramp = "0 0.35 0.12 0.05 0, 0.2 0.16 0.07 0.04 0.7, 0.7 0.06 0.035 0.03 0.6, 1 0.03 0.02 0.02 0"
+energy = 1
+texture = "fx/smoke.png"
+motion_texture = "fx/smoke_mv.png"
+hframes = 8
+vframes = 8
+spin = 0.05
+preprocess = 8
+seed = 107
+
+; the ember storm: sparks rising through the whole canyon on the heat, curling in the wind
+[node name="Embers" parent="." type="GPUParticles3D"]
+position = vec3(0, 4, -40)
+amount = 900
+lifetime = 5
+lifetime_random = 0.5
+emission_shape = BOX
+emission_extents = vec3(60, 4, 70)
+direction = vec3(0.2, 1, 0)
+spread = 35
+speed_min = 3
+speed_max = 9
+gravity = vec3(1.2, 1.2, 0)
+damping = 0.2
+turbulence = 3
+turbulence_scale = 0.08
+turbulence_speed = 0.35
+draw_mode = STRETCHED
+stretch = 0.05
+size = 0.22
+size_random = 0.6
+color_ramp = "0 1 0.85 0.5 0, 0.08 1 0.7 0.3 1, 0.6 1 0.4 0.1 0.9, 1 0.7 0.12 0.03 0"
+energy = 4
+preprocess = 5
+seed = 108
+
+; the near embers, bigger, a few drifting right past the camera
+[node name="EmbersNear" parent="." type="GPUParticles3D"]
+position = vec3(0, 1, 8)
+amount = 132
+lifetime = 4
+lifetime_random = 0.5
+emission_shape = BOX
+emission_extents = vec3(26, 2, 10)
+direction = vec3(0.3, 1, 0)
+spread = 40
+speed_min = 2
+speed_max = 5
+gravity = vec3(1.5, 0.8, 0)
+damping = 0.3
+turbulence = 3.5
+turbulence_scale = 0.2
+turbulence_speed = 0.4
+draw_mode = STRETCHED
+stretch = 0.04
+size = 0.12
+size_random = 0.6
+color_ramp = "0 1 0.85 0.5 0, 0.1 1 0.7 0.3 1, 0.6 1 0.4 0.1 0.9, 1 0.7 0.12 0.03 0"
+energy = 5
+camera_fade = 6
+preprocess = 4
+seed = 109
+
+; heat shimmer over the near walls
+[node name="Shimmer" parent="." type="GPUParticles3D"]
+position = vec3(0, 6, -20)
+amount = 33
+lifetime = 3
+emission_shape = BOX
+emission_extents = vec3(44, 3, 20)
+direction = vec3(0, 1, 0)
+spread = 10
+speed_min = 1.5
+speed_max = 3
+turbulence = 0.6
+turbulence_scale = 0.1
+blend = DISTORT
+distort_strength = 0.06
+size = 11
+size_curve = "0 0.6, 1 1.4"
+color_ramp = "0 1 1 1 0, 0.3 1 1 1 1, 1 1 1 1 0"
+preprocess = 3
+seed = 110
+
+; the fires' light on the ground (src/bd_fire.c breathes them slowly)
+[node name="LightL0" parent="." type="OmniLight3D"]
+position = vec3(-24, 5, -2)
+color = color(1, 0.42, 0.12, 1)
+energy = 900
+range = 60
+
+[node name="LightR0" parent="." type="OmniLight3D"]
+position = vec3(24, 5, -2)
+color = color(1, 0.42, 0.12, 1)
+energy = 900
+range = 60
+
+[node name="LightL1" parent="." type="OmniLight3D"]
+position = vec3(-26, 6, -60)
+color = color(1, 0.38, 0.1, 1)
+energy = 1600
+range = 80
+
+[node name="LightR1" parent="." type="OmniLight3D"]
+position = vec3(26, 6, -60)
+color = color(1, 0.38, 0.1, 1)
+energy = 1600
+range = 80
+
+[node name="LightFar" parent="." type="OmniLight3D"]
+position = vec3(0, 12, -220)
+color = color(1, 0.35, 0.08, 1)
+energy = 9000
+range = 200

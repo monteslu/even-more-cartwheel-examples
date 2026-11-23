@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.47.0
+
+- **beatsync**: the styles rebuilt as a showcase. Every backdrop is now a world of its own behind the field
+  (cartwheel-engine's Backdrop nodes, `backdrops/*.cwscene`): Fire is a canyon of fire walls receding to a burning
+  horizon over cracked, glowing ground, under smoke lit from below, with an ember storm and heat shimmer; Club lasers
+  is a club in haze with laser fans sweeping over the crowd and three moving heads throwing volumetric beams; Clean is
+  a lit landscape where the other track rises as hills beside a valley with a still river under a low sun and a
+  procedural sky; the Synthwave grid gains stars and wire mountains, and its land is a dark skyline with lit tops.
+  Four new styles: **Rock stage** (a band of four skinned players, guitar, vocals, bass and drums, playing loops on
+  the beat with their hands placed on their instruments, under moving spots in haze, an LED wall and the crowd in
+  front), **Half blocks** (the engine's half-block look over the grid, dissolved in and out) and **Arcade maze** (an
+  original style after the early arcade maze games: a maze of double neon walls riding toward the camera with star
+  critters in its halls, the rivers as corridors with a line of pellets down each, in chunky pixels on a small
+  palette) and **One bit** (the rock stage in the engine's ordered dither at its display stage: every pixel warm white
+  or near black in a Bayer cross-hatch, outlines from the depth). The **Night sea** is back in the rotation: the
+  engine's water lit by the moon with no procedural sky, its path glittering down the swell. Every style but the
+  characters draws the field lit: notes as gems (an orb, a diamond, a capsule, a prism) that glow their colour and
+  catch the field's lights, a soft halo under each, glowing banks and gates, roads of dark clear-coated glass; the
+  field's lights take each backdrop's colours and sweep slowly. A fade between two worlds keeps the one going out
+  under the one coming in (a straight cross-fade, never more than two drawn). The multiplier and the streak callout
+  sit under the middle judgement with a clear gap: they no longer overlap it. Debug requests `style pin`, `hud old`,
+  `bdcam`, `bdset`. tests/beatsync-styles.mjs adds the HUD check (no two lines of HUD text drawn over each other;
+  control `hud old 1`) and plays each style on a fresh start of the song. A world out of sight is hidden as well as at opacity 0, so it does not tick (its particles pause). Every game on
+  cartwheel-engine 0.64.1. Near
+  its gate a gem gives way to the note's flat shape. The flash fixes found on the way: the half blocks draw each
+  square's mean colour (stepped colours jumped as a light passed), the laser fans sweep over eight bars and stop short
+  of the camera, the arcade maze's pellets stand still and its walls ride a cell every two beats, the grid and the
+  half blocks leave the land out between two players' roads. The duo gate's covered-river control draws its cover in
+  front of the lit notes; the streak's drain is a deeper red.
+
 ## 0.46.0
 
 - **Detexto** draws its 1-bit looks with the engine's one-bit dither (`cartwheel/look.h`) at the display stage: last,

@@ -1,0 +1,22 @@
+[scene format=1]
+
+; The arcade maze backdrop (src/backdrop.c builds the maze, its glow and the critters): a maze of double neon walls on
+; black, seen from above at a tilt, riding toward the camera a cell a beat, little star critters wandering its halls.
+
+[node name="Maze" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0, 0, 0, 1)
+use_background = true
+ambient_energy = 0
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 46, 40)
+rotation = vec3(-0.78, 0, 0)
+fov = 50
+near = 1
+far = 600

@@ -1,0 +1,38 @@
+[scene format=1]
+
+; The night sea backdrop (src/backdrop.c builds the sky, the moon, the stars and the harbour lights): a sea under a low
+; moon, its path of light running down the swell toward the camera. Water3D with no ProceduralSky is lit by the scene's
+; first DirectionalLight3D (cartwheel-engine 0.63.0).
+
+[node name="Sea" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.004, 0.008, 0.02, 1)
+use_background = true
+ambient_energy = 0.02
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 0, 22)
+fov = 40
+near = 1
+far = 1500
+
+[node name="Moonlight" parent="." type="DirectionalLight3D"]
+color = color(0.75, 0.85, 1, 1)
+energy = 1.6
+fog_energy = 0
+
+; the sea (lit by the Moonlight above: with no ProceduralSky the water takes the world's first DirectionalLight3D)
+[node name="Water" parent="." type="Water3D"]
+position = vec3(0, -6.5, 0)
+size = vec2(500, 320)
+horizon_distance = 1400
+refraction = false
+color = color(0.02, 0.05, 0.1, 1)
+deep_color = color(0.002, 0.008, 0.025, 1)

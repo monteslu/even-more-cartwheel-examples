@@ -82,6 +82,16 @@ typedef struct club_style {
   float pocket;          /* a dark pocket round each coming note, clearing the current there (0 none, 1 the full pocket) */
   float note_light;      /* the notes' light (1 as the game draws them; a crisp plain picture shows a run of notes
                           * harder than the characters do, so it draws them a little dimmer) */
+  float lit;             /* 0: the flat shapes the characters read; 1: the picture's own materials: notes as lit gems with
+                          * highlights, glowing banks with bloom, roads of glossy dark glass catching the field's lights */
+  float key[3];          /* the field's key light (colour times strength), from above and in front */
+  float fill_l[3], fill_r[3]; /* the field's two low lights either side, in the backdrop's colours */
+  float sweep;           /* 0..1: how far the low lights sweep across the field (slowly, over bars) */
+  float pellets;         /* 0..1: the rivers as corridors: a line of pellets down each in place of the current (the arcade maze) */
+  float bank_tint;       /* 0: the banks in their lane's colour; 1: bank_rgb (the arcade maze's blue walls) */
+  float bank_rgb[3];
+  float land_no_mid;      /* 1: no land between two players' roads (the grid's sun shows there: dark rows riding over it
+                          * on the half beat were flashes) */
 } club_style;
 /* the style fading out (a), the one fading in (b) and how far from a to b (0..1) */
 void club_set_style(const club_style *a, const club_style *b, float t);

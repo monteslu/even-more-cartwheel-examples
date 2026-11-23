@@ -1,0 +1,115 @@
+[scene format=1]
+
+; The club backdrop (src/backdrop.c builds the laser fans, the crowd and the wall, and sweeps the heads): a room full of
+; haze, three moving heads on the truss throwing volumetric beams down over the crowd, laser fans from the back wall.
+
+[node name="Club" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.003, 0.002, 0.008, 1)
+use_background = true
+ambient_color = color(0.4, 0.3, 1, 1)
+ambient_energy = 0.03
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Haze" parent="." type="HeightFog"]
+volumetric = true
+density = 0.014
+height_falloff = 0.02
+base_height = 0
+use_sky_color = false
+color = color(0.03, 0.02, 0.06, 1)
+sun_g = 0.6
+volumetric_distance = 55
+volumetric_ambient = 0.25
+sky_distance = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 3.6, 18)
+rotation = vec3(0.02, 0, 0)
+fov = 58
+near = 0.2
+far = 300
+
+[node name="Floor" parent="." type="MeshInstance3D"]
+primitive = PLANE
+position = vec3(0, 0, -10)
+size = vec3(120, 1, 80)
+color = color(0.03, 0.03, 0.035, 1)
+roughness = 0.25
+metalness = 0.2
+clearcoat = 0.6
+
+[node name="BackWall" parent="." type="MeshInstance3D"]
+position = vec3(0, 12, -42)
+size = vec3(120, 24, 0.5)
+color = color(0.015, 0.015, 0.02, 1)
+roughness = 0.9
+
+[node name="Ceiling" parent="." type="MeshInstance3D"]
+position = vec3(0, 22, -10)
+size = vec3(120, 0.5, 80)
+color = color(0.01, 0.01, 0.012, 1)
+roughness = 0.9
+
+[node name="Truss" parent="." type="MeshInstance3D"]
+position = vec3(0, 14, -14)
+size = vec3(46, 0.6, 0.6)
+color = color(0.2, 0.2, 0.22, 1)
+metalness = 0.8
+roughness = 0.35
+
+[node name="TrussBack" parent="." type="MeshInstance3D"]
+position = vec3(0, 15, -34)
+size = vec3(60, 0.6, 0.6)
+color = color(0.2, 0.2, 0.22, 1)
+metalness = 0.8
+roughness = 0.35
+
+; the moving heads (src/backdrop.c sweeps them slowly and sets their colours)
+[node name="HeadA" parent="." type="SpotLight3D"]
+position = vec3(-14, 13.5, -14)
+rotation = vec3(-1.1, 0.3, 0)
+color = color(0.3, 0.5, 1, 1)
+energy = 900
+range = 40
+angle = 0.1
+penumbra = 0.35
+shadow = true
+shadow_size = 512
+fog_energy = 9
+
+[node name="HeadB" parent="." type="SpotLight3D"]
+position = vec3(0, 13.5, -14)
+rotation = vec3(-1.2, 0, 0)
+color = color(1, 0.25, 0.7, 1)
+energy = 900
+range = 40
+angle = 0.1
+penumbra = 0.35
+shadow = true
+shadow_size = 512
+fog_energy = 9
+
+[node name="HeadC" parent="." type="SpotLight3D"]
+position = vec3(14, 13.5, -14)
+rotation = vec3(-1.1, -0.3, 0)
+color = color(0.3, 1, 0.6, 1)
+energy = 900
+range = 40
+angle = 0.1
+penumbra = 0.35
+shadow = true
+shadow_size = 512
+fog_energy = 9
+
+[node name="BoothGlow" parent="." type="OmniLight3D"]
+position = vec3(0, 3, -32)
+color = color(0.5, 0.2, 1, 1)
+energy = 120
+range = 26

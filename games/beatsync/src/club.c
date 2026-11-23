@@ -87,6 +87,10 @@ static struct {
   t3_instanced_mesh *notes[LANES], *front, *flow, *banks, *ticks, *gates, *flare, *shards, *rings, *land, *caps, *crests, *sky, *band, *debris;
   t3_instanced_mesh *ridge, *plate, *pocket; /* the styles' (src/styles.c): a line along the land's tops, the dark road under each river */
   t3_material *plate_mat, *land_mat;
+  /* the lit picture (club_style.lit): gems over the flat notes, a soft halo under each, glowing banks */
+  t3_instanced_mesh *gem[LANES], *halo, *bank_glow, *gate_glow, *pellet;
+  t3_texture *env;
+  cw_node key, fill_l, fill_r;
   club_style sa, sb; /* the style fading out and the one fading in (club_set_style) */
   float st;          /* how far from sa to sb, 0..1 */
   bool styled;
@@ -224,6 +228,127 @@ static void layout_targets(int layout, float x[LANES], float on[LANES], float ax
   }
 }
 
+#define PI_F 3.14159265f
+static int lit_off; /* the `lit` request: parts of the lit picture left out (1 gems, 2 halos, 4 gate glow, 8 bank glow, 16 the low lights): a look at what each adds */
+#define PELLETS 40 /* a river's pellets in the arcade maze, one each half beat */
+/* ── the lit picture (club_style.lit) ──────────────────────────────────────────────────────────────────────────────
+ * The characters read flat shapes; the plain picture lights them. Each note gets a gem in front of its flat shape (the
+ * kick a polished orb, the clap a cut diamond, the bass a glassy capsule across its river, the synth a hexagonal
+ * prism) in a clear-coated material lit by the field's lights and reflecting a studio of soft boxes, so it carries
+ * highlights and a bright rim; a soft halo of its colour sits under it (the bloom takes it). The banks get a glow along
+ * them; the roads under the rivers are dark glass with a clear coat, so the field's low lights slide across them. The
+ * field's lights (main.cwscene: Key, FillL, FillR) take the style's colours, the low ones those of its backdrop. */
+
+/* a studio of soft boxes for the reflections: a big one overhead, two tall strips behind the camera, dim walls */
+static void studio_face(int f, int x, int y, int n, uint8_t *p) {
+  float u = ((float)x + 0.5f) / (float)n * 2 - 1, v = ((float)y + 0.5f) / (float)n * 2 - 1, k = 0.025f;
+  if (f == 2 && fabsf(u) < 0.6f && fabsf(v) < 0.6f) k = 1.0f;                       /* +y: the overhead box */
+  if (f == 4 && (fabsf(u - 0.55f) < 0.12f || fabsf(u + 0.55f) < 0.12f) && fabsf(v) < 0.75f) k = 0.8f; /* +z: two strips */
+  if ((f == 0 || f == 1) && v < -0.2f && v > -0.6f) k = 0.12f;                      /* the side walls: a low band */
+  uint8_t c = (uint8_t)lrintf(fminf(1, k) * 255);
+  p[0] = p[1] = p[2] = c, p[3] = 255;
+}
+static t3_texture *studio(void) {
+  enum { N = 64 };
+  uint8_t *faces[6];
+  for (int f = 0; f < 6; f++) {
+    faces[f] = malloc(N * N * 4);
+    for (int y = 0; y < N; y++)
+      for (int x = 0; x < N; x++) studio_face(f, x, y, N, faces[f] + (y * N + x) * 4);
+  }
+  t3_texture *t = t3_cube_texture_new(N, (const uint8_t *const *)faces);
+  for (int f = 0; f < 6; f++) free(faces[f]);
+  return t;
+}
+static float tx_soft(float u, float v) { /* a soft round glow */
+  float d = sqrtf((u - 0.5f) * (u - 0.5f) + (v - 0.5f) * (v - 0.5f)) * 2;
+  return d >= 1 ? 0 : powf(1 - d, 2.2f);
+}
+static float tx_line(float u, float v) { (void)v; return expf(-powf((u - 0.5f) * 5.0f, 2)); } /* soft across, even along */
+static t3_texture *gray_tex(int w, int h, float (*f)(float, float)) {
+  uint8_t *px = malloc((size_t)w * h * 4);
+  for (int y = 0; y < h; y++)
+    for (int x = 0; x < w; x++) {
+      uint8_t c = (uint8_t)lrintf(fminf(1, fmaxf(0, f(((float)x + 0.5f) / (float)w, ((float)y + 0.5f) / (float)h))) * 255);
+      uint8_t *p = px + ((size_t)y * w + x) * 4;
+      p[0] = p[1] = p[2] = c, p[3] = 255;
+    }
+  t3_texture *t = t3_texture_new(w, h, px);
+  free(px);
+  return t;
+}
+static t3_instanced_mesh *soft(t3_geometry *g, t3_texture *tex, int n) {
+  t3_instanced_mesh *im = glowing(instanced(g, n));
+  t3_material_set_map(im->mesh.materials[0], tex), t3_release(tex);
+  return im;
+}
+/* a capsule along x: a lathe about y, turned on its side by the instance (its length 2, its radius r) */
+static t3_geometry *capsule(float r, float len) {
+  t3_vec2 p[26];
+  int n = 0;
+  for (int i = 0; i <= 12; i++) { float a = -PI_F / 2 + PI_F / 2 * (float)i / 12; p[n++] = (t3_vec2){ r * cosf(a), -len / 2 + r * sinf(a) + r }; }
+  for (int i = 0; i <= 12; i++) { float a = PI_F / 2 * (float)i / 12; p[n++] = (t3_vec2){ r * cosf(a), len / 2 - r + r * sinf(a) }; }
+  return t3_lathe_geometry_new(p, n, 24, 0, 2 * PI_F);
+}
+static void lit_build(cw_node level) {
+  C.env = studio();
+  t3_geometry *g[LANES] = {
+    t3_sphere_geometry_new(0.62f, 32, 20),          /* kick: a polished orb */
+    t3_octahedron_geometry_new(0.84f, 0),           /* clap: a cut diamond (its points up, down and to the sides) */
+    capsule(0.3f, 2.0f),                            /* bass: a capsule across its river */
+    t3_cylinder_geometry_new(0.68f, 0.68f, 0.5f, 6, 1, false), /* synth: a hexagonal prism, face on */
+  };
+  for (int l = 0; l < LANES; l++) {
+    t3_material *m = t3_mesh_physical_material_new(0xffffff);
+    m->roughness = l == LANE_CLAP ? 0.06f : 0.14f, m->metalness = 0.05f;
+    m->clearcoat = 0.4f, m->clearcoat_roughness = 0.08f;
+    m->flat_shading = l == LANE_CLAP || l == LANE_SYNTH;
+    t3_material_set_texture(m, T3_ENV_MAP, C.env);
+    m->env_map_intensity = 0.3f; /* (the reflections do not dim with a note: a run of bright highlights was a regular flicker) */
+    t3_instanced_mesh *im = t3_instanced_mesh_new(g[l], m, MAX_NOTES_SHOWN);
+    t3_release(g[l]), t3_release(m);
+    T3_OBJ(im)->frustum_culled = false;
+    for (int i = 0; i < MAX_NOTES_SHOWN; i++) hide(im, i), t3_instanced_mesh_set_color_at(im, i, (t3_color){ 0, 0, 0 });
+    im->count = 0;
+    t3_object_add(C.root, im);
+    t3_release(im);
+    C.gem[l] = im;
+  }
+  C.pellet = instanced(t3_circle_geometry_new(0.5f, 12), PELLETS * LANES);
+  C.halo = soft(t3_plane_geometry_new(1, 1, 1, 1), gray_tex(64, 64, tx_soft), MAX_NOTES_SHOWN * LANES);
+  C.halo->count = 0;
+  C.bank_glow = soft(t3_plane_geometry_new(1, 1, 1, 1), gray_tex(64, 4, tx_line), BANK_SEGS * 2 * LANES);
+  C.gate_glow = soft(t3_plane_geometry_new(1, 1, 1, 1), gray_tex(64, 64, tx_soft), LANES);
+  /* the road: glass with a clear coat over a dark body */
+  {
+    t3_material *m = t3_mesh_physical_material_new(0x000000);
+    m->color = (t3_color){ 0.006f, 0.007f, 0.012f };
+    m->roughness = 0.12f, m->metalness = 0.0f, m->clearcoat = 1, m->clearcoat_roughness = 0.03f;
+    t3_material_set_texture(m, T3_ENV_MAP, C.env);
+    m->env_map_intensity = 0.35f;
+    m->transparent = true, m->opacity = 0;
+    t3_material *old = C.plate->mesh.materials[0];
+    C.plate->mesh.materials[0] = m; /* the mesh holds one reference: hand it the new material and drop the old */
+    t3_release(old);
+    C.plate_mat = m;
+  }
+  C.key = cw_node_get(level, "Key");
+  C.fill_l = cw_node_get(level, "FillL");
+  C.fill_r = cw_node_get(level, "FillR");
+}
+static void set_inst_q(t3_instanced_mesh *im, int i, t3_vec3 p, t3_quat q, t3_vec3 s) {
+  t3_mat4 m;
+  t3_mat4_compose(&m, p, q, s);
+  t3_instanced_mesh_set_matrix_at(im, i, &m);
+}
+static void light_set(cw_node n, const float *a, const float *b, float t, float k) {
+  if (!n.id) return;
+  float c[3], mx = 0;
+  for (int i = 0; i < 3; i++) c[i] = (a[i] + (b[i] - a[i]) * t), mx = fmaxf(mx, c[i]);
+  cw_node_set(n, "color", cw_val_color(mx > 0 ? c[0] / mx : 0, mx > 0 ? c[1] / mx : 0, mx > 0 ? c[2] / mx : 0, 1));
+  cw_node_set(n, "energy", cw_val_float(mx * k));
+}
+
 void club_build(void) {
   if (C.built) return;
   memset(&C, 0, sizeof C);
@@ -269,6 +394,7 @@ void club_build(void) {
   C.plate_mat->transparent = true, C.plate_mat->opacity = 0, C.plate_mat->version++;
   T3_OBJ(C.plate)->visible = false;
   T3_OBJ(C.plate)->render_order = -1;
+  lit_build(level);
   for (int i = 0; i < DEBRIS; i++) C.bit[i].born = -1e9f;
   for (int i = 0; i < FLOW; i++) {
     C.flow_u[i] = -0.42f + 0.84f * hf(i, 21);
@@ -391,6 +517,12 @@ static void land_update(const club_view *v, float beat, float now, float dim) {
     for (int k = 0; k < ns && show; k++) {
       float a = span[k][0], b = span[k][1], w = b - a;
       bool leftEdge = a <= -xo + 1e-3f, rightEdge = b >= xo - 1e-3f; /* an end at the screen's edge, not a road */
+      if (!leftEdge && !rightEdge && sty(land_no_mid) > 0.5f) { /* between two roads: left out in a style that asks */
+        int n0 = k == ns - 1 ? 2 * LAND_COLS - col : (int)lroundf(2.0f * LAND_COLS * w / total);
+        for (int j = 0; j < n0 && col < 2 * LAND_COLS; j++, col++) hide(C.land, (LAND_ROWS - 1 - r) * 2 * LAND_COLS + col), hide(C.caps, r * 2 * LAND_COLS + col), hide(C.ridge, r * 2 * LAND_COLS + col);
+        hide(C.crests, r * LAND_SPANS + k);
+        continue;
+      }
       int n = k == ns - 1 ? 2 * LAND_COLS - col : (int)lroundf(2.0f * LAND_COLS * w / total);
       float cwk = w / (float)CW_MAX(n, 1);
       for (int j = 0; j < n && col < 2 * LAND_COLS; j++, col++) {
@@ -480,7 +612,7 @@ static void streak_update(const club_view *v, float now, float dim) {
     float x = C.bit[i].x + C.bit[i].vx * age, y = C.bit[i].y + C.bit[i].vy * age - 6.0f * age * age;
     float env = (1 - age / DRAIN_S) * (1 - age / DRAIN_S);
     set_inst(C.debris, i, (t3_vec3){ x, y, 0.12f }, age * 4 + (float)i, (t3_vec3){ C.bit[i].size, C.bit[i].size, 1 });
-    t3_instanced_mesh_set_color_at(C.debris, i, scale(mix(C.p.lane[C.bit[i].lane], (t3_color){ 1, 0.18f, 0.18f }, 0.75f), 1.3f * env * v->drain_light[v->lane_player[C.bit[i].lane] > 0 ? 1 : 0] * dim));
+    t3_instanced_mesh_set_color_at(C.debris, i, scale(mix(C.p.lane[C.bit[i].lane], (t3_color){ 1, 0.07f, 0.05f }, 0.92f), 1.1f * env * v->drain_light[v->lane_player[C.bit[i].lane] > 0 ? 1 : 0] * dim));
   }
   changed(C.debris);
 }
@@ -528,15 +660,27 @@ void club_update(const club_view *v) {
     T3_OBJ(C.plate)->visible = pl > 0.002f;
     if (C.plate_mat->opacity != pl) C.plate_mat->opacity = pl, C.plate_mat->version++;
   }
+  /* the lit picture's share and the field's lights (the low ones sweep slowly across, over eight bars) */
+  const float P = C.styled ? fminf(1, fmaxf(0, sty(lit))) : 0;
+  {
+    float k = C.st;
+    light_set(C.key, C.sa.key, C.sb.key, k, (lit_off & 128) ? 0 : 1.0f);
+    float sw = sty(sweep), ph = 2 * PI_F * beat / 32.0f;
+    light_set(C.fill_l, C.sa.fill_l, C.sb.fill_l, k, (lit_off & 16) ? 0 : 90.0f);
+    light_set(C.fill_r, C.sa.fill_r, C.sb.fill_r, k, (lit_off & 16) ? 0 : 90.0f);
+    if (C.fill_l.id) cw_node3d_set_position(C.fill_l, (t3_vec3){ -12 + 7 * sw * sinf(ph), -9 + 4 * sw * cosf(ph * 0.7f), 7 });
+    if (C.fill_r.id) cw_node3d_set_position(C.fill_r, (t3_vec3){ 12 - 7 * sw * sinf(ph + 1.3f), -9 + 4 * sw * cosf(ph * 0.7f + 2), 7 });
+  }
   float span = C.ahead + PAST; /* the current runs from the far end to below the gate */
   for (int l = 0; l < LANES; l++) {
     const float ldim = dim * C.on[l]; /* a river fading in or out with the layout (0: not shown) */
     const int pp = v->lane_player[l] > 0 ? 1 : 0; /* whose streak this river shows */
     if (C.on[l] < 0.01f && !C.hidden_draw) { /* not shown: left out, never drawn dark (it would cover a river where it rests) */
       for (int i = 0; i < FLOW; i++) hide(C.flow, l * FLOW + i);
-      for (int j = 0; j < BANK_SEGS * 2; j++) hide(C.banks, l * BANK_SEGS * 2 + j);
+      for (int j = 0; j < PELLETS; j++) hide(C.pellet, l * PELLETS + j);
+      for (int j = 0; j < BANK_SEGS * 2; j++) hide(C.banks, l * BANK_SEGS * 2 + j), hide(C.bank_glow, l * BANK_SEGS * 2 + j);
       for (int j = 0; j < TICKS; j++) hide(C.ticks, l * TICKS + j);
-      hide(C.front, l), hide(C.gates, l), hide(C.flare, l);
+      hide(C.front, l), hide(C.gates, l), hide(C.flare, l), hide(C.gate_glow, l);
       continue;
     }
     /* a river plays at full strength while it is hit, dimmed to dots while it is missed out (the streak shows on the
@@ -551,11 +695,25 @@ void club_update(const club_view *v) {
       float near_gate = expf(-fabsf(d) * 1.8f), surge = 1 + 2.4f * fl * near_gate;
       u *= 1 + 0.25f * fl * near_gate;
       float s = persp(d), in = fminf(1, (C.ahead - d) / 0.6f), out = d < 0 ? fmaxf(0, 1 + d / PAST) : 1;
-      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out * haze(s, 0.3f) * sty(flow);
+      float b = (0.34f + 0.14f * hf((uint32_t)i, (uint32_t)l + 40)) * lv * surge * in * out * haze(s, 0.3f) * sty(flow) * (1 - sty(pellets));
       set_inst(C.flow, l * FLOW + i, on_river(l, d, u, -0.2f), 0, (t3_vec3){ C.flow_len[i] * s, s, 1 });
       t3_instanced_mesh_set_color_at(C.flow, l * FLOW + i, scale(C.p.lane[l], b));
     }
 
+    /* the arcade maze: a line of pellets down the middle of the river, still (dots riding down at a half beat apart
+     * pass a point four times a second, a regular flicker in the chunky pixels); the notes ride down them */
+    {
+      float pel = sty(pellets);
+      float off = 0;
+      for (int j = 0; j < PELLETS; j++) {
+        int idx = l * PELLETS + j;
+        float d = 0.5f * (float)j - off;
+        if (pel < 0.002f || d > C.ahead || d < -PAST) { hide(C.pellet, idx); continue; }
+        float s = persp(d), in = fminf(1, (C.ahead - d) / 0.6f), out = d < 0 ? fmaxf(0, 1 + d / PAST) : 1;
+        set_inst(C.pellet, idx, on_river(l, d, 0, -0.18f), 0, (t3_vec3){ 0.3f * s, 0.3f * s, 1 });
+        t3_instanced_mesh_set_color_at(C.pellet, idx, scale((t3_color){ 1, 0.72f, 0.55f }, 0.5f * pel * ldim * in * out * haze(s, 0.4f)));
+      }
+    }
     /* the banks: two lines down the river's sides, fading out at the far end and below the gate */
     for (int side = 0; side < 2; side++)
       for (int j = 0; j < BANK_SEGS; j++) {
@@ -575,12 +733,20 @@ void club_update(const club_view *v) {
           float front = v->drain_from[pp] * (1 - v->drain_t[pp] / DRAIN_S);
           drain = dm >= -0.2f ? fminf(1, fmaxf(0, (front - qc) / 0.06f + 0.5f)) * v->drain_light[pp] : 0;
         }
-        t3_color bc = mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.4f * on);
-        bc = mix(bc, (t3_color){ 1, 0.18f, 0.18f }, 0.8f * drain);
+        /* each style's bank colour (its lane's, or the style's own: the arcade maze's blue walls), between the two */
+        t3_color ba = mix(C.p.lane[l], (t3_color){ C.sa.bank_rgb[0], C.sa.bank_rgb[1], C.sa.bank_rgb[2] }, C.styled ? C.sa.bank_tint : 0);
+        t3_color bb = mix(C.p.lane[l], (t3_color){ C.sb.bank_rgb[0], C.sb.bank_rgb[1], C.sb.bank_rgb[2] }, C.styled ? C.sb.bank_tint : 0);
+        t3_color bc = mix(mix(ba, bb, C.styled ? C.st : 0), (t3_color){ 1, 1, 1 }, 0.4f * on);
+        bc = mix(bc, (t3_color){ 1, 0.07f, 0.05f }, 0.92f * drain);
         float bl = 0.48f * lv * fade * haze(persp(dm), 0.6f) + (0.4f * on + 0.9f * drain) * ldim * haze(persp(dm), 0.5f) * (dm < 0 ? fmaxf(0, 1 + dm / PAST) : 1);
         int idx = (l * 2 + side) * BANK_SEGS + j;
         set_inst(C.banks, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.1f }, -atan2f(dx, dy), (t3_vec3){ 1 + 1.6f * fmaxf(on, drain), len * 1.04f, 1 });
-        t3_instanced_mesh_set_color_at(C.banks, idx, scale(bc, bl));
+        t3_instanced_mesh_set_color_at(C.banks, idx, scale(bc, bl * (1 - 0.1f * P)));
+        /* the lit picture: a soft glow along the bank, wider than its line (the bloom spreads it further) */
+        if (P > 0.002f) {
+          set_inst(C.bank_glow, idx, (t3_vec3){ (a.x + b2.x) * 0.5f, (a.y + b2.y) * 0.5f, -0.11f }, -atan2f(dx, dy), (t3_vec3){ 1.1f * persp(dm) + 0.25f, len * 1.04f, 1 });
+          t3_instanced_mesh_set_color_at(C.bank_glow, idx, scale(bc, bl * 0.24f * P * !(lit_off & 8)));
+        } else hide(C.bank_glow, idx);
       }
 
     /* the road under the river (a style's): dark glass from the far end to below the gate, a little wider than the
@@ -621,26 +787,34 @@ void club_update(const club_view *v) {
     set_inst(C.gates, l, g, 0, (t3_vec3){ (RIVER_W + 0.5f) * (1 + 0.08f * fl), 1 + 0.5f * fl + 0.2f * pr, 1 });
     /* the `rivers hidden draw` control: a river not shown drawn dark over where it rests, as 0.36.0's first build's
      * dark flare did (the flare is light that adds now, so the gate bar stands in for it, in front, flare-sized) */
-    if (C.hidden_draw && C.on[l] < 0.01f) set_inst(C.gates, l, (t3_vec3){ g.x, g.y, 0.3f }, 0, (t3_vec3){ 1.7f * 1.4f * 2, 0.8f * 1.4f * 2 / 0.34f, 1 });
+    if (C.hidden_draw && C.on[l] < 0.01f) { /* in front of everything the field draws (a gem stands out of the plane), where it covers on screen */
+      float pk = (22.0f / C.zoom - 2.0f) / (22.0f / C.zoom);
+      set_inst(C.gates, l, (t3_vec3){ g.x * pk, (g.y + 0.6f) * pk, 2.0f }, 0, (t3_vec3){ 1.7f * 1.4f * 2 * pk, 0.8f * 1.4f * 2 / 0.34f * 1.6f * pk, 1 });
+    }
     t3_instanced_mesh_set_color_at(C.gates, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.85f + 0.2f * pr) * (0.45f + 0.55f * v->level[l]) * ldim + 0.55f * fl * ldim));
+    set_inst(C.gate_glow, l, (t3_vec3){ g.x, g.y, 0.05f }, 0, (t3_vec3){ (RIVER_W + 1.6f) * (1 + 0.1f * fl), 1.3f + 0.6f * fl + 0.2f * pr, 1 });
+    t3_instanced_mesh_set_color_at(C.gate_glow, l, scale(C.p.lane[l], P * ldim * 0.22f * (0.45f + 0.55f * v->level[l]) * !(lit_off & 4) /* steady: a glow pulsing on every hit of a run is a regular flicker */));
     float fs = 0.6f + 1.0f * fl + 0.15f * pr;
     set_inst(C.flare, l, (t3_vec3){ g.x, g.y, 0.04f }, 0, (t3_vec3){ fs * 1.7f, fs * 0.8f, 1 });
     t3_instanced_mesh_set_color_at(C.flare, l, scale(mix(C.p.lane[l], (t3_color){ 1, 1, 1 }, 0.3f * fl), (0.08f + 0.6f * fl + 0.12f * pr) * ldim * sty(burst)));
   }
   changed(C.flow);
+  changed(C.pellet);
   changed(C.plate);
   changed(C.banks);
   changed(C.ticks);
   changed(C.front);
   changed(C.gates);
   changed(C.flare);
+  changed(C.bank_glow);
+  changed(C.gate_glow);
 
   /* the notes: up their river by how many beats away they are, in the river's perspective (small far off, growing all
    * the way to the gate), a little brighter far off where they are smaller than a character, and no brighter as they
    * near the gate: their light there grows only with their size, so a run of notes riding down is a steady light,
    * never a burst on each beat (the flash check's regular-flicker bound); a played note opens out at the gate and
    * fades, a missed one greys and drifts on down */
-  int cnt[LANES] = { 0 }, npk = 0;
+  int cnt[LANES] = { 0 }, npk = 0, ngem[LANES] = { 0 }, nhalo = 0;
   C.probe_n = 0;
   for (int i = 0; v->notes && i < v->count; i++) {
     float nb = song_beat_at(v->s, (float)v->notes[i].ms), ahead = nb - beat;
@@ -686,9 +860,36 @@ void club_update(const club_view *v) {
     }
     bright *= C.on[l] * note_gain * sty(note_light);
     t3_color c = st == NOTE_MISSED ? (t3_color){ bright, bright, bright } : scale(C.p.lane[l], bright * dim);
-    set_inst(C.notes[l], cnt[l], on_river(l, d, 0, 0.1f), 0, (t3_vec3){ size, size, 1 });
+    /* the lit picture: a gem in front of the flat note (a missed note stays a flat grey shape) */
+    float gk = st == NOTE_PENDING ? P * (0.25f + 0.75f * in) : 0; /* a played note opens out flat in its burst */
+    t3_vec3 at = on_river(l, d, 0, 0.1f);
+    /* at the gate a note is its flat shape again (the flat notes were tuned with the bursts so a run of them at the gate
+     * is a steady light; a gem arriving there on every note of a run read as a regular flicker over the 0.02 bound) */
+    { float g0 = fminf(1, fmaxf(0, (ahead - 0.35f) / 0.65f)); gk *= g0 * g0 * (3 - 2 * g0); }
+    if (lit_off & 1) gk = 0;
+    if (gk > 0.002f && ngem[l] < MAX_NOTES_SHOWN) {
+      float gs = size * (0.4f + 0.6f * gk);
+      /* a slow rock about the upright, each note its own phase, so the highlights travel across it */
+      float wob = 0.35f * sinf(v->t * 1.3f + (float)i * 0.9f);
+      t3_quat q = l == LANE_BASS ? t3_quat_from_axis_angle((t3_vec3){ 0, 0, 1 }, PI_F / 2)
+                : l == LANE_SYNTH ? t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, PI_F / 2)
+                : t3_quat_from_axis_angle((t3_vec3){ 0, 1, 0 }, wob + (l == LANE_CLAP ? PI_F / 4 : 0));
+      if (l == LANE_BASS) q = t3_quat_multiply(t3_quat_from_axis_angle((t3_vec3){ 1, 0, 0 }, wob), q);
+      set_inst_q(C.gem[l], ngem[l], (t3_vec3){ at.x, at.y, at.z + 0.75f * gs }, q, (t3_vec3){ gs, gs, gs });
+      /* the gem's own colour, a little brighter than the flat note (the light falls off its sides) */
+      t3_instanced_mesh_set_color_at(C.gem[l], ngem[l]++, scale(C.p.lane[l], fminf(1.2f, bright * dim * ((lit_off & 64) ? 0.4f : 1.1f)) * gk) /* the note's own light (a run of eighths dimmer) */);
+      if (nhalo < MAX_NOTES_SHOWN * LANES && !(lit_off & 2)) {
+        float hs = size * NOTE_W[l] * 1.7f;
+        set_inst(C.halo, nhalo, (t3_vec3){ at.x, at.y, at.z - 0.02f }, 0, (t3_vec3){ hs, l == LANE_BASS ? hs * 0.5f : hs, 1 });
+        t3_instanced_mesh_set_color_at(C.halo, nhalo++, scale(C.p.lane[l], 0.35f * bright * dim * gk));
+      }
+    }
+    /* the flat note gives way to its gem: it shrinks out (drawn black behind the gem, its rim passing over the river
+     * on every note of a run was a dark regular flicker) */
+    float fsz = size * (1 - gk);
+    set_inst(C.notes[l], cnt[l], at, 0, (t3_vec3){ fsz, fsz, 1 });
     t3_instanced_mesh_set_color_at(C.notes[l], cnt[l]++, c);
-    float pk = sty(pocket) * in * C.on[l];
+    float pk = sty(pocket) * in * C.on[l] * (1 - 0.35f * P); /* a gem has a rim of its own: a smaller pocket */
     if (st == NOTE_PENDING && pk > 0.01f && npk < MAX_NOTES_SHOWN * LANES) {
       float rx = 0.5f * NOTE_W[l] * size * 1.45f * pk, ry = l == LANE_BASS ? 0.33f * size * 1.9f * pk : rx;
       set_inst(C.pocket, npk++, on_river(l, d, 0, 0.04f), 0, (t3_vec3){ rx, ry, 1 });
@@ -699,6 +900,16 @@ void club_update(const club_view *v) {
     changed(C.notes[l]);
   }
   C.pocket->count = npk;
+  for (int l = 0; l < LANES; l++) {
+    /* the gem glows its lane's colour from within; the lights and the studio add the highlights over it */
+    t3_material *gm = C.gem[l]->mesh.materials[0];
+    t3_color ec = scale(C.p.lane[l], ((lit_off & 32) ? 0 : 0.8f) * note_gain * sty(note_light) * dim);
+    if (gm->emissive.r != ec.r || gm->emissive.g != ec.g || gm->emissive.b != ec.b) gm->emissive = ec, gm->version++;
+    C.gem[l]->count = ngem[l];
+    changed(C.gem[l]);
+  }
+  C.halo->count = nhalo;
+  changed(C.halo);
   changed(C.pocket);
 
   /* the player's hits: a burst at the gate in the river's colour, shards thrown out (up and to the sides, falling a
@@ -798,6 +1009,10 @@ static void cmd_notes(int argc, const char **argv, cw_reply *r) {
     cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"x\":%.1f,\"y\":%.1f,\"px\":%.2f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].x, C.probe[i].y, C.probe[i].px, C.probe[i].bright);
   cw_reply_printf(r, "]}");
 }
+static void cmd_lit(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2) lit_off = atoi(argv[1]);
+  cw_reply_printf(r, "{\"off\":%d}", lit_off);
+}
 static void cmd_notescale(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "notescale game|flat|reverse"); return; }
   C.notescale = !strcmp(argv[1], "flat") ? 1 : !strcmp(argv[1], "reverse") ? 2 : 0;
@@ -823,4 +1038,5 @@ void club_register_debug(void) {
   cw_debug_command("land", "land [game|flat|off]: the land's rows as last drawn (beat, height, hue, bands, stab, crest), or how it reads the song (src/club.c)", cmd_land);
   cw_debug_command("notes", "notes: the notes on the rivers as last drawn (lane, beats ahead, y and width in pixels) (src/club.c)", cmd_notes);
   cw_debug_command("notescale", "notescale game|flat|reverse: how a note's size follows its distance (the size gate's controls)", cmd_notescale);
+  cw_debug_command("lit", "lit <mask>: leave parts of the lit picture out (1 gems, 2 halos, 4 gate glow, 8 bank glow, 16 the low lights)", cmd_lit);
 }

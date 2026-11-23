@@ -4,3 +4,16 @@ fonts/FiraMono-Regular.ttf
 fonts/FiraMono-OFL.txt
 fx/fire.png
 fx/fire_mv.png
+backdrops/fire.cwscene
+backdrops/sea.cwscene
+backdrops/grid.cwscene
+backdrops/lasers.cwscene
+backdrops/stage.cwscene
+backdrops/clean.cwscene
+fx/smoke.png
+fx/smoke_mv.png
+models/band_guitar.glb
+models/band_singer.glb
+models/band_bass.glb
+models/band_drums.glb
+backdrops/maze.cwscene

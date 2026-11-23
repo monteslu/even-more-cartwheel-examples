@@ -15,7 +15,7 @@
 
 #include "song.h"
 
-enum { STYLE_NEON, STYLE_CLEAN, STYLE_FIRE, STYLE_WATER, STYLE_GRID, STYLE_TERMINAL, STYLE_LASERS, STYLE_COUNT };
+enum { STYLE_NEON, STYLE_CLEAN, STYLE_FIRE, STYLE_WATER, STYLE_GRID, STYLE_TERMINAL, STYLE_LASERS, STYLE_STAGE, STYLE_HALF, STYLE_MAZE, STYLE_BIT, STYLE_COUNT };
 
 /* init: the debug requests and fields (before the scene is up) */
 void styles_init(void);

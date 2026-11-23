@@ -19,6 +19,10 @@
 //    fades (fl.style) at most 3 a second. The CONTROL must fail: the same run with every change a one-frame cut
 //    (`style cut 1`).
 //
+// 4. The HUD: no two of its lines of text drawn over each other (hud.overlap_max, the most a frame, over the whole
+//    survey: the middle gate's judgement and the multiplier or the streak called out under it overlapped before). The
+//    CONTROL must fail: the same play with `hud old 1` (the old placement) for 1200 frames.
+//
 //   node tests/beatsync-styles.mjs [--gpu gl|webgpu|both] [--only survey|read|flash] [--style <id>]
 import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,6 +43,7 @@ const MIN_CONTRAST = 3.0; // WCAG 1.4.11's bound for graphics a person must see
 const MAX_RISE = 0.2;     // the hardest two-frame rise of a sixth of the screen a fade may make (a hit's burst makes about
                           // 0.1; a cut between two styles makes 0.5)
 const MAX_FLASHES = 3;
+const SONG_IN = 420;      // frames from a song's start into its notes (8 beats of lead-in, then a few bars)
 
 let failed = 0;
 const ok = (s) => console.log(`ok   ${s}`);
@@ -97,9 +102,23 @@ for (const gpu of GPUS) {
     const r = await openBeatsync('beatsync_auto', { gpu, tag: 'styles' });
     try {
       await r.stepTo(START);
+      // the HUD's control first (the old placement must overlap), then the survey must draw none
+      if (!ONLY || ONLY === 'survey') {
+        await r.command('hud old 1');
+        await r.call('wasm', { op: 'write', name: 'hud.overlap_max', value: 0 });
+        await r.step(1200);
+        const ovc = (await r.fields())['hud.overlap_max'];
+        await r.command('hud old 0');
+        if (ovc > 0) ok(`styles hud control (${gpu}): the old placement draws ${ovc} lines over each other, as it must`);
+        else fail(`styles hud control (${gpu}): the old placement drew no overlap in 1200 frames: the check cannot see one`);
+        await r.call('wasm', { op: 'write', name: 'hud.overlap_max', value: 0 });
+      }
       const all = await styleList(r);
       const list = ONE ? all.filter((s) => s.id === ONE) : all;
       for (const s of list) {
+        // each style on a fresh start of the song (the survey is longer than one song): into its notes, then the style
+        await r.command('song 0 hard');
+        await r.step(SONG_IN);
         await r.command(`style ${s.id}`);
         await r.step(HOLD);
         const f = await r.fields();
@@ -117,7 +136,7 @@ for (const gpu of GPUS) {
         }
         // the style shows: its backdrop at full weight, the characters on or off, the picture not flat
         const bw = f['style.backdrop'] || [];
-        const BD = ['none', 'fire', 'water', 'grid', 'lasers'];
+        const BD = ['none', 'fire', 'sea', 'grid', 'lasers', 'stage', 'clean', 'maze']; // src/backdrop.h BD_*
         const want = BD.indexOf(s.backdrop);
         const mix = f['ascii.mix'];
         let lo = 1, hi = 0;
@@ -136,8 +155,15 @@ for (const gpu of GPUS) {
           else fail(`styles readability (${gpu}) ${s.id}: notes only ${med.toFixed(2)}:1 against their river (median of ${c.length}, worst ${worst.toFixed(2)}:1, bound ${MIN_CONTRAST}:1)`);
         }
       }
+      if (!ONLY || ONLY === 'survey') {
+        const ov = (await r.fields())['hud.overlap_max'];
+        if (ov === 0) ok(`styles hud (${gpu}): no HUD lines drawn over each other through the survey`);
+        else fail(`styles hud (${gpu}): ${ov} HUD lines drawn over each other in a frame`);
+      }
       // the control: the brightest backdrop, no roads, the notes dimmed: must fail
       if (!ONLY || ONLY === 'read') {
+        await r.command('song 0 hard');
+        await r.step(SONG_IN);
         await r.command('style fire');
         await r.command('style readctl 1');
         await r.step(HOLD);

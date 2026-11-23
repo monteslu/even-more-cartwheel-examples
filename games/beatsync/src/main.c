@@ -916,6 +916,7 @@ static void fixed_update(void *user, double dt) {
 static cw_font font(void) { return cw_ui_font_sans(); }
 static const cw_color WHITE = { 1, 1, 1, 1 }, DIM = { 0.7f, 0.74f, 0.86f, 1 }, ACCENT = { 1.0f, 0.82f, 0.3f, 1 };
 static float U; /* canvas pixels per 1080th of its height */
+static bool hud_old; /* the `hud old` request */
 
 static cw_text_style ts(float size, cw_color c) {
   return (cw_text_style){ .size = size, .color = c, .shadow_color = cw_rgba(c.r, c.g, c.b, 0.4f * c.a), .shadow_spread = size * 0.04f,
@@ -926,7 +927,7 @@ static void text_at(const char *s, float x, float y, float size, cw_color c, int
   cw_text_style st = ts(size, c);
   cw_text_metrics m = cw_font_measure(font(), s, &st);
   x -= align == 0 ? m.width * 0.5f : align > 0 ? m.width : 0;
-  ascii_hud_rect(x, y, m.width, m.height, c.a);
+  ascii_hud_text(x, y, m.width, m.height, c.a);
   cw_r2d_text(font(), s, cw_v2(x, y), &st);
 }
 /* A song's name in a box of its own width: one this long fits at this size; a longer one gets a little smaller
@@ -1206,12 +1207,14 @@ static void draw_play(cw_vec2 cv, float size) {
       club_gate_screen(pl[1], cv.x, cv.y, &x1, &yy);
       x = (x0 + x1) * 0.5f;
     }
-    y = gy + size * 2.35f;
+    /* under the middle gate's judgement with a clear gap, so the two never overlap (the HUD gate counts lines drawn
+     * over each other; `hud old` puts it back where it overlapped, its control) */
+    y = gy + size * (hud_old ? 2.35f : 3.05f);
     int m = mult_of(S->combo);
     if (S->milestone_ticks) {
       float t = (float)S->milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 8 + 0.2f);
       snprintf(b, sizeof b, "%d streak", S->milestone);
-      text_at(b, x, y - (1 - t) * size * 0.5f, size * 1.15f, cw_rgba(1, 0.95f, 0.7f, a), 0);
+      text_at(b, x, hud_old ? y - (1 - t) * size * 0.5f : y + t * size * 0.2f, size * 1.15f, cw_rgba(1, 0.95f, 0.7f, a), 0); /* it rises into its place */
     } else if (S->broke_ticks) {
       float a = fminf(1, (float)S->broke_ticks / 30.0f);
       cw_color c = JUDGE_COL[J_MISS];
@@ -1458,6 +1461,10 @@ static void render(void *user, double alpha) {
 static int32_t lane_level_dbg[LANES];
 static float lane_level_f[LANES];
 
+static void cmd_hud(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2 && !strcmp(argv[1], "old")) hud_old = argc < 3 || atoi(argv[2]) != 0;
+  cw_reply_printf(r, "{\"old\":%d}", hud_old);
+}
 static void cmd_streakfx(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2) G.streakfx_off = !strcmp(argv[1], "off");
   cw_reply_printf(r, "{\"streakfx\":%d}", !G.streakfx_off);
@@ -1663,6 +1670,7 @@ static void init(void *user) {
   music_register_debug();
   club_register_debug();
   cw_debug_command("leave", "leave: the crowd leaves the song now (the failed song, for the flash check)", cmd_leave);
+  cw_debug_command("hud", "hud old [1|0]: the multiplier and the streak called out where they overlapped the middle judgement (the HUD gate's control)", cmd_hud);
   cw_debug_command("lanes", "lanes <kick> <clap> <bass>: the river each lane is drawn as, 0 left 1 middle 2 right (the layout gate's control)", cmd_lanes);
   cw_debug_i32("song.pick", &G.pick);
   cw_debug_i32("song.from_ms", &G.from_ms);

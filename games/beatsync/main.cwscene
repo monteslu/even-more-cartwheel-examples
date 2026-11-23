@@ -5,7 +5,7 @@
 [node name="Env" parent="." type="WorldEnvironment"]
 background = color(0, 0, 0, 1)
 use_background = true
-ambient_energy = 0
+ambient_energy = 0.12
 hemi_energy = 0
 
 [node name="Post" parent="." type="PostProcess"]
@@ -21,5 +21,60 @@ fov = 40
 near = 1
 far = 1500
 current = true
+
+; the field's lights (src/club.c sets them from the style): they light only the lit picture (gems, the roads' glass)
+[node name="Key" parent="." type="DirectionalLight3D"]
+position = vec3(-4, 10, 12)
+rotation = vec3(-0.75, -0.3, 0)
+color = color(1, 1, 1, 1)
+energy = 0
+
+[node name="FillL" parent="." type="OmniLight3D"]
+position = vec3(-9, -7, 7)
+color = color(1, 1, 1, 1)
+energy = 0
+range = 40
+
+[node name="FillR" parent="." type="OmniLight3D"]
+position = vec3(9, -7, 7)
+color = color(1, 1, 1, 1)
+energy = 0
+range = 40
+
+; the backdrops (src/backdrop.c): worlds of their own drawn behind the field, faded by opacity, at most two at once
+[node name="BdFire" parent="." type="Backdrop"]
+scene = "backdrops/fire.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdSea" parent="." type="Backdrop"]
+scene = "backdrops/sea.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdGrid" parent="." type="Backdrop"]
+scene = "backdrops/grid.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdLasers" parent="." type="Backdrop"]
+scene = "backdrops/lasers.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdStage" parent="." type="Backdrop"]
+scene = "backdrops/stage.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdClean" parent="." type="Backdrop"]
+scene = "backdrops/clean.cwscene"
+camera = "Camera"
+opacity = 0
+
+[node name="BdMaze" parent="." type="Backdrop"]
+scene = "backdrops/maze.cwscene"
+camera = "Camera"
+opacity = 0
 
 [node name="Field" parent="." type="Node3D" groups="airborne"]

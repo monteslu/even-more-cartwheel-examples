@@ -46,6 +46,8 @@ void ascii_tune_set(const char *name, float value);
 #include <cartwheel/render2d.h>
 void ascii_hud_begin(cw_vec2 canvas, float u);
 void ascii_hud_rect(float x, float y, float w, float h, float alpha);
+/* the same for a line of text (the HUD gate counts lines of text drawn over each other: hud.overlap) */
+void ascii_hud_text(float x, float y, float w, float h, float alpha);
 /* the same with the box's edge colour (a panel's: a player's colour) */
 void ascii_hud_rect_edge(float x, float y, float w, float h, float alpha, cw_color edge);
 void ascii_hud_end(void);
@@ -55,4 +57,6 @@ void ascii_hud_reset(cw_vec2 canvas, float u);
 void ascii_hud_draw(void);
 /* a frame with no HUD: no boxes */
 void ascii_hud_none(void);
+/* the HUD's boxes of the last frame, as fractions of the canvas (x, y, w, h); returns how many (at most max) */
+int ascii_hud_boxes(float out[][4], int max);
 #endif

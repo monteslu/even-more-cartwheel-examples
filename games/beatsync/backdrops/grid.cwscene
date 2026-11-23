@@ -1,0 +1,24 @@
+[scene format=1]
+
+; The synthwave backdrop (src/backdrop.c builds all of it): a neon grid floor running to a striped sun between wire
+; mountains, a purple sky with stars, haze glowing along the horizon. The camera sits as the field's own (z 22, 40
+; degrees), 7 above the floor.
+
+[node name="Grid" type="Node3D"]
+
+[node name="Env" parent="." type="WorldEnvironment"]
+background = color(0.004, 0, 0.01, 1)
+use_background = true
+ambient_energy = 0
+hemi_energy = 0
+
+[node name="Post" parent="." type="PostProcess"]
+ssao = false
+msaa = 1
+exposure_ev = 0
+
+[node name="Camera" parent="." type="Camera3D"]
+position = vec3(0, 0, 22)
+fov = 40
+near = 1
+far = 1500
