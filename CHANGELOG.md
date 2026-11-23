@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.46.0
+
+- **Detexto** draws its 1-bit looks with the engine's one-bit dither (`cartwheel/look.h`) at the display stage: last,
+  on the finished picture, one dither pixel a screen pixel, with the game's own tone (the landmark's hues by their
+  value, the grey world a little darker with its highlights kept, a light unsharp mask, depth outlines, gamma and
+  contrast) and the desert levels' lift of the landmark against its sand. The game's own dither pass and its shaders
+  are gone. Every pixel of the 3D picture is still ink or paper on GL and WebGPU and nothing crawls with the camera
+  still. The picture keeps 0.44.0's tone (within 0.8% of full scale over 16x16 pixel blocks, 1.3% on the dam); the
+  dots themselves are the engine's blue noise and Bayer matrices, so about a fifth of single pixels differ (a third in
+  Dither grid). Dust, smoke and the plume stay at half opacity under these looks. The pass costs about 0.57 ms on
+  WebGPU on a Radeon 890M at 1080p (Dither grid 0.64; the old pass 0.40). ASCII stays the game's own pass: it draws
+  its characters at the output's size from a scene rendered at 35%, and the engine's looks draw at the scene's size.
+- **Detexto**'s menus (title, pause, Settings, the Graphics page) show the selected row as a white plate with black
+  text instead of the yellow accent, and the Graphics page's backing box is wide enough for its rows. The rest of the
+  shell's menus still dim the picture behind them and draw their other rows in white at 85%, so a menu screen is about
+  90 to 93% ink and paper (as in 0.44.0).
+- Detexto gates: tests/detexto-dither.mjs also checks the menus (the selection style on every screen and their share
+  of ink and paper), and its crawl control is the engine's `CW_TEST_LOOK_CRAWL`, sent with the load. New
+  tests/detexto-look-compare.mjs: the same scenes against another build, tone and single pixels, with a flat-tone
+  control that must fail.
+- Every game on cartwheel-engine 0.64.0 (from 0.60.0). The program tables were regenerated and came out unchanged.
+  Checks on this pin: every game builds; the program survey of the dual carts of beatsync, destructo, detexto,
+  lanternfall and pinball on GL and WebGPU hosts (no state missing; the native survey was not rerun); the cart
+  smoke, version, art and prompt checks of all nine games; Destructo's, Detexto's and Emberthrone's water byte
+  for byte the same as on 0.60.0 (each lit by its procedural sky, which the engine's new water lighting leaves
+  alone); the flash check of real play in each Detexto look, GL and WebGPU, each with its strobe control failing.
+
 ## 0.45.0
 
 - **beatsync**: firmer haptics. A miss is a 120 ms bump at about half strength (was a faint 90 ms one), a broken

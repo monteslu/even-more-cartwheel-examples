@@ -1,5 +1,5 @@
 // Detexto's looks: the GPU cost of each look at 1920x1080 (romdev frame timing, A/B variants interleaved over
-// rounds, with an A/A pair), and the look passes' own timers (cartwheel's `pipeline` command: dither, ascii,
+// rounds, with an A/A pair), and the look passes' own timers (cartwheel's `pipeline` command: looks_display (the engine's one-bit dither), ascii,
 // ascii_text). detexto_auto on the Taj Mahal with a charge at its foot (the collapse in view).
 //   node tests/detexto-dither-timing.mjs [--gpu gl|webgpu] [--out file.json]
 import { writeFileSync } from 'node:fs';
@@ -22,7 +22,7 @@ try {
   if (outFile) writeFileSync(outFile, JSON.stringify(r, null, 1));
   for (const vr of r.variants || []) {
     const g = vr.gpuMs || {}, w = vr.wallMs || {};
-    const pt = JSON.stringify(vr.passTimers || vr.passTimer || '').match(/"(dither|ascii|ascii_text)"[^}]*?"gpu_ms_avg":\s*[-\d.]+/g);
+    const pt = JSON.stringify(vr.passTimers || vr.passTimer || '').match(/"(looks_display|ascii|ascii_text)"[^}]*?"gpu_ms_avg":\s*[-\d.]+/g);
     console.log(`${gpu} ${vr.name}: gpu mean ${g.mean} p95 ${g.p95} wall mean ${w.mean} passes ${pt ? pt.join(' | ') : '-'}`);
   }
 } finally { await h.close(); }

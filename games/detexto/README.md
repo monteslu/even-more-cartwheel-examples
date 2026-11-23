@@ -67,29 +67,32 @@ thing they touch and push and break everything within about four and a half metr
 ## The 1-bit looks (src/dither.c)
 
 Every pixel of the 3D picture is ink or paper at the output's full size: black and white, or warm white
-(1, 0.9, 0.74) on near black for Dither warm. The scene renders at 100% (no scaler, no lower resolution), and one POST
-pass, last in the chain (after the tone map, the grade and the lens), does it in two draws, the same shader in GLSL
-and WGSL:
+(1, 0.9, 0.74) on near black for Dither warm. The scene renders at 100% (no scaler, no lower resolution), and the
+engine's one-bit dither (`cartwheel/look.h`, `CW_LOOK_DITHER_ORDERED`) draws it at the DISPLAY stage: last in the post
+chain (after the tone map, the grade and the lens), on the finished picture, one dither pixel a screen pixel
+(`output_pixels`), so nothing after it adds a third colour. The game sets its tone options:
 
-- **The tone.** Each pixel starts from the finished picture: the grey world by its luma (x `DITHER_WORLD`, 0.8; its
-  highlights, a blast's white core, kept), the landmark's hues by their value (x `DITHER_BLOCK`, 1.15), so a
-  block reads bright whatever its hue. A light unsharp mask (radius 2 px, `DITHER_SHARPEN` 0.9) crisps edges, the
-  depth draws outlines on the near side of every silhouette and crease (where the depth stops being a plane:
-  `DITHER_OUTLINE`), then gamma (`DITHER_GAMMA` 1.3), contrast (`DITHER_CONTRAST` 1.3) and `DITHER_BIAS`. The
-  desert levels (the sun low behind pale sand) take the world at 0.62 of that and the landmark at 1.45
-  (`DITHER_DESERT_WORLD`, `DITHER_DESERT_BLOCK`), so a landmark lit from behind still reads brighter than its sand.
-- **The threshold**, anchored to the screen's pixels, so a still camera gives a still picture: a 64x64 blue noise
-  matrix (Dither, Dither warm), made by void and cluster when the cart starts (a few ms, no asset), or the 8x8 ordered
-  matrix (Dither grid).
+- **The tone.** Each pixel starts from the finished picture: the grey world by its luminance (`grey_gain`,
+  `DITHER_WORLD` 0.8; its highlights, a blast's white core, kept), the landmark's hues by their value (`hue_value`,
+  `DITHER_BLOCK` 1.15), so a block reads bright whatever its hue. A light unsharp mask (radius 2 px, `DITHER_SHARPEN`
+  0.9) crisps edges, the depth draws outlines on the near side of every silhouette and crease (where the depth stops
+  being a plane: `DITHER_OUTLINE`), then gamma (`DITHER_GAMMA` 1.3), contrast (`DITHER_CONTRAST` 1.3) and
+  `DITHER_BIAS`. The desert levels (the sun low behind pale sand) take the world at 0.62 of that and the landmark at
+  1.45 (`DITHER_DESERT_WORLD`, `DITHER_DESERT_BLOCK`), so a landmark lit from behind still reads brighter than its sand.
+- **The threshold**, anchored to the screen's pixels, so a still camera gives a still picture: the engine's 64x64
+  blue noise (Dither, Dither warm) or the 8x8 ordered matrix (Dither grid).
 
 The HUD and the game's own screens draw after it in the same two colours: every HUD colour goes to the ink or the
 paper by its brightness, the HUD's boxes are solid paper with a thin ink edge, and a selected tile (the structure
-select, the ammunition bar) is inverted: an ink plate with paper text. The shell's menus mark their selected row in
-the shell's accent colour. Dust, smoke and the collapse plume draw at half their opacity under a 1-bit look
-(`DITHER_CLOUDS`), so a structure reads through a cloud rather than behind a field of dots.
+select, the ammunition bar) is inverted: an ink plate with paper text. The shell's menus (title, pause, Settings, the
+Graphics page) show their selected row the same way (`CW_SHELL_SELECT_INVERSE`: a white plate, black text); the
+shell still dims the picture behind its menus and draws its other rows in white at 85%. Dust, smoke and the collapse
+plume draw at half their opacity under a 1-bit look (`DITHER_CLOUDS`), so a structure reads through a cloud rather
+than behind a field of dots.
 
 Run options: `LOOK` (dither, warm, grid, ascii) picks the look as the Settings row does; `DITHER_OFF 1` shows the
-plain picture and `DITHER_CRAWL 1` moves the threshold every frame (the gates' controls).
+plain picture (a gate's control). The engine's test switch `CW_TEST_LOOK_CRAWL=1` moves the threshold every frame
+(the no-crawl gate's control).
 
 ## The ASCII look (src/ascii.c)
 
@@ -137,8 +140,8 @@ Controls that must fail: the pass off (the plain picture) and the hold off (`ASC
 `tests/detexto-dither.mjs` (romdev, GL and WebGPU): each 1-bit look draws only its ink and paper (at least 99.5% of
 the pixels without the HUD; control: the pass off), Dither and Dither grid draw different patterns and Dither warm
 the Dither pattern in its own pair, a still camera changes at most 0.5% of the pixels a frame (control: the
-threshold moved every frame, `DITHER_CRAWL 1`, at least ten times as many), and the Settings row steps the looks
-from Dither to ASCII and stops at the ends, ASCII putting the scene back at 35%. `tests/detexto-dither-shots.mjs`,
+threshold moved every frame, `CW_TEST_LOOK_CRAWL=1`, at least ten times as many), and the Settings row steps the looks
+from Dither to ASCII and stops at the ends, ASCII putting the scene back at 35%; the shell's screens under each 1-bit look show the selected row as an ink plate, and their share of ink and paper is reported. `tests/detexto-look-compare.mjs` shoots the same scenes on this build and another (`DETEXTO_OLD_CARTS`) and counts the pixels that differ. `tests/detexto-dither-shots.mjs`,
 `-clip.mjs` (`--flash` for the flash check of real play per look) and `-timing.mjs` make the stills, clips and GPU
 times the looks were judged by. The
 simulation, levels and physics are Destructo's and are gated there (`tests/destructo-*.mjs`).

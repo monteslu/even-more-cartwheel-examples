@@ -41,6 +41,7 @@
 #include "view.h"
 #include "ascii.h"
 #include "dither.h"
+#include <cartwheel/quality_menu.h>
 #include "../../common/coplanar.h"
 
 #ifndef DETEXTO_BENCH
@@ -491,7 +492,9 @@ static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
      * foot, and on the pause screen one behind the controls card at the top (ascii.h) */
     float k = cs.y / 1080.0f;
     ascii_hud_reset(cs, k);
-    ascii_hud_rect(cs.x * 0.25f, cs.y * 0.05f, cs.x * 0.5f, cs.y * 0.76f, 1);
+    /* (the Graphics page: its rows and their selection plate are wider than the shell's own lists) */
+    float bx = screen == CW_SHELL_SETTINGS && cw_quality_menu_is_open() ? 0.13f : 0.25f;
+    ascii_hud_rect(cs.x * bx, cs.y * 0.05f, cs.x * (1 - 2 * bx), cs.y * 0.76f, 1);
     ascii_hud_rect(cs.x * 0.27f, cs.y * 0.895f, cs.x * 0.46f, cs.y * 0.075f, 1);
     if (screen == CW_SHELL_PAUSE) ascii_hud_rect(cs.x * 0.14f, cs.y * 0.02f, cs.x * 0.72f, 140 * k, 1);
     ascii_hud_end();
@@ -523,7 +526,9 @@ static void init(void *u) {
   G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right");
   cw_shell_init(&(cw_shell_desc){ .title = "DETEXTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background,
-                                  .settings_items = rows, .settings_item_count = 1, .settings_changed = settings_changed });
+                                  .settings_items = rows, .settings_item_count = 1, .settings_changed = settings_changed,
+                                  /* the selected row on a plate of the ink, its text in the paper: the menus in the look's two colours */
+                                  .accent = { 1, 1, 1, 1 }, .selection = CW_SHELL_SELECT_INVERSE, .selection_text = { 0, 0, 0, 1 } });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);

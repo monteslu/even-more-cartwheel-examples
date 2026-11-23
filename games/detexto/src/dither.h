@@ -1,16 +1,14 @@
 /* The 1-bit looks: every pixel of the 3D picture one of two colours, at the output's full size.
  *
- * One POST pass ("dither", last in the chain, after the tone map, the grade and the lens) in two draws:
- *   1. tone: each pixel from the finished picture (the grey world by its luma, the landmark's neon hues by their
- *      value, so a block reads bright whatever its hue), a light unsharp mask (radius 2 px) and outlines from the
- *      depth (where the depth stops being a plane: silhouettes and creases), then gamma, contrast and bias, into a
- *      half float target at the output's size. A level can lift the landmark against its ground (dither_set_level);
- *   2. quantize: each pixel against a threshold anchored to the screen (so a still camera never crawls), a 64x64
- *      blue noise matrix (void and cluster, made when the cart starts) or the 8x8 ordered (Bayer) matrix, and written
- *      as ink or paper.
- * The scene renders at the output's full size (no scaler). The HUD and the game's own screens draw after it
- * (OVERLAY) in the same two colours (dither_hud_color).
- * GL and WebGPU run the same shader (GLSL and WGSL line for line).
+ * The engine's one-bit dither (cartwheel/look.h, CW_LOOK_DITHER_ORDERED) at the DISPLAY stage: drawn last in the
+ * post chain (the POST pass "looks_display", after the tone map, the grade and the lens) on the finished picture, so
+ * nothing after it adds a third colour. One dither pixel a screen pixel (output_pixels), against a threshold
+ * anchored to the screen (a still camera never crawls): the engine's 64x64 blue noise, or the 8x8 ordered (Bayer)
+ * matrix for Dither grid. The tone: the grey world by its luminance (grey_gain, its highlights kept), the landmark's
+ * neon hues by their value (hue_value), so a block reads bright whatever its hue, a light unsharp mask, outlines from
+ * the depth (silhouettes and creases), then gamma and contrast. A level can lift the landmark against its ground
+ * (dither_set_level). The scene renders at the output's full size (no scaler). The HUD and the game's own screens
+ * draw after it (OVERLAY) in the same two colours (dither_hud_color).
  *
  * The look is a Settings row ("Look", saved): the values below are its choices, in its order. The run option LOOK
  * (dither | warm | grid | ascii) sets it too, for tests. */
@@ -29,7 +27,7 @@ enum {
 };
 extern const char *const LOOK_NAMES[LOOK_COUNT]; /* the Settings row's choices */
 
-/* Register the pass on the tree's pipeline and make the threshold matrices (needs the GPU: warmup or later). */
+/* Make the look and set it on the tree's pipeline (needs the GPU: warmup or later). */
 void dither_init(cw_tree *tree);
 /* the look in use (the Settings row's value; the shell writes it there) */
 int *dither_look_value(void);

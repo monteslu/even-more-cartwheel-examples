@@ -6,11 +6,17 @@
 //                is the dither's pattern in its warm pair;
 //   no crawl     with the camera still (the level held, HOLD 1), the share of pixels that change between frames is at
 //                most 0.5% (the grass in the wind, a crystal's pulse); control that must fail: the threshold moved
-//                every frame (DITHER_CRAWL 1), at least ten times as much;
+//                every frame (the engine's CW_TEST_LOOK_CRAWL 1), at least ten times as much;
 //   settings     on the game cart the Settings screen has the row "Look": right steps Dither, Dither warm, Dither
 //                grid, ASCII and stops at the end (the look follows at once, ASCII puts the scene back at 35%);
 //                control: left on the first choice leaves it.
-//   node tests/detexto-dither.mjs [--gpu gl|webgpu|both] [--only colours,crawl,settings]
+//   menus        the shell's screens under each 1-bit look (the title on the game cart; pause, Settings and the
+//                Graphics page over a level): the selected row is an ink plate (selection INVERSE, shell.selection
+//                3), and the share of ink and paper pixels is reported, held to at least 90% (85% under Dither warm,
+//                whose ink the shell's white text and plate are not: the shell takes its colours once, at start). The
+//                shell still dims the picture behind its menus and draws its other rows in white at 85%, so it cannot
+//                be 100% until the engine's shell draws in two colours;
+//   node tests/detexto-dither.mjs [--gpu gl|webgpu|both] [--only colours,crawl,settings,menus]
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { openCart, call, ROOT } from './lib/romdev.mjs';
@@ -20,7 +26,7 @@ const a = process.argv.slice(2);
 const gi = a.indexOf('--gpu');
 const gpus = gi >= 0 && a[gi + 1] !== 'both' ? [a[gi + 1]] : ['gl', 'webgpu'];
 const oi = a.indexOf('--only');
-const only = oi >= 0 ? a[oi + 1].split(',') : ['colours', 'crawl', 'settings'];
+const only = oi >= 0 ? a[oi + 1].split(',') : ['colours', 'crawl', 'settings', 'menus'];
 const OUT = join(ROOT, 'out/gate/detexto-dither');
 mkdirSync(OUT, { recursive: true });
 const AT = 700; // detexto_auto on its first level, aiming
@@ -52,9 +58,11 @@ function flips(p0, p1) {
 }
 
 async function frames(gpu, opts, tag, at = AT, after = [1]) {
-  const h = await openCart('detexto_auto', { gpu, tag: `dither-${tag}` });
+  // an engine test switch (CW_TEST_*) is read from the first frame on: it goes with the load, before frame 1
+  const env = Object.entries(opts).filter(([k]) => k.startsWith('CW_TEST_')).map(([k, v]) => `${k}=${v}`);
+  const h = await openCart('detexto_auto', { gpu, tag: `dither-${tag}`, load: env.length ? { firstCommand: `env ${env.join(' ')}` } : {} });
   try {
-    for (const [k, v] of Object.entries(opts)) await h.command(`dm set ${k} ${v}`);
+    for (const [k, v] of Object.entries(opts)) if (!k.startsWith('CW_TEST_')) await h.command(`dm set ${k} ${v}`);
     await h.step(at - h.frame);
     const out = [];
     const f0 = join(OUT, `${gpu}-${tag}-0.png`);
@@ -96,6 +104,40 @@ async function settings(gpu) {
   } finally { await h.close(); }
 }
 
+const tap = (b) => [{ input: { ports: [{ [b]: true }] }, frames: 3 }, { input: { ports: [{}] }, frames: 14 }];
+async function menus(gpu) {
+  for (const look of ['dither', 'warm', 'grid']) {
+    const shots = [];
+    const shoot = async (h, name, want) => {
+      const f = join(OUT, `${gpu}-menu-${look}-${name}.png`);
+      await call('frame', { op: 'screenshot', path: f }, h.session);
+      const st = await h.state();
+      check(st['shell.screen'] === want && st['shell.selection'] === 3, `${gpu} ${look} ${name}: on screen ${st['shell.screen']} (want ${want}), selection style ${st['shell.selection']} (INVERSE 3)`);
+      shots.push({ name, f, share: twoColour(readPng(f), INK[look]) });
+    };
+    let h = await openCart('detexto', { gpu, tag: `menu-title-${look}` });
+    try {
+      await h.command(`dm set LOOK ${look}`);
+      await call('frame', { op: 'step', frames: 1200, stopWhen: { field: 'shell.screen', equals: 1, every: 5 } }, h.session);
+      await call('frame', { op: 'step', frames: 30 }, h.session);
+      await shoot(h, 'title', 1);
+    } finally { await h.close(); }
+    h = await openCart('detexto_auto', { gpu, tag: `menu-pause-${look}` });
+    try {
+      await h.command(`dm set LOOK ${look}`);
+      await h.step(AT - h.frame);
+      const seq = (bs) => call('input', { op: 'sequence', steps: bs.flatMap(tap) }, h.session);
+      await seq(['start']);
+      await shoot(h, 'pause', 4);
+      await seq(['down', 'south']);
+      await shoot(h, 'settings', 5);
+      await seq(['south']);
+      await shoot(h, 'graphics', 5);
+    } finally { await h.close(); }
+    for (const s of shots) check(s.share >= (look === 'warm' ? 0.85 : 0.9), `${gpu} ${look} ${s.name}: ${(s.share * 100).toFixed(2)}% of the pixels ink or paper (${s.f})`);
+  }
+}
+
 for (const gpu of gpus) {
   if (only.includes('colours')) {
     const shots = {};
@@ -116,7 +158,7 @@ for (const gpu of gpus) {
   if (only.includes('crawl')) {
     for (const look of ['dither', 'grid']) {
       const still = await frames(gpu, { LOOK: look, HOLD: 1, NO_HUD: 1 }, `still-${look}`, AT, [1, 1]);
-      const crawl = await frames(gpu, { LOOK: look, HOLD: 1, NO_HUD: 1, DITHER_CRAWL: 1 }, `crawl-${look}`, AT, [1, 1]);
+      const crawl = await frames(gpu, { LOOK: look, HOLD: 1, NO_HUD: 1, CW_TEST_LOOK_CRAWL: 1 }, `crawl-${look}`, AT, [1, 1]);
       const s = Math.max(flips(still.pngs[0], still.pngs[1]), flips(still.pngs[1], still.pngs[2]));
       const c = Math.min(flips(crawl.pngs[0], crawl.pngs[1]), flips(crawl.pngs[1], crawl.pngs[2]));
       check(s <= 0.005, `${gpu} ${look}: no crawl: ${(s * 100).toFixed(3)}% of the pixels change a frame with the camera still`);
@@ -124,6 +166,7 @@ for (const gpu of gpus) {
     }
   }
   if (only.includes('settings')) await settings(gpu);
+  if (only.includes('menus')) await menus(gpu);
 }
 console.log(fail ? `detexto-dither: ${fail} failed` : 'detexto-dither: ok');
 process.exit(fail ? 1 : 0);
