@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.56.0
+
+- **jewels**: the pause menu has New board, a fresh board with the score from nothing (the best is kept), on the pad
+  or by a tap. The first cascade of a game no longer stalls a frame on WebGPU: the shockwave's programs are made on
+  the first frame the effects pass runs (`cw.pass_builds` holds flat in play, 48 from the title on, where it grew from
+  46 to 48 at the first big clear), and every glyph the panel and the gains can show is made under the loading screen
+  (the cascade counter's first letters cost about 35 ms of CPU in that frame). New gate `jewels-newboard`, with
+  Resume as its control.
+- **pinball**: the pause menu in a game has Restart game (the same table and players from the first ball) and Change
+  table (back to the table select); a game left either way keeps no score. New gates `pinball-restart` and
+  `pinball-change-table`, with Resume as their control.
+- **lanternfall**: Settings has the game's own row, Leaves lost: every blow (the default), every second blow or every
+  third blow costs a leaf of health, saved with the settings and applied at once, in play too. New gate
+  `lanternfall-assist` (debug field `game.assist`), stepping the row the other way as its control.
+- Checks on these, on cartwheel-engine 0.76.0 with Release carts: every gate of jewels, pinball and lanternfall on GL and
+  WebGPU, natively and in the cart on romdev, the new ones with their controls; jewels' flash check on GL and WebGPU
+  (its two strobe controls fail); the perf gates of the three games on a Radeon RX 7600 (jewels 1.87 ms GL and 1.90
+  WebGPU, bound 4.2; pinball 2.18 and 1.38, bound 4.1; lanternfall 2.37 and 2.42, bound 4); jewels' play frames the
+  same as before to the pixel; cart smoke, version and prompt checks.
 ## 0.55.0
 
 - Every game on cartwheel-engine 0.76.0, every program table generated again for it.
