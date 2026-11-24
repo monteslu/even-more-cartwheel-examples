@@ -98,6 +98,14 @@ static void shell_quit(void *u) {
   (void)u;
   G.in_match = false;
 }
+/* the pause menu's own item: a new board, the score from nothing (the best is kept); the menu reads it while a
+ * board is in play */
+static const char *const PAUSE_ITEMS[2] = { "New board", NULL };
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (index != 0 || !G.in_match) return;
+  begin_game();
+}
 
 /* ── the bot (jewels_auto, jewels_bench): it plays through the raw input, as a person would ─────────────── */
 
@@ -522,6 +530,10 @@ static bool warmup(void *u) {
   if (!G.built) {
     jw_cuts_build();
     jw_render_init(frame_fn, NULL);
+    /* every glyph the panel and the gains can show, under the loading screen: the first cascade drew its counter's
+     * letters for the first time (about 35 ms of CPU in that frame on WebGPU) */
+    cw_font_preload_range(serif, 32, 126);
+    cw_font_preload_range(sans, 32, 126);
     G.built = true;
     if (!G.in_match) jw_game_new(&G.g, 0x5eed1234u); /* a board to show behind the title */
     return false;
@@ -544,6 +556,7 @@ static void init(void *u) {
   cw_prompt_set_font(sans);
   cw_shell_init(&(cw_shell_desc){ .title = "JEWELS", .subtitle = "a calm match-three", .max_players = 1, .game_save_size = sizeof(save_data),
                                   .game_save_version = 1, .start = start, .quit = shell_quit, .sound = shell_sound, .screen_changed = shell_screen,
+                                  .pause_items = { PAUSE_ITEMS[0], PAUSE_ITEMS[1] }, .pause_item = pause_item,
                                   .font = serif, .accent = (cw_color){ 0.98f, 0.82f, 0.45f, 1 } });
   cw_quality_full_resolution(true);
   if (getenv("JEWELS_QUALITY")) cw_quality_set((cw_quality)CW_CLAMP(atoi(getenv("JEWELS_QUALITY")), 0, CW_QUALITY_COUNT - 1), true);

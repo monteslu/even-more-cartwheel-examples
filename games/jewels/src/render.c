@@ -408,6 +408,33 @@ static void shockwaves(cw_pass_ctx *ctx) {
     x0 = fminf(x0, r->x - e), y0 = fminf(y0, r->y - e), x1 = fmaxf(x1, r->x + e), y1 = fmaxf(y1, r->y + e);
     n++;
   }
+  /* the first frame the pass runs makes its programs' pipelines (WebGPU makes one for each target format and blend
+   * at first use, about 40 ms of CPU): a copy into a small target and a ring far off the canvas, which writes nothing.
+   * Without it the first big clear of a game stalled a frame (cw.pass_builds grew in play) */
+  static bool warmed;
+  if (!n && !warmed) {
+    warmed = true;
+    const cw_rt *g = cw_pass_rt(ctx, 2, 2, CW_RT_RGBA16F, false);
+    if (!g) return;
+    cw_pass_set_blend(CW_PASS_BLEND_NONE);
+    cw_pass_bind_target(ctx, g);
+    cw_pass_use(R.grab);
+    cw_pass_bind_texture(0, ctx->scene->tex);
+    if (!R.wg) cw_pass_uniform1i(R.grab, "u_t0", 0);
+    cw_pass_uniform4f(R.grab, "u_px", 0, 0, 0.001f, 0.001f);
+    cw_pass_fullscreen();
+    cw_pass_bind_target(ctx, ctx->scene);
+    cw_pass_use(R.shock);
+    common_uniforms(R.shock, ctx);
+    cw_pass_bind_texture(0, g->tex);
+    if (!R.wg) cw_pass_uniform1i(R.shock, "u_t0", 0);
+    cw_pass_uniform4f(R.shock, "u_grab", 0, 2, 2, 2);
+    cw_pass_uniform4f(R.shock, "u_shock", -100000.0f, -100000.0f, 1.0f, 0.0f);
+    cw_pass_draw(6);
+    cw_pass_rt_release(ctx, g);
+    return;
+  }
+  warmed = true;
   if (!n) return;
   x0 = fmaxf(floorf(x0), 0), y0 = fmaxf(floorf(y0), 0), x1 = fminf(ceilf(x1), 1920), y1 = fminf(ceilf(y1), 1080);
   if (x1 - x0 < 2 || y1 - y0 < 2) return;

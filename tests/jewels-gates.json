@@ -133,5 +133,38 @@
       "native"
     ],
     "note": "The panel layout: every element showing at once (the score with its gain, the best, the moves, the cascade counter, the help for the pad and, as the bot turns to touch, for touch, the status line, the hint button), for 15 seconds of play; no two of its text boxes may overlap in any frame (hud.overlaps, the worst frame). The control puts the status line back where it once was, over the help."
+  },
+  {
+    "name": "jewels-newboard",
+    "app": "jewels",
+    "frames": 560,
+    "input": "jewels-newboard.json",
+    "controlInput": "jewels-newboard-control.json",
+    "maxGt16": 0.01,
+    "fields": [
+      "game.score",
+      "game.best",
+      "game.moves",
+      "game.picks",
+      "game.pad_swaps",
+      "game.playing",
+      "game.hash"
+    ],
+    "expect": {
+      "game.moves": 0,
+      "game.score": 0,
+      "game.playing": 1
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "The pause menu's New board on the pad alone: Play, two moves on the d-pad, Start, down to New board, accept: a fresh board in play, no moves and no score on it (the best kept). The control accepts Resume instead, so the moves and the score stay.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
   }
 ]

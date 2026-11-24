@@ -27,6 +27,8 @@ Any pad, the keyboard, the mouse and every finger drive the one board, all at on
   a move. Prompts follow the device in hand.
 - Touch and mouse: tap a stone, then its neighbour, or press a stone and drag it onto its neighbour; tap the hint
   button on the panel. All ten pointer slots are read.
+- The pause menu (Start, or the pause on a phone's on-screen pad) has New board: a fresh board and the score from
+  nothing, the best kept. Its rows take the pad or a tap.
 
 ## How it is drawn
 
