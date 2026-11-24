@@ -165,8 +165,8 @@ static void player_hud(const sim *S, int i, cw_rect R, float u, int players, flo
     cw_color c = p->kind == 1 ? rgba(1, 0.4f, 0.35f, a) : p->kind == 2 ? rgba(0.6f, 1, 0.7f, a) : rgba(1, 0.92f, 0.45f, a);
     text(p->text, cx, py, p->kind == 0 ? big : body * 1.1f, c, CW_ALIGN_CENTER);
   }
-  /* the controls, for the first seconds of a run */
-  if (S->tick < TPS * 9 && S->state == RUN_PLAY) {
+  /* the controls, for the first seconds of a run (not under the pause menu, whose rows they would cross) */
+  if (S->tick < TPS * 9 && S->state == RUN_PLAY && cw_shell_screen_now() != CW_SHELL_PAUSE) {
     float a = clampf((float)(TPS * 9 - S->tick) / 40.0f, 0, 1);
     float hy = R.y + R.h * 0.62f;
     cw_color fg = rgba(1, 1, 1, a), bg = rgba(BG.r, BG.g, BG.b, BG.a * a);
