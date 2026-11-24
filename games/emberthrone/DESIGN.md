@@ -94,10 +94,7 @@ neighbours drew a straight seam). The keep's warm hill and paving carry cold tea
 accent in its own ground whoever stands there. Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
 larger stones). The stones grow on ground up to 28 degrees and never at the brink of a drop (a density map the game
 makes from the terrain's tables), and each has one box the shape of its rock to bump into. The meadow's moss is as
-matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass tufts are the game's own blade mesh (tools/make-ground.mjs): six curved blades, each its
-own height, lean and shade, dark at the root in the grass layer's colour and lighter at the tip, normals bent up so
-they light like the ground, both faces drawn with the same normals; they vary in size and turn and shrink away over
-their last 10 m to 15 m (farther, a blade is thinner than a pixel and shimmers). A cloud layer drifts over the sky. Buildings are boxes
+matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass is the engine's foliage (TerrainScatter3D GRASS, cartwheel/foliage.h): tufts of twelve curved tapering blades, seven a square metre, each tuft its own shade (dry yellow to deep green), rooted in the colour of the ground under it, lit the same from both sides, bending in the wind with gusts that run over the meadow; out to 16 m, dissolving over the last 6 and cross-fading into the far level of detail (a dither the temporal antialiasing resolves). The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
 regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
@@ -182,11 +179,11 @@ region's colours (the outfit's material tinted per kind and region).
   tiles (the step across its wrap no more than 1.25 times the step inside). Controls: the 0.49.0 ground (a uv turn per
   4 m block drew a grid of seams in every region), its layers laid plainly (a repeat the measure must see) and its
   layer textures (three did not tile) must fail.
-- `tests/emberthrone-tufts.mjs`: the camera walks slowly over the meadow and the spire's downs and two seconds are
-  recorded at 1080p; on the tufts' pixels the frame-to-frame flicker (the second difference in time) over the same
-  pixels with no tufts stays under 4. Control: the 0.49.0 tufts (the engine's built-in tuft, `ADV_PROBE_OLDTUFTS`)
-  must fail.
-- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 4763 scattered stones and pebbles on the ground (worst 0 cm).
+- `tests/emberthrone-grass-walk.mjs`: the hero walks off the road into the meadow on a pad (one romdev ranged call, GL
+  and WebGPU); the grass's flicker over the ground's is at most 1.2 times the 0.51.0 grass's on the same ground and walk,
+  on 2% or more of the picture, its one-frame pops reported. Control: the grass cut off hard at 9 m
+  (`ADV_PROBE_GRASSPOP`) must fail.
+- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 4460 scattered stones and pebbles on the ground (worst 0 cm).
 - `tests/emberthrone-lockon.mjs` (romdev, the motion pad script, view.c's framing recorder): locked on, the foe whole on
   the screen, the hero over a quarter of its box in 5% of the frames at most, the hero at most 40% of the frame's height
   and the foe at least 12%. Control: 0.51.0's camera.

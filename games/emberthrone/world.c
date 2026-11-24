@@ -779,17 +779,33 @@ static void paint_and_shape(void) {
        * second layer only where a texel blends, so a wide soft blend everywhere doubles the terrain's cost */
 #define PATCH(lo, hi, other) do { if (n >= (hi)) base = (other), over = (other), blend = 0; \
     else if (n > (lo)) over = (other), blend = (int)(((n - (lo)) / ((hi) - (lo))) * 220); } while (0)
-      if (base == 0) PATCH(0.7f, 0.76f, 5);                                     /* darker moss in patches */
+      if (base == 0) {                                                          /* darker moss in patches */
+        PATCH(0.7f, 0.76f, 5);
+        /* and over 25 m swathes of the meadow, a drier, yellow-olive stretch (the packed earth showing in the grass's low
+         * places) or a darker, cooler one (the moss), each only a light share, so the grass reads as many greens */
+        static int noswath = -1;
+        if (noswath < 0) noswath = getenv("ADV_PROBE_NOSWATHES") != NULL; /* (perf probe: the swathes out) */
+        if (base == 0 && over == 0 && !noswath) {
+          float m = fbm((float)x / 25, (float)z / 25, 707, 3);
+          if (m > 0.58f) over = 2, blend = (int)(cw_clampf((m - 0.58f) / 0.14f, 0, 1) * 45);
+          else if (m < 0.42f) over = 5, blend = (int)(cw_clampf((0.42f - m) / 0.12f, 0, 1) * 110);
+        }
+      }
       else if (base == 1) PATCH(0.58f, 0.66f, 4);                              /* rock through the snow, in broad patches */
       else if (base == 5 && rgn[i] == RG_WOOD) { base = 0, over = 0; n = 1 - n; PATCH(0.58f, 0.64f, 5); } /* the wood: grass, moss in the hollows */
       else if (base == 5) { float dry = (h[i] + d->origin.y - 8.6f) * 1.2f; if (dry >= 1) base = 0, over = 0; else if (dry > 0.6f) over = 0, blend = (int)((dry - 0.6f) / 0.4f * 220); } /* grass on the marsh's dry humps */
       else if (base == 7) {                                                     /* the keep's hill: rock through the ash */
         PATCH(0.6f, 0.66f, 4);
         /* and cold teal moss in patches: the warm keep carries its complementary accent in its own ground */
-        if (base == 7 && over == 7) { n = fbm((float)x / 6, (float)z / 6, 909, 3); PATCH(0.53f, 0.59f, 5); }
+        if (base == 7 && over == 7) { n = fbm((float)x / 6, (float)z / 6, 909, 3); if (n > 0.5f) over = 5, blend = (int)(cw_clampf((n - 0.5f) / 0.14f, 0, 1) * 225); } /* (an overlay: the height blend lets it up in the ash's hollows first, fading at its edges) */
       }
-      /* moss in the keep's paving: small patches whose rim the height blend fills from the joints first */
-      else if (base == 6 && rgn[i] == RG_KEEP) { n = fbm((float)x / 3.5f, (float)z / 3.5f, 911, 3); PATCH(0.52f, 0.6f, 5); }
+      /* moss in the keep's paving: never a whole texel, an overlay the height blend lets up only where the cobbles are
+       * low, so it grows in the joints first and spreads over the stones toward a patch's heart, fading at its edges
+       * (layer6_blend_sharpness and layer5's keep the joints crisp) */
+      else if (base == 6 && rgn[i] == RG_KEEP) {
+        n = fbm((float)x / 3.5f, (float)z / 3.5f, 911, 3);
+        if (n > 0.48f) over = 5, blend = (int)(cw_clampf((n - 0.48f) / 0.18f, 0, 1) * 190);
+      }
 #undef PATCH
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
@@ -1409,12 +1425,22 @@ void world_build(cw_tree *tree) {
   g_world_paged = (1 << RG_COUNT) - 1;
   /* perf probes (development, native): what each part of the picture costs */
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
-  /* the grass tufts as 0.49.0 drew them (the engine's built-in tuft): the control of the tuft flicker check */
+  /* the grass as 0.51.0 drew it (the game's own tuft mesh, shrinking away, no wind): the old side of the tuft checks */
   if (getenv("ADV_PROBE_OLDTUFTS")) {
     cw_node g = cw_node_get(W_root, "World/Terrain/Grass");
-    cw_node_set(g, "mesh", cw_val_string("")), cw_node_set(g, "density", cw_val_float(2.2f)), cw_node_set(g, "scale_min", cw_val_float(0.42f));
-    cw_node_set(g, "scale_max", cw_val_float(0.72f)), cw_node_set(g, "visible_range", cw_val_float(20)), cw_node_set(g, "fade", cw_val_float(8));
-    cw_node_set(g, "lod_distance", cw_val_float(10));
+    cw_node_set(g, "mesh", cw_val_string("models/grass_tuft.glb")), cw_node_set(g, "density", cw_val_float(2)), cw_node_set(g, "scale_min", cw_val_float(0.7f));
+    cw_node_set(g, "scale_max", cw_val_float(1.35f)), cw_node_set(g, "visible_range", cw_val_float(15)), cw_node_set(g, "fade", cw_val_float(10));
+    cw_node_set(g, "lod_distance", cw_val_float(8)), cw_node_set(g, "fade_mode", cw_val_enum("SHRINK")), cw_node_set(g, "wind_strength", cw_val_float(0));
+    cw_node_set(g, "smooth_alpha", cw_val_bool(false)), cw_node_set(g, "two_sided_lighting", cw_val_bool(false)), cw_node_set(g, "tint_jitter", cw_val_float(0));
+    cw_node_set(g, "root_from_terrain", cw_val_bool(false));
+  }
+  /* the grass with no wind, or shrinking away as before (the walk check's parts, measured one at a time) */
+  if (getenv("ADV_PROBE_GRASSNOWIND")) cw_node_set(cw_node_get(W_root, "World/Terrain/Grass"), "wind_strength", cw_val_float(0));
+  if (getenv("ADV_PROBE_GRASSSHRINK")) cw_node_set(cw_node_get(W_root, "World/Terrain/Grass"), "fade_mode", cw_val_enum("SHRINK"));
+  /* the grass cut off hard at a short range (no fade, no cross-fade): the control the walk check's pop measure must catch */
+  if (getenv("ADV_PROBE_GRASSPOP")) {
+    cw_node g = cw_node_get(W_root, "World/Terrain/Grass");
+    cw_node_set(g, "fade_mode", cw_val_enum("SHRINK")), cw_node_set(g, "fade", cw_val_float(0)), cw_node_set(g, "lod_blend", cw_val_float(0)), cw_node_set(g, "visible_range", cw_val_float(9));
   }
   if (getenv("ADV_PROBE_NOPEBBLES")) cw_node_free(cw_node_get(W_root, "World/Terrain/Pebbles"));
   if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[5] = { "Trees", "Pines", "Mangroves", "Stones", "Pebbles" }; for (int i = 0; i < 5; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
@@ -1423,6 +1449,13 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
+  /* the anti-aliasing 0.52.0 drew with (FXAA, no TAA): the other side of the motion comparison */
+  if (getenv("ADV_PROBE_GRASSDENSITY")) cw_node_set(cw_node_get(W_root, "World/Terrain/Grass"), "density", cw_val_float((float)atof(getenv("ADV_PROBE_GRASSDENSITY")))); /* (looking at density) */
+  if (getenv("ADV_PROBE_NOSHARP")) { cw_node t = cw_node_get(W_root, "World/Terrain"); cw_node_set(t, "blend_sharpness", cw_val_float(0.15f)); for (int k = 5; k <= 7; k++) { char p[32]; snprintf(p, sizeof p, "layer%d_blend_sharpness", k); cw_node_set(t, p, cw_val_float(0)); } }
+  if (getenv("ADV_PROBE_NOMACRO")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "macro_tint", cw_val_float(0));
+  if (getenv("ADV_PROBE_NOPARALLAX")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "layer6_parallax", cw_val_float(0)); /* (the paving flat: parallax_distance 0 means the default 30 m) */
+  if (getenv("ADV_PROBE_NOTAA")) cw_node_set(W_post, "taa", cw_val_bool(false));
+  if (getenv("ADV_PROBE_FXAA")) cw_node_set(W_post, "taa", cw_val_bool(false)), cw_node_set(W_post, "aa", cw_val_enum("FXAA"));
   if (getenv("ADV_PROBE_NOFOG")) cw_node_set(W_env, "fog_mode", cw_val_enum("NONE"));
   if (getenv("ADV_PROBE_NODETILE")) cw_terrain_set_side_detile(W_terrain, 0);
   if (getenv("ADV_PROBE_TERRAINMED")) cw_terrain_set_quality(W_terrain, 2);
@@ -1482,7 +1515,7 @@ static const look LOOK[RG_COUNT] = {
   /* the marsh: teal and violet, a thicker cool mist */
   { { 0.3f, 0.56f, 0.6f }, 0.003f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
   /* the keep: a crimson sunset, ember haze */
-  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 1.16f },
+  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.65f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 1.0f, { 1, 0.62f, 0.42f }, 3.3f, 1.06f }, /* (more fill in the shade of its walls, not more exposure: the sunlit paving keeps its highlights) */
   /* the heights: cold bright air, blue shadows on the snow */
   { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.22f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.5f, { 1, 0.96f, 0.9f }, 3.2f, 0.74f },
   /* the underway: lantern light under the roof */

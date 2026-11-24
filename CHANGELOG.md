@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.53.0
+
+- Every game on cartwheel-engine 0.71.2, with every program table regenerated for its shaders.
+- **Ember Throne**'s grass is the engine's foliage. Each tuft has twelve curved, tapering blades, and there are seven
+  tufts a square metre (there were two). Each tuft takes its own shade, from dry yellow to deep green, and is rooted in
+  the colour of the ground under it. The blades are lit the same from both sides and bend in the wind, with gusts that
+  travel over the meadow. Out to 16 m, the tufts dissolve over their last 6 m and cross-fade into their far level of
+  detail, so none pops or shrinks. The picture is now antialiased in time (TAA), which the grass's fades and edges are
+  made for; under FXAA the dense blades shimmered.
+- **Ember Throne**'s meadow is no longer one flat green. The near ground's brightness varies over 30 m features, and
+  25 m swathes run drier yellow-olive or darker blue-green. The grass layer and the tufts are a little less saturated.
+- **Ember Throne**'s ground: the layers meet through a softer height blend, so the speckled rims are gone, and the
+  paving stands up in parallax within 12 m. The keep's moss grows up through the paving's joints
+  and fades at its edges; it was solid green patches. The keep's light fills the shade of its walls, so the lock-on
+  fights' frames keep the look's mean brightness without washing out the sunlit paving.
+- tests/emberthrone-grass-walk.mjs: the hero walks off the road into the meadow on a pad, in one romdev call, on GL and
+  WebGPU. The grass's flicker over the ground is held to the 0.51.0 grass's on the same ground and walk: at most 1.2 times
+  it (GL 4.82 against 4.18), over 6.7% of the picture where the old grass covered 0.9%. One-frame pops are reported.
+  Control: the grass cut off hard at 9 m must fail, and does (5.89). This is a changed bar: a fixed bound of 4 no
+  longer fits, because the meadow's new variation raises every run's figure, the old grass's included.
+- Known look miss: **Ember Throne**'s canyon reads a luma spread of 54.5 against the look check's 55. The lock-on
+  fights frame a wide, even sand floor. 0.52.0 passed on only 3 frames, so this is not shown to be a regression; the
+  canyon's own art will break up that floor.
+- tests/emberthrone-tufts.mjs is retired. Its slow camera walk can no longer tell the hard-cut grass from this grass,
+  so its control passed. tests/emberthrone-grass-walk.mjs replaces it.
+
 ## 0.52.0
 
 - **Ember Throne**'s lock-on camera steps back and to the side. It swings a little off the line between the hero and the

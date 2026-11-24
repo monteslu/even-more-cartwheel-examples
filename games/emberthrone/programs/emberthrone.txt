@@ -166,3 +166,9 @@ standard+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+l0001+xcluster_csm_rim
 standard+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+l1001+xcluster_rim
 physical+senv+fog2+ds+sheen+l0001+xcluster_csm
 physical+senv+fog2+ds+sheen+l0001+xcluster_csm_plain
+standard+instbig+senv+fog2+l0001+xterrainfxmin_cluster_csm_plain
+standard+instbig+senv+fog2+l0001+xterrainfxlow_cluster_csm
+standard+instbig+senv+fog2+l0001+xterrainfx_cluster_csm
+standard+vcol+instbig+senv+fog2+icol+l0001+xfoliage
+standard+vcol+instbig+senv+fog2+icol+l0001+xcluster_csm_foliage_plain
+standard+vcol+instbig+senv+fog2+icol+l0001+xcluster_csm_foliage

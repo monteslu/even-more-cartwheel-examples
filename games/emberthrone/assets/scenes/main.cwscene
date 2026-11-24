@@ -26,7 +26,10 @@ bloom_threshold = 1.2
 bloom_knee = 0.5
 ; four levels: the soft glow of the hearts, crystals and fires at a third of six levels' cost
 bloom_levels = 4
-aa = FXAA
+; temporal antialiasing: the grass, the leaf cards and every thin edge resolve over frames instead of shimmering as the
+; camera moves (the foliage's dithered fades and smooth cut-outs are made for it); FXAA left them crawling
+aa = NONE
+taa = true
 ; a depth pass first: the leaf cards and the grass shade only what is in front (0.6 ms less in the wood)
 depth_prepass = true
 vignette = true
@@ -75,6 +78,18 @@ far_distance = 85
 cast_shadow = false
 ; side_detile: each small cell of a cliff reads the rock at its own offset and a larger scale, with colour and strata by world position, so no face shows the tile's grid
 side_detile = 1
+; the near ground: its brightness and a little of its hue varied over 40 m features (no two stretches of a meadow alike),
+; the layers meeting with a softer height blend (a narrow band speckled the patches' rims where two heights nearly tie),
+; and the paving in parallax within 12 m
+macro_tint = 0.35
+macro_tint_scale = 30
+blend_sharpness = 0.28
+parallax_distance = 12
+layer6_parallax = 0.05
+; the keep's moss up through the paving's joints: a crisp height blend between the cobbles and the moss
+layer5_blend_sharpness = 0.08
+layer6_blend_sharpness = 0.08
+layer7_blend_sharpness = 0.1
 layer0_albedo = "textures/terrain/grass_ah.png"
 layer0_normal = "textures/terrain/grass_nr.png"
 layer0_uv_scale = 0.4
@@ -100,18 +115,32 @@ layer7_albedo = "textures/terrain/ash_ah.png"
 layer7_normal = "textures/terrain/ash_nr.png"
 layer7_uv_scale = 0.45
 
-; tufts of curved blades in the grass layer's own colours (tools/make-ground.mjs), dark at the root so the base melts
-; into the ground, lit like the ground; sizes and turns vary per instance; they shrink away over their last 10 m (far ones would be thinner than a pixel and shimmer)
+; the engine's grass: tufts of twelve curved tapering blades, each tuft its own shade (tint_jitter), rooted in the colour
+; of the ground under it, lit the same from both sides, bending in the wind with gusts running over the meadow, their
+; edges smooth (alpha to coverage, hashed alpha under TAA); they dissolve over their last 6 m and cross-fade into the far
+; LOD (a dither), never shrinking or popping
 [node name="Grass" parent="Terrain" type="TerrainScatter3D"]
-mesh = "models/grass_tuft.glb"
-density = 2
+shape = GRASS
+color = color(0.42, 0.52, 0.26, 1)
+density = 7
 layers = 1
 min_slope = 30
-scale_min = 0.7
-scale_max = 1.35
-visible_range = 15
-fade = 10
-lod_distance = 8
+scale_min = 0.6
+scale_max = 1.25
+visible_range = 16
+fade = 6
+lod_distance = 7
+fade_mode = DITHER
+lod_blend = 3
+wind_strength = 0.07
+wind_frequency = 0.7
+wind_direction = vec2(0.8, 0.6)
+wind_gust = 0.45
+wind_gust_scale = 14
+smooth_alpha = true
+two_sided_lighting = true
+tint_jitter = 0.35
+root_from_terrain = true
 seed = 1
 
 [node name="Stones" parent="Terrain" type="TerrainScatter3D"]

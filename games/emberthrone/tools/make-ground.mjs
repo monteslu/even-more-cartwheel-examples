@@ -32,7 +32,7 @@ const N = 1024;
 // patches to take out, how much AO darkens, the normal's depth, and the mean roughness (the scan's own variation about
 // it, halved: scans disagree on what their grey means, and a glossy lawn shows the sun as a white blot)
 export const LAYERS = {
-  grass: { acg: 'Grass004', mean: [58, 86, 31], sat: 1.0, contrast: 1.2, flat: 0.5, ao: 0.5, nrm: 1.3, ro: 0.88 },
+  grass: { acg: 'Grass004', mean: [62, 84, 38], sat: 0.82, contrast: 1.2, flat: 0.5, ao: 0.5, nrm: 1.3, ro: 0.88 },
   snow: { acg: 'Snow006', mean: [150, 166, 206], sat: 1.0, contrast: 1.6, flat: 0.5, ao: 0.4, nrm: 1.6, ro: 0.6 },
   dirt: { ph: 'dry_ground_rocks', mean: [104, 78, 52], sat: 1.0, contrast: 1.15, flat: 0.7, ao: 0.6, nrm: 1.3, ro: 0.9 },
   sand: { ph: 'sandstone_cracks', mean: [150, 104, 74], sat: 1.05, contrast: 1.15, flat: 0.7, ao: 0.6, nrm: 1.2, ro: 0.88 },
