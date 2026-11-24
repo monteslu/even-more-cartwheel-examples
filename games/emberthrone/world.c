@@ -729,15 +729,23 @@ static void paint_and_shape(void) {
 #define PATCH(lo, hi, other) do { if (n >= (hi)) base = (other), over = (other), blend = 0; \
     else if (n > (lo)) over = (other), blend = (int)(((n - (lo)) / ((hi) - (lo))) * 220); } while (0)
       if (base == 0) PATCH(0.7f, 0.76f, 5);                                     /* darker moss in patches */
-      else if (base == 1) PATCH(0.6f, 0.65f, 4);                               /* rock through the snow, in broad patches */
+      else if (base == 1) PATCH(0.58f, 0.66f, 4);                              /* rock through the snow, in broad patches */
       else if (base == 5 && rgn[i] == RG_WOOD) { base = 0, over = 0; n = 1 - n; PATCH(0.58f, 0.64f, 5); } /* the wood: grass, moss in the hollows */
       else if (base == 5) { float dry = (h[i] + d->origin.y - 8.6f) * 1.2f; if (dry >= 1) base = 0, over = 0; else if (dry > 0.6f) over = 0, blend = (int)((dry - 0.6f) / 0.4f * 220); } /* grass on the marsh's dry humps */
-      else if (base == 7) PATCH(0.6f, 0.66f, 4);
+      else if (base == 7) {                                                     /* the keep's hill: rock through the ash */
+        PATCH(0.6f, 0.66f, 4);
+        /* and cold teal moss in patches: the warm keep carries its complementary accent in its own ground */
+        if (base == 7 && over == 7) { n = fbm((float)x / 6, (float)z / 6, 909, 3); PATCH(0.6f, 0.66f, 5); }
+      }
+      /* moss in the keep's paving: small patches whose rim the height blend fills from the joints first */
+      else if (base == 6 && rgn[i] == RG_KEEP) { n = fbm((float)x / 3.5f, (float)z / 3.5f, 911, 3); PATCH(0.6f, 0.68f, 5); }
 #undef PATCH
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
       if (slope > 0.9f) base = 4, blend = 0;
-      ctl[i] = cw_terrain_control(base, over, blend, (int)(hash01(x / 4, z / 4, 9) * 15), 0, false);
+      /* no uv rotation or scale step: the engine takes both from the nearest control texel unblended, so a change between
+       * neighbours is a straight seam (it was a 4 m grid of them); its stochastic tiling already breaks the repeat */
+      ctl[i] = cw_terrain_control(base, over, blend, 0, 0, false);
     }
   cw_terrain_set_control(W_terrain, 0, 0, N, N, ctl);
   cw_terrain_sync_physics(W_terrain);
@@ -901,26 +909,27 @@ static void build_keep(void) {
   foe_r(K_RAIDER, R, 16, 58, 136, 0.2f, R_SLINGER);
   foe(K_EMBER, R, 17, 55, 104, 0);
 }
-/* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, trees, pines, stilt trees, stones):
+/* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, stones, pebbles):
  * its placement is a pure function of the cell, so the trees get trunks to bump into and crowns the camera stops at,
- * and every instance joins the grounding check */
-#define MAXSCAT 8192
+ * and every instance joins the grounding check (the pebbles too; they are too small to bump into) */
+#define MAXSCAT 32768
 static float SCAT[MAXSCAT][5];
 static int SCAT_LAYER[MAXSCAT], nscat;
 int world_scatter(const float (**pos)[5], const int **layer) { *pos = (const float (*)[5])SCAT; *layer = SCAT_LAYER; return nscat; }
 static void scatter_bodies(void) {
   nscat = 0;
-  for (int layer = 1; layer <= 1; layer++) /* (the stones: the trees are the game's own, see flora) */
+  for (int layer = 1; layer <= 2; layer++) /* (the stones and pebbles: the trees are the game's own, see flora) */
     for (int cz = -1; cz <= WORLD_N / 32 + 1; cz++)
       for (int cx = -1; cx <= WORLD_N / 32 + 1; cx++) {
-        float buf[5 * 256];
-        int n = cw_terrain_scatter_cell(W_terrain, layer, cx, cz, buf, 256);
+        static float buf[5 * 1024];
+        int n = cw_terrain_scatter_cell(W_terrain, layer, cx, cz, buf, 1024);
         for (int i = 0; i < n && nscat < MAXSCAT; i++) {
           const float *q = buf + 5 * i;
           bool dup = false;
           for (int k = nscat - 1; k >= 0 && k >= nscat - 512 && !dup; k--) dup = SCAT_LAYER[k] == layer && fabsf(SCAT[k][0] - q[0]) < 0.01f && fabsf(SCAT[k][2] - q[2]) < 0.01f;
           if (dup) continue;
           memcpy(SCAT[nscat], q, sizeof(float) * 5), SCAT_LAYER[nscat] = layer, nscat++;
+          if (layer == 2) continue; /* a pebble: no body */
           int rg = world_region_at(q[0], q[2]);
           float sc = q[3];
           if (layer == 4) { col_box(rg, q[0], q[1] + 0.25f * sc, q[2], 0.35f * sc, 0.25f * sc, 0.35f * sc, q[4]); continue; } /* a stone */
@@ -1208,7 +1217,15 @@ void world_build(cw_tree *tree) {
   g_world_paged = (1 << RG_COUNT) - 1;
   /* perf probes (development, native): what each part of the picture costs */
   if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
-  if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[4] = { "Trees", "Pines", "Mangroves", "Stones" }; for (int i = 0; i < 4; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
+  /* the grass tufts as 0.49.0 drew them (the engine's built-in tuft): the control of the tuft flicker check */
+  if (getenv("ADV_PROBE_OLDTUFTS")) {
+    cw_node g = cw_node_get(W_root, "World/Terrain/Grass");
+    cw_node_set(g, "mesh", cw_val_string("")), cw_node_set(g, "density", cw_val_float(2.2f)), cw_node_set(g, "scale_min", cw_val_float(0.42f));
+    cw_node_set(g, "scale_max", cw_val_float(0.72f)), cw_node_set(g, "visible_range", cw_val_float(20)), cw_node_set(g, "fade", cw_val_float(8));
+    cw_node_set(g, "lod_distance", cw_val_float(10));
+  }
+  if (getenv("ADV_PROBE_NOPEBBLES")) cw_node_free(cw_node_get(W_root, "World/Terrain/Pebbles"));
+  if (getenv("ADV_PROBE_NOSCATTER")) { const char *n[5] = { "Trees", "Pines", "Mangroves", "Stones", "Pebbles" }; for (int i = 0; i < 5; i++) { char p[48]; snprintf(p, sizeof p, "World/Terrain/%s", n[i]); cw_node_free(cw_node_get(W_root, p)); } }
   if (getenv("ADV_PROBE_NOSHADOW")) cw_node_set(W_sun, "shadow", cw_val_bool(false));
   /* the terrain out of the picture (with the grass and stones it carries) */
   if (getenv("ADV_PROBE_NOTERRAIN")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "visible", cw_val_bool(false));

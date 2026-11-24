@@ -22,6 +22,7 @@ models/flora_oak.glb
 models/flora_pine.glb
 models/flora_willow.glb
 models/flora_windswept.glb
+models/grass_tuft.glb
 models/heart.glb
 models/key_moon.glb
 models/key_sun.glb
@@ -31,6 +32,7 @@ models/lever.glb
 models/lever_arm.glb
 models/mangrove.glb
 models/maul.glb
+models/pebble.glb
 models/pillar.glb
 models/pine.glb
 models/raider.glb

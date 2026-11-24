@@ -1,5 +1,4 @@
-// Generates the world's textures and props into assets/: the terrain's eight layers (Terrain3D packing: albedo with
-// height in alpha, normal with roughness in alpha), the building materials the world code builds walls, stairs and
+// Generates the world's textures and props into assets/ (the terrain's layers: make-ground.mjs): the building materials the world code builds walls, stairs and
 // gates from, and the props as textured glb (the held weapons, keys, the heart vessel, chests, shrines, trees, rocks,
 // braziers, crystals, the tonic flask). Every pixel and vertex is made here by our own code. Run:
 //   node games/emberthrone/tools/make-world-assets.mjs [textures] [props]
@@ -13,116 +12,11 @@ import { bake, brick, slabs, planks, plate, metalTex } from './chars/make-textur
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', 'assets');
 const TEX = join(ROOT, 'textures'), MOD = join(ROOT, 'models');
-mkdirSync(join(TEX, 'terrain'), { recursive: true });
 mkdirSync(MOD, { recursive: true });
 const only = process.argv.slice(2);
 const want = (k) => !only.length || only.includes(k);
 
-// ── terrain layers ─────────────────────────────────────────────────────
-// each look: px(u, v) -> { c: [r, g, b] sRGB, h 0..1, ro roughness }
-const mix3 = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
-const mul3 = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
-const LAYERS = {
-  // 0 lush grass: two greens in clumps, blade streaks, a yellow-green sheen where it is high
-  grass: (u, v) => {
-    const g = fbm(u, v, 6, 5, 11), clump = fbm(u, v, 14, 3, 12), blade = fbm(u * 4, v * 40, 32, 3, 13);
-    let c = mix3([0.07, 0.16, 0.07], [0.42, 0.58, 0.2], clamp(g * 2.0 - 0.5));
-    c = mix3(c, [0.52, 0.62, 0.16], smooth(0.6, 0.8, clump) * 0.5);
-    c = mul3(c, 0.55 + 0.9 * blade);
-    const [f1, , id] = cells(u, v, 48, 14, 1);
-    const fl = smooth(0.16, 0.08, f1) * smooth(0.6, 0.8, fbm(u, v, 5, 3, 15));
-    c = mix3(c, id < 0.5 ? [0.98, 0.84, 0.2] : id < 0.8 ? [0.66, 0.4, 0.92] : [0.96, 0.96, 0.9], fl);
-    return { c, h: 0.3 + 0.5 * blade * clump, ro: 0.92 };
-  },
-  // 1 snow: wind-packed, faintly blue in the hollows, sparkle-free (it is lit by the sun, not by the texture)
-  snow: (u, v) => {
-    const g = fbm(u, v, 5, 5, 21), drift = fbm(u * 0.5 + 0.3, v * 2, 3, 3, 22), fine = fbm(u, v, 40, 2, 23);
-    const rip = Math.pow(Math.sin((u * 0.15 + v + fbm(u, v, 3, 3, 24) * 0.12) * Math.PI * 18) * 0.5 + 0.5, 3); // wind ripples (sastrugi): long low ridges
-    let c = mix3([0.42, 0.52, 0.74], [0.92, 0.94, 0.98], clamp(g * 0.9 + drift * 0.6 - 0.25));
-    c = mul3(c, (0.78 + 0.32 * fine) * (0.94 + 0.08 * rip));
-    return { c, h: 0.3 + 0.35 * drift + 0.1 * fine + 0.15 * rip, ro: 0.7 };
-  },
-  // 2 the worn path: packed earth with fine grit, ruts along it, and gravel: small angular grains (the corners of
-  // fine cells, a few in each patch), never round stones that read as coins
-  dirt: (u, v) => {
-    const g = fbm(u, v, 8, 5, 31), grit = fbm(u, v, 64, 2, 34), rut = fbm(u * 0.4, v * 6, 4, 3, 35);
-    const [f1, f2, id] = cells(u, v, 110, 32, 1);
-    const patch = smooth(0.45, 0.7, fbm(u, v, 6, 3, 36));
-    const grain = smooth(0.02, 0.07, f2 - f1) * (id > 0.9 - 0.12 * patch ? 1 : 0); // a cell's polygon, inset from its edges
-    let c = mix3([0.24, 0.16, 0.09], [0.56, 0.41, 0.26], clamp(g * 1.1 + rut * 0.4 - 0.25));
-    c = mul3(c, 0.75 + 0.45 * grit);
-    const stone = mul3(c, 0.62 + 0.5 * hash2(Math.floor(id * 9973), 3, 37)); // the earth's own colour, a little lighter or darker
-    c = mix3(c, mix3(stone, [0.45, 0.42, 0.38], 0.3), grain * 0.8);
-    return { c, h: 0.35 + 0.25 * g + 0.15 * grit + grain * 0.25 - rut * 0.15, ro: 0.95 - grain * 0.08 };
-  },
-  // 3 sandstone: the canyon floor and its ramps, layered in bands of amber and rose, crazed by thin wandering cracks
-  sand: (u, v) => {
-    const g = fbm(u, v, 6, 5, 41), band = Math.sin((v + fbm(u, v, 3, 3, 42) * 0.25) * Math.PI * 10) * 0.5 + 0.5;
-    let c = mix3([0.28, 0.16, 0.1], [0.92, 0.72, 0.52], clamp((band * 0.6 + g * 0.4) * 1.3 - 0.15));
-    c = mix3(c, [0.7, 0.3, 0.24], smooth(0.62, 0.8, fbm(u, v, 4, 3, 43)) * 0.5);
-    const r = 1 - Math.abs(fbm(u, v, 9, 4, 44) * 2 - 1), crack = smooth(0.95, 0.99, r) * smooth(0.3, 0.55, fbm(u, v, 3, 2, 46));
-    const grit = fbm(u, v, 64, 2, 45), pit = fbm(u, v, 20, 3, 47);
-    c = mul3(c, (1 - crack * 0.65) * (0.6 + 0.55 * grit) * (0.85 + 0.3 * pit));
-    return { c, h: clamp(0.4 + 0.3 * g + 0.2 * band - crack * 0.35), ro: 0.88 };
-  },
-  // 4 cliff rock: strata of violet, grey and rust, each bed its own shade and grain, split by a few long joints and
-  // wandering cracks, lichen on the ledges
-  rock: (u, v) => {
-    const warp = fbm(u, v, 3, 3, 54) - 0.5, BEDS = 14;
-    const bv = (v + warp * 0.12) * BEDS, bed = ((Math.floor(bv) % BEDS) + BEDS) % BEDS, inBed = bv - Math.floor(bv);
-    const hue = hash2(bed, 1, 55), shade = 0.55 + 0.6 * hash2(bed, 2, 56);
-    let c = hue < 0.45 ? [0.42, 0.38, 0.48] : hue < 0.75 ? [0.5, 0.48, 0.46] : [0.56, 0.4, 0.32];
-    const g = fbm(u, v, 6, 5, 51), fine = fbm(u, v * 2, 24 + 8 * Math.floor(hash2(bed, 3, 57) * 3), 3, 59);
-    c = mul3(c, shade * (0.62 + 0.5 * g) * (0.8 + 0.35 * fine));
-    const lip = smooth(0.82, 0.97, inBed), seam = 1 - smooth(0.0, 0.06, Math.min(inBed, 1 - inBed));
-    c = mul3(c, 1 - seam * 0.55 + lip * 0.12);
-    const joint = smooth(0.985, 0.998, 1 - Math.abs(fbm(u, v, 4, 4, 58) * 2 - 1)) * (hash2(bed, 4, 60) < 0.5 ? 1 : 0); // joints in some beds
-    const r = 1 - Math.abs(fbm(u, v, 7, 5, 52) * 2 - 1), crack = smooth(0.975, 0.996, r);
-    c = mul3(c, 1 - Math.max(joint, crack) * 0.7);
-    c = mix3(c, [0.5, 0.58, 0.28], lip * smooth(0.6, 0.8, fbm(u, v, 9, 3, 53)) * 0.7);
-    return { c, h: clamp(0.45 + 0.3 * g - seam * 0.35 + lip * 0.1 - Math.max(joint, crack) * 0.45), ro: 0.85 };
-  },
-  // 5 marsh: dark teal moss and wet mud, glossy where it is wet
-  mud: (u, v) => {
-    const g = fbm(u, v, 6, 5, 61), wet = smooth(0.45, 0.65, fbm(u, v, 4, 4, 62)), moss = fbm(u * 2, v * 2, 12, 3, 63);
-    let c = mix3([0.12, 0.3, 0.24], [0.26, 0.46, 0.3], moss);
-    c = mix3(c, [0.2, 0.16, 0.14], wet * 0.7);
-    return { c: mul3(c, 0.85 + 0.3 * g), h: 0.4 + 0.3 * moss - wet * 0.3, ro: lerp(0.9, 0.35, wet) };
-  },
-  // 6 cobbles: the keep's paving, rounded red-brown stones in dark joints
-  cobble: (u, v) => {
-    const [f1, f2, id] = cells(u, v, 12, 71, 0.85), g = fbm(u, v, 8, 4, 72);
-    const stone = smooth(0.0, 0.12, f2 - f1), dome = clamp(1 - f1 * 1.6);
-    let c = mix3([0.46, 0.4, 0.36], [0.68, 0.6, 0.52], id * 0.7 + g * 0.3);
-    c = mul3(c, lerp(0.35, 1, stone) * (0.85 + 0.2 * dome));
-    return { c, h: clamp(stone * (0.5 + 0.5 * dome)), ro: lerp(0.98, 0.8, stone) };
-  },
-  // 7 ember ash: the keep's hill, dark warm earth with ochre and soot
-  ash: (u, v) => {
-    const g = fbm(u, v, 6, 5, 81), s = smooth(0.55, 0.75, fbm(u, v, 10, 3, 82));
-    let c = mix3([0.3, 0.17, 0.12], [0.5, 0.3, 0.18], g);
-    c = mix3(c, [0.78, 0.5, 0.18], s * 0.45);
-    return { c, h: 0.3 + 0.4 * g, ro: 0.95 };
-  },
-};
-function terrainLayer(name, f, N = 512) {
-  const ah = new Uint8Array(N * N * 4), nr = new Uint8Array(N * N * 4), H = new Float32Array(N * N), R = new Float32Array(N * N);
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const o = f(x / N, y / N), i = y * N + x;
-    ah[i * 4] = Math.round(clamp(o.c[0]) * 255); ah[i * 4 + 1] = Math.round(clamp(o.c[1]) * 255); ah[i * 4 + 2] = Math.round(clamp(o.c[2]) * 255);
-    ah[i * 4 + 3] = Math.round(clamp(o.h) * 255); H[i] = o.h; R[i] = o.ro;
-  }
-  const S = 3.0;
-  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
-    const h = (xx, yy) => H[((yy + N) % N) * N + ((xx + N) % N)];
-    const dx = (h(x + 1, y) - h(x - 1, y)) * S, dy = (h(x, y + 1) - h(x, y - 1)) * S, l = Math.hypot(dx, dy, 1), i = (y * N + x) * 4;
-    nr[i] = Math.round((-dx / l * 0.5 + 0.5) * 255); nr[i + 1] = Math.round((dy / l * 0.5 + 0.5) * 255); nr[i + 2] = Math.round((1 / l * 0.5 + 0.5) * 255);
-    nr[i + 3] = Math.round(clamp(R[y * N + x]) * 255);
-  }
-  save(join(TEX, 'terrain', name + '_ah.png'), N, N, 4, ah);
-  save(join(TEX, 'terrain', name + '_nr.png'), N, N, 4, nr);
-  console.log('terrain', name);
-}
+// (the terrain's eight layers are CC0 photo scans, graded and packed by make-ground.mjs)
 
 // weathering over any surface: moss in the joints and in patches, damp stains running down, chipped corners
 function weather(px, seed, moss = 0.5) {
@@ -352,7 +246,6 @@ function grassTuft(m) { // reeds for the marsh edge
 }
 
 if (want('textures')) {
-  for (const [n, f] of Object.entries(LAYERS)) terrainLayer(n, f);
   for (const [n, f] of Object.entries(SETS)) { const [t, s] = f(); writeSet(TEX, n, t, s); console.log('set', n); }
 }
 if (want('props')) {

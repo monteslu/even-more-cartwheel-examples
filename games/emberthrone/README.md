@@ -60,7 +60,8 @@ through them); after their biggest blows they stand spent for a moment, open to 
 | `tools/chars/build-cast.sh` | the characters: CC0 bases dressed and recoloured in headless Blender (`tools/chars/blender`), then written on the full source skeleton (`tools/chars/make-characters.mjs`) |
 | `tools/chars/fetch-anims.sh` | the motion: the CC0 Universal Animation Library 1 and 2 fetched and checked, the game's clips picked, joined, timed and filled in (`tools/chars/blender/build_anims.py`) into `assets/anim/ual.glb`, which the packer retargets onto each figure (`assets/models/*.glb.cwimport`) |
 | `tools/capture-chars.sh` | close-ups of the cast at the game camera's distance and at a portrait's |
-| `tools/make-world-assets.mjs` | the terrain layers, building textures, props, the trees and glowcaps (leaf cards), the cloud layer and the contrast grade |
+| `tools/make-ground.mjs` | the terrain's eight ground layers from CC0 photo-scanned PBR sets (see CREDITS), graded to each region's palette and checked to tile |
+| `tools/make-world-assets.mjs` | the building textures, props, the trees and glowcaps (leaf cards), the cloud layer and the contrast grade |
 | `tools/survey.sh` | the program table from software GL runs (off the shared GPU) |
 | `tools/swshot.sh` | a screenshot on software GL |
 | `tools/capture-look.sh` | five play frames from each region spread over its fight, for the look check (`LOOK_REGIONS` takes some regions) |
@@ -69,6 +70,11 @@ Tests: `node tests/emberthrone-rules.mjs` (the combat feel on the real rules, ea
 `node tests/emberthrone-flash.mjs` (the journey and a boss fight every frame against the photosensitive flash thresholds, with
 strobing controls that must fail), `node tests/emberthrone-soak.mjs` (the whole game on software GL, with a control that must fail),
 `node tests/emberthrone-grounding.mjs` (no floating props, with a control that must fail),
+`node tests/emberthrone-ground-shots.mjs out/ground` then `node tests/emberthrone-ground.mjs out/ground` (no seams and no
+repeat in any region's ground, from the game's camera on romdev, and every layer tiles; with `--control` frames and
+`--control-textures` the old ground must fail),
+`node tests/emberthrone-tufts.mjs [--gpu gl|webgpu]` (the grass tufts hold still while the camera walks: their
+frame-to-frame flicker over the ground's own, with the old tufts as a control that must fail),
 `node tests/emberthrone-perf.mjs` (1080p High on the 890M, GL and WebGPU), `node tests/emberthrone-look.mjs out/look` (each
 region mid-key, with real contrast and more than one hue family, with a control that must fail), and the gates in
 `tests/emberthrone-gates.json`.

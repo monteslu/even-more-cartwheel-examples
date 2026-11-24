@@ -83,8 +83,17 @@ round the edge. Painted by zone and slope, with soft edges where a path meets th
 the engine. Trees are the game's own: nine species (oak, birch, aspen, willow, pine, fir, windswept, deepwood and the
 glowcap), a few per region, each a trunk and a crown of alpha-cut leaf cards, drawn in 48 m tiles (one instanced mesh
 per species, region and tile): full crowns that sway in the wind within 70 m, an impostor crown of a few large clusters
-out to 190 m, nothing past that (the haze has them). The paths are packed earth with angular gravel; the cliffs are
-strata of violet, grey and rust beds split by joints and cracks; the grass is short and dense, fading out by 20 m. A cloud layer drifts over the sky. Buildings are boxes
+out to 190 m, nothing past that (the haze has them). The ground is eight CC0 photo-scanned layers (grass, snow, the
+paths' packed earth and grit, the canyon's cracked sandstone, rock, the marsh's moss and mud, paving, the keep's burnt
+earth), graded to each region's palette, read by the engine at a random offset in every small cell so no tile comes
+round again, blended by height where two meet, and read from the side with the engine's detiling on cliffs and steep
+banks; no uv turn or scale is painted per texel (the engine takes both from the nearest texel, and a change between
+neighbours drew a straight seam). The keep's warm hill and paving carry cold teal moss in patches, its complementary
+accent in its own ground whoever stands there. Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
+larger stones). The grass tufts are the game's own blade mesh (tools/make-ground.mjs): six curved blades, each its
+own height, lean and shade, dark at the root in the grass layer's colour and lighter at the tip, normals bent up so
+they light like the ground, both faces drawn with the same normals; they vary in size and turn and shrink away over
+their last 10 m to 15 m (farther, a blade is thinner than a pixel and shimmers). A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
 regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
@@ -157,7 +166,18 @@ region's colours (the outfit's material tinted per kind and region).
   falls), positions stay finite, the camera never has a wall between it and the player, the route never stalls 6
   minutes, memory holds (1 percent). Control: an empty maul chest (the cracked wall never breaks) must fail. The two
   halves run as two suites (`--no-control`, `--control-only`) to keep each hold of the GPU suite lock short.
-- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 1383 scattered stones on the ground (worst 0 cm).
+- `tests/emberthrone-ground.mjs` (frames from `tests/emberthrone-ground-shots.mjs`: the auto cart on romdev, its
+  `groundcam` holding the camera straight down over each region's open ground): no seam (no pixel boundary where the
+  step across it is the hardest of its neighbours along most of the frame) and no repeat (the autocorrelation of a
+  45 m view, its 2 m mean off, under 0.25 at every lag from 1.5 to 15 m), in all eight regions; every layer texture
+  tiles (the step across its wrap no more than 1.25 times the step inside). Controls: the 0.49.0 ground (a uv turn per
+  4 m block drew a grid of seams in every region), its layers laid plainly (a repeat the measure must see) and its
+  layer textures (three did not tile) must fail.
+- `tests/emberthrone-tufts.mjs`: the camera walks slowly over the meadow and the spire's downs and two seconds are
+  recorded at 1080p; on the tufts' pixels the frame-to-frame flicker (the second difference in time) over the same
+  pixels with no tufts stays under 4. Control: the 0.49.0 tufts (the engine's built-in tuft, `ADV_PROBE_OLDTUFTS`)
+  must fail.
+- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 5719 scattered stones and pebbles on the ground (worst 0 cm).
   Control: one tree lifted half a metre must be caught.
 - `tests/emberthrone-look.mjs` (frames from tools/capture-look.sh, five per region spread over its fight, judged on
   their median: one frame is one moment of a fight): each region's play is mid-key (mean luma 100

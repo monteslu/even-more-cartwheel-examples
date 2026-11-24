@@ -2,6 +2,42 @@
 
 ## 0.51.0
 
+- **Ember Throne**'s ground, in all eight regions. The grid of straight seams is gone: every terrain texel took a
+  random uv turn in 4 m blocks, and the engine reads the turn from the nearest texel without blending, so each block
+  edge drew a line across the ground; the turn is now 0 everywhere (the engine's own stochastic tiling breaks the
+  repeat). The eight layers are CC0 photo-scanned PBR sets from Poly Haven and ambientCG (grass, snow, the paths'
+  packed earth and gravel, the canyon's cracked sandstone, rock, the marsh's moss and mud, paving, the keep's burnt
+  earth; see the game's CREDITS), graded to each region's palette by tools/make-ground.mjs: any faint step at their
+  edges healed, their tile-sized patches taken out, height stretched for the engine's height blend, roughness set per
+  ground (no glossy lawns), 1024 square so nothing is resampled; three of the old generated layers did not tile at
+  their edges. The cliffs and steep banks use the engine's side detiling. The larger stones are the game's own rock,
+  and pebbles lie on the paths, the canyon floor and the keep's hill (all on the ground: 5 719 scattered stones and
+  pebbles, worst 0 cm).
+- **Ember Throne**'s grass tufts are the game's own blade mesh: six curved blades a tuft, each its own height, lean
+  and shade, dark at the root in the grass's colour so the base melts into the ground, normals bent up so they light
+  like the ground, both faces drawn with the same normals (the engine's built-in tuft was five flat spikes with a pale
+  tip, half of them lit from below); they vary in size and turn, and shrink away over their last 10 m to 15 m, where a
+  blade would be thinner than a pixel and shimmer.
+- **Ember Throne**'s keep carries its complementary accent in its own art, whoever stands in it: cold teal moss in
+  patches over the warm ash of its hill, and in its paving (small patches whose rim the height blend fills from the
+  joints first); the paving a little lighter. With no figures on screen (`ADV_PROBE_NOCHARS`) the keep's
+  five frames read a 5.1% accent (4% bar) at a mean luma of 108.
+- tests/emberthrone-ground.mjs (frames from tests/emberthrone-ground-shots.mjs: the auto cart on romdev, its new
+  `groundcam` debug command holding the camera over each region's ground): no seam and no repeat in any region, and
+  every layer tiles. Controls: the 0.49.0 ground (seam lines in every region), its layers laid plainly (a repeat the
+  measure must see) and its layer textures must fail.
+- tests/emberthrone-tufts.mjs: the camera walks slowly over the meadow and the spire's downs on GL and WebGPU; the
+  tufts' frame-to-frame flicker over the ground's own stays under 4 of 255. Control: the 0.49.0 tufts
+  (`ADV_PROBE_OLDTUFTS`) must fail.
+- Checks on this change, on cartwheel-engine 0.70.1: Ember Throne's cart builds; its smoke, version and prompt checks;
+  grounding; the ground check (seam peaks 0.38 to 0.43 in the eight regions against 0.73 to 0.93 before), the tuft
+  check on GL and WebGPU (flicker excess -11.0 and -14.0 against 15.8 to 22.0 for the old tufts), the look check in
+  all eight regions and in the keep with no figures, and the flash check. On 0.67.0, before the pin moved: its rules,
+  gates and soak. The perf gate measured on another GPU: every place well inside its bound, 0.05 to 0.17 ms over the
+  0.50.0 ground.
+
+## 0.50.0
+
 - **Ember Throne**'s characters move on captured motion instead of keyed poses and sine loops. The clips come from
   Quaternius' Universal Animation Library 1 and 2 (CC0), on the same rig the cast is built from: the sword stance,
   walk and jog, the three-cut combo with its recoveries, the dive roll, the hits, the knock-down and get-up, the kneel
@@ -29,9 +65,6 @@
   failing), flash, grounding, its gates, and its perf gate on the 890M (GL and WebGPU) and on another GPU. The look check
   passes in seven regions; the keep's complementary accent reads 3.7% against its 4% bar (4.4% before): in two of its
   five frames a moving figure no longer stands where it did, the palette is unchanged.
-
-## 0.50.0
-
 - **beatsync**: the worlds are mirrored in the glass roads. The night sea, the synthwave grid, the rock stage and the
   metal hall light the field (cartwheel-engine's backdrop `environment`): each world is captured from its camera and
   the dark glass under the rivers reflects it, its share following the fade. The road stands for a floor going away,

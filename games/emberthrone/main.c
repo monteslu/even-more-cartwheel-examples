@@ -168,6 +168,23 @@ static void cmd_from(int argc, const char **argv, cw_reply *r) {
   view_reset();
   cw_reply_printf(r, "{\"from\":%d}", n);
 }
+#ifdef ADV_AUTOPILOT
+/* groundcam x z height [pitch yaw [vx vz]] (degrees; pitch -90 looks straight down; v: metres a frame): the camera held
+ * there over the ground, or moving on steadily, for the ground measures (tests/emberthrone-ground.mjs, the tuft flicker
+ * check); groundcam off gives it back to the game */
+static struct { bool on; float x, y, z, h, pitch, yaw, vx, vz; } GCAM;
+static void cmd_groundcam(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2 && !strcmp(argv[1], "off")) { GCAM.on = false; cw_reply_printf(r, "{\"groundcam\":0}"); return; }
+  if (argc < 4) { cw_reply_error(r, "usage: groundcam x z height [pitch yaw [vx vz]] | off"); return; }
+  GCAM.on = true, GCAM.x = (float)atof(argv[1]), GCAM.z = (float)atof(argv[2]), GCAM.h = (float)atof(argv[3]);
+  GCAM.pitch = argc > 4 ? (float)atof(argv[4]) : -90, GCAM.yaw = argc > 5 ? (float)atof(argv[5]) : 0;
+  GCAM.vx = argc > 6 ? (float)atof(argv[6]) : 0, GCAM.vz = argc > 7 ? (float)atof(argv[7]) : 0;
+  float y = GCAM.y = world_height(GCAM.x, GCAM.z) + GCAM.h; /* (held level while it moves) */
+  cw_value v;
+  float fov = cw_node_get_prop(G.camera, "fov", &v) && v.f > 1 ? (float)v.f : 60;
+  cw_reply_printf(r, "{\"groundcam\":1,\"x\":%.3f,\"y\":%.3f,\"z\":%.3f,\"ground\":%.3f,\"fov\":%.3f}", GCAM.x, y, GCAM.z, y - GCAM.h, fov);
+}
+#endif
 
 static void start(int players, void *u) {
   (void)u;
@@ -273,6 +290,7 @@ static void init(void *u) {
   /* every build: a test jumps to a fight (tests/emberthrone-motion.mjs) */
   cw_debug_command("from", "from <n>: further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);
 #ifdef ADV_AUTOPILOT
+  cw_debug_command("groundcam", "groundcam x z height [pitch yaw [vx vz]] | off: hold (or move) the camera over the ground (the ground measures)", cmd_groundcam);
   cw_shell_start(getenv("ADV_PLAYERS") ? CW_CLAMP(atoi(getenv("ADV_PLAYERS")), 1, MAXP) : 1);
 #endif
 }
@@ -480,6 +498,16 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(G.camera, (float)alpha, (float)w / (float)h);
+#ifdef ADV_AUTOPILOT
+    if (GCAM.on) {
+      GCAM.x += GCAM.vx, GCAM.z += GCAM.vz;
+      t3_vec3 cp = { GCAM.x, GCAM.y, GCAM.z };
+      cw_node3d_set_position(G.camera, cp);
+      float pa = GCAM.pitch * CW_PI / 180, ya = GCAM.yaw * CW_PI / 180;
+      if (GCAM.pitch <= -89.5f) cw_node3d_set_rotation(G.camera, (t3_vec3){ -CW_PI / 2, 0, 0 }); /* straight down, screen up -z */
+      else cw_node3d_look_at(G.camera, (t3_vec3){ cp.x - sinf(ya) * cosf(pa), cp.y + sinf(pa), cp.z - cosf(ya) * cosf(pa) }, (t3_vec3){ 0, 1, 0 });
+    }
+#endif
     view_lod(G.camera, h);
     t3_vec3 p = cw_node3d_position(G.camera);
     if (G.cam_n >= 2 && S.tick > 2 && S.state == GS_PLAY) {
