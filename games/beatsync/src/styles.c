@@ -213,13 +213,11 @@ static void begin(int to, float beats) {
   S.hold_from = S.beat;
 }
 
-/* a fade the scheduler may make: its two worlds' costs within the budget (or one world), and not between the arcade
- * maze and one bit (known engine issues in cartwheel-engine 0.71.2: the half blocks leaving at that fade's end cost two
- * frames 2.5 ms over the frames round them, and the rock stage's environment, off through the fade, is captured whole
- * on its end frame; both fixed in the engine release after it) */
+/* a fade the scheduler may make: its two worlds' costs within the budget (or one world). (The arcade maze and one bit
+ * were kept apart until cartwheel-engine 0.76.0: the half blocks leaving at that fade's end, as the rock stage's
+ * environment came back on, cost two frames 2.6 ms over the frames round them; on 0.76.0 its end frames are the
+ * fade's own cost, tests/beatsync-cost.mjs.) */
 static bool pair_fits(int a, int b) {
-  int pa = STYLES[a].px, pb = STYLES[b].px;
-  if ((pa == PX_MAZE && pb == PX_BIT) || (pa == PX_BIT && pb == PX_MAZE)) return false;
   return COST[a] + COST[b] <= PAIR_BUDGET || STYLES[a].backdrop == STYLES[b].backdrop;
 }
 

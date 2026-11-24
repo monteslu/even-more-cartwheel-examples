@@ -972,8 +972,8 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
    * draws the world six times more and its filter is a frame of its own (about 1 ms more a fade frame and spikes of 3 on
    * a Radeon 890M, over the fade budget), so during a fade the captures wait (the reflection holds the last whole one)
    * and pick up again the frame the fade ends */
-  /* the world coming in lights the field only once its fade is over: a world shown with its environment on is captured
-   * on its first frame whatever env_every says (1.8 ms more that frame on the Steam Machine's GPU, 5 on a loaded 890M) */
+  /* the world coming in lights the field only once its fade is over (cartwheel-engine 0.72.0 keeps a world's capture
+   * while its environment is off, and 0.76.0 its filter, so that frame captures nothing whole) */
   int incoming = n == 2 ? (lit[0] == top ? lit[0] : lit[1]) : 0;
   for (int i = 1; i < BD_COUNT; i++) {
     if (!B.node[i].id || !B.env_cap[i]) continue;

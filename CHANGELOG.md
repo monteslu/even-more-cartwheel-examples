@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.55.0
+
+- Every game on cartwheel-engine 0.76.0, every program table generated again for it.
+- **beatsync**'s fades end cleanly. On 0.76.0 a fade's end frames cost what the fade itself does: the arcade maze into
+  one bit no longer has two frames 2.6 ms over at its end, and the metal hall into the rock stage, the lava into the
+  metal hall and the half blocks into the metal hall have no end-frame spike. So the arcade maze and one bit fade into
+  each other again, and the GL fade bound in the hitch check is held again.
+- **beatsync**'s hitch check holds that no engine pass (post, looks or backdrops) is built in play after the warm-up,
+  read from the engine's `cw.pass_builds`. Its control, the cart with no prewarm, must build passes in its fades, and
+  it does (26 on GL and 39 on WebGPU).
+- Known issues:
+  - every twelfth frame of a style whose world lights the field costs about 5 ms more GPU on the 890M (the
+    environment's filter makes a cube of at least 256 texels a face for a 64-texel capture), an engine cost;
+  - on WebGPU an occasional fade frame reaches 8 to 11 ms on a Radeon RX 7600 (in 890M units). It lands somewhere
+    else in each run, from pauses of the host, and is neither the game nor the engine, so the WebGPU fade bound is
+    printed rather than failed. Every frame of the tour stays under 16.7 ms on GL and WebGPU.
+- Checks on this release, on cartwheel-engine 0.76.0 with Release carts, on a Radeon RX 7600 (GPU times in 890M units):
+  - beatsync's hitch check on GL and WebGPU: 30 style changes, the arcade maze into one bit among them, with no frame
+    over 16.7 ms. The worst GL fade frame was 5.8 ms, under the 8 ms bound. Its control, a cart with no prewarm, must go
+    over, and it does.
+  - beatsync's fade ends, each fade run whole: the arcade maze into one bit, the half blocks and the lava into the metal
+    hall, the night sea into the grid, and the metal hall into the rock stage. Each fade's end frames cost what the
+    fade does.
+  - beatsync's readability (4:1) in every style, each with its control, and the one-bit HUD in ink and paper, with its
+    control.
+  - beatsync's style fades against the flash rules, with the one-frame cut control; the song-length flash check, with
+    its strobe controls; and the note footprint, with the old-shapes control. All three ran on this release's own
+    build.
+  - The program table at every preset, with its control.
+  - Every game's cart smoke, version and prompt checks.
 ## 0.54.0
 
 - **beatsync**'s arcade maze is back in the readability gate. The engine fixed the half blocks that drew a flat colour

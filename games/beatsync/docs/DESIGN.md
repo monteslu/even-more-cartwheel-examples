@@ -321,9 +321,7 @@ phrase boundary, every 8 bars on the song's own beat grid (from its first downbe
 after that the song's seed (its id's hash) fixes the order, every style once before any comes round again, never a
 fade between two worlds whose GPU costs add up to more than 7.2 ms on a Radeon 890M (each style's cost at High is in
 `src/styles.c` COST, measured with the reflections; a fade draws both, about the sum less the field's 0.4 ms, so the
-worst fade stays under 8 ms there; Auto quality steps down on slower GPUs), never between the arcade maze and one bit
-(known issues with cartwheel-engine 0.71.2: the half blocks leaving at that fade's end cost two frames over the
-frames round them, and the rock stage's environment, off through the fade, is captured whole on its end frame), and a drop
+worst fade stays under 8 ms there; Auto quality steps down on slower GPUs), and a drop
 takes a big one (fire, lasers, the grid, the rock stage, the arcade maze, deep space, lava, the metal hall) while one is left. The same song always looks the same.
 
 **The fades.** A change fades over 2 beats, a drop's over 1, never under half a second (into or out of a two-colour
@@ -378,16 +376,17 @@ all the styles fading in (each first showing included) and holds each to a 60 Hz
 frame inside a fade (two worlds, and a world's environment capture with its filter) to 8 ms of GPU; its
 control, a cart loaded with neither prewarm (`env CW_TEST_NO_PREWARM=1`, which the game reads too), must go over.
 
-**Known engine issues on cartwheel-engine 0.71.2** (an engine fix is coming): a fade out of an engine look can cost
-more than its two pictures (half blocks into the metal hall: 8 to 9 ms on the 890M), a world that lights the field is
-captured whole on the frame its environment comes on at a fade's end, and on WebGPU a frame in a fade can spike to 8 to
-11 ms (a Radeon RX 7600, in 890M units: it lands somewhere else each run, from pauses of the host, and is not the
-game's or the engine's), so the hitch check's 8 ms
-fade bound is held (`HELD_FADE` in tests/beatsync-hitch.mjs, which lists every fade frame over it; every frame stays
-under 16.7 ms) and the scheduler keeps the arcade maze and one bit apart. The arcade maze's checkerboard (half blocks on
-a palette under TAA) was fixed in 0.71.1: it reads 7.88:1 again and is back in the readability gate. Every twelfth frame of a style
-whose world lights the field costs about 5 ms more GPU on the 890M (the environment's filter makes a cube of at least
-256 texels a face for a 64-texel capture): a known engine issue.
+**Fade ends and builds.** cartwheel-engine 0.76.0 fixed the costs at a fade's end (a look leaving as a world's
+environment comes back, the environment's return), so every fade's end frames cost what the fade does and the arcade
+maze and one bit fade into each other again; the hitch check holds GL to the 8 ms fade bound, and holds that no engine
+pass (post, looks, backdrops) is built in play after the warm-up (`cw.pass_builds`; its control, the cart with no
+prewarm, builds them in its fades). On WebGPU on a Radeon RX 7600 an occasional fade frame spikes to 8 to 11 ms (in
+890M units): it lands somewhere else each run, from pauses of the host, and is neither the game nor the engine, so the
+WebGPU fade bound is printed, not failed (`HELD_FADE`, with every fade frame over it listed; every frame stays under
+16.7 ms). The arcade maze's checkerboard (half blocks on a palette under TAA) was fixed in 0.71.1: it reads 7.88:1
+and is in the readability gate. **Known engine cost:** every twelfth frame of a style whose world lights the field
+costs about 5 ms more GPU on the 890M (the environment's filter makes a cube of at least 256 texels a face for a
+64-texel capture).
 
 **Checked.** `tests/beatsync-styles.mjs` holds every style to a contrast of 4:1 between the notes and their river (each
 style with its own control: no roads and dim notes must fall under it), to the flash rules over every style fading in
