@@ -17,7 +17,7 @@ black, each landmark a tower of characters in its material's colour.
 | south | fire, at the ammunition's own fixed power (no charging, no power control) |
 | west / east | the next / the previous ammunition: shot, heavy ball, charge |
 | north | the wide view, on and off |
-| start | pause (the layout is on the pause screen) |
+| start | pause (the layout is on the pause screen; while a structure is played the menu also has Restart structure and Choose structure) |
 
 In co-op and free fire the aim opens again the moment the shot has struck, while the rubble is still settling: the launcher turns, the ammunition changes and South fires the next shot at once (a South press while a shot is still in the air is kept and fires the moment the aim opens). On the select screen a held direction repeats, quicker the longer it is held, and the choice wraps round.
 
