@@ -15,6 +15,7 @@
 #include <string.h>
 
 #include "cartwheel/debug.h"
+#include "cartwheel/framing.h"
 #include "cartwheel/platform.h"
 #include "game.h"
 
@@ -261,6 +262,32 @@ static void camera_step(const input *in) {
     }
   }
   S.cam_dist_want = 5.6f + spread * 0.55f + (S.boss >= 0 ? 1.4f : 0);
+  /* locked on: the hero and the foe framed together (cartwheel/framing.h, an exact fit). The camera swings off the line
+   * between them (the hero to the left of the picture, the foe clear past the right shoulder) and steps back until both
+   * whole bodies fit with a margin, looking at the middle of the two; eased in over a third of a second and out again.
+   * The stick still steers by cam_yaw (the bearing to the foe): up the stick is still at the foe. */
+  float side_off = 0; /* the camera's swing off cam_yaw (the lock-on framing) */
+  const float hx = tx, hy = ty, hz = tz; /* the head(s) the camera orbits */
+  {
+    bool lk = t && alive(t);
+    S.cam_lock += ((lk ? 1.0f : 0.0f) - S.cam_lock) * 0.1f;
+    if (S.cam_lock < 0.002f) S.cam_lock = 0;
+    const float SIDE = 0.5f;
+    if (lk) {
+      float hs = KIND[t->kind].scale;
+      cw_frame_point pts[2] = { { c.x, c.y + 0.95f, c.z, 1.0f },
+                                { pos(t).x, pos(t).y + KIND[t->kind].height * hs * 0.5f, pos(t).z, fmaxf(KIND[t->kind].height * 0.55f, KIND[t->kind].radius + 0.3f) * hs } };
+      cw_frame_params fp = { .yaw = S.cam_yaw + SIDE, .pitch = S.cam_pitch, .fov_y = 60 * CW_PI / 180, .aspect = 16.0f / 9, .margin = 0.12f, .min_dist = 7.0f, .max_dist = 16 };
+      cw_frame_result fr;
+      if (cw_frame_fit(&fp, pts, 2, &fr)) S.cam_lock_at = (t3_vec3){ fr.target[0], fr.target[1], fr.target[2] }, S.cam_lock_dist = fr.dist;
+    }
+    if (S.cam_lock > 0) {
+      float w = S.cam_lock * S.cam_lock * (3 - 2 * S.cam_lock);
+      tx = lerpf(tx, S.cam_lock_at.x, w), ty = lerpf(ty, S.cam_lock_at.y, w), tz = lerpf(tz, S.cam_lock_at.z, w);
+      S.cam_dist_want = lerpf(S.cam_dist_want, S.cam_lock_dist, w);
+      side_off = SIDE * w;
+    }
+  }
   { /* art captures (development): ADV_CAM_DIST, ADV_CAM_PITCH, ADV_CAM_YAW (added to the yaw); read once, from
      * frame 2 on (cw_test_env: a cart host delivers the environment at frame 2) */
     static int art = -1;
@@ -289,10 +316,19 @@ static void camera_step(const input *in) {
     }
   }
   /* the view direction and the wanted position */
-  float sp = cw_sin(S.cam_pitch), cp = cw_cos(S.cam_pitch), sy = cw_sin(S.cam_yaw), cyw = cw_cos(S.cam_yaw);
+  float sp = cw_sin(S.cam_pitch), cp = cw_cos(S.cam_pitch), sy = cw_sin(S.cam_yaw + side_off), cyw = cw_cos(S.cam_yaw + side_off);
   t3_vec3 dir = { sy * cp, -sp, cyw * cp }; /* from the target back toward the camera */
   t3_vec3 tgt = { tx, ty, tz };
   float want = S.cam_dist_want;
+  const t3_vec3 look = tgt; /* what the camera looks at */
+  if (S.cam_lock > 0) { /* locked: the walls are met from the hero's head, as unlocked (the point looked at, between the two,
+                         * can stand inside a body), out to where the framing puts the camera */
+    t3_vec3 at = { look.x + dir.x * want, look.y + dir.y * want, look.z + dir.z * want };
+    tgt = (t3_vec3){ hx, hy, hz };
+    t3_vec3 d = { at.x - tgt.x, at.y - tgt.y, at.z - tgt.z };
+    want = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z) + 1e-4f;
+    dir = (t3_vec3){ d.x / want, d.y / want, d.z / want };
+  }
   /* never through a wall: a sphere swept from the target out to the camera; the camera stops short of what it hits */
   cw_qshape3d sph = cw_qshape3d_sphere(tgt, 0.32f);
   cw_ray_hit3d hit;
@@ -310,7 +346,7 @@ static void camera_step(const input *in) {
     }
     if (fabsf(room[1] - room[0]) > 0.1f) S.cam_yaw = wrapf(S.cam_yaw + (room[1] > room[0] ? 1 : -1) * 1.1f * dt);
   }
-  if (allowed < S.cam_dist) S.cam_dist = allowed, S.cam_clip_t++;
+  if (allowed < S.cam_dist) S.cam_clip_t += allowed < want, S.cam_dist = allowed; /* (a wall; a nearer framing is followed, not counted) */
   else S.cam_dist = fminf(allowed, S.cam_dist + 3.5f * dt);
   S.cam_clip = want - S.cam_dist;
   t3_vec3 cp3 = { tgt.x + dir.x * S.cam_dist, tgt.y + dir.y * S.cam_dist, tgt.z + dir.z * S.cam_dist };
@@ -326,13 +362,13 @@ static void camera_step(const input *in) {
       S.cam_clip_t++;
     }
   }
-  S.cam_pos = cp3, S.cam_target = tgt;
+  S.cam_pos = cp3, S.cam_target = look;
   { /* the check: nothing solid between the player's head and the lens (counted, never expected) */
     cw_ray_hit3d rh;
     t3_vec3 d3 = { cp3.x - tgt.x, cp3.y - tgt.y, cp3.z - tgt.z };
     if (cw_world3d_raycast(world_phys(), tgt, d3, &f, &rh) && rh.fraction < 0.999f) S.cam_blocked++;
   }
-  if (S.tick == 0 || dist2(S.cam_pos_prev.x, S.cam_pos_prev.z, cp3.x, cp3.z) > 400) S.cam_pos_prev = cp3, S.cam_target_prev = tgt;
+  if (S.tick == 0 || dist2(S.cam_pos_prev.x, S.cam_pos_prev.z, cp3.x, cp3.z) > 400) S.cam_pos_prev = cp3, S.cam_target_prev = look;
 }
 
 /* the stick in the world: up the screen is away from the camera */

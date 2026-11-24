@@ -57,8 +57,8 @@ The order through the world:
   A group wakes together; two at a time come at each player (an attack token) while the rest circle round toward the
   player's back, so a group closes from more than one side. Every blow has a wind-up of 26 frames or more, with a warm
   light on the foe that swells through it and fades after it, and a sound (lower for the big blows); area blows draw a
-  ring on the ground that fades in and grows to the blow's reach. The heroes' and bosses' blades leave a ribbon through
-  exactly the arc where the blow is live.
+  ring on the ground that fades in and grows to the blow's reach. The heroes' and bosses' blades leave a ribbon from the
+  weapon's tip as the clip swings it, through exactly the ticks where the blow is live.
 - Beating a whole group puts a sip back in every flask (up to its size): fights pay for the next one.
 - Bosses: phases at two thirds and one third of their health. Each change is a roar (invulnerable, a hold, and a breath
   that pushes everyone near back out of reach), then quicker, newer blows: charges across the arena, shockwaves that
@@ -70,9 +70,11 @@ The order through the world:
 ## The camera
 
 An orbit behind the player, part of the simulation (it decides what "up the stick" means, so the gates compare it).
-It follows lazily behind the way the player runs when the camera stick is left alone, frames a lock-on target, pulls
-in instantly when a sphere swept from the player's head out to the camera meets a wall (and eases back out), and
-never sinks under the ground. With two players it frames both.
+It follows lazily behind the way the player runs when the camera stick is left alone. Locked on, it swings a little
+off the line between the hero and the foe (the hero to the left, the foe clear past the right shoulder) and steps back
+until both whole bodies fit with a margin (cartwheel/framing.h), easing in and out over a third of a second; the stick
+still steers by the bearing to the foe. It pulls in instantly when a sphere swept from the player's head out to the
+camera meets a wall (and eases back out), and never sinks under the ground. With two players it frames both.
 
 ## The world
 
@@ -90,7 +92,9 @@ round again, blended by height where two meet, and read from the side with the e
 banks; no uv turn or scale is painted per texel (the engine takes both from the nearest texel, and a change between
 neighbours drew a straight seam). The keep's warm hill and paving carry cold teal moss in patches, its complementary
 accent in its own ground whoever stands there. Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
-larger stones). The grass tufts are the game's own blade mesh (tools/make-ground.mjs): six curved blades, each its
+larger stones). The stones grow on ground up to 28 degrees and never at the brink of a drop (a density map the game
+makes from the terrain's tables), and each has one box the shape of its rock to bump into. The meadow's moss is as
+matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass tufts are the game's own blade mesh (tools/make-ground.mjs): six curved blades, each its
 own height, lean and shade, dark at the root in the grass layer's colour and lighter at the tip, normals bent up so
 they light like the ground, both faces drawn with the same normals; they vary in size and turn and shrink away over
 their last 10 m to 15 m (farther, a blade is thinner than a pixel and shimmers). A cloud layer drifts over the sky. Buildings are boxes
@@ -133,9 +137,13 @@ follow. The packer retargets every clip onto each figure (its legs, its stance, 
 figure runs an AnimationTree: a 2D blend space of the stand, walk, run, back walk and both sidesteps by the velocity in
 its own frame (each clip at its own ground speed, the cycles in step), every action a one-shot faded over it and timed
 so the blow lands on the rules' hit frame, a blow playing out its follow-through while the body stands, leans into
-turns, starts and stops, and the chest, neck and head turned toward what it fights. The Ember King's cape is cloth
-on his chest bone that swings and settles. Feet are planted on slopes and stairs (FootPlacement3D on the physics ground, each kind's
-ankle height); the dead fall as ragdolls. Each
+turns, starts and stops, and the chest, neck and head turned toward what it fights: the locked foe, or free the
+threat in front (a foe winding up at it first, else the nearest one on the hunt within 9 m). The sword stand's arms ride
+over the walks while it fights, so a figure comes back to its guard out of a roll, a hit or a cut. The clips advance in
+the engine's node phase, before the skeleton modifiers, so the look and the feet adjust the pose that is drawn; a
+figure turns at most half a radian a tick on screen. The Ember King's cape is cloth
+on his chest bone that swings and settles. Feet are planted on slopes and stairs at a stand and a walk (FootPlacement3D on the physics ground, each kind's
+ankle height; off in a run); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
 
@@ -152,7 +160,8 @@ region's colours (the outfit's material tinted per kind and region).
   recorder) through a pad script (run, stop, turn, a lock-on fight with sidesteps, a combo, a roll, a heavy, a back
   step, a back walk) and the bot at the Ember King's throne: the joints of a cut break one after another (their turning
   speeds weakly correlated, their peaks spread), no pop at a clip change, the King's cape swings and settles, the trunk
-  leans into a turn, the stand is no sine loop. Its control is the procedural build, which fails every check. It also
+  leans into a turn, the stand is no sine loop, the head on the locked foe (10 degrees) and on the threat when free (15
+  degrees), the hands back in the guard after a recovery (12 cm, in the chest's frame). Its control is the procedural build, which fails every check. It also
   writes a video and native-scale strips of each moment, and measures the frame cost.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
@@ -177,7 +186,17 @@ region's colours (the outfit's material tinted per kind and region).
   recorded at 1080p; on the tufts' pixels the frame-to-frame flicker (the second difference in time) over the same
   pixels with no tufts stays under 4. Control: the 0.49.0 tufts (the engine's built-in tuft, `ADV_PROBE_OLDTUFTS`)
   must fail.
-- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 5719 scattered stones and pebbles on the ground (worst 0 cm).
+- `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 4763 scattered stones and pebbles on the ground (worst 0 cm).
+- `tests/emberthrone-lockon.mjs` (romdev, the motion pad script, view.c's framing recorder): locked on, the foe whole on
+  the screen, the hero over a quarter of its box in 5% of the frames at most, the hero at most 40% of the frame's height
+  and the foe at least 12%. Control: 0.51.0's camera.
+- `tests/emberthrone-trail.mjs` (romdev, the motion pad script, view.c's trail recorder): the blade ribbon's head within
+  6 cm of the sword's tip on average (from the skeleton as posed). Control: 0.51.0's ribbon on the rules' arc.
+- `tests/emberthrone-stones.mjs` (romdev, world.c's `stones` command): rays down and in from the sides land on each
+  stone's rock, no stone under a camera crown, none on ground steeper than 35 degrees or standing out over a drop.
+  Control: 0.51.0's stones (a tree's trunk and crown, slopes to 70 degrees).
+- `tests/emberthrone-moss.mjs` (romdev, world.c's `moss` command and `groundcam`): the meadow's moss from a standing eye
+  at a glancing angle keeps half its straight-down saturation or more. Control: 0.51.0's glossy moss (0.55).
   Control: one tree lifted half a metre must be caught.
 - `tests/emberthrone-look.mjs` (frames from tools/capture-look.sh, five per region spread over its fight, judged on
   their median: one frame is one moment of a fight): each region's play is mid-key (mean luma 100

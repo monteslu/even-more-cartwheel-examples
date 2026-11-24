@@ -120,7 +120,9 @@ mesh = "models/rock.glb"
 align = true
 density = 0.012
 layers = 24
-min_slope = 70
+min_slope = 28
+; none at the brink of a drop (world.c stones_density_map makes it from the terrain's tables and checks it at each start)
+density_map = "textures/terrain/stones_density.png"
 scale_min = 0.3
 scale_max = 1.2
 sink = 0.15

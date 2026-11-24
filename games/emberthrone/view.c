@@ -49,9 +49,17 @@ typedef struct rig {
                       * cartwheel-engine 0.71.0 takes the rest from the skin's bind pose whenever they bind, after which this is
                       * harmless) */
   int act;           /* the action playing over the locomotion (ACT index), -1 none */
-  float lean_s, lean_f, last_speed, last_yaw, look_w, armed, bx, by, bs, feet_w; /* bx, by, bs: the blend space's place, eased */ /* smoothed leans, the last tick's speed and facing, the look's weight */
+  float lean_s, lean_f, last_speed, last_yaw, look_w, armed, guard, bx, by, bs, feet_w; /* bx, by, bs: the blend space's place, eased */ /* smoothed leans, the last tick's speed and facing, the look's weight */
   t3_vec3 cape_at;   /* where the cape's top edge hangs (model frame, the figure at rest) */
   t3_vec3 last_pos;  /* the last tick's place (a jump re-hangs the cape) */
+  t3_vec3 look_at;   /* the point the look turns to (glides between faces) */
+  bool adv_due;      /* the tree advances by adv_dt in the next tick's node phase (anim_hook), before the modifiers */
+  float adv_dt;
+  bool root_due;     /* and the root is placed there, at root_at turned root_yaw */
+  t3_vec3 root_at;
+  float root_yaw;
+  t3_vec3 drawn_at;  /* where the root stands now (placed by anim_hook): what the recorders measure against */
+  float drawn_yaw;
   float gv[5];       /* ground speed of walk, run, back, strafe left, strafe right (m/s, from the clips' planted feet) */
 } rig;
 static rig RIG[MAXA];
@@ -59,6 +67,7 @@ static void tree_make(rig *r, int kind);
 static int act_index(const char *c);
 static t3_vec3 (*mrec_cape_fn)(int actor, const cw_pose *p, int chest, bool *ok);
 static float LEAN_FORCE[2];
+static void cmd_framing(int argc, const char **argv, cw_reply *rp);
 /* each kind's clips and their lengths (seconds), read from its model's library: an action is timed by its clip's own length */
 #define MAXCLIPS 48
 static struct { int n; char name[MAXCLIPS][16]; float len[MAXCLIPS]; } CLIPS[K_KINDS];
@@ -217,7 +226,7 @@ static t3_vec3 cape_point(int i, const cw_pose *p, int chest, bool *ok) {
   if (!x || n < 13 * 9) return (t3_vec3){ 0 };
   t3_vec3 w = x[4 + 12 * 9];
   const actor *a = &S.a[i];
-  float dx = w.x - a->mv.position.x, dy = w.y - a->mv.position.y, dz = w.z - a->mv.position.z, cy = cw_cos(-a->yaw), sy = cw_sin(-a->yaw);
+  float dx = w.x - r->drawn_at.x, dy = w.y - r->drawn_at.y, dz = w.z - r->drawn_at.z, cy = cw_cos(-r->drawn_yaw), sy = cw_sin(-r->drawn_yaw);
   t3_vec3 m = { dx * cy + dz * sy, dy, -dx * sy + dz * cy }; /* the model frame (yaw only) */
   t3_vec3 o = cw_pose_model_position(p, chest);
   t3_quat q = cw_pose_model_rotation(p, chest);
@@ -333,7 +342,7 @@ static void rig_make(int i, int kind) {
     cw_node_add_child(V_world, r->trail);
     bool boss = IS_BOSS(kind);
     cw_node_set(r->trail, "length", cw_val_int(boss ? 12 : 10));
-    cw_node_set(r->trail, "width", cw_val_float(boss ? 0.9f : 0.45f));
+    cw_node_set(r->trail, "width", cw_val_float(boss ? 0.6f : 0.3f)); /* (round the tip's path) */
     cw_node_set(r->trail, "color_ramp", cw_val_string(boss ? "0 1 0.62 0.3 0.75, 0.5 1 0.45 0.18 0.4, 1 0.9 0.3 0.1 0" : "0 1 0.95 0.82 0.8, 0.5 1 0.78 0.45 0.4, 1 1 0.55 0.25 0"));
     cw_node_set(r->trail, "energy", cw_val_float(boss ? 1.6f : 1.8f));
     cw_node_set(r->trail, "emitting", cw_val_bool(false));
@@ -523,7 +532,15 @@ static void tree_make(rig *r, int kind) {
   cw_animtree_blend1d_add(t, lu, cw_animtree_clip(t, "run_w"), r->gv[1]);
   cw_animtree_set_sync(t, lu, true);
   cw_blend_id loco = cw_animtree_time_scale(t, cw_animtree_blend2(t, lu, lw, "armed"), "rate");
-  cw_blend_id base = cw_animtree_blend2(t, loco, cw_animtree_clip(t, "rest"), "resting");
+  /* the guard: the sword stand's arms over the walks (the walks are the library's unarmed ones, arms swinging), so a figure
+   * that fights keeps its weapon up as it moves and comes back to its guard out of a roll, a hit or a cut, not to a
+   * stroll */
+  cw_blend_id guard = cw_animtree_layer(t, loco, cw_animtree_clip(t, "idle_w"), "guard");
+  {
+    static const char *const ARMS[] = { "ShoulderR+", "ShoulderL+" };
+    cw_animtree_set_filter(t, guard, ARMS, 2);
+  }
+  cw_blend_id base = cw_animtree_blend2(t, guard, cw_animtree_clip(t, "rest"), "resting");
   base = cw_animtree_blend2(t, base, cw_animtree_clip(t, "lying"), "lying");
   base = cw_animtree_add(t, base, cw_animtree_clip(t, "lean_l"), "lean_l");
   base = cw_animtree_add(t, base, cw_animtree_clip(t, "lean_r"), "lean_r");
@@ -613,8 +630,9 @@ static void rag_start(rig *r, const actor *a, float away) {
 }
 
 /* where the blade is through the live part of a blow (from three ticks before the rules' hit window to one after):
- * a point on an arc round the body by the blow's shape (a sweep left or right, a full spin, an overhead, a thrust).
- * It follows the rules, so the ribbon shows exactly where the blow can land. */
+ * when the ribbon draws (the rules' window, so it shows when the blow can land; view_fixed puts it on the tip of the
+ * weapon in the hand), and a point on an arc round the body by the blow's shape (a sweep left or right, a full spin, an
+ * overhead, a thrust). */
 static bool blade_at(const actor *a, t3_vec3 *out) {
   if (a->state != ST_ATTACK || a->atk == A_THROW) return false;
   const attack_def *d = &ATK[a->atk];
@@ -671,10 +689,25 @@ static void mrec_sample(int i) {
   cw_pose_update_model(p);
   mrec_row *w = &MREC[mrec_n++];
   memset(w, 0, sizeof *w);
-  w->tick = mrec_tick, w->state = a->state, w->atk = a->atk, w->st_t = a->st_t, w->target = a->target;
-  snprintf(w->clip, sizeof w->clip, "%s", r->clip ? r->clip : "");
-  w->speed = a->speed, w->yaw = a->yaw, w->x = a->mv.position.x, w->y = a->mv.position.y, w->z = a->mv.position.z;
+  /* the state that chose the pose drawn: the clips advance in the next tick's node phase (anim_hook), so the pose drawn now
+   * is the one the last tick's state asked for */
+  static struct { int state, atk, st_t, target; char clip[sizeof w->clip]; bool ok; } was;
+  w->tick = mrec_tick, w->state = was.ok ? was.state : a->state, w->atk = was.ok ? was.atk : a->atk, w->st_t = was.ok ? was.st_t : a->st_t;
+  w->target = a->target;
+  snprintf(w->clip, sizeof w->clip, "%s", was.ok ? was.clip : r->clip ? r->clip : "");
+  was.state = a->state, was.atk = a->atk, was.st_t = a->st_t, was.target = a->target, was.ok = mrec_n > 1;
+  snprintf(was.clip, sizeof was.clip, "%s", r->clip ? r->clip : "");
+  w->speed = a->speed, w->yaw = r->drawn_yaw, w->x = r->drawn_at.x, w->y = r->drawn_at.y, w->z = r->drawn_at.z; /* (where the pose drawn stands) */
   if (a->target >= 0) { const actor *t = &S.a[a->target]; w->tx = t->mv.position.x, w->ty = t->mv.position.y + 1.5f * GEN_SCALE[t->kind], w->tz = t->mv.position.z; }
+  else { /* free: the nearest foe on the hunt within 9 m and 1.8 rad of its facing (the threat; the aim measure's free look) */
+    float best = 81;
+    for (int k = MAXP; k < MAXA; k++) {
+      const actor *o = &S.a[k];
+      if (!o->used || !o->active || o->state == ST_DEAD || !o->aggro) continue;
+      float dx = o->mv.position.x - a->mv.position.x, dz = o->mv.position.z - a->mv.position.z, d = dx * dx + dz * dz;
+      if (d < best && fabsf(wrapf(cw_atan2(dx, dz) - a->yaw)) <= 1.8f) best = d, w->tx = o->mv.position.x, w->ty = o->mv.position.y + 1.5f * GEN_SCALE[o->kind], w->tz = o->mv.position.z;
+    }
+  }
   for (int b = 0; b < MREC_NB; b++) {
     int k = cw_pose_find(p, MREC_BONES[b]);
     if (k < 0) { w->q[b][3] = 1; continue; }
@@ -693,10 +726,12 @@ static void mrec_sample(int i) {
   } else w->cape[0] = c.x, w->cape[1] = c.y, w->cape[2] = c.z;
 }
 static float LEAN_FORCE[2] = { 99, 99 }; /* "motion lean <side> <fwd>": held leans for a test (99: off) */
+static float LOOK_FORCE = 999; /* "motion look <deg>": the player looks at a point that far round from its facing, fully (999: off; a test of the look) */
 static bool mrec_due[MAXA]; /* sampled in view_sync, after the tick's skeleton modifiers (foot placement, the look) */
 static void cmd_motion(int argc, const char **argv, cw_reply *rp) {
   if (argc >= 3 && !strcmp(argv[1], "cape")) { CAPE_TEST = atoi(argv[2]) != 0; if (!CAPE_TEST) cape_free(&RIG[0]); cw_reply_printf(rp, "{\"cape\":%d}", CAPE_TEST); return; }
   if (argc >= 4 && !strcmp(argv[1], "lean")) { LEAN_FORCE[0] = (float)atof(argv[2]), LEAN_FORCE[1] = (float)atof(argv[3]); cw_reply_printf(rp, "{\"lean\":[%g,%g]}", LEAN_FORCE[0], LEAN_FORCE[1]); return; }
+  if (argc >= 3 && !strcmp(argv[1], "look")) { LOOK_FORCE = (float)atof(argv[2]); cw_reply_printf(rp, "{\"look\":%g}", LOOK_FORCE); return; }
   if (argc >= 2 && !strcmp(argv[1], "rec")) {
     mrec_want = argc >= 3 ? CW_CLAMP(atoi(argv[2]), 1, MREC_MAX) : 600;
     mrec_actor = argc >= 4 ? (!strcmp(argv[3], "boss") ? -2 : atoi(argv[3])) : 0; /* "boss": the first boss in the fight */
@@ -727,10 +762,62 @@ static void cmd_motion(int argc, const char **argv, cw_reply *rp) {
   cw_reply_error(rp, "motion rec <ticks> [actor] | motion info | motion get <from> <n>");
 }
 
+/* ── the blade trail recorder (debug channel): what tests/emberthrone-trail.mjs measures ──────────────────
+ * "trail rec <ticks>" checks, each fixed tick the lead player's ribbon is emitting, how far its head is from the tip of
+ * the blade in the hand: the tip from the skeleton as posed (the right hand's model transform, the weapon where it hangs
+ * in the hand, its length along the weapon), placed in the world by the figure's place and facing. "trail get" returns
+ * the ticks, the mean and the largest distance (m). */
+static struct { int want, n; double sum, max; uint32_t root; bool bound; cw_pose pose; } TRL;
+static float weapon_tip(int kind, int weapon) { /* the blade's tip along the weapon's +z (models/<weapon>.glb), a little in */
+  const char *w = kind <= K_WARDEN && weapon == 1 ? "maul" : KIND[kind].weapon;
+  return !strcmp(w, "maul") ? 0.88f : !strcmp(w, "bigaxe") ? 1.2f : !strcmp(w, "spear") ? 1.75f : !strcmp(w, "cleaver") ? 0.6f : 0.95f;
+}
+static void trail_sample(int i, const actor *a, rig *r, bool on) {
+  if (i != 0 || !on || TRL.n >= TRL.want || !r->inst) return;
+  if (TRL.bound && TRL.root != r->root.id) cw_pose_free(&TRL.pose), TRL.bound = false;
+  if (!TRL.bound) { if (!cw_pose_bind(&TRL.pose, r->inst)) return; TRL.bound = true, TRL.root = r->root.id; }
+  cw_pose_capture(&TRL.pose);
+  cw_pose_update_model(&TRL.pose);
+  int h = cw_pose_find(&TRL.pose, "HandR");
+  if (h < 0) return;
+  t3_vec3 m = t3_vec3_apply_mat4((t3_vec3){ 0, -0.075f, 0.015f + weapon_tip(a->kind, a->weapon) }, &TRL.pose.model[h]);
+  t3_mat4 w = model_to_world(r->drawn_at, r->drawn_yaw); /* (where the pose drawn stands) */
+  t3_vec3 tip = t3_vec3_apply_mat4(m, &w), hd = cw_node3d_position(r->trail);
+  float d = sqrtf((tip.x - hd.x) * (tip.x - hd.x) + (tip.y - hd.y) * (tip.y - hd.y) + (tip.z - hd.z) * (tip.z - hd.z));
+  TRL.n++, TRL.sum += d, TRL.max = fmax(TRL.max, d);
+}
+static void cmd_trail(int argc, const char **argv, cw_reply *rp) {
+  if (argc >= 2 && !strcmp(argv[1], "rec")) { TRL.want = argc >= 3 ? atoi(argv[2]) : 600, TRL.n = 0, TRL.sum = TRL.max = 0; cw_reply_printf(rp, "{\"recording\":%d}", TRL.want); return; }
+  cw_reply_printf(rp, "{\"ticks\":%d,\"mean_m\":%.3f,\"max_m\":%.3f}", TRL.n, TRL.n ? TRL.sum / TRL.n : 0, TRL.max);
+}
+
+/* the clips advance in the tree's node phase (a hook just before the skeleton modifiers, cartwheel/ik.h PIPELINE): the
+ * look, the feet and the rest then adjust the pose the clips wrote and that is what is drawn. Advanced in the app's
+ * fixed_update (after the modifiers) the clips wrote over every solve, and the head never turned to what it fought.
+ * view_fixed decides each rig's step (its clips, the hit-stop's hold); the next tick's hook takes it. */
+static void anim_hook(cw_tree *tree, double dt, void *u) {
+  (void)tree, (void)dt, (void)u;
+  for (int i = 0; i < MAXA; i++) {
+    rig *r = &RIG[i];
+    if (r->root_due && r->made && r->root.id && cw_node_valid(r->root) && !r->rd && !r->still)
+      cw_node3d_set_position(r->root, r->root_at), cw_node3d_set_rotation(r->root, (t3_vec3){ 0, r->root_yaw, 0 }), r->drawn_at = r->root_at, r->drawn_yaw = r->root_yaw;
+    r->root_due = false;
+    if (!r->adv_due) continue;
+    r->adv_due = false;
+    if (r->made && r->tree.id && cw_node_valid(r->tree)) cw_animtree_advance(r->tree, r->adv_dt);
+  }
+}
+
 /* the rig follows its actor, once per fixed tick (main.c calls it after the rules) */
 void view_fixed(void) {
   static bool mrec_cmd;
   if (!mrec_cmd) cw_debug_command("motion", "motion rec <ticks> [actor] | info | get <from> <n>: the motion recorder (tests/emberthrone-motion.mjs)", cmd_motion), mrec_cmd = true;
+  static bool frm_cmd;
+  if (!frm_cmd) cw_debug_command("framing", "framing rec <frames> | get: the lock-on framing recorder (tests/emberthrone-lockon.mjs)", cmd_framing), frm_cmd = true;
+  static bool hooked;
+  if (!hooked) cw_tree_add_hook(cw_current_tree(), 0, 140, anim_hook, NULL), hooked = true; /* (after physics, before the modifiers at 150) */
+  static bool trl_cmd;
+  if (!trl_cmd) cw_debug_command("trail", "trail rec <ticks> | get: the blade trail recorder (tests/emberthrone-trail.mjs)", cmd_trail), trl_cmd = true;
   mrec_tick++;
   VST.rigs = VST.drawn = 0;
   for (int i = 0; i < MAXA; i++) {
@@ -782,8 +869,13 @@ void view_fixed(void) {
       t3_vec3 at = a->mv.position;
       if (lurk && a->state == ST_IDLE_HOME) at.y -= sunk;
       if (lurk && a->state == ST_ROAR) { float k = 1 - (float)a->st_t / (float)CW_MAX(1, a->st_len); at.y -= sunk * k * k; } /* rising out of the water */
-      cw_node3d_set_position(r->root, at);
-      cw_node3d_set_rotation(r->root, (t3_vec3){ 0, a->yaw, 0 });
+      /* placed with its pose, in the next tick's node phase (anim_hook): the figure drawn is the tick before's as a whole, its
+       * place and its pose together; a figure just made is placed now */
+      /* the facing drawn turns at most half a radian a tick: the rules turn a body at once (a roll's way, a cut's foe), the
+       * figure swings round over two or three ticks rather than in one */
+      float dy = wrapf(a->yaw - r->drawn_yaw);
+      r->root_at = at, r->root_yaw = wrapf(r->drawn_yaw + cw_clampf(dy, -0.5f, 0.5f)), r->root_due = true;
+      if (r->fresh) cw_node3d_set_position(r->root, at), cw_node3d_set_rotation(r->root, (t3_vec3){ 0, a->yaw, 0 }), r->drawn_at = at, r->drawn_yaw = a->yaw;
     }
     float sc = 1;
     float sp = a->speed;
@@ -860,6 +952,10 @@ void view_fixed(void) {
       float armed = a->idx < MAXP || a->aggro ? 1.0f : 0.0f;
       r->armed = r->armed < 0 ? armed : r->armed + (armed - r->armed) * 0.08f;
       cw_animtree_set_param(t, "armed", r->armed);
+      /* the guard over the walks while it fights (locked on, a foe on the hunt) or walks; running free swings the arms */
+      float gw = r->armed * (facing ? 1 : cw_clampf((r->gv[1] - r->bs) / fmaxf(0.5f, r->gv[1] - r->gv[0]), 0, 1));
+      r->guard += (gw - r->guard) * 0.1f;
+      cw_animtree_set_param(t, "guard", r->guard);
       cw_animtree_set_param(t, "resting", resting ? 1 : 0);
       cw_animtree_set_param(t, "lying", lying ? 1 : 0);
       /* the leans: into a turn by its sideways pull (speed x turn rate), forward into a start and back into a stop */
@@ -873,25 +969,53 @@ void view_fixed(void) {
       cw_animtree_set_param(t, "lean_fw", fmaxf(0, lf));
       cw_animtree_set_param(t, "lean_bk", fmaxf(0, -lf));
       r->last_yaw = a->yaw, r->last_speed = a->speed;
-      /* the look: the chest, the neck and the head toward what it fights, eased in and out; light through a blow
-       * (the cut's own twist leads), none in a roll, a fall or a rest */
+      /* the look: the chest, the neck and the head toward what it fights, eased in and out. A hero locked on looks at
+       * its foe; free, at the threat it can see (a foe winding up a blow at it first, else the nearest foe on the hunt,
+       * within 9 m and within the turn the chest, neck and head can make together); a foe at whom it hunts. Full in a
+       * stand or a walk, most of the way through a hit or the flask, half through a blow (the cut's own twist leads),
+       * none in a roll, a fall or a rest. The point looked at glides from one face to the next. */
       int tg = a->target;
+      bool threat = false;
+      if (i < MAXP && (tg < 0 || !S.a[tg].used || S.a[tg].state == ST_DEAD)) {
+        tg = -1;
+        float best = 1e9f;
+        for (int k = MAXP; k < MAXA; k++) {
+          const actor *o = &S.a[k];
+          if (!o->used || !o->active || o->state == ST_DEAD || !o->aggro) continue;
+          float dx = o->mv.position.x - a->mv.position.x, dz = o->mv.position.z - a->mv.position.z, d = sqrtf(dx * dx + dz * dz);
+          if (d > 9 || fabsf(wrapf(cw_atan2(dx, dz) - a->yaw)) > 1.8f) continue;
+          if (o->state == ST_ATTACK && o->target == i && o->st_t < ATK[o->atk].on) d -= 6; /* winding up at it: first */
+          if (d < best) best = d, tg = k;
+        }
+        threat = tg >= 0;
+      }
       float want = 0;
       if (tg >= 0 && tg < MAXA && S.a[tg].used && S.a[tg].state != ST_DEAD) {
-        want = a->state == ST_MOVE || a->state == ST_IDLE_HOME ? 1 : a->state == ST_ATTACK ? 0.35f : a->state == ST_HURT || a->state == ST_DRINK ? 0.5f : 0;
+        want = a->state == ST_MOVE || a->state == ST_IDLE_HOME ? 1 : a->state == ST_ATTACK ? 0.5f : a->state == ST_HURT || a->state == ST_DRINK ? 0.7f : 0;
+        if (threat) want *= 0.85f;
         const actor *o = &S.a[tg];
-        t3_vec3 hp = { o->mv.position.x, o->mv.position.y + 1.55f * GEN_SCALE[o->kind] * KIND[o->kind].scale, o->mv.position.z };
-        for (int k = 0; k < 3; k++) cw_node_set(r->look[k], "target_position", cw_val_vec3(hp.x, hp.y, hp.z));
+        t3_vec3 hp = { o->mv.position.x, o->mv.position.y + KIND[o->kind].height * KIND[o->kind].scale * 0.9f, o->mv.position.z };
+        if (r->look_w < 0.02f) r->look_at = hp; /* (from nothing: straight there) */
+        float g = 0.25f;
+        r->look_at = (t3_vec3){ r->look_at.x + (hp.x - r->look_at.x) * g, r->look_at.y + (hp.y - r->look_at.y) * g, r->look_at.z + (hp.z - r->look_at.z) * g };
+        for (int k = 0; k < 3; k++) cw_node_set(r->look[k], "target_position", cw_val_vec3(r->look_at.x, r->look_at.y, r->look_at.z));
       }
-      r->look_w += (want - r->look_w) * 0.1f;
-      static const float SHARE[3] = { 0.3f, 0.5f, 1.0f };
+      if (i == 0 && LOOK_FORCE < 998) { /* (the test of the look: a point 5 m off, that far round) */
+        float yw = a->yaw + LOOK_FORCE * CW_PI / 180;
+        r->look_at = (t3_vec3){ a->mv.position.x + cw_sin(yw) * 5, a->mv.position.y + 1.6f, a->mv.position.z + cw_cos(yw) * 5 };
+        for (int k = 0; k < 3; k++) cw_node_set(r->look[k], "target_position", cw_val_vec3(r->look_at.x, r->look_at.y, r->look_at.z));
+        want = 1;
+      }
+      r->look_w += (want - r->look_w) * 0.15f;
+      if (a->state == ST_DODGE || a->state == ST_DOWN) r->look_w *= 0.6f; /* (a roll turns the body round: the head goes with it within a few ticks, not held on the foe past its limit) */
+      static const float SHARE[3] = { 0.4f, 0.65f, 1.0f };
       for (int k = 0; k < 3; k++) cw_node_set(r->look[k], "influence", cw_val_float(r->look_w * SHARE[k]));
       /* the far ones sample their clips less often; a blow's hit-stop holds every clip with the world */
       float d2 = dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z);
       cw_animtree_set_update_divisor(t, i < MAXP ? 1 : cw_anim_lod_divisor(sqrtf(d2), 18));
       bool held = (g_held_now || S.hitstop > 0) && a->state != ST_DEAD;
       if (r->fresh) r->fresh = false; /* (the modifiers bind this tick, on the model as it was built) */
-      else if (near && !r->rd && !r->still) cw_animtree_advance(t, held ? 0 : 1.0 / TPS);
+      else if (near && !r->rd && !r->still) r->adv_due = true, r->adv_dt = held ? 0 : 1.0f / TPS;
     }
     /* the weapon in hand, the flask while drinking */
     if (i < MAXP && r->inst) {
@@ -905,7 +1029,10 @@ void view_fixed(void) {
     /* the feet: planted while standing and walking; free in the air, the roll, a fall */
     bool plant = !lurk && a->mv.on_floor && (a->state == ST_MOVE || a->state == ST_IDLE_HOME || a->state == ST_ATTACK || a->state == ST_HURT || a->state == ST_DRINK || a->state == ST_ACT || a->state == ST_ROAR);
     /* eased in and out, so the legs never snap onto the ground or off it (a roll's end, a get-up) */
-    r->feet_w += ((plant ? 1.0f : 0.0f) - r->feet_w) * 0.2f;
+    /* and only at a stand or a walk: in a run the feet are off the ground most of the cycle and the solve would fight
+     * the stride (a leg flipped round its knee from one tick to the next) */
+    float stride = cw_clampf((3.2f - fmaxf(a->speed, r->bs)) / 1.6f, 0, 1); /* (bs: the clips' own pace, slowing after a stop) */
+    r->feet_w += ((plant ? stride : 0.0f) - r->feet_w) * 0.2f;
     cw_node_set(r->feet, "active", cw_val_bool(!r->rd && !r->still && r->feet_w > 0.01f));
     cw_node_set(r->feet, "influence", cw_val_float(cw_clampf(r->feet_w, 0, 1)));
     if (plant && i == 0) {
@@ -936,12 +1063,21 @@ void view_fixed(void) {
         r->still = true;
       }
     } else if (r->still && r->bound) cw_pose_flush(&r->pose);
-    /* the blade's ribbon through the live part of the blow */
+    /* the blade's ribbon: from the tip of the weapon in the hand (as the clip swings it), through the live part of the
+     * blow (the rules' hit window, a few ticks either side) */
     if (r->trail.id) {
       t3_vec3 bp;
       bool on = near && blade_at(a, &bp);
+      t3_object *hand = on && r->inst ? t3_object_get_by_name(r->inst, "HandR") : NULL, *wp = NULL;
+      if (hand) for (int c = 0; c < hand->child_count; c++) if (hand->children[c]->visible) wp = hand->children[c];
+      if (wp) {
+        t3_object_update_world_matrix(wp, true, false);
+        bp = t3_vec3_apply_mat4((t3_vec3){ 0, 0, weapon_tip(a->kind, a->weapon) }, &wp->matrix_world);
+      }
+      on = on && wp;
       if (on) cw_node3d_set_position(r->trail, bp);
       cw_node_set(r->trail, "emitting", cw_val_bool(on));
+      trail_sample(i, a, r, on);
     }
     /* the shield: up in front while it holds, down at the side once it is knocked aside */
     if (r->shield.id) {
@@ -994,8 +1130,67 @@ bool view_screen(t3_vec3 w, float *u, float *v) {
   return *u > -0.1f && *u < 1.1f && *v > -0.1f && *v < 1.1f;
 }
 
+/* ── the lock-on framing recorder (debug channel): what tests/emberthrone-lockon.mjs measures ──────────────────
+ * "framing rec <frames>" samples each drawn frame while the lead player is locked on: the hero's and the target's
+ * screen boxes (an upright box round each body: its feet to the top of its head, its shoulders' width), projected by
+ * the camera as drawn. "framing get" returns the counts: samples, the hero's mean and largest height (share of the
+ * frame), the target's smallest share inside the frame, the largest share of the target's box the hero covers, and how
+ * many samples had the target cut by an edge or covered more than a quarter by the hero. */
+static struct { int want, n, cut, hidden; double hero_h, hero_hmax, tgt_h, vis_min, occ_max, occ_sum, dist_sum; } FRM;
+static bool body_box(const actor *a, float b[4]) {
+  float r = fmaxf(0.32f, KIND[a->kind].radius) * KIND[a->kind].scale, top = KIND[a->kind].height * KIND[a->kind].scale;
+  b[0] = b[1] = 1e9f, b[2] = b[3] = -1e9f;
+  for (int k = 0; k < 8; k++) {
+    t3_vec3 w = { a->mv.position.x + (k & 1 ? r : -r), a->mv.position.y + (k & 2 ? top : 0), a->mv.position.z + (k & 4 ? r : -r) };
+    float u, v;
+    t3_vec3 f = CAM_F;
+    float z = (w.x - CAM_P.x) * f.x + (w.y - CAM_P.y) * f.y + (w.z - CAM_P.z) * f.z;
+    if (z < 0.2f) return false;
+    view_screen(w, &u, &v);
+    b[0] = fminf(b[0], u), b[1] = fminf(b[1], v), b[2] = fmaxf(b[2], u), b[3] = fmaxf(b[3], v);
+  }
+  return true;
+}
+static void framing_sample(void) {
+  if (FRM.n >= FRM.want) return;
+  const actor *p = &S.a[0];
+  if (!p->used || p->target < 0) return;
+  const actor *t = &S.a[p->target];
+  if (!t->used || t->state == ST_DEAD) return;
+  float hb[4], tb[4];
+  bool hv = body_box(p, hb), tv = body_box(t, tb);
+  float ta = (tb[2] - tb[0]) * (tb[3] - tb[1]);
+  float vis = 0, occ = 0;
+  if (tv && ta > 1e-6f) {
+    float ix = fmaxf(0, fminf(tb[2], 1) - fmaxf(tb[0], 0)), iy = fmaxf(0, fminf(tb[3], 1) - fmaxf(tb[1], 0));
+    vis = ix * iy / ta;
+    if (hv) {
+      float ox = fmaxf(0, fminf(tb[2], hb[2]) - fmaxf(tb[0], hb[0])), oy = fmaxf(0, fminf(tb[3], hb[3]) - fmaxf(tb[1], hb[1]));
+      occ = ox * oy / ta;
+    }
+  }
+  float hh = hv ? hb[3] - hb[1] : 1;
+  FRM.n++;
+  FRM.hero_h += hh, FRM.hero_hmax = fmax(FRM.hero_hmax, hh), FRM.tgt_h += tv ? tb[3] - tb[1] : 0;
+  FRM.vis_min = fmin(FRM.vis_min, vis), FRM.occ_max = fmax(FRM.occ_max, occ), FRM.occ_sum += occ;
+  FRM.cut += vis < 0.98f, FRM.hidden += occ > 0.25f;
+  FRM.dist_sum += sqrtf(dist2(p->mv.position.x, p->mv.position.z, t->mv.position.x, t->mv.position.z));
+}
+static void cmd_framing(int argc, const char **argv, cw_reply *rp) {
+  if (argc >= 2 && !strcmp(argv[1], "rec")) {
+    memset(&FRM, 0, sizeof FRM);
+    FRM.want = argc >= 3 ? atoi(argv[2]) : 600, FRM.vis_min = 1;
+    cw_reply_printf(rp, "{\"recording\":%d}", FRM.want);
+    return;
+  }
+  double n = FRM.n ? FRM.n : 1;
+  cw_reply_printf(rp, "{\"samples\":%d,\"hero_h\":%.3f,\"hero_h_max\":%.3f,\"target_h\":%.3f,\"target_vis_min\":%.3f,\"occ_mean\":%.3f,\"occ_max\":%.3f,\"cut\":%d,\"hidden\":%d,\"dist\":%.2f}",
+                  FRM.n, FRM.hero_h / n, FRM.hero_hmax, FRM.tgt_h / n, FRM.vis_min, FRM.occ_sum / n, FRM.occ_max, FRM.cut, FRM.hidden, FRM.dist_sum / n);
+}
+
 void view_sync(float alpha) {
   (void)alpha;
+  framing_sample();
   for (int i = 0; i < MAXA; i++) if (mrec_due[i]) mrec_due[i] = false, mrec_sample(i);
   /* warning rings under the area blows, through their wind-up */
   int n = 0;

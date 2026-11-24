@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "cartwheel/debug.h"
 #include "cartwheel/physics_nodes.h"
 #include "cartwheel/render3d.h"
 #include "cartwheel/resource.h"
@@ -705,6 +706,56 @@ static void route(float x, float z, int act, int obj, int need) {
 }
 
 /* ── the build ─────────────────────────────────────────────────────── */
+/* "moss": places in the meadow for the ground's look (tests/emberthrone-moss.mjs): up to 8 points deep inside moss
+ * patches (layer 5: every texel within 2 m moss) and, for each, the nearest point as deep inside plain grass (layer 0),
+ * at least 5 m from it, as x z pairs */
+#define PN (WORLD_N + 1) /* the terrain's samples a side */
+static uint8_t PAINT[PN * PN];
+static bool deep(int x, int z, int layer) {
+  for (int b = -2; b <= 2; b++)
+    for (int a = -2; a <= 2; a++) {
+      int xx = x + a, zz = z + b;
+      if (xx < 0 || zz < 0 || xx >= PN || zz >= PN || PAINT[zz * PN + xx] != layer + 1) return false;
+    }
+  return true;
+}
+static void cmd_moss(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  cw_reply_printf(r, "{\"points\":[");
+  int n = 0;
+  for (int z = 4; z < WORLD_N - 4 && n < 8; z += 3)
+    for (int x = 4; x < WORLD_N - 4 && n < 8; x += 3) {
+      if (!deep(x, z, 5)) continue;
+      bool near = false; /* (one point a patch: none within 12 m of the last) */
+      static int lx[8], lz[8];
+      for (int k = 0; k < n; k++) near |= abs(lx[k] - x) < 12 && abs(lz[k] - z) < 12;
+      if (near) continue;
+      int gx = -1, gz = -1, bd = 1 << 30;
+      for (int b = -20; b <= 20; b++)
+        for (int a = -20; a <= 20; a++) {
+          int d = a * a + b * b;
+          if (d < 25 || d >= bd || !deep(x + a, z + b, 0)) continue;
+          bd = d, gx = x + a, gz = z + b;
+        }
+      if (gx < 0) continue;
+      lx[n] = x, lz[n] = z;
+      /* the headings (0, 90, 180, 270 degrees) from which a standing eye 12 m back sees the point: nothing in the line */
+      cw_phys_filter f = cw_phys_filter_layers(1u | 8u);
+      int clear = 0;
+      float pitch[4];
+      for (int k = 0; k < 4; k++) {
+        float a = (float)k * CW_PI / 2, cx = (float)x + cw_sin(a) * 12, cz = (float)z + cw_cos(a) * 12;
+        t3_vec3 o = { cx, world_height(cx, cz) + 1.7f, cz }, p = { (float)x, world_height((float)x, (float)z) + 0.05f, (float)z };
+        pitch[k] = cw_atan2(p.y - o.y, 12) * 180 / CW_PI;
+        cw_ray_hit3d h;
+        clear |= !cw_world3d_raycast(world_phys(), o, (t3_vec3){ p.x - o.x, p.y - o.y, p.z - o.z }, &f, &h) || h.fraction > 0.98f ? 1 << k : 0;
+      }
+      cw_reply_printf(r, "%s{\"moss\":[%d,%d],\"grass\":[%d,%d],\"clear\":%d,\"pitch\":[%.2f,%.2f,%.2f,%.2f]}", n ? "," : "", x, z, gx, gz, clear, pitch[0], pitch[1], pitch[2], pitch[3]);
+      n++;
+    }
+  cw_reply_printf(r, "]}");
+}
+
 static void paint_and_shape(void) {
   const int N = WORLD_N + 1;
   float *h = malloc(sizeof(float) * (size_t)N * N);
@@ -746,6 +797,7 @@ static void paint_and_shape(void) {
       /* no uv rotation or scale step: the engine takes both from the nearest control texel unblended, so a change between
        * neighbours is a straight seam (it was a 4 m grid of them); its stochastic tiling already breaks the repeat */
       ctl[i] = cw_terrain_control(base, over, blend, 0, 0, false);
+      PAINT[i] = (uint8_t)(blend == 0 && rgn[i] == RG_MEADOW ? base + 1 : 0); /* (the moss command: whole texels of the meadow) */
     }
   cw_terrain_set_control(W_terrain, 0, 0, N, N, ctl);
   cw_terrain_sync_physics(W_terrain);
@@ -910,7 +962,7 @@ static void build_keep(void) {
   foe(K_EMBER, R, 17, 55, 104, 0);
 }
 /* the engine's scatter (TerrainScatter3D children, layers in scene order: grass, stones, pebbles):
- * its placement is a pure function of the cell, so the trees get trunks to bump into and crowns the camera stops at,
+ * its placement is a pure function of the cell, so the stones get bodies the shape of the rock,
  * and every instance joins the grounding check (the pebbles too; they are too small to bump into) */
 #define MAXSCAT 32768
 static float SCAT[MAXSCAT][5];
@@ -932,16 +984,80 @@ static void scatter_bodies(void) {
           if (layer == 2) continue; /* a pebble: no body */
           int rg = world_region_at(q[0], q[2]);
           float sc = q[3];
-          if (layer == 4) { col_box(rg, q[0], q[1] + 0.25f * sc, q[2], 0.35f * sc, 0.25f * sc, 0.35f * sc, q[4]); continue; } /* a stone */
-          col_box(rg, q[0], q[1] + 1.5f * sc, q[2], 0.3f * sc, 1.5f * sc, 0.3f * sc, 0); /* the trunk */
-          if (layer == 1) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.4f * sc, 4.8f * sc);
-          if (layer == 2) crown(rg, q[0], q[1], q[2], 1.8f * sc, 2.0f * sc, 3.4f * sc); /* (the stacked cones are 1.7 m round at the bottom) */
-          if (layer == 3) crown(rg, q[0], q[1], q[2], 2.0f * sc, 1.2f * sc, 3.8f * sc);
+          /* a stone (models/rock.glb: x -1.13..0.88, y -0.15..1.01, z -1.01..1.24 at scale 1, turned by the
+           * instance's yaw): one box round its body, drawn in a little from the bounds (the rock is rounded), its foot
+           * in the ground; no trunk and no crown (the camera's crown layer is for trees) */
+          float cy = cw_cos(q[4]), sy = cw_sin(q[4]), lx = -0.126f * sc, lz = 0.115f * sc;
+          col_box(rg, q[0] + lx * cy + lz * sy, q[1] + 0.43f * sc, q[2] - lx * sy + lz * cy, 0.8f * sc, 0.58f * sc, 0.9f * sc, q[4]);
         }
       }
-  cw_info("emberthrone: %d scatter trees and stones given bodies", nscat);
+  cw_info("emberthrone: %d scattered stones and pebbles (the stones given bodies)", nscat);
 }
 
+/* "stones": how the scattered stones' bodies fit the rock drawn (tests/emberthrone-stones.mjs). For every stone a ray
+ * straight down onto it from 4 m over its foot and eight rays in at a third of its height from 3 m out each side,
+ * against the world and the crowns (what the feet, the bodies and the camera meet); each hit against the rock's own
+ * shape (models/rock.glb at the instance's scale and turn: its top, and its outline that way, out to the bounds and in
+ * to 80% of them). Returns the stones, the share of rays that land on the rock (top and sides), the worst top over the
+ * rock's and how many stones the camera's crown layer stops above them. */
+static bool STONES_MAP_CURRENT; /* (stones_density_map: the asset is the map the terrain makes) */
+static void cmd_stones(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  cw_phys_filter all = cw_phys_filter_layers(1u | 8u), crw = cw_phys_filter_layers(8u);
+  int n = 0, top_ok = 0, side_ok = 0, sides = 0, crowned = 0;
+  int all_n = 0, steep = 0, overhang = 0; /* every stone; those on ground steeper than 35 degrees (a cliff face: stuck on); those whose
+                                             * edge stands out over falling ground (more than a third of its height in
+                                             * the air under its outline, laid on the ground's plane at its foot) */
+  for (int i = 0; i < nscat; i++) {
+    if (SCAT_LAYER[i] != 1) continue;
+    float x = SCAT[i][0], z = SCAT[i][2], sc = SCAT[i][3];
+    t3_vec3 nr = cw_terrain_normal_at(W_terrain, x, z);
+    all_n++, steep += nr.y < 0.819f; /* cos 35 degrees */
+    float y0 = world_height(x, z), worst = 0;
+    for (int k = 0; k < 8; k++) {
+      float a = (float)k / 8 * CW_TAU, dx = cw_sin(a) * 0.9f * sc, dz = cw_cos(a) * 0.9f * sc;
+      float plane = y0 - (nr.x * dx + nr.z * dz) / fmaxf(nr.y, 0.2f);
+      worst = fmaxf(worst, plane - world_height(x + dx, z + dz));
+    }
+    if (worst > 0.35f * sc) {
+      if (overhang < 8) cw_warn("emberthrone: a stone stands out over falling ground at (%.1f, %.1f): %.2f m", x, z, worst);
+      overhang++;
+    }
+  }
+  float worst_top = 0;
+  for (int i = 0; i < nscat; i++) {
+    if (SCAT_LAYER[i] != 1) continue;
+    const float *q = SCAT[i];
+    float sc = q[3], cy = cw_cos(q[4]), sy = cw_sin(q[4]);
+    if (sc < 0.45f) continue; /* (the small ones: a ray from 3 m out meets the next stone as often as this one) */
+    n++;
+    cw_ray_hit3d h;
+    float rock_top = q[1] + 1.01f * sc;
+    if (cw_world3d_raycast(world_phys(), (t3_vec3){ q[0] - 0.126f * sc * cy + 0.115f * sc * sy, q[1] + 4, q[2] + 0.126f * sc * sy + 0.115f * sc * cy }, (t3_vec3){ 0, -4.2f, 0 }, &all, &h)) {
+      float y = q[1] + 4 - 4.2f * h.fraction, over = y - rock_top;
+      worst_top = fmaxf(worst_top, over);
+      top_ok += over < 0.15f * sc && over > -0.45f * sc;
+    }
+    if (cw_world3d_raycast(world_phys(), (t3_vec3){ q[0], q[1] + 8, q[2] }, (t3_vec3){ 0, -6, 0 }, &crw, &h)) crowned++;
+    for (int k = 0; k < 8; k++) {
+      float a = (float)k / 8 * CW_TAU, lx = cw_sin(a), lz = cw_cos(a);
+      /* the rock's bounds that way (local frame), from its middle */
+      float bx = lx > 0 ? 0.88f + 0.126f : 1.133f - 0.126f, bz = lz > 0 ? 1.243f - 0.115f : 1.014f + 0.115f;
+      float tx = fabsf(lx) > 1e-4f ? bx / fabsf(lx) : 1e9f, tz = fabsf(lz) > 1e-4f ? bz / fabsf(lz) : 1e9f;
+      float out = fminf(tx, tz) * sc;
+      float mx = q[0] - 0.126f * sc * cy + 0.115f * sc * sy, mz = q[2] + 0.126f * sc * sy + 0.115f * sc * cy;
+      float wx = lx * cy + lz * sy, wz = -lx * sy + lz * cy, y = q[1] + 0.35f * sc;
+      if (y < world_height(mx + wx * 3, mz + wz * 3) + 0.1f) continue; /* (the ground in the way: uphill) */
+      sides++;
+      if (cw_world3d_raycast(world_phys(), (t3_vec3){ mx + wx * 3, y, mz + wz * 3 }, (t3_vec3){ -wx * 3, 0, -wz * 3 }, &all, &h)) {
+        float d = 3 * (1 - h.fraction);
+        side_ok += d <= out * 1.05f && d >= out * 0.6f;
+      }
+    }
+  }
+  cw_reply_printf(r, "{\"stones\":%d,\"top_ok\":%.3f,\"worst_top_m\":%.2f,\"side_ok\":%.3f,\"sides\":%d,\"crowned\":%d,\"all\":%d,\"steep\":%d,\"overhang\":%d,\"map_current\":%d}", n, n ? (float)top_ok / n : 0,
+                  worst_top, sides ? (float)side_ok / sides : 0, sides, crowned, all_n, steep, overhang, STONES_MAP_CURRENT);
+}
 static void lantern(int rg, float x, float y, float z, float r, float g, float b, float e) {
   cw_node l = cw_node_new("OmniLight3D", "Lantern");
   cw_node_add_child(W_region_node[rg], l);
@@ -1147,6 +1263,79 @@ static void build_route(void) {
   route(55, 108, RA_FIGHT, -1, 100 + K_EMBER);
 }
 
+/* the stones' density map: none at the brink of a drop (the engine keeps a stone by the ground's slope where it
+ * stands, so one at the top of a cliff stood half over the edge, stuck on the face). A grey PNG over the whole terrain
+ * (2 m a texel), 0 where the ground within 3 m of the texel is steeper than 35 degrees, from the terrain's tables
+ * (land()). The scene's Stones layer reads it as textures/terrain/stones_density.png (the terrain builds its scatter
+ * before the game runs); the game makes it again at each start and says when the asset is stale (the stones command
+ * reports it, tests/emberthrone-stones.mjs fails on it). ADV_WRITE_STONES_MAP=<path> on a native run writes it. */
+static uint32_t png_crc(const uint8_t *p, size_t n, uint32_t c) {
+  static uint32_t T[256];
+  if (!T[1]) for (uint32_t i = 0; i < 256; i++) { uint32_t k = i; for (int j = 0; j < 8; j++) k = k & 1 ? 0xEDB88320u ^ (k >> 1) : k >> 1; T[i] = k; }
+  c = ~c;
+  for (size_t i = 0; i < n; i++) c = T[(c ^ p[i]) & 255] ^ (c >> 8);
+  return ~c;
+}
+static uint8_t *png_chunk(uint8_t *o, const char *type, const uint8_t *data, uint32_t n) {
+  o[0] = (uint8_t)(n >> 24), o[1] = (uint8_t)(n >> 16), o[2] = (uint8_t)(n >> 8), o[3] = (uint8_t)n;
+  memcpy(o + 4, type, 4);
+  if (n) memcpy(o + 8, data, n);
+  uint32_t c = png_crc(o + 4, n + 4, 0);
+  o[8 + n] = (uint8_t)(c >> 24), o[9 + n] = (uint8_t)(c >> 16), o[10 + n] = (uint8_t)(c >> 8), o[11 + n] = (uint8_t)c;
+  return o + 12 + n;
+}
+static void stones_density_map(void) {
+  enum { R = WORLD_N / 2 };
+  static bool done;
+  if (done) return;
+  done = true;
+  static uint8_t raw[R * (R + 1)];
+  int kept = 0;
+  for (int j = 0; j < R; j++) {
+    raw[j * (R + 1)] = 0; /* the row's filter: none */
+    for (int i = 0; i < R; i++) {
+      float cx = (float)i * 2 + 1, cz = (float)j * 2 + 1, H[6][6], step = 0;
+      for (int b = 0; b < 6; b++)
+        for (int a = 0; a < 6; a++) H[b][a] = land(cx + ((float)a - 2.5f) * 1.2f, cz + ((float)b - 2.5f) * 1.2f, NULL, NULL);
+      for (int b = 0; b < 6; b++)
+        for (int a = 0; a < 5; a++) step = fmaxf(step, fmaxf(fabsf(H[b][a + 1] - H[b][a]), fabsf(H[a + 1][b] - H[a][b])));
+      uint8_t v = step > 0.85f ? 0 : 255; /* a rise of 0.85 m in 1.2 m (35 degrees) within 3 m */
+      raw[j * (R + 1) + 1 + i] = v, kept += v != 0;
+    }
+  }
+  /* zlib, stored blocks */
+  size_t n = sizeof raw, nb = (n + 65534) / 65535;
+  uint8_t *z = (uint8_t *)malloc(2 + n + nb * 5 + 4), *q = z;
+  *q++ = 0x78, *q++ = 0x01;
+  uint32_t s1 = 1, s2 = 0;
+  for (size_t at = 0; at < n;) {
+    uint32_t len = (uint32_t)(n - at < 65535 ? n - at : 65535);
+    *q++ = at + len == n ? 1 : 0;
+    *q++ = (uint8_t)len, *q++ = (uint8_t)(len >> 8), *q++ = (uint8_t)~len, *q++ = (uint8_t)(~len >> 8);
+    memcpy(q, raw + at, len), q += len;
+    for (uint32_t k = 0; k < len; k++) s1 = (s1 + raw[at + k]) % 65521, s2 = (s2 + s1) % 65521;
+    at += len;
+  }
+  uint32_t ad = (s2 << 16) | s1;
+  *q++ = (uint8_t)(ad >> 24), *q++ = (uint8_t)(ad >> 16), *q++ = (uint8_t)(ad >> 8), *q++ = (uint8_t)ad;
+  uint32_t zn = (uint32_t)(q - z);
+  uint8_t *png = (uint8_t *)malloc(8 + 25 + 12 + zn + 12), *o = png;
+  static const uint8_t SIG[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
+  memcpy(o, SIG, 8), o += 8;
+  uint8_t ih[13] = { 0, 0, R >> 8, R & 255, 0, 0, R >> 8, R & 255, 8, 0, 0, 0, 0 };
+  o = png_chunk(o, "IHDR", ih, 13);
+  o = png_chunk(o, "IDAT", z, zn);
+  o = png_chunk(o, "IEND", NULL, 0);
+  size_t pn = (size_t)(o - png), have = 0;
+  /* ADV_WRITE_STONES_MAP=<path> (a native run, tools): write it there, the asset the scene names */
+  const char *wr = getenv("ADV_WRITE_STONES_MAP");
+  if (wr) { FILE *f = fopen(wr, "wb"); if (f) fwrite(png, 1, pn, f), fclose(f); cw_info("emberthrone: wrote %s", wr); }
+  void *asset = cw_vfs_read("textures/terrain/stones_density.png", &have);
+  STONES_MAP_CURRENT = asset && have == pn && !memcmp(asset, png, pn);
+  free(asset), free(z), free(png);
+  if (!STONES_MAP_CURRENT) cw_warn("emberthrone: textures/terrain/stones_density.png is not the map the terrain makes now: write it again (ADV_WRITE_STONES_MAP)");
+  cw_info("emberthrone: stones' density map, %d of %d texels kept%s", kept, R * R, STONES_MAP_CURRENT ? "" : " (the asset is stale)");
+}
 static void build_flora(void);
 static void build_sky(cw_node world);
 void world_build(cw_tree *tree) {
@@ -1154,6 +1343,7 @@ void world_build(cw_tree *tree) {
   W_root = cw_tree_root(tree);
   W_env = cw_node_get(W_root, "World/Env"), W_sun = cw_node_get(W_root, "World/Sun"), W_sky = cw_node_get(W_root, "World/Sky");
   W_post = cw_node_get(W_root, "World/Post");
+  stones_density_map();
   W_terrain = cw_terrain_of(cw_node_get(W_root, "World/Terrain"));
   W_phys = cw_physics3d_world(tree);
   W_hash = 2166136261u;
@@ -1179,6 +1369,8 @@ void world_build(cw_tree *tree) {
   build_flora();
   build_sky(world);
   scatter_bodies();
+  { static bool reg; if (!reg) cw_debug_command("moss", "moss: points deep in the meadow's moss and grass (tests/emberthrone-moss.mjs)", cmd_moss), reg = !reg; }
+  { static bool reg; if (!reg) cw_debug_command("stones", "stones: how the scattered stones' bodies fit their rock (tests/emberthrone-stones.mjs)", cmd_stones), reg = true; }
   /* the merged buildings: one mesh per region and material */
   for (int r = 0; r < RG_COUNT; r++)
     for (int m = 0; m < MT_COUNT; m++) {

@@ -286,6 +286,9 @@ static void init(void *u) {
   cw_debug_f32("view.cam_clip", &G.cam_clip);
   cw_debug_i32("view.cam_jerks", &G.cam_jerks);
   cw_debug_i32("view.cam_blocked", &S.cam_blocked);
+  cw_debug_f32("view.cam_dist", &S.cam_dist);
+  cw_debug_f32("view.cam_want", &S.cam_dist_want);
+  cw_debug_f32("view.cam_lock", &S.cam_lock);
   cw_debug_i32("bot.stuck", &G.stuck);
   /* every build: a test jumps to a fight (tests/emberthrone-motion.mjs) */
   cw_debug_command("from", "from <n>: further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);

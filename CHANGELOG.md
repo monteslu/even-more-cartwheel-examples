@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.52.0
+
+- **Ember Throne**'s lock-on camera steps back and to the side. It swings a little off the line between the hero and the
+  foe, with the hero on the left and the foe clear past the right shoulder, and pulls back until both whole bodies fit
+  with a margin (the engine's exact framing), easing in and out over a third of a second. Up the stick still walks at
+  the foe. Through the motion check's fight, the hero now covers a quarter or more of the foe in 5 of 530 frames (it
+  was 518), and fills 31% of the frame's height on average (it was 56%).
+- **Ember Throne**'s figures turn their heads. The clips now advance in the engine's node phase, before the skeleton
+  modifiers, so the look and the foot placement shape the pose that is drawn. Before, the clips wrote over every solve,
+  and the head never followed what it fought. Locked on, the head is 5 degrees off the foe on average (it was 15). Free,
+  it looks at the threat in front: a foe winding up at it first, else the nearest foe on the hunt within 9 m. A roll
+  takes the head with the body. Foot placement runs at a stand and a walk, and fades out in a run.
+- **Ember Throne**'s heroes come back to their guard. The sword stand's arms ride over the walks while a figure fights,
+  so after a roll, a hit or a cut the hands return to the guard (10 cm from it after a recovery, where they were 21 cm).
+  Running free still swings the arms.
+- **Ember Throne**'s blade ribbon starts at the tip of the sword in the hand, as the clip swings it, through the ticks
+  where the blow is live. It used to start on an arc of the rules round the body, about 2 m from the blade.
+- **Ember Throne**'s meadow moss stays green at a glancing angle. It is as matte as the grass (roughness 0.9, was 0.55),
+  so the sky's sheen no longer turns it pale like snow.
+- **Ember Throne**'s stones fit their rock. Each one has a single box the shape of the rock, in place of a tree's 3 m
+  trunk and a crown that stopped the camera. Stones grow on ground up to 28 degrees (it was 70, which put them on cliff
+  faces) and never at the brink of a drop: a density map the game makes from the terrain's tables, shipped as
+  textures/terrain/stones_density.png and checked at every start. 455 stones remain, and every scattered stone and
+  pebble is on the ground (worst 0 cm).
+- New checks, each with a control that must fail. tests/emberthrone-lockon.mjs: the foe is whole on the screen and
+  clear of the hero; control: the 0.51.0 camera. tests/emberthrone-trail.mjs: the ribbon is within 6 cm of the sword's
+  tip; control: the 0.51.0 ribbon. tests/emberthrone-stones.mjs: the bodies fit the rock, no stone is on steep ground
+  or over a drop; control: the 0.51.0 stones. tests/emberthrone-moss.mjs: the moss keeps its saturation at a glance;
+  control: the 0.51.0 moss. tests/emberthrone-motion.mjs now also measures the head's aim, locked and free, and the
+  hands' return to the guard; control: 0.51.0.
+
 ## 0.51.0
 
 - **Ember Throne**'s ground, in all eight regions. The grid of straight seams is gone: every terrain texel took a

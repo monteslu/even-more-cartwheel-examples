@@ -37,7 +37,7 @@ export const LAYERS = {
   dirt: { ph: 'dry_ground_rocks', mean: [104, 78, 52], sat: 1.0, contrast: 1.15, flat: 0.7, ao: 0.6, nrm: 1.3, ro: 0.9 },
   sand: { ph: 'sandstone_cracks', mean: [150, 104, 74], sat: 1.05, contrast: 1.15, flat: 0.7, ao: 0.6, nrm: 1.2, ro: 0.88 },
   rock: { ph: 'rock_face', mean: [96, 86, 96], sat: 0.9, contrast: 1.25, flat: 0.4, ao: 0.6, nrm: 1.3, ro: 0.82 },
-  mud: { ph: 'mud_forest', mean: [50, 80, 54], sat: 0.85, contrast: 1.1, flat: 0.5, ao: 0.6, nrm: 1.2, ro: 0.55 },
+  mud: { ph: 'mud_forest', mean: [50, 80, 54], sat: 0.85, contrast: 1.1, flat: 0.5, ao: 0.6, nrm: 1.2, ro: 0.9 }, // (moss is matte: at 0.55 the sky's sheen at a glancing angle turned the patches pale, like snow)
   cobble: { ph: 'cobblestone_floor_04', mean: [134, 115, 99], sat: 1.0, contrast: 1.1, flat: 0.4, ao: 0.7, nrm: 1.2, ro: 0.78 },
   ash: { ph: 'burned_ground_01', mean: [88, 62, 46], sat: 0.8, contrast: 1.1, flat: 0.75, ao: 0.5, nrm: 1.2, ro: 0.93 },
 };

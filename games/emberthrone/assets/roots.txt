@@ -1,10 +1,12 @@
 # emberthrone: what its carts pack. Written by tools/gen-roots.mjs (edit that, not this file).
+anim/ual.glb
 grade/contrast.cube
 models/banner.glb
 models/barrel.glb
 models/bigaxe.glb
 models/brazier.glb
 models/brute.glb
+models/brute.glb.cwimport
 models/cart.glb
 models/charm.glb
 models/chest.glb
@@ -13,6 +15,7 @@ models/cleaver.glb
 models/crate.glb
 models/crystal.glb
 models/emberking.glb
+models/emberking.glb.cwimport
 models/flora_aspen.glb
 models/flora_birch.glb
 models/flora_deepwood.glb
@@ -27,6 +30,7 @@ models/heart.glb
 models/key_moon.glb
 models/key_sun.glb
 models/lancer.glb
+models/lancer.glb.cwimport
 models/lantern_post.glb
 models/lever.glb
 models/lever_arm.glb
@@ -36,6 +40,7 @@ models/pebble.glb
 models/pillar.glb
 models/pine.glb
 models/raider.glb
+models/raider.glb.cwimport
 models/reeds.glb
 models/rock.glb
 models/rock_tall.glb
@@ -44,12 +49,16 @@ models/shrine.glb
 models/spear.glb
 models/sword.glb
 models/thornwarden.glb
+models/thornwarden.glb.cwimport
 models/tidecaller.glb
+models/tidecaller.glb.cwimport
 models/tonic.glb
 models/tree.glb
 models/tree_gold.glb
 models/warden.glb
+models/warden.glb.cwimport
 models/wayfarer.glb
+models/wayfarer.glb.cwimport
 project.cwproj
 scenes/main.cwscene
 textures/clouds_c.png
@@ -91,6 +100,7 @@ textures/terrain/sand_ah.png
 textures/terrain/sand_nr.png
 textures/terrain/snow_ah.png
 textures/terrain/snow_nr.png
+textures/terrain/stones_density.png
 textures/wood_c.png
 textures/wood_n.png
 textures/wood_orm.png

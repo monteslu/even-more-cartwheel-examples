@@ -16,19 +16,24 @@
 //            a second run (the bot at the King's throne) how fast his own cape moves against his chest (m/s, >= 0.05)
 //   lean     the trunk's sideways tilt (the line from the hips to the head) against the turn's sideways pull (speed x
 //            turn rate) while running, both averaged over three quarters of a second (a held lean, not each step's sway)
-//   aim      the head's angle off the locked target while locked on and moving or standing (not mid-blow)
+//   aim      the head's angle off the locked target while locked on and moving or standing (not mid-blow), and off the
+//            threat (the nearest foe on the hunt in front, within 9 m) while free
+//   stance   from half a second to a second and a half after a blow, a roll, a hit or a fall ends, locked on, how far
+//            the hands are from their places in the guard (locked on and still, the mean)
 //   idle     in the stand, how many upper-body joints move as one pure sine wave (97% or more of their motion one
 //            frequency): a sine loop's every joint does, a breathing, shifting body's do not
 // Bars (PASS needs all): over at least three cuts, sync <= 0.6 (mean) and spread >= 2 ticks (median), pops at changes
 // <= 15 degrees, cape travel >= 0.08 m with the last half second under 0.35 of the first, lean
 // correlation >= 0.5 with at least 2 degrees, at most one pure-sine joint in the stand (of six or more measured,
-// over 60 ticks or more).
+// over 60 ticks or more), the head 10 degrees or less off the locked foe and 15 or less off the threat on average, the
+// hands 12 cm or less from the guard after a recovery.
 // CONTROL, which must fail: the same run on the old build (the procedural clips): --control <cart dir>.
 //
 //   node tests/emberthrone-motion.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu]   the run (trace.json, video, strips)
 //   node tests/emberthrone-motion.mjs measure <run dir> [--control <run dir>] [--json]   (trace.json, boss.json)
 import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
 const TPS = 60;
@@ -283,6 +288,33 @@ export function measure(trace, boss = null) {
     }
   }
   const capeOk = capes.length > 0 && capes.every((c) => c.path >= 0.08 && c.last <= c.first * 0.35);
+  // the free look: the head against the threat (the recorder's nearest foe on the hunt in front, within 9 m) while not
+  // locked on and moving or standing
+  const aimsFree = [];
+  for (const r of R) {
+    if (r.target >= 0 || r.state !== ST_MOVE || (!r.tgt[0] && !r.tgt[1] && !r.tgt[2])) continue;
+    const c = Math.cos(r.yaw), s = Math.sin(r.yaw), toW = (v) => [v[0] * c + v[2] * s, v[1], -v[0] * s + v[2] * c];
+    const f = toW(qrot(r.q.Head, [0, 0, 1])), hp = toW(r.p.Head), hw = [r.pos[0] + hp[0], r.pos[1] + hp[1], r.pos[2] + hp[2]];
+    const d = [r.tgt[0] - hw[0], r.tgt[1] - hw[1], r.tgt[2] - hw[2]], dl = Math.hypot(...d);
+    if (dl < 0.5) continue;
+    aimsFree.push(deg(Math.acos(Math.max(-1, Math.min(1, (f[0] * d[0] + f[1] * d[1] + f[2] * d[2]) / dl)))));
+  }
+  // the stance after a recovery: from half a second to a second and a half after a blow, a roll, a hit or a fall ends,
+  // while it moves or stands locked on, how far each hand is from where it holds in the guard (the sword stand, locked
+  // on and still at least half a second after anything: the mean hand places), in the chest's frame
+  const ends = [];
+  for (let i = 1; i < R.length; i++) if (R[i].state === ST_MOVE && R[i - 1].state !== ST_MOVE) ends.push(i);
+  const sinceEnd = (i) => { let k = -1; for (const e of ends) if (e <= i) k = e; return k < 0 ? 1e9 : i - k; };
+  const still = R.filter((r, i) => r.state === ST_MOVE && r.target >= 0 && r.speed < 0.05 && sinceEnd(i) >= 30);
+  // (each hand in the chest's frame: the arms' stance, whatever the hips and spine do in a sidestep or a back walk)
+  const inChest = (r, b) => qrot(qinv(r.q.Chest), [0, 1, 2].map((a) => r.p[b][a] - r.p.Chest[a]));
+  const g = still.length ? ['HandR', 'HandL'].map((b) => [0, 1, 2].map((a) => mean(still.map((r) => inChest(r, b)[a])))) : null;
+  const stance = [];
+  if (g) for (let i = 0; i < R.length; i++) {
+    const t = sinceEnd(i);
+    if (R[i].state !== ST_MOVE || R[i].target < 0 || t < 30 || t > 90) continue;
+    stance.push(mean(['HandR', 'HandL'].map((b, k) => { const h = inChest(R[i], b); return Math.hypot(...[0, 1, 2].map((a) => h[a] - g[k][a])); })));
+  }
   const m = {
     rows: R.length, cuts: cuts.map(([i, j, c]) => `${c}@${R[i].tick}+${j - i}`),
     sync: +mean(sync).toFixed(2), spread: +median(spread).toFixed(1), per_cut: { sync, spread, peak_ticks: peakTicks },
@@ -291,7 +323,8 @@ export function measure(trace, boss = null) {
     boss_cape_speed: bossCape,
     cape: capes.map((c) => ({ tick: c.tick, path: +c.path.toFixed(3), first: +c.first.toFixed(3), last: +c.last.toFixed(3) })),
     lean_corr: +leanCorr.toFixed(2), lean_deg: +leanAmp.toFixed(1), lean_samples: xs.length,
-    aim_mean_deg: +mean(aims).toFixed(1), aim_samples: aims.length,
+    aim_mean_deg: +mean(aims).toFixed(1), aim_samples: aims.length, aim_free_deg: +mean(aimsFree).toFixed(1), aim_free_samples: aimsFree.length,
+    stance_m: +mean(stance).toFixed(3), stance_samples: stance.length, guard_samples: still.length,
     idle_sine: idleSine, idle_joints: idleJoints, idle_ticks: idleTicks,
   };
   m.checks = {
@@ -300,6 +333,8 @@ export function measure(trace, boss = null) {
     cape: capeOk && (bossCape === null || bossCape >= 0.05),
     lean: m.lean_corr >= 0.5 && m.lean_deg >= 2,
     idle: m.idle_joints >= 6 && m.idle_ticks >= 60 && m.idle_sine <= 1,
+    aim: m.aim_samples >= 60 && m.aim_mean_deg <= 10 && m.aim_free_samples >= 20 && m.aim_free_deg <= 15,
+    stance: m.guard_samples >= 8 && m.stance_samples >= 40 && m.stance_m <= 0.12,
   };
   m.pass = Object.values(m.checks).every(Boolean);
   return m;
@@ -345,7 +380,8 @@ async function cost(cartDir) {
 }
 
 const [mode, ...args] = process.argv.slice(2);
-if (mode === 'cost') {
+const MAIN = resolve(process.argv[1] || '') === fileURLToPath(import.meta.url); // (imported by tests/emberthrone-lockon.mjs for the pad script)
+if (!MAIN) { /* a module */ } else if (mode === 'cost') {
   console.log(JSON.stringify(await cost(args[0]), null, 1));
 } else if (mode === 'fights') {
   await fights(args[0], args[1], args.slice(2));
@@ -361,7 +397,7 @@ if (mode === 'cost') {
   const c = ci >= 0 ? load(args[ci + 1]) : null;
   if (args.includes('--json')) console.log(JSON.stringify({ run: m, control: c }, null, 1));
   else {
-    const line = (n, x) => console.log(`${n.padEnd(8)} ${x.pass ? 'PASS' : 'FAIL'} sync ${x.sync} spread ${x.spread} jerk ${x.jerk_peak}/${x.jerk_mean} pops ${x.pop_at_change} (else ${x.pop_elsewhere}) cape ${JSON.stringify(x.cape)} king's cape ${x.boss_cape_speed} m/s lean ${x.lean_corr} ${x.lean_deg}deg aim ${x.aim_mean_deg} idle ${x.idle_sine}/${x.idle_joints} pure sines (${x.idle_ticks} ticks) checks ${JSON.stringify(x.checks)}`);
+    const line = (n, x) => console.log(`${n.padEnd(8)} ${x.pass ? 'PASS' : 'FAIL'} sync ${x.sync} spread ${x.spread} jerk ${x.jerk_peak}/${x.jerk_mean} pops ${x.pop_at_change} (else ${x.pop_elsewhere}) cape ${JSON.stringify(x.cape)} king's cape ${x.boss_cape_speed} m/s lean ${x.lean_corr} ${x.lean_deg}deg aim ${x.aim_mean_deg} free ${x.aim_free_deg} (${x.aim_free_samples}) stance ${x.stance_m} m (${x.stance_samples}) idle ${x.idle_sine}/${x.idle_joints} pure sines (${x.idle_ticks} ticks) checks ${JSON.stringify(x.checks)}`);
     line('run', m); if (c) line('control', c);
   }
   const ok = m.pass && (!c || !c.pass);

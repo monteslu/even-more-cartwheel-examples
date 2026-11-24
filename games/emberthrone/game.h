@@ -206,6 +206,9 @@ typedef struct sim {
   int cam_clip_t;         /* ticks the camera was pulled in by a wall */
   float cam_clip;         /* how far it is pulled in (debug) */
   int cam_blocked;        /* ticks something solid stood between the player and the camera (the check: 0) */
+  float cam_lock;         /* 0..1: how far the camera has moved to the lock-on framing (eased in and out) */
+  t3_vec3 cam_lock_at;    /* the lock-on framing: the point looked at and the distance (kept while it eases out) */
+  float cam_lock_dist;
   int interact;           /* the object the lead player can use now, -1 none */
   shock sh[4];
   stone st[MAXSTONE];
