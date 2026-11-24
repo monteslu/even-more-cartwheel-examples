@@ -20,15 +20,17 @@
 // nor the game's (`env CW_TEST_NO_PREWARM=1`, sent before its first frame; the game reads it too): each world and look is first drawn in play, and a first use costs a frame over budget.
 //
 //   node tests/beatsync-hitch.mjs [--gpu gl|webgpu|both]
-import { openCart, call } from './lib/romdev.mjs';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { openCart, call, ROOT } from './lib/romdev.mjs';
 import { gpusOf } from './lib/beatsync.mjs';
 
 const BUDGET_MS = 16.7, FADE_GPU_MS = 8;
 // a fade bound held for a known engine issue (reported, its fix in the release named): measured and printed, not
 // failed. Empty it when the pin moves past the fix.
 const HELD_FADE = {
-  webgpu: 'cartwheel-engine 0.70.1 on WebGPU: a one-frame GPU spike where an engine look starts or ends its blend (an engine fix is coming)',
-  gl: 'cartwheel-engine 0.70.1: a fade out of an engine look costs more than its two pictures together (half blocks into the metal hall: 8 to 9 ms on a Radeon 890M; an engine fix is coming)',
+  webgpu: 'cartwheel-engine 0.71.2 on WebGPU: an occasional one-frame GPU spike in a fade that lands somewhere else each run, from pauses of the host (8 to 11 ms on a Radeon RX 7600 in 890M units): neither the game nor the engine',
+  gl: 'cartwheel-engine 0.71.2: a fade out of an engine look costs more than its two pictures together (half blocks into the metal hall: 8 to 9 ms on a Radeon 890M; an engine fix is coming)',
 };
 // --pre "a;b": debug commands before the tour (a look at what a cost comes from, e.g. the worlds' environment off)
 const PRE = process.argv.includes('--pre') ? process.argv[process.argv.indexOf('--pre') + 1].split(';').filter(Boolean) : [];
@@ -65,6 +67,17 @@ async function tour(gpu, cold) {
     let fadeGpu = 0, fadeAt = -1, fadeFrames = 0;
     for (let i = 0; i < tt.length; i++) if (tt[i] < 1 && i > 0) { fadeFrames++; if ((gpuMs[i] || 0) > fadeGpu) fadeGpu = gpuMs[i] || 0, fadeAt = i; }
     // (where in its fade, and the frames round it: a one-frame spike or a heavy fade)
+    // every fade frame over the fade budget: its frame in the run, the fade, how far into it (a one-frame spike at a
+    // fade's start or end, or a heavy fade)
+    const spikes = [];
+    for (let i = 1; i < tt.length; i++) {
+      if (!(tt[i] < 1) || !((gpuMs[i] || 0) >= FADE_GPU_MS)) continue;
+      let k = 0;
+      for (let j = i; j > 0 && ch[j] === ch[j - 1]; j--) k++;
+      spikes.push({ frame: i, gpu: +(gpuMs[i] || 0).toFixed(2), fade: `${st.styles[frm[i]]?.id ?? frm[i]} to ${st.styles[cur[i]]?.id ?? cur[i]}`, into: k, t: +tt[i].toFixed(3) });
+    }
+    mkdirSync(join(ROOT, 'out/beatsync-hitch'), { recursive: true });
+    writeFileSync(join(ROOT, `out/beatsync-hitch/${gpu}${cold ? '-cold' : ''}.json`), JSON.stringify({ lane: LANE, spikes, gpu: gpuMs.map((x) => (x == null ? null : +x.toFixed(2))), t: tt, changes: ch, cur, from: frm }));
     let since = 0;
     for (let i = fadeAt; i > 0 && ch[i] === ch[i - 1]; i--) since++;
     const around = fadeAt >= 0 ? gpuMs.slice(Math.max(0, fadeAt - 3), fadeAt + 4).map((x) => (x || 0).toFixed(1)).join(' ') : '';
@@ -84,7 +97,7 @@ async function tour(gpu, cold) {
       }
       at = i;
     }
-    return { rows, fadeGpu, fadeFrames, fadeSince: since, fadeAround: around, fadeTo: fadeAt >= 0 ? `${st.styles[frm[fadeAt]]?.id ?? frm[fadeAt]} to ${st.styles[cur[fadeAt]]?.id ?? cur[fadeAt]}` : '', gpuName: JSON.stringify(res.gpu?.adapter?.device || res.gpu?.glRenderer || '').slice(0, 80) };
+    return { rows, spikes, fadeGpu, fadeFrames, fadeSince: since, fadeAround: around, fadeTo: fadeAt >= 0 ? `${st.styles[frm[fadeAt]]?.id ?? frm[fadeAt]} to ${st.styles[cur[fadeAt]]?.id ?? cur[fadeAt]}` : '', gpuName: JSON.stringify(res.gpu?.adapter?.device || res.gpu?.glRenderer || '').slice(0, 80) };
   } finally {
     await r.close();
   }
@@ -103,6 +116,7 @@ for (const gpu of gpusOf(process.argv.slice(2))) {
   else if (warm.fadeGpu < FADE_GPU_MS) ok(`hitch fades (${gpu}): the worst GPU frame in ${warm.fadeFrames} fade frames ${warm.fadeGpu.toFixed(2)} ms (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; round it ${warm.fadeAround}), under ${FADE_GPU_MS} ms`);
   else if (HELD_FADE[gpu]) console.log(`held hitch fades (${gpu}): a fade frame took ${warm.fadeGpu.toFixed(2)} ms of GPU (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; GPU ms round it ${warm.fadeAround}), over ${FADE_GPU_MS} ms: ${HELD_FADE[gpu]}`);
   else fail(`hitch fades (${gpu}): a fade frame took ${warm.fadeGpu.toFixed(2)} ms of GPU (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; GPU ms round it ${warm.fadeAround}), over ${FADE_GPU_MS} ms`);
+  for (const x of warm.spikes) console.log(`     ${gpu} fade frame over ${FADE_GPU_MS} ms: frame ${x.frame} of the run, ${x.fade}, ${x.into} frames into it (t ${x.t}): ${x.gpu} ms`);
   if (NO_COLD) continue;
   const cold = await tour(gpu, true);
   const cb = cold.rows.filter((x) => x.over > 0);

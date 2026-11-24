@@ -1,5 +1,38 @@
 # Changelog
 
+## 0.54.0
+
+- **beatsync**'s arcade maze is back in the readability gate. The engine fixed the half blocks that drew a flat colour
+  as a checkerboard of two palette entries (cartwheel-engine 0.71.1), and the maze reads 7.88:1 on GL and WebGPU.
+- **beatsync** asks the engine to prewarm the glass roads' sharp reflections behind the loading screen
+  (`cw_post_prewarm` with ssr and ssr_backdrop on), so the first style that turns them on in play builds nothing.
+- **beatsync**'s style cost table was checked again with the new `tests/beatsync-cost.mjs`. Every style was held for
+  180 frames at High on a Radeon RX 7600 (GL and WebGPU), and the means were fitted to the table's Radeon 890M figures
+  over the 17 other styles (0.3 ms rms). One bit is 4.4 ms (4.3 on WebGPU), lava 1.5 and metal 3.0, so the table
+  stands. The earlier 8.1 ms for one bit and 5.05 ms for lava into metal were readings of an 890M at a low clock. Lava
+  and metal held half way cost 4.0 ms (3.4 on WebGPU), under their sum less the field.
+- **beatsync**'s hitch check lists every fade frame over its 8 ms bound, with its frame in the run, the fade and how far
+  into it, and keeps the run's per-frame series in `out/beatsync-hitch/`.
+- Known engine issues on cartwheel-engine 0.71.2, held until the engine release that fixes them:
+  - a world that lights the field is captured whole on the frame its environment comes on at a fade's end;
+  - an engine look leaving at a fade's end costs one or two frames over the frames round it (the arcade maze into one
+    bit: two frames 2.6 ms over), so the scheduler still keeps that pair apart;
+  - every twelfth frame of a style whose world lights the field costs about 5 ms more GPU on the 890M (the
+    environment's filter makes a cube of at least 256 texels a face for a 64-texel capture).
+  The hitch check's fade bound stays held. Every frame of its tour stays under 16.7 ms on GL and WebGPU.
+- On WebGPU an occasional fade frame reaches 8 to 11 ms on a Radeon RX 7600 (in 890M units). It lands somewhere else in
+  each run, from pauses of the host, and is not the game's or the engine's.
+- Checks on this release, on cartwheel-engine 0.71.2 with Release carts, on a Radeon RX 7600 (GPU times in 890M units):
+  - beatsync's hitch check on GL and WebGPU: 32 style changes and no frame over 16.7 ms; the worst GL fade frame
+    was 5.9 ms. Its control, a cart with no prewarm, must go over, and it does.
+  - beatsync's readability (4:1) in every style, each with its control, and the one-bit HUD in ink and paper, with its
+    control.
+  - beatsync's style fades against the flash rules, with the one-frame cut control.
+  - The song-length flash check, with its strobe controls.
+  - The note footprint, with the old-shapes control.
+  - The program table at every preset, with its control.
+  - Every game's cart smoke, version and prompt checks.
+
 ## 0.53.0
 
 - Every game on cartwheel-engine 0.71.2, with every program table regenerated for its shaders.

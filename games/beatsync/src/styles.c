@@ -17,6 +17,7 @@
 #include "cartwheel/core.h"
 #include "cartwheel/debug.h"
 #include "cartwheel/look.h"
+#include "cartwheel/pipeline.h"
 #include "cartwheel/scene_file.h"
 
 #include "ascii.h"
@@ -41,7 +42,12 @@ typedef struct style_def {
  * the field included, with the worlds that light the field their captures and the roads' sharp reflections): a
  * fade draws two worlds, about the sum less the field (0.4; the club lasers into the rock stage, 8.4 summed, measured
  * 8.1 to 8.5 a fade frame), so the scheduler never fades between two whose costs add up to more than PAIR_BUDGET (the
- * worst fade stays under 8 ms there, tests/beatsync-hitch.mjs; Auto steps down on slower GPUs) */
+ * worst fade stays under 8 ms there, tests/beatsync-hitch.mjs; Auto steps down on slower GPUs).
+ * Checked again on cartwheel-engine 0.71.2 (tests/beatsync-cost.mjs): every style held 180 frames on a Radeon RX 7600
+ * (GL and WebGPU), its means fitted to this table over the 17 styles other than one bit, lava and metal (890M =
+ * 1.34 x the 7600 on GL, 1.46 on WebGPU, 0.3 ms rms): one bit 4.4 (4.3 on WebGPU), lava 1.5 (1.9), metal 3.0 (3.1), so
+ * the table stands (an 8.1 for one bit and a 5.05 for lava into metal were readings of an 890M at a low clock); lava and
+ * metal pinned half way 4.0 (3.4), under their sum less the field. */
 #define METAL_COST 4.0f
 static const float COST[STYLE_COUNT] = { [STYLE_NEON] = 0.37f, [STYLE_CLEAN] = 2.0f, [STYLE_FIRE] = 2.96f, [STYLE_WATER] = 2.86f, [STYLE_GRID] = 2.5f,
   [STYLE_TERMINAL] = 0.37f, [STYLE_LASERS] = 3.08f, [STYLE_STAGE] = 5.33f, [STYLE_HALF] = 1.98f, [STYLE_MAZE] = 1.39f, [STYLE_BIT] = 4.88f,
@@ -208,8 +214,9 @@ static void begin(int to, float beats) {
 }
 
 /* a fade the scheduler may make: its two worlds' costs within the budget (or one world), and not between the arcade
- * maze and one bit (a known engine issue in cartwheel-engine 0.70: that fade costs more than its two looks together
- * and spikes on the frame it ends; fixed in a later release) */
+ * maze and one bit (known engine issues in cartwheel-engine 0.71.2: the half blocks leaving at that fade's end cost two
+ * frames 2.5 ms over the frames round them, and the rock stage's environment, off through the fade, is captured whole
+ * on its end frame; both fixed in the engine release after it) */
 static bool pair_fits(int a, int b) {
   int pa = STYLES[a].px, pb = STYLES[b].px;
   if ((pa == PX_MAZE && pb == PX_BIT) || (pa == PX_BIT && pb == PX_MAZE)) return false;
@@ -563,5 +570,13 @@ void styles_build(cw_node level) {
     backdrop_prewarm_all();
     cw_pipeline *p = cw_pipeline_of(cw_scene_app_tree());
     if (p) cw_look_prewarm_all(p);
+    /* the post passes a style turns on later (cartwheel-engine 0.71.2 cw_post_prewarm): the glass roads' sharp
+     * reflections of the backdrop (ssr with ssr_backdrop), their programs, pipelines and targets and the gi part on every
+     * lit material made at the next whole render, unseen, so a style's first showing in play builds none of them */
+    if (p) {
+      cw_post_settings later = *cw_pipeline_settings(p);
+      later.ssr = true, later.ssr_backdrop = true;
+      cw_post_prewarm(p, &later);
+    }
   }
 }
