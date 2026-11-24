@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.58.0
+
+- Every game on cartwheel-engine 0.77.0, every program table generated again for it.
+
 ## 0.57.0
 
 - **Ember Throne**'s hair and beards move with the body. The lancers' and the Tidecaller's long hair hangs on five
@@ -22,9 +26,6 @@
   springs off), the springs without collisions, and slack undamped chains. A beard never reaches the neck even
   without collisions, which the check reports. The springs cost under half a microsecond a figure over its other
   skeleton modifiers (13 us a figure on the Steam Machine).
-
-## 0.56.0
-
 - **jewels**: the pause menu has New board, a fresh board with the score from nothing (the best is kept), on the pad
   or by a tap. The first cascade of a game no longer stalls a frame on WebGPU: the shockwave's programs are made on
   the first frame the effects pass runs (`cw.pass_builds` holds flat in play, 48 from the title on, where it grew from
@@ -42,6 +43,7 @@
   (its two strobe controls fail); the perf gates of the three games on a Radeon RX 7600 (jewels 1.87 ms GL and 1.90
   WebGPU, bound 4.2; pinball 2.18 and 1.38, bound 4.1; lanternfall 2.37 and 2.42, bound 4); jewels' play frames the
   same as before to the pixel; cart smoke, version and prompt checks.
+
 ## 0.55.0
 
 - Every game on cartwheel-engine 0.76.0, every program table generated again for it.
