@@ -786,10 +786,10 @@ static void paint_and_shape(void) {
       else if (base == 7) {                                                     /* the keep's hill: rock through the ash */
         PATCH(0.6f, 0.66f, 4);
         /* and cold teal moss in patches: the warm keep carries its complementary accent in its own ground */
-        if (base == 7 && over == 7) { n = fbm((float)x / 6, (float)z / 6, 909, 3); PATCH(0.6f, 0.66f, 5); }
+        if (base == 7 && over == 7) { n = fbm((float)x / 6, (float)z / 6, 909, 3); PATCH(0.53f, 0.59f, 5); }
       }
       /* moss in the keep's paving: small patches whose rim the height blend fills from the joints first */
-      else if (base == 6 && rgn[i] == RG_KEEP) { n = fbm((float)x / 3.5f, (float)z / 3.5f, 911, 3); PATCH(0.6f, 0.68f, 5); }
+      else if (base == 6 && rgn[i] == RG_KEEP) { n = fbm((float)x / 3.5f, (float)z / 3.5f, 911, 3); PATCH(0.52f, 0.6f, 5); }
 #undef PATCH
       if (bl[i] > 0) over = ov[i], blend = bl[i]; /* a path's soft edge */
       if (slope > 0.55f) { over = 4, blend = (int)(cw_clampf((slope - 0.55f) * 3.0f, 0, 1) * 255); }
@@ -1482,7 +1482,7 @@ static const look LOOK[RG_COUNT] = {
   /* the marsh: teal and violet, a thicker cool mist */
   { { 0.3f, 0.56f, 0.6f }, 0.003f, { 0.7f, 0.95f, 1 }, 0.45f, { 0.55f, 0.6f, 1 }, { 0.2f, 0.4f, 0.32f }, 0.85f, { 0.85f, 0.95f, 1 }, 3.0f, 1.42f },
   /* the keep: a crimson sunset, ember haze */
-  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 1.06f },
+  { { 0.8f, 0.42f, 0.34f }, 0.005f, { 1, 0.7f, 0.6f }, 0.4f, { 0.85f, 0.55f, 0.7f }, { 0.45f, 0.2f, 0.12f }, 0.8f, { 1, 0.62f, 0.42f }, 3.3f, 1.16f },
   /* the heights: cold bright air, blue shadows on the snow */
   { { 0.66f, 0.78f, 0.95f }, 0.0022f, { 0.85f, 0.92f, 1 }, 0.22f, { 0.6f, 0.75f, 1 }, { 0.5f, 0.52f, 0.6f }, 0.5f, { 1, 0.96f, 0.9f }, 3.2f, 0.74f },
   /* the underway: lantern light under the roof */
