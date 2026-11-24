@@ -11,6 +11,11 @@
   to the select screen; the shots so far are not judged or saved).
 - **skate**'s control hints of a run's first seconds are no longer drawn under the pause menu, and **detexto**'s pause
   plate reaches the prompt line, so the longer menu stays on it.
+- Checks on these four games, on cartwheel-engine 0.77.0 with Release carts: skate's and towers' gates on GL and
+  WebGPU; destructo's play, controls and newcomer gates; detexto's one-bit menus at 100% and 200% text with their
+  controls; cart smoke, version and prompt checks. Each pause item was played through on romdev with the pad (restart,
+  then back to the choice). destructo's loading and water gates time the CPU and went over on a machine under a load
+  of about 50; the build before this change goes over the same way there.
 
 ## 0.57.0
 
