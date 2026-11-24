@@ -416,6 +416,7 @@ static void restart(void) {
   if (opt_on("ASYNC_RESTART")) { G.loading = 0; request_level(start_level()); } /* (a gate: the loading screen, as a player gets it) */
   else begin_level_now(start_level());
 }
+static void pause_item(int index, void *u); /* the pause menu's own items (above fixed_update) */
 static void option_changed(const char *name) {
   if (!strcmp(name, "COPLANAR_SWEEP")) cop_sweep_arm(); /* tests/coplanar-sweep.mjs: the camera glide, from now */
   if (!strcmp(name, "OLD_FEEL")) {
@@ -489,7 +490,7 @@ static void init(void *u) {
   G.view = cw_action_find("view");
   G.orb_l = cw_action_find("orbit_left"), G.orb_r = cw_action_find("orbit_right");
   cw_shell_init(&(cw_shell_desc){ .title = "DESTRUCTO", .subtitle = "bring them down, one to four players", .max_players = MAXP, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background });
+                                  .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background, .pause_item = pause_item });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -772,6 +773,27 @@ static void level_done(void) {
 #endif
 }
 
+/* the pause menu's own items while a structure is played (cartwheel/shell.h pause_items): the structure again from
+ * its start, or back to the select screen (as the result card's back does), the shots so far not judged or saved.
+ * None on the select screen or the result card (they have their own keys). */
+static const char *const PAUSE_PLAY[2] = { "Restart structure", "Choose structure" };
+static bool g_pause_play;
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (!G.in_match || G.phase != PH_PLAY || G.loading) return;
+  if (index == 0) {
+    request_level(G.g.level);
+    return;
+  }
+  G.phase = PH_SELECT, G.phase_t = 0;
+  G.sel = G.g.level;
+  preview_level(G.sel);
+}
+static void pause_items_sync(void) {
+  bool want = G.in_match && G.phase == PH_PLAY && !G.loading;
+  if (want != g_pause_play) cw_shell_set_pause_items(want ? PAUSE_PLAY : NULL), g_pause_play = want;
+}
+
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
   ticks_run++;
@@ -781,6 +803,7 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
+  pause_items_sync();
   if (G.loading) {
     if (loader_built(&NX, G.loading - 1, G.players, G.mode)) {
       int lv = G.loading - 1;
