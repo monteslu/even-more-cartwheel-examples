@@ -44,8 +44,10 @@ the style changing with the music.
   beside a valley under a low sun; a canyon of fire walls over glowing cracked ground with an ember storm; a synthwave
   grid under a striped sun; terminal green; a club in haze with laser fans and moving heads; a rock band playing on a
   stage under moving spots; a night sea under a low moon; half blocks over the grid; an arcade maze of neon walls in
-  chunky pixels, the rivers its corridors with pellets down them; and the stage in one bit, a warm-white dither. Every style but the characters draws the notes as lit gems
-  (orbs, diamonds, capsules) that glow their colour and catch the light, on roads of dark glass between glowing banks.
+  chunky pixels, trails of light running its halls; and the stage in one bit, a warm-white dither, its HUD and prompts
+  in the same two colours (a judgement told apart by its word and its shape). Every style but the characters draws the
+  notes as lit gems (orbs, diamonds, prisms and slabs) that glow their colour and catch the light, on roads of dark
+  glass between glowing banks; the sea, the grid, the rock stage and the metal hall are mirrored in that glass.
   Each backdrop is a world of its own behind the field (cartwheel's Backdrop nodes). The rivers, notes and gates never
   fade, and the roads keep the notes readable over anything. Each song starts in the characters and keeps its own order of
   styles. **Visual style** in Settings picks all styles or one (`docs/DESIGN.md`, "Styles").

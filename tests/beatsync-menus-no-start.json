@@ -1,5 +1,5 @@
 [
-  { "frame": 100, "buttons": ["south"] }, { "frame": 106, "buttons": [] },
-  { "frame": 140, "buttons": ["start"] }, { "frame": 146, "buttons": [] },
-  { "frame": 180, "buttons": ["south"] }, { "frame": 186, "buttons": [] }
+  { "frame": 160, "buttons": ["south"] }, { "frame": 166, "buttons": [] },
+  { "frame": 200, "buttons": ["start"] }, { "frame": 206, "buttons": [] },
+  { "frame": 240, "buttons": ["south"] }, { "frame": 246, "buttons": [] }
 ]

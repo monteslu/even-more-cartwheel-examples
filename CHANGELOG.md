@@ -30,6 +30,55 @@
   passes in seven regions; the keep's complementary accent reads 3.7% against its 4% bar (4.4% before): in two of its
   five frames a moving figure no longer stands where it did, the palette is unchanged.
 
+## 0.50.0
+
+- **beatsync**: the worlds are mirrored in the glass roads. The night sea, the synthwave grid, the rock stage and the
+  metal hall light the field (cartwheel-engine's backdrop `environment`): each world is captured from its camera and
+  the dark glass under the rivers reflects it, its share following the fade. The road stands for a floor going away,
+  so its normals lean back like a floor's and it mirrors the world beyond it (the sea's horizon and harbour lights,
+  the grid's sun, the stage's lamps), not what is behind the camera; in those four styles the screen-space reflections
+  take the backdrop's picture too (`ssr_backdrop`), faded with the style. The stage's spots and the metal hall's sweeps
+  have lamps with glowing lenses, so the lights show in the reflections. A capture waits while two worlds fade (its
+  faces and its filter were a millisecond more a fade frame and a spike of three on a Radeon 890M), and the world coming
+  in lights the field once its fade is over (a world shown with its environment on is captured on its first frame);
+  captures are 64 texels a face over twelve frames. Other styles keep the studio of soft boxes the field reflected.
+- **beatsync**: the one-bit style's HUD and prompts are in its two colours, ink and paper (cartwheel-engine's one-bit
+  edges and two-colour prompts), fading with the style: the colours move to the ink as the print comes in and the
+  one-bit edges come on at half way. A judgement is told apart by its word and its shape: Perfect in an ink frame,
+  Good plain, Miss struck through. tests/beatsync-styles.mjs holds that style's HUD to its two colours (every pixel of
+  its boxes ink or paper over eight frames of play, ink on paper 17.9:1, the three judgements apart by shape) with a
+  control that must fail (the coloured HUD over the print).
+- **beatsync**: the metal hall is a lit showpiece: paneled steel walls down both sides with slim pilasters of cool
+  light and a gold rail, a ceiling of rows of light strips receding into the distance, a tall fluted far wall with
+  slots of light, warm strips along the floor at the columns' feet, the sweeping lamps in view; the deep space nebula
+  has form (its billows lit from one side and shadowed on the other, dark lanes of dust, bright threads along its
+  folds); the night forest's fireflies are larger, each in a soft glow of its own; the synthwave grid has the sun's
+  glow on its sky, long wisps of cloud lit pink from below, streaks of light running in along its lines, and its sun
+  in the roads; the rock band has hands (a palm, fingers of three joints and a thumb, each curled to its grip: fists
+  round the sticks and the mic, fingers on the neck, a pick at the strings).
+- **beatsync**: the sea's water is made in code (cartwheel-engine now draws and reports a node a world gets while the
+  game runs), the scene-file workaround gone. The scheduler's style costs are measured again with the reflections
+  and its fade budget is 7.2 ms (the club lasers into the rock stage, allowed before, drew 8.1 to 8.5 ms a fade frame);
+  the hitch check's tour makes only changes the scheduler could make and holds every fade frame to 8 ms of GPU (in
+  Radeon 890M units: a remote lane's GPU times through its fit). A fade into or out of a two-colour print (one bit,
+  amber, newsprint) takes twice as long, and the streak milestone swells in over a quarter second; from the results
+  straight into a song the field and the HUD come up over half a second (they came up in one frame). On the release
+  carts, GL and WebGPU: every style change's frames under 16.7 ms of CPU and GPU (worst CPU 8.0 / 7.6 ms, worst GPU
+  5.8 / 8.5 ms), the GL fades under 8 ms (worst 5.8); the control with no prewarm goes over (126 / 256 ms).
+- **beatsync**: the engine now draws every world and look once under the loading screen (cartwheel-engine 0.70), and
+  the game asks again for the worlds it builds in code and its looks; the game's own prewarm stays for what that does
+  not cover yet (the night sea's first showing on WebGPU, a world's first environment capture). The hitch check's
+  control turns both off (`env CW_TEST_NO_PREWARM=1`, which the game reads too).
+- **beatsync**: known issues with cartwheel-engine 0.70.1, fixed in 0.71.1: half blocks on a palette under TAA can
+  draw a flat colour as a checkerboard of two entries (the arcade maze's readability is held out of its gate until
+  then: 7.9:1 on 0.67.0); a fade between the arcade maze and one bit costs more than its two looks and spikes as it
+  ends (the scheduler leaves that pair out); on WebGPU a frame where an engine look starts or ends its blend can take
+  up to about 9 ms of GPU on a Radeon 890M (the hitch check's 8 ms fade bound is held on WebGPU; every frame stays
+  under 16.7 ms).
+- Every game on cartwheel-engine 0.70.1 (prewarm of backdrops and looks, fog over transparent surfaces, one-bit 2D
+  edges, particle start angles): the program tables of beatsync, Destructo, Detexto and skate take the new states
+  for transparent surfaces in fog.
+
 ## 0.49.0
 
 - **Detexto**'s whole picture is two colours under its 1-bit looks. The engine's menus (loading, title, pause,

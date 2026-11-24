@@ -55,6 +55,9 @@ void ascii_hud_end(void);
  * ascii_hud_reset, ascii_hud_rect..., ascii_hud_end, then ascii_hud_draw */
 void ascii_hud_reset(cw_vec2 canvas, float u);
 void ascii_hud_draw(void);
+/* the one-bit style's HUD: k its share of the picture (the boxes move toward opaque paper with an ink edge, at a half
+ * and past it the edge a single ink line) */
+void ascii_hud_two_colour(float k, cw_color ink, cw_color paper);
 /* a frame with no HUD: no boxes */
 void ascii_hud_none(void);
 /* the HUD's boxes of the last frame, as fractions of the canvas (x, y, w, h); returns how many (at most max) */

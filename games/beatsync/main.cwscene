@@ -14,6 +14,8 @@ bloom = true
 bloom_intensity = 0.08
 bloom_threshold = 1.0
 aa = NONE
+; the glass roads' sharp reflections of a backdrop (src/styles.c turns ssr and ssr_backdrop on for the styles that ask)
+ssr_max_distance = 40
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(0, 0, 22)
@@ -41,7 +43,9 @@ color = color(1, 1, 1, 1)
 energy = 0
 range = 40
 
-; the backdrops (src/backdrop.c): worlds of their own drawn behind the field, faded by opacity, at most two at once
+; the backdrops (src/backdrop.c): worlds of their own drawn behind the field, faded by opacity, at most two at once;
+; the sea, the grid, the stage and the metal hall light the field (environment: the glass roads reflect them; 64 texels a
+; face: the roads blur them anyway, and the faces cost a quarter of 128)
 [node name="BdFire" parent="." type="Backdrop"]
 scene = "backdrops/fire.cwscene"
 camera = "Camera"
@@ -51,11 +55,15 @@ opacity = 0
 scene = "backdrops/sea.cwscene"
 camera = "Camera"
 opacity = 0
+environment = true
+env_resolution = 64
 
 [node name="BdGrid" parent="." type="Backdrop"]
 scene = "backdrops/grid.cwscene"
 camera = "Camera"
 opacity = 0
+environment = true
+env_resolution = 64
 
 [node name="BdLasers" parent="." type="Backdrop"]
 scene = "backdrops/lasers.cwscene"
@@ -66,6 +74,8 @@ opacity = 0
 scene = "backdrops/stage.cwscene"
 camera = "Camera"
 opacity = 0
+environment = true
+env_resolution = 64
 
 [node name="BdClean" parent="." type="Backdrop"]
 scene = "backdrops/clean.cwscene"
@@ -116,5 +126,7 @@ opacity = 0
 scene = "backdrops/metal.cwscene"
 camera = "Camera"
 opacity = 0
+environment = true
+env_resolution = 64
 
 [node name="Field" parent="." type="Node3D" groups="airborne"]

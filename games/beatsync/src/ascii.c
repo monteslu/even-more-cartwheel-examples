@@ -628,8 +628,20 @@ static struct {
   bool text[MAXREC]; /* this frame's rectangle i is a line of text (ascii_hud_text) */  /* last frame's merged boxes: drawn first, under this frame's HUD */
 } H;
 
-/* the neon border: a thin bright line with two soft passes of the same colour round it */
+/* the one-bit style's two colours (ascii_hud_two_colour): its share of the picture, its ink and paper */
+static float hud_ob;
+static cw_color hud_ink, hud_paper;
+void ascii_hud_two_colour(float k, cw_color ink, cw_color paper) { hud_ob = k, hud_ink = ink, hud_paper = paper; }
+static cw_color ob_mix(cw_color c, cw_color to, float k) { return (cw_color){ c.r + (to.r - c.r) * k, c.g + (to.g - c.g) * k, c.b + (to.b - c.b) * k, c.a + (to.a - c.a) * k }; }
+/* a box's fill: black at its alpha, moving to opaque paper as the print comes in */
+static void box_fill(cw_rect rr, float u, float a) {
+  float k = fminf(1, hud_ob * 2);
+  cw_r2d_round_rect(rr, 8 * u, 6, ob_mix((cw_color){ 0, 0, 0, a }, (cw_color){ hud_paper.r, hud_paper.g, hud_paper.b, 1 }, k));
+}
+/* the neon border: a thin bright line with two soft passes of the same colour round it (in two colours: the ink line alone) */
 static void border(cw_rect r, float u, cw_color c) {
+  if (hud_ob > 0) c = ob_mix(c, (cw_color){ hud_ink.r, hud_ink.g, hud_ink.b, c.a }, fminf(1, hud_ob * 2));
+  if (hud_ob > 0.5f) { cw_r2d_round_rect_lines(r, 8 * u, 2.0f * u, 6, c); return; }
   for (int k = 2; k >= 0; k--) {
     float g = (float)k * 3.0f * u;
     cw_color cc = c;
@@ -645,7 +657,8 @@ void ascii_hud_begin(cw_vec2 canvas, float u) {
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
+    if (hud_ob > 0.5f && r[4] < 0.5f) continue; /* (in two colours a box is there or not: from half its alpha) */
+    box_fill(rr, u, optf("HUD_BOX_ALPHA", 0.7f) * r[4]);
     border(rr, u, (cw_color){ r[5], r[6], r[7], r[4] });
   }
 }
@@ -728,7 +741,8 @@ void ascii_hud_draw(void) {
   for (int i = 0; i < H.nb; i++) {
     const float *r = H.b[i];
     cw_rect rr = cw_rect_make(r[0], r[1], r[2] - r[0], r[3] - r[1]);
-    cw_r2d_round_rect(rr, 8 * H.u, 6, (cw_color){ 0, 0, 0, optf("HUD_BOX_ALPHA", 0.7f) * r[4] });
+    if (hud_ob > 0.5f && r[4] < 0.5f) continue; /* (in two colours a box is there or not: from half its alpha) */
+    box_fill(rr, H.u, optf("HUD_BOX_ALPHA", 0.7f) * r[4]);
     border(rr, H.u, (cw_color){ r[5], r[6], r[7], r[4] });
   }
 }

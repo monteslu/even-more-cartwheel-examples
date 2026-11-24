@@ -918,16 +918,57 @@ static const cw_color WHITE = { 1, 1, 1, 1 }, DIM = { 0.7f, 0.74f, 0.86f, 1 }, A
 static float U; /* canvas pixels per 1080th of its height */
 static bool hud_old; /* the `hud old` request */
 
+/* The one-bit style's HUD (cartwheel-engine 0.67.0): while the one-bit print is on screen the HUD is drawn in its two
+ * colours, the print's ink and paper (render2d's one-bit edges, opaque paper outlines, prompts in two colours, the boxes
+ * paper sheets with an ink edge), so every pixel of it is one of the two. It follows the style's fade: as the print's
+ * share of the picture rises to a half every colour of the HUD moves toward the ink and the boxes toward paper, at a
+ * half the one-bit edges come on (a step of an edge pixel), past it the HUD is ink and paper only; out the same way.
+ * A judgement is told apart by its word and its shape, not its colour: Perfect the word in an ink frame, Good the word
+ * in ink, Miss the word in ink struck through. `hud onebit 0` keeps the coloured HUD over the print (the
+ * HUD readability gate's control). */
+static float OB;    /* the print's share of the picture now (styles_onebit) */
+static bool OB_ON;  /* past half: one-bit edges, two colours */
+static int hud_onebit = 1;
+static const cw_color OB_INK = { 1.0f, 0.93f, 0.8f, 1 }, OB_PAPER = { 0.012f, 0.01f, 0.016f, 1 };
+static cw_color hc(cw_color c) { /* a HUD colour toward the ink as the print comes in */
+  if (OB <= 0) return c;
+  float k = fminf(1, OB * 2);
+  return (cw_color){ c.r + (OB_INK.r - c.r) * k, c.g + (OB_INK.g - c.g) * k, c.b + (OB_INK.b - c.b) * k, c.a };
+}
+/* a bar: its track and how full it is (in two colours: an ink frame, filled in ink) */
+static void hud_bar(cw_rect r, float rad, float frac, cw_color track, cw_color fill) {
+  if (OB_ON) {
+    cw_r2d_round_rect_lines(r, rad, fmaxf(1.5f, r.h * 0.18f), 4, OB_INK);
+    if (frac > 0) cw_r2d_round_rect((cw_rect){ r.x, r.y, r.w * frac, r.h }, rad, 4, OB_INK);
+    return;
+  }
+  cw_r2d_round_rect(r, rad, 4, hc(track));
+  if (frac > 0) cw_r2d_round_rect((cw_rect){ r.x, r.y, r.w * frac, r.h }, rad, 4, hc(fill));
+  if (OB > 0) cw_r2d_round_rect_lines(r, rad, fmaxf(1.5f, r.h * 0.18f), 4, cw_rgba(OB_INK.r, OB_INK.g, OB_INK.b, OB * 2)); /* (its ink frame swells in before the switch) */
+}
+static void hud_onebit_frame(bool on_screen) { /* at the start of the HUD's pass: the print's share and the two-colour state */
+  OB = on_screen && hud_onebit ? styles_onebit() : 0;
+  OB_ON = OB > 0.5f;
+  cw_r2d_set_one_bit(OB_ON);
+  cw_r2d_set_one_bit_paper(OB_ON ? OB_PAPER : (cw_color){ 0 });
+  static int prompt_two = -1;
+  if (prompt_two != OB_ON) cw_prompt_set_two_colour(OB_ON, OB_INK, OB_PAPER), prompt_two = OB_ON;
+  ascii_hud_two_colour(OB, OB_INK, OB_PAPER);
+}
+static float HUD_IN = 1; /* the play HUD swelling in as a song starts (draw_play) */
 static cw_text_style ts(float size, cw_color c) {
+  c = hc(c);
+  c.a *= HUD_IN;
   return (cw_text_style){ .size = size, .color = c, .shadow_color = cw_rgba(c.r, c.g, c.b, 0.4f * c.a), .shadow_spread = size * 0.04f,
                           .shadow_softness = size * 0.2f, .own_backdrop = true };
 }
 /* text at x (align -1 left, 0 centre, 1 right), boxed */
 static void text_at(const char *s, float x, float y, float size, cw_color c, int align) {
+  if (OB_ON && c.a < 0.5f) return; /* in two colours a line is there or not: one fading in or out shows from half (its alpha would be dropped, a faint line drawn in full) */
   cw_text_style st = ts(size, c);
   cw_text_metrics m = cw_font_measure(font(), s, &st);
   x -= align == 0 ? m.width * 0.5f : align > 0 ? m.width : 0;
-  ascii_hud_text(x, y, m.width, m.height, c.a);
+  ascii_hud_text(x, y, m.width, m.height, c.a * HUD_IN);
   cw_r2d_text(font(), s, cw_v2(x, y), &st);
 }
 /* A song's name in a box of its own width: one this long fits at this size; a longer one gets a little smaller
@@ -986,8 +1027,8 @@ static float text_wrap2(const char *s, float x, float y, float size, float max_w
 }
 static void ptext(const char *s, float x, float y, float size, cw_color c) { /* a prompt line, centred, boxed */
   cw_vec2 sz = cw_prompt_text_size(font(), s, 0, size);
-  ascii_hud_rect(x - sz.x * 0.5f, y, sz.x, sz.y, 1);
-  cw_prompt_text(font(), s, 0, cw_v2(x, y), size, c, CW_ALIGN_CENTER);
+  ascii_hud_rect(x - sz.x * 0.5f, y, sz.x, sz.y, HUD_IN);
+  cw_prompt_text(font(), s, 0, cw_v2(x, y), size, hc(c), CW_ALIGN_CENTER);
 }
 static void panel(cw_rect r, cw_color edge) { ascii_hud_rect_edge(r.x, r.y, r.w, r.h, 1, edge); }
 static const cw_color PANEL_EDGE = { 0.65f, 0.4f, 1.0f, 1 };
@@ -999,7 +1040,13 @@ static cw_color lane_color(int l, float a) {
   club_lane_rgb(l, c);
   return cw_rgba(c[0], c[1], c[2], a);
 }
-static void select_bar(cw_rect r) { cw_r2d_round_rect(r, 6 * U, 6, cw_rgba(0.55f, 0.3f, 1.0f, 0.4f)); }
+/* the selected row's bar; in two colours an ink frame round it (a solid ink plate came up as a bright block in one
+ * frame when the print came in over the results: a hard onset) */
+static void select_bar(cw_rect r) {
+  if (OB_ON) cw_r2d_round_rect_lines(r, 6 * U, 3 * U, 6, OB_INK);
+  else cw_r2d_round_rect(r, 6 * U, 6, hc(cw_rgba(0.55f, 0.3f, 1.0f, 0.4f)));
+}
+static cw_color sel_text(cw_color c) { return c; }
 
 static void draw_select(cw_vec2 cv, float size) {
   int n = songs_count();
@@ -1135,14 +1182,27 @@ static int played_lane(void) {
   return LANE_CLAP;
 }
 
+/* a judgement in two colours, told apart by shape: Perfect the word in an ink frame, Good the word in ink, Miss the
+ * word in ink struck through */
+static void judge_two_colour(int j, const char *word, float x, float y, float size) {
+  cw_text_style st = ts(size, WHITE);
+  cw_text_metrics m = cw_font_measure(font(), word, &st);
+  float x0 = x - m.width * 0.5f;
+  ascii_hud_text(x0, y, m.width, m.height, 1);
+  if (j == J_PERFECT) { /* a frame round the word (a solid ink plate lit a block of the screen at once: a hard onset) */
+    float px = size * 0.3f, py = size * 0.06f;
+    cw_r2d_round_rect_lines((cw_rect){ x0 - px, y - py, m.width + 2 * px, m.height + 2 * py }, size * 0.25f, size * 0.09f, 6, OB_INK);
+  }
+  cw_r2d_text(font(), word, cw_v2(x0, y), &st);
+  if (j == J_MISS) cw_r2d_line(cw_v2(x0 - size * 0.15f, y + m.height * 0.55f), cw_v2(x0 + m.width + size * 0.15f, y + m.height * 0.55f), size * 0.11f, OB_INK);
+}
 static void draw_play(cw_vec2 cv, float size) {
   char b[64];
   if (G.s) { /* the song and how far through it, top left */
     text_fit(G.s->title, size * 0.8f, size * 0.5f, size, cv.x * 0.28f, WHITE, -1);
     float p = G.s->length_s > 0 ? CW_CLAMP((float)G.song_ms / (G.s->length_s * 1000), 0, 1) : 0, w = cv.x * 0.18f;
-    ascii_hud_rect(size * 0.8f, size * 1.9f, w, size * 0.25f, 1);
-    cw_r2d_round_rect((cw_rect){ size * 0.8f, size * 1.9f, w, size * 0.25f }, size * 0.12f, 4, cw_rgba(1, 1, 1, 0.18f));
-    cw_r2d_round_rect((cw_rect){ size * 0.8f, size * 1.9f, w * p, size * 0.25f }, size * 0.12f, 4, cw_rgba(0.7f, 0.45f, 1, 0.95f));
+    ascii_hud_rect(size * 0.8f, size * 1.9f, w, size * 0.25f, HUD_IN);
+    hud_bar((cw_rect){ size * 0.8f, size * 1.9f, w, size * 0.25f }, size * 0.12f, p, cw_rgba(1, 1, 1, 0.18f), cw_rgba(0.7f, 0.45f, 1, 0.95f));
     if (G.mode == MODE_DUO) snprintf(b, sizeof b, "%s %s  /  %s %s", diff_name(G.pdiff[0]), pair_name(G.part[0]), diff_name(G.pdiff[1]), pair_name(G.part[1]));
     else if (G.mode == MODE_PAIR) snprintf(b, sizeof b, "%s  %s", diff_name(G.diff), pair_name(G.part[0]));
     else snprintf(b, sizeof b, "%s", diff_name(G.diff));
@@ -1155,8 +1215,8 @@ static void draw_play(cw_vec2 cv, float size) {
     if (G.song_ms < 0) { /* the count-in says how */
       snprintf(b, sizeof b, "{tempo_down} {tempo_up} tempo");
       cw_vec2 ps = cw_prompt_text_size(font(), b, 0, size * 0.7f);
-      ascii_hud_rect(size * 0.8f, size * 4.6f, ps.x, ps.y, 1);
-      cw_prompt_text(font(), b, 0, cw_v2(size * 0.8f, size * 4.6f), size * 0.7f, DIM, CW_ALIGN_LEFT);
+      ascii_hud_rect(size * 0.8f, size * 4.6f, ps.x, ps.y, HUD_IN);
+      cw_prompt_text(font(), b, 0, cw_v2(size * 0.8f, size * 4.6f), size * 0.7f, hc(DIM), CW_ALIGN_LEFT);
     }
   }
   snprintf(b, sizeof b, "%d", G.score); /* the score and the streak, top right */
@@ -1170,11 +1230,17 @@ static void draw_play(cw_vec2 cv, float size) {
   }
   /* the crowd's energy: a meter down the right side */
   cw_rect m = { cv.x - size * 1.7f, cv.y * 0.3f, size * 0.55f, cv.y * 0.4f };
-  ascii_hud_rect(m.x, m.y, m.w, m.h + size * 1.4f, 1);
-  cw_r2d_round_rect(m, size * 0.27f, 6, cw_rgba(1, 1, 1, 0.12f));
+  ascii_hud_rect(m.x, m.y, m.w, m.h + size * 1.4f, HUD_IN);
   float e = CW_CLAMP(G.energy, 0, 1);
   cw_color ec = e < 0.25f ? cw_rgba(1, 0.35f, 0.3f, 0.95f) : cw_rgba(0.45f, 1, 0.6f, 0.95f);
-  cw_r2d_round_rect((cw_rect){ m.x, m.y + m.h * (1 - e), m.w, m.h * e }, size * 0.27f, 6, ec);
+  if (OB_ON) { /* in two colours: an ink frame filled from the foot */
+    cw_r2d_round_rect_lines(m, size * 0.27f, size * 0.07f, 6, OB_INK);
+    if (e > 0) cw_r2d_round_rect((cw_rect){ m.x, m.y + m.h * (1 - e), m.w, m.h * e }, size * 0.27f, 6, OB_INK);
+  } else {
+    cw_r2d_round_rect(m, size * 0.27f, 6, hc(cw_rgba(1, 1, 1, 0.12f)));
+    cw_r2d_round_rect((cw_rect){ m.x, m.y + m.h * (1 - e), m.w, m.h * e }, size * 0.27f, 6, hc(ec));
+    if (OB > 0) cw_r2d_round_rect_lines(m, size * 0.27f, size * 0.07f, 6, cw_rgba(OB_INK.r, OB_INK.g, OB_INK.b, OB * 2)); /* (its ink frame swells in before the switch) */
+  }
   cw_text_style cst = ts(size * 0.75f, DIM);
   float cw_ = cw_font_measure(font(), "crowd", &cst).width;
   cw_r2d_text(font(), "crowd", cw_v2(m.x + m.w * 0.5f - cw_ * 0.5f, m.y + m.h + size * 0.3f), &cst);
@@ -1189,7 +1255,9 @@ static void draw_play(cw_vec2 cv, float size) {
     y += size * 1.5f;
     cw_color c = JUDGE_COL[G.judge[l]];
     c.a = fminf(1, t * 2.5f);
-    text_at(JN[G.judge[l]], x, y - size * 0.7f, size * (G.judge[l] == J_PERFECT ? 1.1f : 0.95f), c, 0);
+    float jsz = size * (G.judge[l] == J_PERFECT ? 1.1f : 0.95f);
+    if (OB_ON) judge_two_colour(G.judge[l], JN[G.judge[l]], x, y - size * 0.7f, jsz);
+    else text_at(JN[G.judge[l]], x, y - size * 0.7f, jsz, c, 0);
   }
   /* the multiplier, under the middle gate where the eyes already are: x1 to x4 and the hits to the next step as a
    * bar; every 50 the streak is called out there instead, rising and fading; a broken streak shows what was lost */
@@ -1212,7 +1280,7 @@ static void draw_play(cw_vec2 cv, float size) {
     y = gy + size * (hud_old ? 2.35f : 3.05f);
     int m = mult_of(S->combo);
     if (S->milestone_ticks) {
-      float t = (float)S->milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 8 + 0.2f);
+      float t = (float)S->milestone_ticks / 100.0f, a = fminf(1, t * 3) * fminf(1, (1 - t) * 3.3f + 0.1f); /* (swells in over a quarter second: a cream box at the middle gate coming up in a sixth of that was a hard onset over the lava) */
       snprintf(b, sizeof b, "%d streak", S->milestone);
       text_at(b, x, hud_old ? y - (1 - t) * size * 0.5f : y + t * size * 0.2f, size * 1.15f, cw_rgba(1, 0.95f, 0.7f, a), 0); /* it rises into its place */
     } else if (S->broke_ticks) {
@@ -1227,8 +1295,7 @@ static void draw_play(cw_vec2 cv, float size) {
       cw_color c = m >= 4 ? cw_rgba(1, 0.95f, 0.7f, 1) : m >= 2 ? WHITE : DIM;
       text_at(b, x, y - size * 0.15f, size * (0.85f + 0.08f * (float)m), c, 0);
       float by = y + size * 1.05f;
-      cw_r2d_round_rect((cw_rect){ x - w * 0.5f, by, w, bh }, bh * 0.5f, 4, cw_rgba(1, 1, 1, 0.15f));
-      cw_r2d_round_rect((cw_rect){ x - w * 0.5f, by, w * prog, bh }, bh * 0.5f, 4, m >= 4 ? cw_rgba(1, 0.9f, 0.6f, 0.95f) : cw_rgba(0.7f, 0.45f, 1, 0.95f));
+      hud_bar((cw_rect){ x - w * 0.5f, by, w, bh }, bh * 0.5f, prog, cw_rgba(1, 1, 1, 0.15f), m >= 4 ? cw_rgba(1, 0.9f, 0.6f, 0.95f) : cw_rgba(0.7f, 0.45f, 1, 0.95f));
     }
   }
   /* how to play, in the count-in only: each button under the river it plays (kick left, clap middle, bass right, as
@@ -1236,7 +1303,7 @@ static void draw_play(cw_vec2 cv, float size) {
   static const char *const LP[SOLO_LANES] = { "{lane_kick} kick", "{lane_clap} clap", "{lane_bass} bass" };
   static const char *const PART[LANES] = { "kick", "clap", "bass", "synth" };
   if (G.song_ms < 0 && !G.failed) {
-    float fade = fminf(1, (float)-G.song_ms / 300.0f);
+    float fade = fminf(1, (float)-G.song_ms / 300.0f) * HUD_IN;
     for (int l = 0; l < LANES; l++) {
       if (G.owner[l] < 0) continue;
       /* a pair's buttons: its left lane West or L, its right South or R, on the pad of the player who plays it */
@@ -1249,8 +1316,8 @@ static void draw_play(cw_vec2 cv, float size) {
       club_gate_screen(l, cv.x, cv.y, &hx, &hy);
       cw_vec2 ps = cw_prompt_text_size(font(), lp, 0, sz);
       float x = hx, y = hy + size * 1.0f;
-      ascii_hud_rect_edge(x - ps.x * 0.5f, y, ps.x, ps.y, fade, lane_color(l, fade));
-      cw_prompt_text(font(), lp, 0, cw_v2(x, y), sz, lane_color(l, fade), CW_ALIGN_CENTER);
+      ascii_hud_rect_edge(x - ps.x * 0.5f, y, ps.x, ps.y, fade, hc(lane_color(l, fade)));
+      cw_prompt_text(font(), lp, 0, cw_v2(x, y), sz, hc(lane_color(l, fade)), CW_ALIGN_CENTER);
     }
     if (G.mode == MODE_DUO) /* who plays which pair, over its two rivers */
       for (int p = 0; p < 2; p++) {
@@ -1281,7 +1348,9 @@ static void draw_play(cw_vec2 cv, float size) {
     text_at(b, x, y - size * 0.9f, size * 1.6f, WHITE, 0);
   }
   if (G.failed || fl_fade.strobe) {
+    cw_r2d_set_one_bit(false); /* (a see-through sheet: its alpha would go in one bit) */
     cw_r2d_rect((cw_rect){ 0, 0, cv.x, cv.y }, cw_rgba(0.02f, 0, 0.04f, G.fade));
+    cw_r2d_set_one_bit(OB_ON);
     if (G.failed) text_at("The floor emptied", cv.x * 0.5f, cv.y * 0.42f, size * 1.6f, cw_rgba(1, 0.6f, 0.6f, fminf(1, (float)G.ended_ticks / 30.0f)), 0);
   }
 }
@@ -1336,7 +1405,7 @@ static void draw_results(cw_vec2 cv, float size) {
   for (int i = 0; i < 2; i++) {
     float y = r.y + size * (13.8f + (float)i * 1.5f);
     if (i == G.item) select_bar((cw_rect){ r.x + r.w * 0.25f, y - size * 0.15f, r.w * 0.5f, size * 1.35f });
-    LINE(ITEMS[i], y, size, i == G.item ? WHITE : DIM);
+    LINE(ITEMS[i], y, size, i == G.item ? sel_text(WHITE) : DIM);
   }
 #undef LINE
 }
@@ -1372,8 +1441,8 @@ static void draw_calib(cw_vec2 cv, float size) {
 static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *user) {
   (void)user;
   float k = cs.y / 1080.0f;
-  /* the loading screen over black: behind it the prewarm (styles.c) changes the worlds and looks every frame or two */
-  if (screen == CW_SHELL_LOADING) cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, cw_rgba(0, 0, 0, 1));
+  /* the loading screen over black: behind it the game's prewarm (styles.c) changes the worlds and looks every frame or two */
+  if (screen == CW_SHELL_LOADING && styles_prewarming()) cw_r2d_rect((cw_rect){ 0, 0, cs.x, cs.y }, cw_rgba(0, 0, 0, 1));
   ascii_hud_reset(cs, k);
   if (screen == CW_SHELL_JOIN) { /* a box behind each seat, the heading and the hints, where the shell draws them */
     float u = cs.y / 20.0f;
@@ -1398,6 +1467,14 @@ static void touch_layout(void) {
   for (int l = 0; l < SOLO_LANES; l++) cw_touch_set_rect(touch_zone[l], (float)w * (float)l / 3.0f, (float)h * 0.55f, (float)w / 3.0f, (float)h * 0.45f);
 }
 
+/* the field dimmed under a menu, eased over half a second either way (from the results straight into a song, the
+ * rivers and roads came up in one frame: a hard onset over the lava) */
+static float dim_eased(float to) {
+  static float d = -1;
+  if (d < 0) d = to;
+  d += fmaxf(-1.0f / 30.0f, fminf(1.0f / 30.0f, to - d));
+  return d;
+}
 static bool look_ready;
 static void ensure_look(void) { /* the picture and the ASCII pass, once the GPU is up (the first render) */
   if (look_ready) return;
@@ -1416,7 +1493,7 @@ static void render(void *user, double alpha) {
   club_view v = {
     .s = G.s, .notes = chart(), .state = G.state, .count = chart_count(),
     .ms = G.s ? (double)G.song_ms - (G.demo ? 0 : song_ms_of(G.offset_ms)) : 0,
-    .dim = menu ? 1 : 0, .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = view_ahead(), .note_light = view_note_light(), .t = G.vis_t, .layout = view_layout(),
+    .dim = dim_eased(menu ? 1 : 0), .zoom = 1, .spread = G.screen == SCR_NONE ? 2.3f : 1, .ahead = view_ahead(), .note_light = view_note_light(), .t = G.vis_t, .layout = view_layout(),
     .gap_fill = G.screen == SCR_PLAY ? G.gap_fill : 0, .gap_alpha = G.screen == SCR_PLAY ? G.gap_alpha : 0,
   };
   bool fx = G.screen == SCR_PLAY && !G.streakfx_off;
@@ -1448,6 +1525,7 @@ static void render(void *user, double alpha) {
   club_update(&v);
   if (cw_shell_hud_shown() && G.screen != SCR_NONE) {
     cw_r2d_begin(NULL);
+    hud_onebit_frame(G.screen == SCR_PLAY || G.screen == SCR_RESULTS);
     cw_vec2 cv = cw_r2d_canvas_size();
     U = cv.y / 1080.0f;
     ascii_hud_begin(cv, U);
@@ -1455,7 +1533,18 @@ static void render(void *user, double alpha) {
     switch (G.screen) {
     case SCR_SELECT: draw_select(cv, size); break;
     case SCR_DIFF: draw_diff(cv, size); break;
-    case SCR_PLAY: draw_play(cv, size); break;
+    case SCR_PLAY: { /* the HUD swells in over half a second as a song starts (from the results straight into a song it
+                       * all came up in one frame with the rivers: a hard onset at the gates) */
+      static double last_ms = 1e30;
+      static float since = 0;
+      if (G.song_ms < last_ms - 200) since = 0;
+      last_ms = G.song_ms, since += 1.0f / 60.0f;
+      HUD_IN = fminf(1, since / 0.5f);
+      HUD_IN = HUD_IN * HUD_IN * (3 - 2 * HUD_IN);
+      draw_play(cv, size);
+      HUD_IN = 1;
+      break;
+    }
     case SCR_RESULTS: draw_results(cv, size); break;
     case SCR_CALIB: draw_calib(cv, size); break;
     default: break;
@@ -1467,7 +1556,8 @@ static void render(void *user, double alpha) {
   { /* the prewarm (styles.c) changes the worlds and looks every frame or two: under a black sheet, which then fades away
      * over half a second, a progress bar on it meanwhile (the autopilot has no loading screen; the play cart's loading
      * screen is drawn over black, draw_background) */
-    static float sheet = 1;
+    static float sheet = -1; /* (only while the game's own prewarm runs: `style noprewarm` has none) */
+    if (sheet < 0) sheet = styles_prewarming() ? 1 : 0;
     if (!styles_prewarming()) sheet = fmaxf(0, sheet - (1.0f / 30.0f));
     if (sheet > 0) {
       cw_r2d_begin(NULL);
@@ -1492,7 +1582,17 @@ static float lane_level_f[LANES];
 
 static void cmd_hud(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2 && !strcmp(argv[1], "old")) hud_old = argc < 3 || atoi(argv[2]) != 0;
-  cw_reply_printf(r, "{\"old\":%d}", hud_old);
+  if (argc >= 3 && !strcmp(argv[1], "onebit")) hud_onebit = atoi(argv[2]) != 0;
+  if (argc >= 3 && !strcmp(argv[1], "judge")) { /* `hud judge <0..3>`: every river shows that judgement now (the HUD gate's look at each) */
+    int j = atoi(argv[2]);
+    for (int l = 0; l < LANES; l++) G.judge[l] = j < 1 || j > 3 ? J_PERFECT : j, G.judge_ticks[l] = 40;
+  }
+  /* the HUD's boxes as last drawn (pixels of a 1920 x 1080 frame), and the one-bit state */
+  float bx[32][4];
+  int n = ascii_hud_boxes(bx, 32);
+  cw_reply_printf(r, "{\"old\":%d,\"onebit\":%d,\"share\":%.3f,\"two\":%d,\"boxes\":[", hud_old, hud_onebit, OB, OB_ON);
+  for (int i = 0; i < n; i++) cw_reply_printf(r, "%s[%.1f,%.1f,%.1f,%.1f]", i ? "," : "", bx[i][0] * 1920, bx[i][1] * 1080, bx[i][2] * 1920, bx[i][3] * 1080);
+  cw_reply_printf(r, "]}");
 }
 static void cmd_streakfx(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2) G.streakfx_off = !strcmp(argv[1], "off");
@@ -1630,7 +1730,7 @@ static void init(void *user) {
     .settings_changed = settings_changed,
     .accent = { 0.75f, 0.5f, 1.0f, 1 },
 #ifndef GAME_AUTOPILOT
-    .loading = true, /* behind it every world and look is drawn once (styles.c prewarm): no first use in a song */
+    .loading = true, /* behind it every world and look is drawn once (the engine's prewarm and styles.c's): no first use in a song */
 #endif
   });
   acc = cw_action_find("ui_accept");
@@ -1702,7 +1802,7 @@ static void init(void *user) {
   music_register_debug();
   club_register_debug();
   cw_debug_command("leave", "leave: the crowd leaves the song now (the failed song, for the flash check)", cmd_leave);
-  cw_debug_command("hud", "hud old [1|0]: the multiplier and the streak called out where they overlapped the middle judgement (the HUD gate's control)", cmd_hud);
+  cw_debug_command("hud", "hud [old 1|0] [onebit 1|0] [judge 1|2|3]: the HUD's boxes and one-bit state; old: the multiplier and the streak called out where they overlapped the middle judgement (the HUD gate's control); onebit 0: the coloured HUD over the one-bit print (the HUD readability gate's control); judge: every river shows that judgement now", cmd_hud);
   cw_debug_command("lanes", "lanes <kick> <clap> <bass>: the river each lane is drawn as, 0 left 1 middle 2 right (the layout gate's control)", cmd_lanes);
   cw_debug_i32("song.pick", &G.pick);
   cw_debug_i32("song.from_ms", &G.from_ms);

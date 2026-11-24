@@ -34,16 +34,20 @@ typedef struct style_def {
   bool big;      /* what a drop asks for */
   bool held;     /* built but kept out of the rotation and the setting (an engine gap stands in its way; `style <id>` still shows it) */
   int px;        /* PX_*: an engine look over the picture (cartwheel/look.h): 0 none, PX_HALF half blocks */
+  bool ssr;      /* the glass roads take sharp reflections of the backdrop too (PostProcess ssr with ssr_backdrop) */
 } style_def;
 
-/* each style's GPU cost alone at High on a Radeon 890M at 1080p (ms, GL, romdev frame timing; the field included): a
- * fade draws two worlds, about the sum less the field (1.5), so the scheduler never fades between two whose costs add
- * up to more than PAIR_BUDGET (the worst fade stays under 8 ms there; Auto steps down on slower GPUs) */
-static const float COST[STYLE_COUNT] = { [STYLE_NEON] = 0.45f, [STYLE_CLEAN] = 2.3f, [STYLE_FIRE] = 3.1f, [STYLE_WATER] = 1.9f, [STYLE_GRID] = 1.35f,
-  [STYLE_TERMINAL] = 0.4f, [STYLE_LASERS] = 3.25f, [STYLE_STAGE] = 4.4f, [STYLE_HALF] = 1.55f, [STYLE_MAZE] = 1.4f, [STYLE_BIT] = 4.7f,
-  [STYLE_AURORA] = 1.5f, [STYLE_SPACE] = 1.7f, [STYLE_CITY] = 2.0f, [STYLE_FOREST] = 1.9f, [STYLE_DEEP] = 2.25f, [STYLE_DESERT] = 1.4f,
-  [STYLE_NEWS] = 2.7f, [STYLE_LAVA] = 1.8f, [STYLE_METAL] = 1.7f };
-#define PAIR_BUDGET 8.5f
+/* each style's GPU cost alone at High on a Radeon 890M at 1080p (ms, GL, romdev frame timing, the mean of 180 frames;
+ * the field included, with the worlds that light the field their captures and the roads' sharp reflections): a
+ * fade draws two worlds, about the sum less the field (0.4; the club lasers into the rock stage, 8.4 summed, measured
+ * 8.1 to 8.5 a fade frame), so the scheduler never fades between two whose costs add up to more than PAIR_BUDGET (the
+ * worst fade stays under 8 ms there, tests/beatsync-hitch.mjs; Auto steps down on slower GPUs) */
+#define METAL_COST 4.0f
+static const float COST[STYLE_COUNT] = { [STYLE_NEON] = 0.37f, [STYLE_CLEAN] = 2.0f, [STYLE_FIRE] = 2.96f, [STYLE_WATER] = 2.86f, [STYLE_GRID] = 2.5f,
+  [STYLE_TERMINAL] = 0.37f, [STYLE_LASERS] = 3.08f, [STYLE_STAGE] = 5.33f, [STYLE_HALF] = 1.98f, [STYLE_MAZE] = 1.39f, [STYLE_BIT] = 4.88f,
+  [STYLE_AURORA] = 1.63f, [STYLE_SPACE] = 1.79f, [STYLE_CITY] = 1.83f, [STYLE_FOREST] = 1.67f, [STYLE_DEEP] = 2.04f, [STYLE_DESERT] = 1.26f,
+  [STYLE_NEWS] = 2.52f, [STYLE_LAVA] = 1.73f, [STYLE_METAL] = METAL_COST };
+#define PAIR_BUDGET 7.2f
 
 /* the palettes: each set apart from its backdrop, so the notes read against it (the readability gate measures it) */
 #define ICE { { 0.3f, 0.85f, 1 }, { 0.9f, 0.95f, 1 }, { 0.6f, 0.5f, 1 }, { 0.45f, 1, 0.8f } }
@@ -77,11 +81,11 @@ static const style_def STYLES[STYLE_COUNT] = {
   [STYLE_WATER] = { "water", "Night sea", 0, BD_SEA,
                     { .pal = 1, .lane = EMBER, .land_alpha = 0, .ridge = 0, .plate = 0.8f, .burst = 0.5f, .flow = 1, .note_light = 0.8f, .pocket = 1,
                       .lit = 1, .key = { 1.0f, 1.2f, 1.6f }, .fill_l = { 0.4f, 0.6f, 1.4f }, .fill_r = { 1.2f, 0.7f, 0.5f }, .sweep = 0.15f },
-                    0.22f, 0.8f, false, WATER_HELD },
+                    0.22f, 0.8f, false, WATER_HELD, 0, true },
   [STYLE_GRID] = { "grid", "Synthwave grid", 0, BD_GRID,
                    { .pal = 1, .lane = SYNTH, .land_tint = 1, .land_rgb = { 0.55f, 0.1f, 0.6f }, .land_body = 0.05f, .land_alpha = 1, .ridge = 0.9f, .land_no_mid = 1, .plate = 0.985f, .burst = 0.5f, .flow = 1, .note_light = 0.8f, .pocket = 1,
                      .lit = 1, .key = { 1.2f, 1.0f, 1.4f }, .fill_l = { 2.4f, 0.4f, 2.0f }, .fill_r = { 0.3f, 1.6f, 2.4f }, .sweep = 0.5f },
-                   0.24f, 0.8f, true },
+                   0.24f, 0.8f, true, false, 0, true },
   [STYLE_TERMINAL] = { "terminal", "Terminal green", 1, BD_NONE,
                        { .pal = 1, .lane = PHOSPHOR, .land_tint = 1, .land_rgb = { 0.3f, 1, 0.4f }, .land_body = 0.36f, .land_alpha = 1, .sky = 1, .burst = 0.65f, .flow = 1, .note_light = 0.8f, .pocket = 1 },
                        0.08f, 1.0f, false },
@@ -92,7 +96,7 @@ static const style_def STYLES[STYLE_COUNT] = {
   [STYLE_STAGE] = { "stage", "Rock stage", 0, BD_STAGE,
                     { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.85f, .burst = 0.5f, .flow = 1, .note_light = 0.8f, .pocket = 1,
                       .lit = 1, .key = { 1.6f, 1.3f, 1.0f }, .fill_l = { 2.6f, 1.3f, 0.5f }, .fill_r = { 0.6f, 0.9f, 2.6f }, .sweep = 0.6f },
-                    0.22f, 0.8f, true },
+                    0.22f, 0.8f, true, false, 0, true },
   [STYLE_HALF] = { "halfblock", "Half blocks", 0, BD_GRID,
                    { .pal = 1, .lane = SYNTH, .land_alpha = 0, .ridge = 0, /* no land: its dark rows riding over the sun, in big pixels, were flashes */ .plate = 0.975f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
                      .lit = 1, .key = { 1.2f, 1.0f, 1.4f }, .fill_l = { 2.4f, 0.4f, 2.0f }, .fill_r = { 0.3f, 1.6f, 2.4f }, .sweep = 0.5f },
@@ -135,13 +139,13 @@ static const style_def STYLES[STYLE_COUNT] = {
                      .lit = 1, .key = { 1.4f, 1.3f, 1.2f }, .fill_l = { 1.2f, 1.2f, 1.2f }, .fill_r = { 1.2f, 1.2f, 1.2f }, .sweep = 0.2f },
                    0.2f, 0.8f, false, false, PX_NEWS },
   [STYLE_LAVA] = { "lava", "Lava", 0, BD_LAVA,
-                   { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.28f /* a hit's glow over the lava, a sixth of the screen, rose too fast at 0.5 */, .flow = 1, .note_light = 0.9f, .pocket = 1,
+                   { .pal = 1, .lane = ICE, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.2f /* a hit's glow over the lava, a sixth of the screen, rose too fast at 0.5 (and at 0.28 on a run of hits) */, .flow = 1, .note_light = 0.9f, .pocket = 1,
                      .lit = 1, .key = { 1.3f, 1.1f, 1.0f }, .fill_l = { 3.0f, 0.9f, 0.2f }, .fill_r = { 3.0f, 0.9f, 0.2f }, .sweep = 0.3f },
                    0.22f, 0.8f, true, false, PX_LAVA },
   [STYLE_METAL] = { "metal", "Metal hall", 0, BD_METAL,
                     { .pal = 1, .lane = NEON, .land_alpha = 0, .ridge = 0, .plate = 0.92f, .burst = 0.5f, .flow = 1, .note_light = 0.9f, .pocket = 1,
                       .lit = 1, .key = { 1.2f, 1.2f, 1.3f }, .fill_l = { 1.8f, 1.4f, 0.8f }, .fill_r = { 0.9f, 1.2f, 1.8f }, .sweep = 0.4f },
-                    0.22f, 0.8f, true },
+                    0.22f, 0.8f, true, false, 0, true },
 };
 
 const char *style_title(int i) { return i >= 0 && i < STYLE_COUNT ? STYLES[i].title : "All styles"; }
@@ -167,7 +171,7 @@ static struct {
   cw_look px[PX_COUNT];  /* the engine looks (a null handle: none) */
   cw_look px_a, px_b; float px_t; bool px_set;
   float pin_t; /* the `style pin` request: a fade held at this t (-1: none), for measuring two worlds at once */
-  float bloom_set, thr_set;
+  float bloom_set, thr_set, ssr_set;
   bool built, no_prewarm, blank;
 } S;
 static flash_meter fl_style;
@@ -192,10 +196,24 @@ static void begin(int to, float beats) {
   if (to == S.cur && S.t >= 1) return;
   if (S.t < 1) { S.pending = to; return; } /* one fade at a time */
   S.from = S.cur, S.cur = to, S.changes++;
-  S.fade_s = beats_to_s(beats);
+  /* into or out of a two-colour print (one bit, amber, newsprint) twice as long: the print turns a small change of tone
+   * into pixels going from paper to ink, so the same fade rose twice as hard (a sixth of the screen by 0.22 in two
+   * frames, the characters into the one-bit stage) */
+  bool print = STYLES[S.from].px == PX_BIT || STYLES[S.from].px == PX_AMBER || STYLES[S.from].px == PX_NEWS ||
+               STYLES[to].px == PX_BIT || STYLES[to].px == PX_AMBER || STYLES[to].px == PX_NEWS;
+  S.fade_s = beats_to_s(beats * (print ? 2 : 1));
   S.t = S.cut ? 1 : 0; /* the cut: the flash check's control (a one-frame change) */
   S.played |= 1u << to;
   S.hold_from = S.beat;
+}
+
+/* a fade the scheduler may make: its two worlds' costs within the budget (or one world), and not between the arcade
+ * maze and one bit (a known engine issue in cartwheel-engine 0.70: that fade costs more than its two looks together
+ * and spikes on the frame it ends; fixed in a later release) */
+static bool pair_fits(int a, int b) {
+  int pa = STYLES[a].px, pb = STYLES[b].px;
+  if ((pa == PX_MAZE && pb == PX_BIT) || (pa == PX_BIT && pb == PX_MAZE)) return false;
+  return COST[a] + COST[b] <= PAIR_BUDGET || STYLES[a].backdrop == STYLES[b].backdrop;
 }
 
 /* the next style of the song's order not played yet (a drop: a big one if one is left) */
@@ -207,12 +225,12 @@ static int next_style(bool drop) {
   /* first a style whose fade from this one fits the budget (two worlds at once; the same world drawn once) */
   for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
     int k = S.order[i];
-    bool fits = COST[S.cur] + COST[k] <= PAIR_BUDGET || STYLES[k].backdrop == STYLES[S.cur].backdrop;
+    bool fits = pair_fits(S.cur, k);
     if (k != S.cur && !STYLES[k].held && !(S.played >> k & 1) && (!drop || STYLES[k].big) && fits) pick = k;
   }
   for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
     int k = S.order[i];
-    bool fits = COST[S.cur] + COST[k] <= PAIR_BUDGET || STYLES[k].backdrop == STYLES[S.cur].backdrop;
+    bool fits = pair_fits(S.cur, k);
     if (k != S.cur && !STYLES[k].held && !(S.played >> k & 1) && fits) pick = k;
   }
   for (int i = 0; i < STYLE_COUNT && pick < 0; i++) {
@@ -226,11 +244,27 @@ static int next_style(bool drop) {
   return pick < 0 ? STYLE_NEON : pick;
 }
 
+/* the tour's next style: every style once a round, each change one the scheduler could make (its fade within the
+ * budget, from the lowest index up) where one is left, else the next not yet shown */
+static uint32_t tour_seen;
+static int tour_next(void) {
+  uint32_t all = (1u << STYLE_COUNT) - 1;
+  tour_seen |= 1u << S.cur;
+  if ((tour_seen & all) == all) tour_seen = 1u << S.cur;
+  for (int pass = 0; pass < 2; pass++)
+    for (int d = 1; d < STYLE_COUNT; d++) {
+      int k = (S.cur + d) % STYLE_COUNT;
+      bool fits = pair_fits(S.cur, k);
+      if (!(tour_seen >> k & 1) && (fits || pass)) return k;
+    }
+  return (S.cur + 1) % STYLE_COUNT;
+}
+
 static float smooth01(float x) { x = fminf(1, fmaxf(0, x)); return x * x * (3 - 2 * x); }
 
 void styles_tick(const song *s, double ms, float tempo, float dt) {
   S.tempo = tempo;
-  if (S.tour && ++S.tour_ticks % 75 == 0 && S.t >= 1) begin((S.cur + 1) % STYLE_COUNT, FADE_BEATS); /* (held ones too: their draw states) */ /* the programs gate's tour */
+  if (S.tour && ++S.tour_ticks % 75 == 0 && S.t >= 1) begin(tour_next(), FADE_BEATS); /* (held ones too: their draw states) */ /* the programs gate's tour */
   if (S.t < 1) {
     S.t = fminf(1, S.t + dt / fmaxf(S.fade_s, 1e-3f));
     if (S.t >= 1) S.from = S.cur;
@@ -283,33 +317,44 @@ void styles_tick(const song *s, double ms, float tempo, float dt) {
   if (S.pending >= 0 || S.t < 1) S.prepare = 1;
 }
 
-/* the prewarm, before anything is shown (the play cart's loading screen covers it; the autopilot does it in its first
- * frames): every world drawn, two at a time as a fade draws them (each on top in its turn), then a fade held half way
+/* The game's own prewarm. cartwheel-engine 0.70.0 prewarms every backdrop world and every look under the loading
+ * screen (and the game asks again for its worlds built in code and its looks, styles_build), which took most first
+ * showings into budget, but not all: the night sea's first showing still cost 80 ms of CPU on WebGPU (a Steam
+ * Machine; with the sea's environment off too, and with its water in the scene file too), and an environment capture
+ * is left to a world's first shown frame. So it stays (sent to the engine as a gap), and the hitch check's control
+ * turns off both (`env CW_TEST_NO_PREWARM=1 -- style noprewarm`). Before anything is shown (the play cart's loading
+ * screen covers it; the autopilot does it in its first frames): every world drawn, two at a time as a fade draws them (each on top in its turn), then a fade held half way
  * between every two kinds of picture (each look, the characters or neither, from and to: one style of each kind) drawn
  * as the game draws it, so every program, pipeline, render target and particle system is made and simulated before a
  * song: a style change in play is never a first use (a first use was a hitch of 20 to 350 ms). */
 #define PREWARM_WORLD_FRAMES 2
+#define PREWARM_ENV_FRAMES 6 /* a world that lights the field (environment): whole captures and their filter, a few times over */
 #define PREWARM_PAIR_FRAMES 1
 static int prewarm_frame, pw_kinds[STYLE_COUNT], pw_nkinds = -1;
-static int prewarm_frames(void) { return (BD_COUNT - 1) * PREWARM_WORLD_FRAMES + pw_nkinds * (pw_nkinds - 1) * PREWARM_PAIR_FRAMES + 2; }
+static int world_frames(int w) { return backdrop_lights(w) ? PREWARM_ENV_FRAMES : PREWARM_WORLD_FRAMES; }
+static int worlds_frames(void) { int n = 0; for (int w = 1; w < BD_COUNT; w++) n += world_frames(w); return n; }
+static int prewarm_frames(void) { return worlds_frames() + pw_nkinds * (pw_nkinds - 1) * PREWARM_PAIR_FRAMES + 2; }
 /* 0: done; 1: this frame drawn (worlds); 2: draw the pair now in S.from, S.cur at half way */
 static int prewarm_step(float vis_t) {
   if (pw_nkinds < 0) { /* one style of each kind of picture: its look and whether the characters draw it */
     pw_nkinds = 0;
     for (int i = 0; i < STYLE_COUNT; i++) {
       bool seen = false;
-      for (int k = 0; k < pw_nkinds; k++) seen |= STYLES[pw_kinds[k]].px == STYLES[i].px && (STYLES[pw_kinds[k]].ascii > 0) == (STYLES[i].ascii > 0);
+      for (int k = 0; k < pw_nkinds; k++) seen |= STYLES[pw_kinds[k]].px == STYLES[i].px && (STYLES[pw_kinds[k]].ascii > 0) == (STYLES[i].ascii > 0) && STYLES[pw_kinds[k]].ssr == STYLES[i].ssr;
       if (!seen) pw_kinds[pw_nkinds++] = i;
     }
   }
-  int nw = BD_COUNT - 1, wf = nw * PREWARM_WORLD_FRAMES, f = prewarm_frame++;
+  int nw = BD_COUNT - 1, wf = worlds_frames(), f = prewarm_frame++;
   if (f > prewarm_frames()) return 0;
   if (f == prewarm_frames()) { S.from = S.cur = STYLE_NEON, S.t = 1, S.prepare = 0; return 0; } /* (once: back to the game's own) */
   if (f < wf) { /* world w with the next one round, each the one on top in its turn */
     for (int i = 0; i < BD_COUNT; i++) S.bd_w[i] = 0;
-    int w = 1 + f / PREWARM_WORLD_FRAMES, w2 = 1 + (w % nw);
+    int w = 1, at = f;
+    while (w < BD_COUNT - 1 && at >= world_frames(w)) at -= world_frames(w), w++;
+    int w2 = 1 + (w % nw);
     S.bd_w[w] = 0.5f, S.bd_w[w2] = 0.5f;
-    backdrop_update(S.bd_w, (f % 2) ? w : w2, NULL, vis_t * 2, vis_t, 0.5f);
+    backdrop_env_mode(2); /* (the prewarm captures each world that lights the field: its programs made now) */
+    backdrop_update(S.bd_w, (at % 2) ? w : w2, NULL, vis_t * 2, vis_t, 0.5f);
     return 1;
   }
   int q = (f - wf) / PREWARM_PAIR_FRAMES, n = pw_nkinds * (pw_nkinds - 1);
@@ -319,7 +364,7 @@ static int prewarm_step(float vis_t) {
   S.from = pw_kinds[x], S.cur = pw_kinds[y], S.t = 0.5f, S.prepare = 1;
   return 2;
 }
-bool styles_prewarming(void) { return pw_nkinds < 0 || prewarm_frame <= prewarm_frames(); }
+bool styles_prewarming(void) { return !S.no_prewarm && (pw_nkinds < 0 || prewarm_frame <= prewarm_frames()); }
 float styles_prewarm_progress(void) { return pw_nkinds < 0 ? 0 : fminf(1, (float)prewarm_frame / (float)prewarm_frames()); }
 
 void styles_apply(float vis_t) {
@@ -339,6 +384,7 @@ void styles_apply(float vis_t) {
   if (S.blank) for (int i = 0; i < BD_COUNT; i++) S.bd_w[i] = 0;
   /* the city's windows a third as bright in print (lit windows printed as solid paper blocks read as notes) */
   world_city_windows((a->px == PX_NEWS ? 0.3f : 1.0f) * (1 - k) + (b->px == PX_NEWS ? 0.3f : 1.0f) * k);
+  backdrop_env_mode(pw == 2 ? 2 : S.t < 1 || S.pin_t >= 0 ? 1 : 0);
   backdrop_update(S.bd_w, b->backdrop, S.s, S.s ? S.beat : vis_t * 2, vis_t, S.energy);
   /* an engine look over the picture (half blocks): set when the pair or the blend changes; it comes in by a dissolve
    * (each pixel turning over as a soft noise passes, never the whole screen at once); the HUD's boxes stay clean */
@@ -366,6 +412,26 @@ void styles_apply(float vis_t) {
     cw_node_set(S.post, "bloom_threshold", cw_val_float(thr));
     S.bloom_set = bloom, S.thr_set = thr;
   }
+  /* sharp reflections of the backdrop in the glass roads (cartwheel-engine 0.66.0 ssr_backdrop) where a style asks for
+   * them, faded by the style's weight (the trace stays on through a fade into or out of one) */
+  float ssr = (a->ssr ? 1 - k : 0) + (b->ssr ? k : 0);
+  if (pw == 2 && (a->ssr || b->ssr)) ssr = fmaxf(ssr, 0.5f);
+  if (S.post.id && fabsf(ssr - S.ssr_set) > 1e-4f) {
+    bool on = ssr > 0.001f;
+    if ((S.ssr_set > 0.001f) != on || S.ssr_set < 0) {
+      cw_node_set(S.post, "ssr", cw_val_bool(on));
+      cw_node_set(S.post, "ssr_backdrop", cw_val_bool(on));
+    }
+    if (on) cw_node_set(S.post, "ssr_intensity", cw_val_float(ssr));
+    S.ssr_set = ssr;
+  }
+}
+
+/* the one-bit print's share of the picture now (the HUD draws in its two colours past a half) */
+float styles_onebit(void) {
+  if (S.blank) return 0;
+  float k = S.pin_t >= 0 ? S.pin_t : smooth01(S.t);
+  return (STYLES[S.from].px == PX_BIT ? 1 - k : 0) + (STYLES[S.cur].px == PX_BIT ? k : 0);
 }
 
 void styles_set_mode(int mode) {
@@ -402,9 +468,8 @@ static void cmd_style(int argc, const char **argv, cw_reply *r) {
     }
     else if (!strcmp(argv[1], "pin")) S.pin_t = -1;
     else if (!strcmp(argv[1], "blank") && argc >= 3) S.blank = atoi(argv[2]) != 0; /* `style blank 1`: no backdrop, look or characters (the footprint gate counts the notes' pixels on black) */
-    else if (!strcmp(argv[1], "noprewarm")) S.no_prewarm = true; /* the hitch check's control (sent before the first frame:
-                                                                     * romdev loadMedia firstCommand): no prewarm, every
-                                                                     * world and look first drawn in play */
+    else if (!strcmp(argv[1], "noprewarm")) S.no_prewarm = true; /* the hitch check's control (sent before the first frame,
+                                                                     * with the engine's own off: romdev loadMedia firstCommand) */
     else if (!strcmp(argv[1], "tour")) S.tour = 1; /* every style in turn, one about every 1.25 s */
     else {
       int k = style_arg(argv[1]);
@@ -424,7 +489,7 @@ static void cmd_style(int argc, const char **argv, cw_reply *r) {
 
 void styles_init(void) {
   S.mode = -1, S.pending = -1, S.t = 1, S.cur = S.from = STYLE_NEON, S.pin_t = -1;
-  S.bloom_set = S.thr_set = -1;
+  S.bloom_set = S.thr_set = S.ssr_set = -1;
   flash_meter_init(&fl_style, "style");
   flash_meter_register(&fl_style);
   cw_debug_i32("style.cur", &S.cur);
@@ -488,4 +553,15 @@ void styles_build(cw_node level) {
   dl.halfblock.rows = 110, dl.halfblock.levels = 0;
   S.px[PX_LAVA] = cw_look_new(&dl);
   backdrop_build(level);
+  /* the worlds are built in code and the looks made here, at the first render, after the engine's own warm-up prewarm
+   * may have run: each is prewarmed again now (cartwheel-engine 0.70.0: drawn once at the next frame, unseen) */
+  /* the hitch check's control: the engine's test switch (`env CW_TEST_NO_PREWARM=1`, romdev loadMedia firstCommand,
+   * there before this first render) turns off the game's prewarm too */
+  const char *np = getenv("CW_TEST_NO_PREWARM");
+  if (np && *np && *np != '0') S.no_prewarm = true;
+  if (!S.no_prewarm) {
+    backdrop_prewarm_all();
+    cw_pipeline *p = cw_pipeline_of(cw_scene_app_tree());
+    if (p) cw_look_prewarm_all(p);
+  }
 }

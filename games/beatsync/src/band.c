@@ -38,6 +38,7 @@ static struct {
   cw_res res[PLAYERS];
   t3_object *bone[PLAYERS][BONES];
   t3_vec3 hips0[PLAYERS];
+  t3_object *hand[PLAYERS][2]; /* the built hands (left, right), on the lower arms, following the hand bones */
 } N;
 
 /* a pose: each bone's rotation offset from rest (x, y, z: q = qz * qy * qx, as the cast's own clips) */
@@ -104,6 +105,72 @@ static void build_kit(t3_object *at, t3_vec3 o) {
   t3_release(shell), t3_release(head), t3_release(chrome), t3_release(brass);
 }
 
+/* ── hands: the models' own hands are flat paddles, so each player gets hands built here: a palm, four fingers of three
+ * joints and a thumb, each joint curled to the grip it holds (a fist round a stick or the mic, fingers pressing the
+ * strings on the neck, a pick held at the strings). The model's hand bone is shrunk to nothing at the wrist and these
+ * ride on the lower arm, placed where the bone is each frame. In the hand bone's frame (rest: arms down, palms in, the
+ * thumb forward) the fingers run down -y and close toward the palm: -x for the left hand, +x for the right. ── */
+static t3_geometry *capsule(float r, float len) { /* along -y from the origin, rounded at both ends */
+  t3_vec2 pts[14];
+  int n = 0;
+  for (int i = 0; i <= 5; i++) { float a = -PI / 2 + (PI / 2) * (float)i / 5; pts[n++] = (t3_vec2){ r * cosf(a), -len + r + r * sinf(a) }; }
+  for (int i = 0; i <= 5; i++) { float a = (PI / 2) * (float)i / 5; pts[n++] = (t3_vec2){ r * cosf(a), -r + r * sinf(a) }; }
+  pts[0].x = 0.0001f, pts[n - 1].x = 0.0001f;
+  return t3_lathe_geometry_new(pts, n, 10, 0, 2 * PI);
+}
+static t3_object *joint(t3_object *at, t3_vec3 p, t3_quat q) {
+  t3_object *o = t3_group_new();
+  o->position = p, o->quaternion = q;
+  t3_object_add(at, o);
+  t3_release(o);
+  return o;
+}
+/* a finger: three joints each curled by curl (radians) toward the palm (side: -1 the left hand's palm, +1 the right's) */
+static void finger(t3_object *at, t3_material *skin, t3_vec3 base, float r, const float len[3], float curl, float side) {
+  t3_object *j = joint(at, base, qa(0, 0, 1, -side * curl * 0.8f));
+  for (int k = 0; k < 3; k++) {
+    part(j, capsule(r * (1 - 0.1f * (float)k), len[k] + r), skin, (t3_vec3){ 0, 0, 0 }, qa(1, 0, 0, 0));
+    if (k < 2) j = joint(j, (t3_vec3){ 0, -len[k], 0 }, qa(0, 0, 1, -side * curl));
+  }
+}
+/* a hand: grip 0 open and relaxed .. 1 a closed fist; side -1 left, +1 right */
+static t3_object *build_hand(t3_material *skin, float side, float grip) {
+  t3_object *h = t3_group_new();
+  /* the palm: thick at the heel, thinner toward the knuckles, its back a little rounded */
+  part(h, t3_box_geometry_new(0.032f, 0.085f, 0.078f, 1, 1, 1), skin, (t3_vec3){ 0, -0.052f, 0 }, qa(1, 0, 0, 0));
+  part(h, t3_sphere_geometry_new(0.03f, 12, 8), skin, (t3_vec3){ side * 0.004f, -0.02f, 0.012f }, qa(1, 0, 0, 0)); /* the heel of the hand */
+  static const float ZS[4] = { 0.029f, 0.01f, -0.009f, -0.027f }, L[4][3] = { { 0.04f, 0.026f, 0.022f }, { 0.045f, 0.029f, 0.024f },
+                                                                              { 0.042f, 0.027f, 0.023f }, { 0.032f, 0.021f, 0.019f } };
+  float curl = 0.15f + 1.25f * grip;
+  for (int k = 0; k < 4; k++) finger(h, skin, (t3_vec3){ 0, -0.093f + (k == 3 ? 0.006f : 0), ZS[k] }, k == 3 ? 0.0075f : 0.0088f, L[k], curl * (1 + 0.06f * (float)k), side);
+  /* the thumb: from the heel forward and across the palm, closing over the fingers in a fist */
+  t3_object *tb = joint(h, (t3_vec3){ side * 0.008f, -0.03f, 0.036f }, t3_quat_multiply(qa(1, 0, 0, 0.75f), qa(0, 0, 1, -side * (0.2f + 0.6f * grip))));
+  static const float TL[3] = { 0.03f, 0.024f, 0.02f };
+  t3_object *j = tb;
+  for (int k = 0; k < 3; k++) {
+    part(j, capsule(0.0105f, TL[k] + 0.01f), skin, (t3_vec3){ 0, 0, 0 }, qa(1, 0, 0, 0));
+    if (k < 2) j = joint(j, (t3_vec3){ 0, -TL[k], 0 }, qa(0, 0, 1, -side * (0.15f + 0.5f * grip)));
+  }
+  return h;
+}
+/* each player's skin (the models' own, read off their lit faces) and grips: left, right */
+static const float SKIN[PLAYERS][3] = { { 0.11f, 0.055f, 0.032f }, { 0.26f, 0.13f, 0.075f }, { 0.6f, 0.34f, 0.25f }, { 0.32f, 0.16f, 0.1f } };
+static const float GRIP[PLAYERS][2] = { { 0.55f, 0.85f }, { 0.25f, 0.95f }, { 0.5f, 0.6f }, { 0.95f, 0.95f } };
+static void build_hands(int p) {
+  t3_material *skin = mat(SKIN[p][0], SKIN[p][1], SKIN[p][2], 0.6f, 0, 0);
+  for (int s = 0; s < 2; s++) {
+    t3_object *la = N.bone[p][s ? B_LAR : B_LAL], *hb = N.bone[p][s ? B_HR : B_HL];
+    if (!la || !hb) continue;
+    t3_object *h = build_hand(skin, s ? 1.0f : -1.0f, GRIP[p][s]);
+    h->position = hb->position;
+    t3_object_add(la, h);
+    t3_release(h);
+    N.hand[p][s] = h;
+    hb->scale = (t3_vec3){ 0.001f, 0.001f, 0.001f }; /* the model's own hand, gone into the wrist */
+  }
+  t3_release(skin);
+}
+
 void band_build(cw_node stage_root) {
   if (N.built) return;
   N.built = true;
@@ -131,6 +198,7 @@ void band_build(cw_node stage_root) {
     t3_release(o);
     for (int b = 0; b < BONES; b++) N.bone[p][b] = t3_object_get_by_name(o, BONE[b]);
     if (N.bone[p][B_HIPS]) N.hips0[p] = N.bone[p][B_HIPS]->position;
+    build_hands(p);
     t3_object *chest = N.bone[p][B_CHEST];
     if ((p == GUITAR || p == BASS) && chest) {
       /* slung on its strap: the body at the right hip, the neck up across to the left hand */
@@ -141,8 +209,8 @@ void band_build(cw_node stage_root) {
       t3_release(a);
     }
     if (p == DRUMS) {
-      for (int s = 0; s < 2; s++) { /* the sticks, along each hand */
-        t3_object *h = N.bone[p][s ? B_HR : B_HL];
+      for (int s = 0; s < 2; s++) { /* the sticks, held in each fist */
+        t3_object *h = N.hand[p][s];
         if (!h) continue;
         part(h, t3_cylinder_geometry_new(0.012f, 0.008f, 0.42f, 6, 1, false), sunburst, (t3_vec3){ 0, -0.08f, 0.16f }, qa(1, 0, 0, PI / 2 - 0.3f));
       }
@@ -290,6 +358,8 @@ void band_update(float beat, float t, float energy) {
     for (int b = 0; b < BONES; b++)
       if (N.bone[p][b]) N.bone[p][b]->quaternion = euler(o.r[b]);
     N.bone[p][B_HIPS]->position = (t3_vec3){ N.hips0[p].x, N.hips0[p].y + o.hips_dy, N.hips0[p].z };
+    for (int s = 0; s < 2; s++) /* the built hands where the hand bones are (their pose; the bones themselves shrunk) */
+      if (N.hand[p][s]) N.hand[p][s]->quaternion = N.bone[p][s ? B_HR : B_HL]->quaternion;
     if (!N.bone[p][B_CHEST] || !N.bone[p][B_SPINE]) continue;
     float bt = beat + 0.07f * (float)p;
     t3_vec3 cp;

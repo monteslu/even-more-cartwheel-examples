@@ -36,4 +36,6 @@ bool style_held(int i); /* built but out of the rotation and the setting */
 /* the prewarm (every world, look and pair of looks drawn once before a song) is still running; its progress 0..1 */
 bool styles_prewarming(void);
 float styles_prewarm_progress(void);
+/* the one-bit print's share of the picture now, 0..1 */
+float styles_onebit(void);
 #endif

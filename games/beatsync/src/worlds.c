@@ -184,18 +184,37 @@ static struct {
 } SP;
 static cw_noise sp_n, sp_w;
 static int sp_layer;
-/* the nebula's gas: warped billows, each layer its own colours: violet and magenta, teal and blue, a warm core */
-static void tx_nebula(float u, float v, float c[3]) {
+/* the nebula's gas: warped billows, each layer its own colours: violet and magenta, teal and blue, a warm core. The gas
+ * has form: its density read as a height, lit from the side the cluster's light comes from (the upper right), so each
+ * billow is bright on that side and falls into shadow on the other; dark lanes of dust wind through it and cut it, and
+ * bright threads trace the edges of the shock fronts */
+static cw_noise sp_lane, sp_thread;
+static float neb_density(float u, float v) {
   float x = u * 600, y = v * 340;
   cw_noise_warp_2d(&sp_w, &x, &y);
   float n = cw_noise_2d(&sp_n, x + (float)sp_layer * 300, y) * 0.5f + 0.5f;
   float edge = smooth(0, 0.25f, u) * smooth(1, 0.75f, u) * smooth(0, 0.3f, v) * smooth(1, 0.7f, v);
-  float d = powf(clamp01(n * 1.35f - 0.25f), 2.2f) * edge;
+  return powf(clamp01(n * 1.35f - 0.25f), 2.2f) * edge;
+}
+static void tx_nebula(float u, float v, float c[3]) {
+  float d = neb_density(u, v);
+  /* the light on the billows: the density's slope against the light from the upper right */
+  float e = 1.0f / 384.0f, dx = neb_density(u + e, v) - d, dy = neb_density(u, v + e) - d;
+  float lit = clamp01(0.55f + 9.0f * (dx * 0.7f - dy * 0.7f));
+  /* dust lanes: long dark filaments that eat the light (ridges of a warped noise) */
+  float lx = u * 900 + (float)sp_layer * 211, ly = v * 500;
+  cw_noise_warp_2d(&sp_w, &lx, &ly);
+  float lane = 1 - fabsf(cw_noise_2d(&sp_lane, lx, ly));
+  float dust = smooth(0.8f, 0.985f, lane) * smooth(0.05f, 0.25f, d) * 0.8f;
+  /* bright threads where the gas is thick and folds */
+  float th = 1 - fabsf(cw_noise_2d(&sp_thread, lx * 1.7f, ly * 1.7f));
+  float thread = powf(th, 30.0f) * smooth(0.3f, 0.65f, d) * 0.35f;
   static const float COL[3][2][3] = { { { 0.55f, 0.08f, 0.75f }, { 1.0f, 0.3f, 0.6f } },
                                       { { 0.05f, 0.35f, 0.8f }, { 0.2f, 0.9f, 0.95f } },
                                       { { 0.9f, 0.4f, 0.12f }, { 1.0f, 0.85f, 0.6f } } };
   float hot = smooth(0.35f, 0.9f, d);
-  for (int k = 0; k < 3; k++) c[k] = d * mixf(COL[sp_layer][0][k], COL[sp_layer][1][k], hot);
+  float body = d * (0.35f + 1.15f * lit) * (1 - 0.85f * dust);
+  for (int k = 0; k < 3; k++) c[k] = body * mixf(COL[sp_layer][0][k], COL[sp_layer][1][k], hot) + thread * 0.9f * COL[sp_layer][1][k];
 }
 static void tx_planet(float u, float v, float c[3]) {
   float x = u * 400, y = v * 200;
@@ -222,10 +241,12 @@ void world_space_build(cw_node root) {
   SP.mid = stars(at, 260, 2600, -900, 900, -1400, 3.6f, 905);
   sp_n = cw_noise_default(), sp_n.seed = 91, sp_n.frequency = 0.008f, sp_n.fractal = CW_NOISE_FRACTAL_FBM, sp_n.octaves = 6;
   sp_w = cw_noise_default(), sp_w.seed = 92, sp_w.frequency = 0.004f, sp_w.warp_amp = 90;
+  sp_lane = cw_noise_default(), sp_lane.seed = 97, sp_lane.frequency = 0.0035f, sp_lane.fractal = CW_NOISE_FRACTAL_FBM, sp_lane.octaves = 3;
+  sp_thread = cw_noise_default(), sp_thread.seed = 98, sp_thread.frequency = 0.0045f, sp_thread.fractal = CW_NOISE_FRACTAL_FBM, sp_thread.octaves = 2;
   static const float NZ[3] = { -2300, -2000, -1700 }, NW[3] = { 3600, 2800, 2000 }, NX[3] = { 300, -500, 600 }, NY[3] = { 250, 380, 120 };
   for (int k = 0; k < 3; k++) {
     sp_layer = k;
-    t3_texture *tx = texture_rgb(384, 216, tx_nebula);
+    t3_texture *tx = texture_rgb(512, 288, tx_nebula);
     SP.neb[k] = quad(at, NW[k], NW[k] * 0.5625f, tx, (t3_vec3){ NX[k], NY[k], NZ[k] });
     SP.neb[k]->materials[0]->fog = false;
   }
@@ -780,9 +801,12 @@ void world_lava_update(float beat, float t, float energy) {
 #define MT_COLS 24
 #define MT_BEAMS 10
 #define MT_FLUTES 60
+#define MT_ROWS 56
 static struct {
   t3_texture *env;
   cw_node sweep[2], key;
+  t3_material *lens[2], *strip, *gold_strip, *wall_glow;
+  t3_instanced_mesh *rows;
 } MT;
 /* the hall's environment for the reflections: a dark gunmetal room with long soft light strips overhead (cool), a band
  * of warm gold light low round the walls, darker below: what the metal mirrors */
@@ -860,10 +884,82 @@ void world_metal_build(cw_node root) {
   done(beams);
   /* the far wall: fluted gunmetal, its flutes catching the sweeps */
   t3_instanced_mesh *fl2 = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), gun, MT_FLUTES);
-  for (int i = 0; i < MT_FLUTES; i++) place(fl2, i, (t3_vec3){ -150 + 300 * (float)i / (MT_FLUTES - 1), 40, -440 }, about(0, 1, 0, 0.6f), (t3_vec3){ 3.4f, 80, 3.4f }, (t3_color){ 1, 1, 1 });
+  for (int i = 0; i < MT_FLUTES; i++) place(fl2, i, (t3_vec3){ -150 + 300 * (float)i / (MT_FLUTES - 1), 100, -440 }, about(0, 1, 0, 0.6f), (t3_vec3){ 3.4f, 200, 3.4f }, (t3_color){ 1, 1, 1 });
   done(fl2);
   t3_release(chrome), t3_release(gold), t3_release(gun);
+  /* the lights themselves, which the hall's chrome and the field's glass roads mirror: a strip of cool light under every
+   * beam across the hall, a warm strip along the floor at the columns' feet down both sides, a glow along the foot of the
+   * far wall, and a lamp at the head of each sweep */
+  {
+    t3_material *m = t3_mesh_basic_material_new(0x000000);
+    m->color = (t3_color){ 2.2f, 2.4f, 2.8f };
+    t3_retain(m);
+    t3_instanced_mesh *st = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), m, MT_BEAMS);
+    for (int i = 0; i < MT_BEAMS; i++) place(st, i, (t3_vec3){ 0, 32.1f, 6 - 64 * (float)i }, about(0, 1, 0, 0), (t3_vec3){ 28, 0.25f, 0.5f }, (t3_color){ 1, 1, 1 });
+    done(st);
+    /* the ceiling: dark brushed panels over the hall, rows of light strips across it every eight metres between the
+     * beams (the hall's lights, receding into the distance, mirrored in the floor and the roads) */
+    t3_material *cm = metal_mat(0.16f, 0.17f, 0.19f, 0.35f, 0.6f);
+    cm->env_map_intensity = 0.6f;
+    cm->side = T3_DOUBLE_SIDE;
+    t3_mesh *ceil = add_mesh(at, t3_plane_geometry_new(32, 640, 1, 1), cm, (t3_vec3){ 0, 34.5f, -300 });
+    T3_OBJ(ceil)->quaternion = about(1, 0, 0, PI / 2);
+    t3_retain(m);
+    t3_instanced_mesh *rows = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), m, MT_ROWS * 2);
+    for (int i = 0; i < MT_ROWS; i++)
+      for (int k = 0; k < 2; k++) /* two strips along each row, either side of the middle */
+        place(rows, i * 2 + k, (t3_vec3){ (k ? 1.0f : -1.0f) * 6.5f, 34.3f, 6 - 8 * (float)i }, about(0, 1, 0, 0), (t3_vec3){ 9, 0.2f, 0.6f }, (t3_color){ 1, 1, 1 });
+    done(rows);
+    MT.rows = rows;
+    MT.strip = m, t3_release(m);
+    t3_material *g = t3_mesh_basic_material_new(0x000000);
+    g->color = (t3_color){ 2.4f, 1.5f, 0.55f };
+    t3_retain(g);
+    t3_instanced_mesh *gs = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), g, 2);
+    for (int k = 0; k < 2; k++) place(gs, k, (t3_vec3){ (k ? 1.0f : -1.0f) * 13.2f, 0.12f, -180 }, about(0, 1, 0, 0), (t3_vec3){ 0.3f, 0.2f, 380 }, (t3_color){ 1, 1, 1 });
+    done(gs);
+    MT.gold_strip = g, t3_release(g);
+    t3_material *w = t3_mesh_basic_material_new(0x000000);
+    w->color = (t3_color){ 0.5f, 0.75f, 1.6f };
+    t3_retain(w);
+    t3_instanced_mesh *wg = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), w, 1);
+    place(wg, 0, (t3_vec3){ 0, 1.0f, -437 }, about(0, 1, 0, 0), (t3_vec3){ 300, 2.0f, 1 }, (t3_color){ 1, 1, 1 });
+    done(wg);
+    /* the side walls: tall panels of dark brushed steel down both sides behind the columns, a pilaster of cool light
+     * between every two columns and a gold rail along them at head height (the hall's sides, not a void) */
+    t3_material *wm = metal_mat(0.2f, 0.21f, 0.24f, 0.28f, 0.7f);
+    wm->env_map_intensity = 0.8f;
+    {
+      t3_texture *pt2 = texture_rgb(256, 256, tx_plate);
+      pt2->wrap_s = pt2->wrap_t = T3_REPEAT, pt2->repeat = (t3_vec2){ 80, 4 };
+      t3_material_set_map(wm, pt2), t3_release(pt2);
+    }
+    for (int k = 0; k < 2; k++) {
+      float sx = k ? 1.0f : -1.0f;
+      if (k) t3_retain(wm);
+      t3_mesh *sw = add_mesh(at, t3_plane_geometry_new(640, 36, 1, 1), wm, (t3_vec3){ sx * 21, 17, -300 });
+      T3_OBJ(sw)->quaternion = about(0, 1, 0, -sx * PI / 2);
+    }
+    t3_retain(w);
+    t3_instanced_mesh *pil = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), w, MT_COLS);
+    for (int i = 0; i < MT_COLS; i++) {
+      float sx = (i & 1) ? 1.0f : -1.0f, z = 6 - 32 * (float)(i / 2) - 16;
+      place(pil, i, (t3_vec3){ sx * 20.9f, 15, z }, about(0, 1, 0, 0), (t3_vec3){ 0.1f, 26, 0.22f }, (t3_color){ 0.55f, 0.55f, 0.55f });
+    }
+    done(pil);
+    t3_retain(g);
+    t3_instanced_mesh *rail = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), g, 2);
+    for (int k = 0; k < 2; k++) place(rail, k, (t3_vec3){ (k ? 1.0f : -1.0f) * 20.8f, 3.2f, -300 }, about(0, 1, 0, 0), (t3_vec3){ 0.25f, 0.18f, 640 }, (t3_color){ 1, 1, 1 });
+    done(rail);
+    /* tall slots of cool light between the far wall's flutes, every fourth gap */
+    t3_retain(w);
+    t3_instanced_mesh *slots = many_m(at, t3_box_geometry_new(1, 1, 1, 1, 1, 1), w, MT_FLUTES / 4);
+    for (int i = 0; i < MT_FLUTES / 4; i++) place(slots, i, (t3_vec3){ -150 + 300 * ((float)i * 4 + 2.5f) / (MT_FLUTES - 1), 60, -441 }, about(0, 1, 0, 0), (t3_vec3){ 0.8f, 120, 0.5f }, (t3_color){ 1, 1, 1 });
+    done(slots);
+    MT.wall_glow = w, t3_release(w);
+  }
   MT.sweep[0] = cw_node_get(root, "SweepA"), MT.sweep[1] = cw_node_get(root, "SweepB"), MT.key = cw_node_get(root, "Key");
+  for (int k = 0; k < 2; k++) if (MT.sweep[k].id) MT.lens[k] = lamp_head(MT.sweep[k], 1.1f, 2.2f);
 }
 
 void world_metal_update(float beat, float t, float energy) {
@@ -878,6 +974,20 @@ void world_metal_update(float beat, float t, float energy) {
     t3_vec3 d = { -x * 0.4f, -30, 10 };
     float len = sqrtf(d.x * d.x + d.y * d.y + d.z * d.z), yaw = atan2f(-d.x, -d.z), pitch = asinf(d.y / len);
     cw_node3d_set_rotation(MT.sweep[k], (t3_vec3){ pitch, yaw, 0 });
-    cw_node_set(MT.sweep[k], "energy", cw_val_float(1500 * e * (0.75f + 0.25f * cosf(ph))));
+    float en = e * (0.75f + 0.25f * cosf(ph));
+    cw_node_set(MT.sweep[k], "energy", cw_val_float(1500 * en));
+    if (MT.lens[k]) MT.lens[k]->color = k ? (t3_color){ 4.2f * en, 5.1f * en, 6.0f * en } : (t3_color){ 6.0f * en, 4.7f * en, 2.7f * en };
+  }
+  /* the strips breathe a little with the music's loudness (seconds, never a pulse) */
+  if (MT.strip) MT.strip->color = (t3_color){ 2.0f * e, 2.2f * e, 2.6f * e };
+  /* a slow swell of light running down the ceiling's rows toward the camera, one every two bars, each strip rising and
+   * falling over about two beats as it passes (a travelling glow, never a strip switching) */
+  if (MT.rows) {
+    for (int i = 0; i < MT_ROWS; i++) {
+      float ph = (float)i / 6.0f + beat / 8.0f, w = 0.5f + 0.5f * cosf(2 * PI * (ph - floorf(ph)));
+      float b = 0.55f + 0.45f * w * w * w;
+      for (int k = 0; k < 2; k++) t3_instanced_mesh_set_color_at(MT.rows, i * 2 + k, (t3_color){ b, b, b });
+    }
+    MT.rows->instance_color->version++;
   }
 }

@@ -12,31 +12,62 @@
 // with no change shows the same 200-300 ms walls, with the host's event loop delay as long); the cart's CPU and the GPU
 // are what a change costs.
 //
-// The CONTROL must fail: the same tour on a cart loaded with no prewarm (`style noprewarm`, sent before its first
-// frame): each world and look is first drawn in play, and a first use costs a frame over budget.
+// The fades themselves stay light: every frame while a fade runs (style.t under 1: two worlds drawn, and the glass
+// roads' environment capture of a world that lights the field, cartwheel-engine 0.66.0, its faces and its filter
+// spread over the frames) holds the GPU under FADE_GPU_MS, the fade budget the scheduler's costs are set for.
+//
+// The CONTROL must fail: the same tour on a cart loaded with no prewarm, neither the engine's (cartwheel-engine 0.70.0)
+// nor the game's (`env CW_TEST_NO_PREWARM=1`, sent before its first frame; the game reads it too): each world and look is first drawn in play, and a first use costs a frame over budget.
 //
 //   node tests/beatsync-hitch.mjs [--gpu gl|webgpu|both]
 import { openCart, call } from './lib/romdev.mjs';
 import { gpusOf } from './lib/beatsync.mjs';
 
-const BUDGET_MS = 16.7;
+const BUDGET_MS = 16.7, FADE_GPU_MS = 8;
+// a fade bound held for a known engine issue (reported, its fix in the release named): measured and printed, not
+// failed. Empty it when the pin moves past the fix.
+const HELD_FADE = {
+  webgpu: 'cartwheel-engine 0.70.1 on WebGPU: a one-frame GPU spike where an engine look starts or ends its blend (fixed in 0.71.1)',
+  gl: 'cartwheel-engine 0.70.1: a fade out of an engine look costs more than its two pictures together (half blocks into the metal hall: 8 to 9 ms on a Radeon 890M; fixed in 0.71.1)',
+};
+// --pre "a;b": debug commands before the tour (a look at what a cost comes from, e.g. the worlds' environment off)
+const PRE = process.argv.includes('--pre') ? process.argv[process.argv.indexOf('--pre') + 1].split(';').filter(Boolean) : [];
+const NO_COLD = process.argv.includes('--no-control');
+// --first "<request>": a debug request before the warm run's first frame (a look at what a prewarm covers)
+const FIRST = process.argv.includes('--first') ? process.argv[process.argv.indexOf('--first') + 1] : null;
+// GPU times in Radeon 890M units: on a remote timing lane the pool gives the lane's fit (CW_GPU_TIMING_SCALE_GL /
+// _WEBGPU, {a, b}: lane ms = a + b x 890M ms), and the bounds hold the scaled GPU ms (CPU ms are held as measured)
+const LANE = process.env.CW_GPU_TIMING_LANE || 'local';
+function scaleOf(gpu) {
+  const v = process.env[`CW_GPU_TIMING_SCALE_${gpu === 'webgpu' ? 'WEBGPU' : 'GL'}`];
+  if (!v) return null;
+  try { const j = JSON.parse(v); return typeof j === 'number' ? { a: 0, b: 1 / j } : j; } catch { return null; }
+}
+const toRef = (gpu, ms) => { const sc = scaleOf(gpu); return sc && sc.b ? Math.max(0, (ms - (sc.a || 0)) / sc.b) : ms; };
 const STEP = 75, ROUNDS = 2;
 let failed = 0;
 const ok = (s) => console.log(`ok   ${s}`);
 const fail = (s) => { console.log(`FAIL ${s}`); failed++; };
 
 async function tour(gpu, cold) {
-  const r = await openCart('beatsync_auto', { gpu, seed: 1, tag: cold ? 'hitch-cold' : 'hitch', load: { ...(gpu === 'webgpu' ? { gpuTiming: true } : {}), ...(cold ? { firstCommand: 'style noprewarm' } : {}) } });
+  const r = await openCart('beatsync_auto', { gpu, seed: 1, tag: cold ? 'hitch-cold' : 'hitch', load: { ...(gpu === 'webgpu' ? { gpuTiming: true } : {}), ...(cold ? { firstCommand: 'env CW_TEST_NO_PREWARM=1' } : FIRST ? { firstCommand: FIRST } : {}) } });
   try {
     await r.step(600); // the prewarm is done in the first hundred frames
     const st = await r.command('style');
     const n = st.styles.length;
-    const res = await call('frame', { op: 'timing', frames: n * ROUNDS * STEP + 60, warmup: 0, series: true, debugFields: ['style.changes', 'style.cur'],
-      commands: ['quality high', 'style neon', 'style tour'], maxSeconds: 1700 }, r.session, { timeoutMs: 1800000 });
+    const res = await call('frame', { op: 'timing', frames: n * ROUNDS * STEP + 60, warmup: 0, series: true, debugFields: ['style.changes', 'style.cur', 'style.t', 'style.from'],
+      commands: ['quality high', ...PRE, 'style neon', 'style tour'], maxSeconds: 1700 }, r.session, { timeoutMs: 1800000 });
     const s = res.series || res.frames || {};
-    const wall = s.wallMs || s.wall || [], cpu = s.cpuMs || s.cpu || [], gpuMs = s.gpuMs || s.gpu || [];
+    const wall = s.wallMs || s.wall || [], cpu = s.cpuMs || s.cpu || [], gpuMs = (s.gpuMs || s.gpu || []).map((x) => (x == null ? x : toRef(gpu, x)));
     const f = s.debugFields || s.fields || {};
-    const ch = f['style.changes'] || [], cur = f['style.cur'] || [];
+    const ch = f['style.changes'] || [], cur = f['style.cur'] || [], tt = f['style.t'] || [], frm = f['style.from'] || [];
+    // the worst GPU frame while a fade runs, and which fade
+    let fadeGpu = 0, fadeAt = -1, fadeFrames = 0;
+    for (let i = 0; i < tt.length; i++) if (tt[i] < 1 && i > 0) { fadeFrames++; if ((gpuMs[i] || 0) > fadeGpu) fadeGpu = gpuMs[i] || 0, fadeAt = i; }
+    // (where in its fade, and the frames round it: a one-frame spike or a heavy fade)
+    let since = 0;
+    for (let i = fadeAt; i > 0 && ch[i] === ch[i - 1]; i--) since++;
+    const around = fadeAt >= 0 ? gpuMs.slice(Math.max(0, fadeAt - 3), fadeAt + 4).map((x) => (x || 0).toFixed(1)).join(' ') : '';
     if (!wall.length || !ch.length) throw new Error(`timing returned no series: ${JSON.stringify(res).slice(0, 600)}`);
     const rows = [];
     let at = -1;
@@ -53,19 +84,26 @@ async function tour(gpu, cold) {
       }
       at = i;
     }
-    return { rows, gpuName: JSON.stringify(res.gpu?.adapter?.device || res.gpu?.glRenderer || '').slice(0, 80) };
+    return { rows, fadeGpu, fadeFrames, fadeSince: since, fadeAround: around, fadeTo: fadeAt >= 0 ? `${st.styles[frm[fadeAt]]?.id ?? frm[fadeAt]} to ${st.styles[cur[fadeAt]]?.id ?? cur[fadeAt]}` : '', gpuName: JSON.stringify(res.gpu?.adapter?.device || res.gpu?.glRenderer || '').slice(0, 80) };
   } finally {
     await r.close();
   }
 }
 
 for (const gpu of gpusOf(process.argv.slice(2))) {
+  const sc = scaleOf(gpu);
+  console.log(`note hitch (${gpu}): lane ${LANE}, GPU ms ${sc ? `in 890M units through its fit (lane = ${sc.a} + ${sc.b} x 890M${sc.unreliable ? ', marked UNRELIABLE' : ''})` : 'as measured'}`);
   const warm = await tour(gpu, false);
   const bad = warm.rows.filter((x) => x.over > 0);
   for (const x of warm.rows) console.log(`     ${gpu} -> ${x.to} (round ${x.round}): worst wall ${x.wall.toFixed(1)} ms (+${x.at}), CPU ${x.cpu.toFixed(1)}, GPU ${x.gpu.toFixed(1)}${x.over ? `, ${x.over} frame(s) over ${BUDGET_MS} ms` : ''}`);
   if (warm.rows.length < 10) fail(`hitch (${gpu}): only ${warm.rows.length} style changes in the run: the check proves nothing`);
   else if (bad.length) fail(`hitch (${gpu}): ${bad.length} of ${warm.rows.length} style changes cost a frame over ${BUDGET_MS} ms of CPU or GPU: ${bad.map((x) => `${x.to} (round ${x.round}, CPU ${x.cpu.toFixed(1)}, GPU ${x.gpu.toFixed(1)})`).join(', ')}`);
   else ok(`hitch (${gpu}): ${warm.rows.length} style changes (every style twice, its first showing included), no frame over ${BUDGET_MS} ms of CPU or GPU; worst CPU ${Math.max(...warm.rows.map((x) => x.cpu)).toFixed(1)} ms, worst GPU ${Math.max(...warm.rows.map((x) => x.gpu)).toFixed(1)} ms, worst wall ${Math.max(...warm.rows.map((x) => x.wall)).toFixed(1)} ms ${warm.gpuName}`);
+  if (warm.fadeFrames < 100) fail(`hitch fades (${gpu}): only ${warm.fadeFrames} frames in a fade: the check proves nothing`);
+  else if (warm.fadeGpu < FADE_GPU_MS) ok(`hitch fades (${gpu}): the worst GPU frame in ${warm.fadeFrames} fade frames ${warm.fadeGpu.toFixed(2)} ms (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; round it ${warm.fadeAround}), under ${FADE_GPU_MS} ms`);
+  else if (HELD_FADE[gpu]) console.log(`held hitch fades (${gpu}): a fade frame took ${warm.fadeGpu.toFixed(2)} ms of GPU (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; GPU ms round it ${warm.fadeAround}), over ${FADE_GPU_MS} ms: ${HELD_FADE[gpu]}`);
+  else fail(`hitch fades (${gpu}): a fade frame took ${warm.fadeGpu.toFixed(2)} ms of GPU (fading ${warm.fadeTo}, ${warm.fadeSince} frames into it; GPU ms round it ${warm.fadeAround}), over ${FADE_GPU_MS} ms`);
+  if (NO_COLD) continue;
   const cold = await tour(gpu, true);
   const cb = cold.rows.filter((x) => x.over > 0);
   if (cb.length) ok(`hitch control (${gpu}): unwarmed, ${cb.length} change(s) cost a frame over budget (worst CPU ${Math.max(...cold.rows.map((x) => x.cpu)).toFixed(1)} ms: ${cb.slice(0, 4).map((x) => x.to).join(', ')}), as it must`);

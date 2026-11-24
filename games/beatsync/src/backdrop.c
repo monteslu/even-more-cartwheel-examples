@@ -30,6 +30,9 @@
 #include "worlds.h"
 
 
+#define ENV_EVERY 12         /* a capture over twelve frames, its filter in the last (the engine default is 4: the worlds move slowly, and a
+                              * capture each fifth of a second costs a third of one each fifteenth) */
+#define ENV_HOLD_EVERY 100000 /* no capture finishes while a fade runs */
 static const char *const NAMES[BD_COUNT] = { "none", "fire", "sea", "grid", "lasers", "stage", "clean", "maze", "aurora", "space", "city", "forest", "deep", "dunes", "lava", "metal" };
 static const char *const NODES[BD_COUNT] = { "", "BdFire", "BdSea", "BdGrid", "BdLasers", "BdStage", "BdClean", "BdMaze", "BdAurora", "BdSpace", "BdCity", "BdForest", "BdDeep", "BdDunes", "BdLava", "BdMetal" };
 const char *backdrop_name(int bd) { return bd >= 0 && bd < BD_COUNT ? NAMES[bd] : "?"; }
@@ -38,8 +41,13 @@ typedef struct crowd { t3_instanced_mesh *body, *arm; t3_material *mat; } crowd;
 
 static struct {
   bool built;
-  cw_node node[BD_COUNT], root[BD_COUNT];
+  cw_node level, node[BD_COUNT], root[BD_COUNT];
   float op_set[BD_COUNT];
+  int env_every_set[BD_COUNT]; /* the env_every each world was last given (0: not yet) */
+  int env_on_set[BD_COUNT];    /* its environment as last set (0 not yet, 1 off, 2 on) */
+  bool env_cap[BD_COUNT];      /* the world lights the field (main.cwscene) */
+  bool env_fade_capture;
+  int env_mode; /* 0 a style holds, 1 a fade runs (the captures wait), 2 the prewarm (a whole capture every frame) */       /* `envhold 0`: capture through fades too (the fade cost check's control) */
   int order_top, drawn;
   /* fire */
   t3_mesh *fire_sky, *fire_glow;
@@ -50,7 +58,8 @@ static struct {
   t3_instanced_mesh *harbour, *stars;
   /* grid */
   t3_instanced_mesh *grid_long, *grid_cross, *grid_stars, *peaks;
-  t3_mesh *sun, *grid_sky, *grid_floor, *horizon, *haze_band;
+  t3_mesh *sun, *grid_sky, *grid_floor, *horizon, *haze_band, *sun_halo;
+  t3_instanced_mesh *pulses, *wisps;
   /* lasers */
   t3_instanced_mesh *rays, *ray_glow, *heads;
   crowd crowd_l, crowd_s;
@@ -59,6 +68,7 @@ static struct {
   /* stage */
   t3_instanced_mesh *wall_px;
   cw_node spot[3];
+  t3_material *spot_lens[3];
   /* clean */
   t3_mesh *hills, *range;
   t3_geometry *hills_g;
@@ -174,7 +184,25 @@ static void build_sea(void) {
   B.stars = many(at, t3_plane_geometry_new(1, 1, 1, 1), texture(16, 16, tx_dot), STARS);
   B.harbour = many(at, t3_plane_geometry_new(1, 1, 1, 1), texture(16, 16, tx_dot), HARBOUR);
   cw_node r = B.root[BD_SEA];
-  B.water = cw_node_get(r, "Water"); /* in backdrops/sea.cwscene: a Water3D added later is drawn without its passes */
+  /* the sea: a Water3D made here and added to the world (cartwheel-engine 0.65.1 draws and reports a node a world gets
+   * while the game runs; before, one added by code drew nothing and the survey could not see it, so it lived in the
+   * scene file) */
+  {
+    static const char *const P[][2] = {
+      { "position", "vec3(0, -6.5, 0)" }, { "size", "vec2(500, 320)" }, { "horizon_distance", "1400" }, { "refraction", "false" },
+      { "color", "color(0.02, 0.05, 0.1, 1)" }, { "deep_color", "color(0.002, 0.006, 0.02, 1)" },
+      /* night: no sunlit turquoise in the near swells (the scatter and the shallow colour are a day sea's) */
+      { "shallow_color", "color(0.012, 0.03, 0.07, 1)" }, { "scatter", "0.08" }, { "see_night", "0.02" },
+    };
+    B.water = cw_node_new("Water3D", "Water");
+    for (size_t k = 0; k < sizeof P / sizeof P[0]; k++) {
+      const cw_prop *p = cw_node_find_prop(B.water, P[k][0], NULL);
+      cw_value v;
+      if (p && cw_value_parse(P[k][1], p->type, &v)) cw_node_set(B.water, P[k][0], v);
+      else cw_error("sea: Water3D %s %s not taken", P[k][0], P[k][1]);
+    }
+    cw_node_add_child(r, B.water);
+  }
   B.moonlight = cw_node_get(r, "Moonlight");
   cw_node3d_look_at(B.moonlight, (t3_vec3){ -MOON.x, -MOON.y, -MOON.z }, (t3_vec3){ 0, 1, 0 }); /* from the moon toward the camera */
   setf(B.moonlight, "energy", 1.6);
@@ -265,6 +293,20 @@ static void build_grid(void) {
   edges->count = e;
   done(edges);
   done(B.peaks);
+  /* the sun's glow on the sky round it, wide and soft */
+  B.sun_halo = quad(at, 520, 520, texture(128, 128, tx_halo), (t3_vec3){ 0, 30 + GRID_Y, -505 });
+  T3_OBJ(B.sun_halo)->render_order = -4;
+  /* long thin wisps of cloud across the sky, lit pink and gold from below by the sun, drifting slowly */
+  B.wisps = many(at, t3_plane_geometry_new(1, 1, 1, 1), texture(64, 8, tx_dot), 14);
+  for (int i = 0; i < 14; i++) {
+    float y = 40 + 120 * rnd(51, (uint32_t)i), w = 260 + 420 * rnd(52, (uint32_t)i), h = 2.5f + 4 * rnd(53, (uint32_t)i);
+    float x = -700 + 1400 * rnd(54, (uint32_t)i), k = expf(-(y - 40) / 90.0f);
+    place(B.wisps, i, (t3_vec3){ x, y + GRID_Y, -512 }, about(0, 0, 1, 0), (t3_vec3){ w, h, 1 }, (t3_color){ 0.55f * k, 0.12f * k, 0.32f * k });
+  }
+  done(B.wisps);
+  /* light running in along the grid's long lines toward the camera, a streak on a line here and there (long and thin
+   * on the floor: never a dot) */
+  B.pulses = many(at, t3_plane_geometry_new(1, 1, 1, 1), texture(4, 64, tx_glow_up), 12);
 }
 
 static void update_grid(float beat, float energy) {
@@ -289,6 +331,20 @@ static void update_grid(float beat, float energy) {
     place(B.grid_cross, i, (t3_vec3){ 0, GRID_Y, z }, flat, (t3_vec3){ 1600, th, 1 }, (t3_color){ b * 0.25f, 0.85f * b, b });
   }
   done(B.grid_cross);
+  /* the sun's halo breathes with the loudness; the wisps drift (minutes to cross) */
+  tint(B.sun_halo, 1.0f, 0.35f, 0.55f, 0.5f * e);
+  T3_OBJ(B.wisps)->position.x = fmodf(beat * 0.35f, 1400.0f) - 0.0f;
+  /* the streaks: each on its own line, a run every eight beats from the horizon to the camera, eased in and out */
+  for (int i = 0; i < 12; i++) {
+    int line = (int)(hsh(61, (uint32_t)i) % (GRID_LONG - 6)) + 3;
+    if (abs(line - GRID_LONG / 2) < 6) line += line < GRID_LONG / 2 ? -6 : 6; /* clear of the rivers' far end */
+    float x = ((float)line - (GRID_LONG - 1) * 0.5f) * GRID_STEP;
+    float ph = fmodf(beat / 8.0f + rnd(62, (uint32_t)i), 1.0f);
+    float z = -far + far * ph, len = 40 + 30 * ph, b = 1.4f * sinf(PI * ph) * e;
+    bool cyan = i & 1;
+    place(B.pulses, i, (t3_vec3){ x, GRID_Y + 0.03f, z }, flat, (t3_vec3){ 0.5f, len, 1 }, cyan ? (t3_color){ 0.2f * b, 0.9f * b, b } : (t3_color){ b, 0.2f * b, 0.85f * b });
+  }
+  done(B.pulses);
 }
 
 /* ── the crowd: people as dark shapes against the light, rim-lit by the room's beams, swaying and dancing with the
@@ -443,6 +499,7 @@ static void build_stage(void) {
   for (int k = 0; k < 3; k++) {
     static const char *const S[3] = { "SpotA", "SpotB", "SpotC" };
     B.spot[k] = cw_node_get(B.root[BD_STAGE], S[k]);
+    if (B.spot[k].id) B.spot_lens[k] = lamp_head(B.spot[k], 0.32f, 0.7f); /* the lamp itself, which the glass roads reflect */
   }
   B.crowd_s = build_crowd(at, (t3_color){ 0.35f, 0.2f, 0.12f });
   B.crowd_s.mat->color = (t3_color){ 0.003f, 0.003f, 0.004f }, B.crowd_s.mat->roughness = 0.95f; /* silhouettes: the front key reaches them */
@@ -467,6 +524,10 @@ static void update_stage(float beat, float t, float energy) {
     t3_vec3 d = { 0.45f * sinf(ph) + (float)(k - 1) * 0.3f, -1.0f, -0.25f + 0.15f * cosf(ph * 0.8f) }; /* seen from the side: shafts, not glare */
     aim(B.spot[k], d);
     setf(B.spot[k], "energy", 2000 * e);
+    if (B.spot_lens[k]) {
+      static const float SC[3][3] = { { 1, 0.55f, 0.2f }, { 0.9f, 0.9f, 1 }, { 0.35f, 0.5f, 1 } };
+      B.spot_lens[k]->color = (t3_color){ SC[k][0] * 7 * e, SC[k][1] * 7 * e, SC[k][2] * 7 * e };
+    }
   }
   update_crowd(&B.crowd_s, beat, 2.6f, 3.2f, 18, 60, -0.45f, energy * 0.5f - 0.05f); /* close in front of the deck: heads and shoulders along the foot of the picture, fewer hands up */
   band_update(beat, t, energy);
@@ -632,7 +693,23 @@ static void update_clean(const song *s, float beat) {
 }
 
 static void cmd_bdcam(int argc, const char **argv, cw_reply *r);
+/* `lvset <node> <prop> [value]`: a node of the main scene under Level (a Backdrop's environment, the Post's ssr) */
+static void cmd_lvset(int argc, const char **argv, cw_reply *r) {
+  cw_node n = argc >= 3 ? cw_node_get(B.level, argv[1]) : (cw_node){ 0 };
+  const cw_prop *p = n.id ? cw_node_find_prop(n, argv[2], NULL) : NULL;
+  if (!p) { cw_reply_error(r, "lvset <node path under Level> <property> [value]"); return; }
+  cw_value v;
+  if (argc >= 4) {
+    if (!cw_value_parse(argv[3], p->type, &v)) { cw_reply_error(r, "lvset: a value it cannot take"); return; }
+    cw_node_set(n, argv[2], v);
+  }
+  if (!cw_node_get_prop(n, argv[2], &v)) { cw_reply_error(r, "lvset: unreadable"); return; }
+  char t[128];
+  cw_value_format(&v, t, sizeof t);
+  cw_reply_printf(r, "{\"value\":\"%s\"}", t);
+}
 static void cmd_maze(int argc, const char **argv, cw_reply *r);
+static void cmd_envhold(int argc, const char **argv, cw_reply *r);
 static void cmd_bdset(int argc, const char **argv, cw_reply *r);
 
 static float tx_trail(float u, float v) { float x = (u - 0.5f) * 2; return expf(-x * x * 4) * powf(1 - v, 1.6f); }
@@ -821,16 +898,20 @@ static void update_maze(float beat, float energy) {
 void backdrop_build(cw_node level) {
   if (B.built) return;
   B.built = true;
+  B.level = level;
   for (int i = 1; i < BD_COUNT; i++) {
     B.node[i] = cw_node_get(level, NODES[i]);
     if (!B.node[i].id) { cw_error("main.cwscene: Level/%s (Backdrop) is missing", NODES[i]); continue; }
     B.root[i] = cw_backdrop_root(B.node[i]);
+    { cw_value v; B.env_cap[i] = cw_node_get_prop(B.node[i], "environment", &v) && v.b; }
     if (!B.root[i].id) cw_error("backdrop %s: its scene did not load", NAMES[i]);
     cw_backdrop_set_opacity(B.node[i], 0);
     if (B.root[i].id) cw_node_set(B.root[i], "visible", cw_val_bool(false));
     B.op_set[i] = 0;
   }
   cw_debug_command("bdset", "bdset <backdrop> <node path> <property> <value>: set a property in a backdrop's world (looking at its cost and its parts)", cmd_bdset);
+  cw_debug_command("lvset", "lvset <node path under Level> <property> [value]: a property of the main scene's node (a backdrop's environment, the post chain's ssr), read or set", cmd_lvset);
+  cw_debug_command("envhold", "envhold 1|0: the worlds' environment captures wait while a fade runs (1, the game) or go on through it (0, the fade cost check's control)", cmd_envhold);
   cw_debug_command("maze", "maze old 1|0: the arcade maze's old bright critters (the readability gate's note-likeness control)", cmd_maze);
   cw_debug_command("bdcam", "bdcam <backdrop> [x y z pitch yaw]: a backdrop's camera, read or moved (a closer look at its world)", cmd_bdcam);
   if (B.root[BD_FIRE].id) build_fire();
@@ -851,6 +932,9 @@ void backdrop_build(cw_node level) {
 }
 
 int backdrop_drawn(void) { return B.drawn; }
+void backdrop_env_mode(int mode) { B.env_mode = mode; }
+void backdrop_prewarm_all(void) { for (int i = 1; i < BD_COUNT; i++) if (B.node[i].id) cw_backdrop_prewarm(B.node[i]); }
+bool backdrop_lights(int bd) { return bd > 0 && bd < BD_COUNT && B.env_cap[bd]; } /* the world lights the field (main.cwscene: its Backdrop's environment) */
 
 /* `bdcam <name> x y z pitch yaw`: move a backdrop's camera (a closer look at its world); `bdcam <name>` reads it */
 static void cmd_bdcam(int argc, const char **argv, cw_reply *r) {
@@ -884,6 +968,21 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
     }
   }
   B.drawn = 0;
+  /* a world that lights the field captures its environment while a style holds, not while two worlds fade: a capture
+   * draws the world six times more and its filter is a frame of its own (about 1 ms more a fade frame and spikes of 3 on
+   * a Radeon 890M, over the fade budget), so during a fade the captures wait (the reflection holds the last whole one)
+   * and pick up again the frame the fade ends */
+  /* the world coming in lights the field only once its fade is over: a world shown with its environment on is captured
+   * on its first frame whatever env_every says (1.8 ms more that frame on the Steam Machine's GPU, 5 on a loaded 890M) */
+  int incoming = n == 2 ? (lit[0] == top ? lit[0] : lit[1]) : 0;
+  for (int i = 1; i < BD_COUNT; i++) {
+    if (!B.node[i].id || !B.env_cap[i]) continue;
+    bool fading = B.env_mode == 1 && n == 2 && !B.env_fade_capture;
+    int every = B.env_mode == 2 ? 1 : fading ? ENV_HOLD_EVERY : ENV_EVERY;
+    if (every != B.env_every_set[i]) cw_node_set(B.node[i], "env_every", cw_val_int(every)), B.env_every_set[i] = every;
+    int on = fading && i == incoming ? 1 : 2;
+    if (on != B.env_on_set[i]) cw_node_set(B.node[i], "environment", cw_val_bool(on == 2)), B.env_on_set[i] = on;
+  }
   for (int i = 1; i < BD_COUNT; i++) {
     if (!B.node[i].id) continue;
     if (op[i] != B.op_set[i]) {
@@ -917,6 +1016,10 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
   }
 }
 
+static void cmd_envhold(int argc, const char **argv, cw_reply *r) {
+  if (argc >= 2) B.env_fade_capture = atoi(argv[1]) == 0;
+  cw_reply_printf(r, "{\"hold\":%d}", !B.env_fade_capture);
+}
 static void cmd_maze(int argc, const char **argv, cw_reply *r) {
   if (argc >= 3 && !strcmp(argv[1], "old")) B.maze_old = atoi(argv[2]) != 0;
   cw_reply_printf(r, "{\"old\":%d}", B.maze_old);

@@ -67,3 +67,9 @@ standard+vcol+senv+l1001+xcluster_plain
 standard+map+vcol+rep+senv+ds+l1001+xcluster_plain
 standard+map+vcol+rep+senv+atest+ds+l1001+xcluster_plain
 standard+map+vcol+rep+emap+senv+l1001+xcluster_plain
+basic+trans+instbig+ds+icol+xhfog
+standard+map+trans+instbig+senv+icol+l1001+xcluster_csm_hfog
+standard+map+trans+instbig+senv+icol+l1001+xcluster_csm_hfog_plain
+basic+map+vcol+trans+rep+ds+xhfog
+standard+map+vcol+trans+rep+rmap+shadow+senv+ds+l1001+xcluster_hfog
+standard+map+vcol+trans+rep+rmap+shadow+senv+ds+l1001+xcluster_hfog_plain

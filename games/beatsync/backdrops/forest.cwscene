@@ -55,10 +55,35 @@ damping = 0.5
 turbulence = 0.6
 turbulence_scale = 0.15
 turbulence_speed = 0.12
-size = 0.13
+size = 0.18
 size_random = 0.4
 color_ramp = "0 0.7 1 0.3 0, 0.35 0.8 1 0.35 1, 0.65 0.8 1 0.35 1, 1 0.7 1 0.3 0"
-energy = 3.5
+energy = 4
+camera_fade = 8
+preprocess = 4
+seed = 501
+
+; each firefly's glow on the air round it: the same flight (the same seed and motion), a wide soft light
+[node name="FireflyGlow" parent="." type="GPUParticles3D"]
+position = vec3(0, 2.5, -10)
+amount = 160
+lifetime = 3.5
+lifetime_random = 0.4
+emission_shape = BOX
+emission_extents = vec3(30, 2.2, 26)
+direction = vec3(0, 1, 0)
+spread = 90
+speed_min = 0.05
+speed_max = 0.3
+gravity = vec3(0, 0.02, 0)
+damping = 0.5
+turbulence = 0.6
+turbulence_scale = 0.15
+turbulence_speed = 0.12
+size = 0.7
+size_random = 0.4
+color_ramp = "0 0.6 1 0.25 0, 0.35 0.65 1 0.3 1, 0.65 0.65 1 0.3 1, 1 0.6 1 0.25 0"
+energy = 0.17
 camera_fade = 8
 preprocess = 4
 seed = 501

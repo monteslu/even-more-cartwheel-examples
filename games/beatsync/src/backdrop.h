@@ -29,4 +29,11 @@ void backdrop_update(const float weight[BD_COUNT], int top, const song *s, float
 const char *backdrop_name(int bd);
 /* backdrops drawn last frame (opacity above 0) */
 int backdrop_drawn(void);
+/* the world lights the field: its Backdrop has `environment` on (the glass roads reflect it) */
+bool backdrop_lights(int bd);
+/* how the worlds that light the field capture: 0 a style holds (a capture over ENV_EVERY frames), 1 a fade runs (the
+ * captures wait for it to end), 2 the prewarm (a whole capture and its filter every frame, so each is made) */
+void backdrop_env_mode(int mode);
+/* every world prewarmed (cartwheel-engine 0.70.0 cw_backdrop_prewarm: drawn once at the next frame, unseen) */
+void backdrop_prewarm_all(void);
 #endif

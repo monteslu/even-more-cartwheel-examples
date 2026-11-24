@@ -145,6 +145,26 @@ static inline void aim(cw_node n, t3_vec3 d) {
   cw_node3d_set_rotation(n, (t3_vec3){ pitch, yaw, 0 });
 }
 
+/* a lamp's head on a light node (a spot): a dark housing along its -Z with a lens at its mouth that glows in the light's
+ * colour (an opaque emissive surface: a world's environment capture draws surfaces, not the volumetric beams, so the
+ * lens is what a reflection of the world shows of its lamp). Returns the lens's material (its colour set as the light's
+ * energy changes) */
+static inline t3_material *lamp_head(cw_node light, float radius, float depth) {
+  t3_object *at = cw_node3d_object(light);
+  if (!at) return NULL;
+  t3_material *hm = t3_mesh_standard_material_new(0x000000);
+  hm->color = (t3_color){ 0.03f, 0.03f, 0.035f }, hm->roughness = 0.5f, hm->metalness = 0.6f;
+  t3_mesh *h = add_mesh(at, t3_cylinder_geometry_new(radius * 1.15f, radius * 0.9f, depth, 20, 1, true), hm, (t3_vec3){ 0, 0, depth * 0.5f });
+  T3_OBJ(h)->quaternion = about(1, 0, 0, PI / 2);
+  t3_material *lm = t3_mesh_basic_material_new(0x000000);
+  lm->color = (t3_color){ 1, 1, 1 };
+  t3_retain(lm);
+  t3_mesh *lens = add_mesh(at, t3_circle_geometry_new(radius, 24), lm, (t3_vec3){ 0, 0, -0.01f });
+  T3_OBJ(lens)->quaternion = about(0, 1, 0, PI); /* facing -Z, down the beam */
+  t3_release(lm); /* (the mesh holds it; the caller's pointer stays good while the world does) */
+  return lm;
+}
+
 /* the textures */
 static inline float tx_horizon(float u, float v) { (void)u; return expf(-fabsf(v - 0.5f) * 9.0f); }
 static inline float tx_beam(float u, float v) { /* a laser: a hard bright core in a soft sheath, fading along its length */

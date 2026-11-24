@@ -39,6 +39,7 @@
 
 #include "cartwheel/core.h"
 #include "cartwheel/debug.h"
+#include "cartwheel/render3d.h"
 #include "cartwheel/scene.h"
 #include "cartwheel/scene_file.h"
 
@@ -286,6 +287,19 @@ static t3_instanced_mesh *soft(t3_geometry *g, t3_texture *tex, int n) {
   t3_material_set_map(im->mesh.materials[0], tex), t3_release(tex);
   return im;
 }
+/* the road's card: a plane facing the camera whose normals lean back toward +y by `tilt` (radians from facing the
+ * camera), as a floor's would seen from above it */
+#define ROAD_TILT 1.35f
+#define ROAD_ROUGH 0.1f
+#define ROAD_METAL 0.35f
+#define ROAD_ENV 1.0f
+static t3_geometry *road_geometry(float tilt) {
+  t3_geometry *g = t3_plane_geometry_new(1.0f, 1.0f, 1, 1);
+  float n[12];
+  for (int i = 0; i < 4; i++) n[i * 3] = 0, n[i * 3 + 1] = sinf(tilt), n[i * 3 + 2] = cosf(tilt);
+  t3_geometry_set_attribute(g, T3_ATTR_NORMAL, t3_attribute_new(T3_FLOAT32, n, 4, 3));
+  return g;
+}
 static void lit_build(cw_node level) {
   C.env = studio();
   t3_geometry *g[LANES] = {
@@ -318,13 +332,18 @@ static void lit_build(cw_node level) {
   C.halo->count = 0;
   C.bank_glow = soft(t3_plane_geometry_new(1, 1, 1, 1), gray_tex(64, 4, tx_line), BANK_SEGS * 2 * LANES);
   C.gate_glow = soft(t3_plane_geometry_new(1, 1, 1, 1), gray_tex(64, 64, tx_soft), LANES);
-  /* the road: glass with a clear coat over a dark body */
+  /* the road: glass with a clear coat over a dark body. It reflects the scene's environment (no map of its own): the
+   * studio below by default, and the world behind while a backdrop with `environment` lights the scene (the metal
+   * hall, the night sea, the stage: cartwheel-engine 0.66.0 blends it in by the backdrop's share, so a fade fades the
+   * reflection too). The road is a flat card facing the camera that stands for a floor going away, so its normals lean
+   * back like a floor's (road_normals): a face-on mirror would show what is behind the camera, a floor shows the
+   * world beyond it, upside down below its horizon. A little metal, so the screen-space fallback (ssr_backdrop) weighs it */
   {
+    t3_scene_set_environment(cw_render3d_scene(cw_scene_app_tree()), C.env);
     t3_material *m = t3_mesh_physical_material_new(0x000000);
     m->color = (t3_color){ 0.006f, 0.007f, 0.012f };
-    m->roughness = 0.12f, m->metalness = 0.0f, m->clearcoat = 1, m->clearcoat_roughness = 0.03f;
-    t3_material_set_texture(m, T3_ENV_MAP, C.env);
-    m->env_map_intensity = 0.35f;
+    m->roughness = ROAD_ROUGH, m->metalness = ROAD_METAL, m->clearcoat = 1, m->clearcoat_roughness = 0.03f;
+    m->env_map_intensity = ROAD_ENV;
     m->transparent = true, m->opacity = 0;
     t3_material *old = C.plate->mesh.materials[0];
     C.plate->mesh.materials[0] = m; /* the mesh holds one reference: hand it the new material and drop the old */
@@ -396,7 +415,7 @@ void club_build(void) {
   C.land_mat->transparent = true, C.land_mat->depth_write = false, C.land_mat->opacity = 1, C.land_mat->version++;
   /* the road: dark glass under each river, in front of a backdrop (it writes depth, so a backdrop's particles stay
    * out of it), drawn only while a style asks for it */
-  C.plate = instanced(t3_plane_geometry_new(1.0f, 1.0f, 1, 1), BANK_SEGS * LANES);
+  C.plate = instanced(road_geometry(ROAD_TILT), BANK_SEGS * LANES);
   C.plate_mat = C.plate->mesh.materials[0];
   C.plate_mat->transparent = true, C.plate_mat->opacity = 0, C.plate_mat->version++;
   T3_OBJ(C.plate)->visible = false;
@@ -1042,6 +1061,22 @@ static void cmd_notes(int argc, const char **argv, cw_reply *r) {
     cw_reply_printf(r, "%s{\"lane\":%d,\"ahead\":%.3f,\"x\":%.1f,\"y\":%.1f,\"px\":%.2f,\"unit\":%.3f,\"bright\":%.3f}", i ? "," : "", C.probe[i].lane, C.probe[i].ahead, C.probe[i].x, C.probe[i].y, C.probe[i].px, C.probe[i].px / NOTE_W[C.probe[i].lane], C.probe[i].bright);
   cw_reply_printf(r, "]}");
 }
+/* `road tilt|rough|metal|env <v>`: the glass road's reflection (a look at it); `road` reads it */
+static void cmd_road(int argc, const char **argv, cw_reply *r) {
+  t3_material *m = C.plate_mat;
+  if (argc >= 3 && m) {
+    float v = (float)atof(argv[2]);
+    if (!strcmp(argv[1], "tilt")) {
+      t3_geometry *g = road_geometry(v), *old = C.plate->mesh.geometry;
+      C.plate->mesh.geometry = g, t3_release(old);
+    } else if (!strcmp(argv[1], "rough")) m->roughness = v;
+    else if (!strcmp(argv[1], "metal")) m->metalness = v;
+    else if (!strcmp(argv[1], "env")) m->env_map_intensity = v;
+    else if (!strcmp(argv[1], "coat")) m->clearcoat = v;
+    m->version++;
+  }
+  cw_reply_printf(r, "{\"rough\":%.3f,\"metal\":%.3f,\"env\":%.3f,\"coat\":%.3f}", m ? m->roughness : 0, m ? m->metalness : 0, m ? m->env_map_intensity : 0, m ? m->clearcoat : 0);
+}
 static void cmd_lit(int argc, const char **argv, cw_reply *r) {
   if (argc >= 2) lit_off = atoi(argv[1]);
   cw_reply_printf(r, "{\"off\":%d}", lit_off);
@@ -1071,5 +1106,6 @@ void club_register_debug(void) {
   cw_debug_command("land", "land [game|flat|off]: the land's rows as last drawn (beat, height, hue, bands, stab, crest), or how it reads the song (src/club.c)", cmd_land);
   cw_debug_command("notes", "notes: the notes on the rivers as last drawn (lane, beats ahead, y and width in pixels) (src/club.c)", cmd_notes);
   cw_debug_command("notescale", "notescale game|flat|reverse: how a note's size follows its distance (the size gate's controls)", cmd_notescale);
+  cw_debug_command("road", "road [tilt|rough|metal|env|coat <value>]: the glass road's reflection, read or set (a look at it)", cmd_road);
   cw_debug_command("lit", "lit <mask>: leave parts of the lit picture out (1 gems, 2 halos, 4 gate glow, 8 bank glow, 16 the low lights)", cmd_lit);
 }

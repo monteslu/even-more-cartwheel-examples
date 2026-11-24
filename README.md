@@ -166,8 +166,8 @@ the rivers. A canyon walled with licking flame, a club in laser haze with a
 dancing crowd, a band on a rock stage, a synthwave grid, a night sea, a valley
 under twin snow peaks, aurora over a snow field, deep space with a ringed
 planet, a rain-soaked neon street mirrored in the wet road, a moonlit forest
-of fireflies, the sea floor under shafts of light, a hall of brushed and
-polished metal, and looks drawn by the
+of fireflies, the sea floor under shafts of light, a lit hall of brushed and
+polished metal mirrored in the glass of the roads, and looks drawn by the
 engine: neon characters, terminal green, half blocks, an arcade maze in
 chunky pixels, a one-bit print, a desert night in amber dither, a newsprint
 city in ink on paper and lava in half blocks. The rivers and notes never
