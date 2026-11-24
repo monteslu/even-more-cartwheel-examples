@@ -76,5 +76,35 @@
       "player.y100": 12400,
       "game.hash": 2838897798
     }
+  },
+  {
+    "name": "lanternfall-assist",
+    "app": "lanternfall",
+    "frames": 760,
+    "input": "lanternfall-assist.json",
+    "controlInput": "lanternfall-assist-control.json",
+    "fields": [
+      "game.assist",
+      "shell.screen",
+      "game.tick",
+      "player.hp",
+      "game.hash"
+    ],
+    "expect": {
+      "game.assist": 3
+    },
+    "hosts": [
+      "native"
+    ],
+    "note": "The Settings row Leaves lost on the pad alone: from the title into Settings, down to the row, right twice (every third blow), back, Play, Start on the join screen and a run to the right: the game in play takes a leaf for every third blow. The control steps the row left (every blow). As the other gates here: the named state on every host, frames within 0.5% (the drifting motes and particles differ by a few pixels between renderers).",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.5,
+      "vsGl": 0.5
+    },
+    "maxGt16": 0.5
   }
 ]

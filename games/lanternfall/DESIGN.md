@@ -122,7 +122,9 @@ dash back), and cuts small thrown things out of the air. A blow that lands holds
 ticks, 6 for a kill, 7 for a blow taken: both sides feel it), throws the enemy back about a tile (further for a kill,
 less for a knight, never off its ledge) and pushes you back a little; presses made during the hold are kept. Each blow,
 kill, hurt and plunge rumbles the pad; the camera never shakes. The spark (north) costs energy; strikes refill it and it creeps back on its own.
-Down + spark on the ground mends a leaf of health for two energy. Enemies show their tells: the crawler rears up
+Down + spark on the ground mends a leaf of health for two energy. Settings has the game's own row, Leaves lost:
+every blow (the default), every second blow or every third blow costs a leaf, saved and applied at once, in play too
+(the bot plays with every third). Enemies show their tells: the crawler rears up
 before it charges, the spitter swells, the moth's wings flare before it swoops, the hopper crouches, the knight raises
 its spear (and turns strikes from the front with its shield). A strike breaks off an attack in progress. Four more,
 one idea each: the puff drifts, soft (a touch bumps you, landing on it bounces you), then every puff swells and

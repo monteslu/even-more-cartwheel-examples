@@ -46,6 +46,7 @@ static struct {
   int players, last_region;
   cw_action left, right, up, down, jump, attack, dash, shoot, grapple, map;
   int32_t tick, room, region, abilities, pickups, bosses, hp, deaths, step, px, py, relics, won, screen;
+  int32_t assist; /* blows per leaf lost: the Settings row (in play, the sim's) */
   uint32_t hash;
   bool up_was[MAXP];
   double t_frame, t_last, t_gpu;
@@ -103,6 +104,20 @@ static bool go_room(int n) {
   return false;
 }
 
+/* Settings, the game's own row: how many blows cost a leaf of health. Every one by default; an assist for a player
+ * who wants the city without the fights' full weight (the bot plays with every third). Saved with the shell's settings
+ * and applied at once, in play too. */
+static const char *const ASSIST_CHOICES[3] = { "Every blow", "Every second blow", "Every third blow" };
+static int assist_choice;
+static cw_shell_setting settings_rows[1] = { { .label = "Leaves lost", .key = "assist", .value = &assist_choice, .choices = ASSIST_CHOICES, .count = 3 } };
+static int assist_hits(void) { return CW_CLAMP(assist_choice, 0, 2) + 1; }
+static void settings_changed(int index, int value, void *u) {
+  (void)index, (void)value, (void)u;
+#ifndef LANTERNFALL_AUTOPILOT
+  S.assist = assist_hits();
+#endif
+}
+
 static void new_game(int players) {
   sim_init(&S, &W, players);
 #ifdef LANTERNFALL_AUTOPILOT
@@ -134,6 +149,7 @@ static void new_game(int players) {
   save_state *sv = cw_shell_game_save();
   if (sv->world_hash == W.hash) sim_restore(&S, sv);
   else H.intro_t = 9;
+  S.assist = assist_hits();
 #endif
 #endif
   G.snap = true;
@@ -191,7 +207,8 @@ static void init(void *u) {
   G.grapple = cw_action_find("grapple"), G.map = cw_action_find("map");
   cw_shell_init(&(cw_shell_desc){ .title = "LANTERNFALL", .subtitle = "light the old city again", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_state), .game_save_version = 2, .start = start, .players_changed = players_changed,
-                                  .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background });
+                                  .sound = shell_sound, .screen_changed = shell_screen, .draw_background = draw_background,
+                                  .settings_items = settings_rows, .settings_item_count = 1, .settings_changed = settings_changed });
   cw_font font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   hud_init(font);
@@ -215,6 +232,7 @@ static void init(void *u) {
   cw_debug_i32("player.x100", &G.px);
   cw_debug_i32("player.y100", &G.py);
   cw_debug_i32("game.deaths", &G.deaths);
+  cw_debug_i32("game.assist", &G.assist);
   cw_debug_i32("bot.step", &G.step);
   cw_debug_u32("game.hash", &G.hash);
   cw_debug_i32("shell.screen_game", &G.screen);
@@ -403,6 +421,7 @@ static void render(void *u, double alpha) {
   (void)u, (void)alpha;
   if (!G.loaded) return;
   cw_shell_screen sc = cw_shell_screen_now();
+  G.assist = G.in_match ? S.assist : assist_hits(); /* (here: the menus hold the tree, and its ticks, still) */
   static float t;
   t += 1.0f / 60.0f;
   static bool bench_env, bench_read;
