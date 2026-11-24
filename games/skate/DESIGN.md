@@ -15,6 +15,7 @@ score. Everything is original: the parks, the skaters, the trick names.
 | grind, near a rail, a ledge's lip or a coping | north | I |
 | manual (or hold it into a landing to land in one) | either shoulder | U or O |
 | back to a start point (each press the next one) | back | R |
+| pause (in a run the menu also has Restart run, and Change park back to the setup) | start | Escape |
 
 A flip pressed on the ground pops and flips at once. In the air the stick spins the rider (spins score by the 180).
 Landings are judged: the board's heading against the run along the surface (within 26 degrees clean, 46 sketchy and
@@ -157,6 +158,11 @@ how skaters ride (coaching guides, ollie studies, a motion-capture set of a skat
   brawler's) tumbles from that pose over the park's triangles, presentation only; the camera follows the body from
   further back. **Run-outs**: the rider turns to run, strides on the ground with the arms pumping (about 1.1 m a
   stride), the board rolling on ahead and slowing until the rider catches it and steps back on.
+- **Hair**: the ponytail, a fall of hair down the back, the headband's tails and the ends of a cap's tufts hang from
+  the two hair bones, which the engine's spring (SpringBone3D, one chain from the head) swings: they lag behind a
+  pivot, a carve, a pop or a landing, sway and settle back to their hang, kept out of the head and the upper back.
+  The rider's own pose (pose.c) leaves those two bones to it. Stiffness 250, damping 25 (near critical, so a push's
+  bob never builds the swing up), at most half a radian off the hang.
 
 The wheels turn with the speed. A landing kicks up a puff of dust; a grind throws sparks. For judging the posing,
 tools/strips.sh lays frames of every state side by side (tools/strip.mjs: the native app paused and stepped on its

@@ -35,6 +35,7 @@ float g_cam_k = 1, g_cam_side = 0; /* development and key art: a closer camera, 
 
 typedef struct seat {
   cw_node root, board, rider, sparks;
+  cw_node hair; /* the hair spring chain (hair_spring) */
   bool sparking;
   t3_object *model;
   rig rig;
@@ -954,6 +955,46 @@ bool view_bake(const char *dir, int park_index) {
 
 /* ── rigs ─────────────────────────────────────────────────────────────── */
 
+/* The hair swings: a ponytail, a fall of hair down the back, the headband's tails and the ends of a cap's tufts are
+ * skinned to HairA and HairB (tools/chars/make-skaters.mjs), which pose.c never turns. The engine's SpringBone3D runs
+ * them as one chain from the head that lags behind the body, sways and settles back to its hang; the head and the
+ * upper back are kept out of it. The game's own pose leaves the two bones alone (unbound from its flush), so the
+ * spring adds to the animated hang each tick instead of being written over at render. teleport_distance is raised
+ * above the default 0.25 m a tick: a mega ramp run passes 15 m/s, and a back-to-start jump (many metres) still counts
+ * as a teleport. SKATE_NO_SPRING (native) leaves the hair rigid, as before. */
+static void hair_spring(seat *s) {
+  if (getenv("SKATE_NO_SPRING")) return;
+  cw_pose *p = &s->rig.pose;
+  int a = cw_pose_find(p, "HairA"), b = cw_pose_find(p, "HairB");
+  if (a < 0 || b < 0 || !p->bone) return;
+  p->bone[a] = NULL, p->bone[b] = NULL;
+  cw_node sb = cw_node_new("SpringBone3D", "HairSpring");
+  cw_node_add_child(s->rider, sb);
+  cw_node_set(sb, "teleport_distance", cw_val_float(0.6f));
+  cw_node ch = cw_node_new("SpringBoneChain3D", "Hair");
+  cw_node_add_child(sb, ch);
+  cw_node_set(ch, "root_bone", cw_val_string("HairA"));
+  cw_node_set(ch, "end_bone", cw_val_string("HairB"));
+  cw_node_set(ch, "stiffness", cw_val_float(250));
+  cw_node_set(ch, "damping", cw_val_float(25));
+  cw_node_set(ch, "max_angle", cw_val_float(0.5f));
+  cw_node_set(ch, "radius", cw_val_float(0.02f));
+  s->hair = ch;
+  cw_node head = cw_node_new("SpringBoneCollision3D", "Skull");
+  cw_node_add_child(sb, head);
+  cw_node_set(head, "bone", cw_val_string("Head"));
+  cw_node_set(head, "shape", cw_val_enum("SPHERE"));
+  cw_node_set(head, "radius", cw_val_float(0.09f));
+  cw_node_set(head, "offset", cw_val_vec3(0, 0.09f, 0));
+  cw_node back = cw_node_new("SpringBoneCollision3D", "Back");
+  cw_node_add_child(sb, back);
+  cw_node_set(back, "bone", cw_val_string("Chest"));
+  cw_node_set(back, "shape", cw_val_enum("CAPSULE"));
+  cw_node_set(back, "radius", cw_val_float(0.1f));
+  cw_node_set(back, "offset", cw_val_vec3(0, 0, 0));
+  cw_node_set(back, "tail", cw_val_vec3(0, 0.22f, 0));
+}
+
 void view_rigs(const int skin[MAXP], int players) {
   for (int i = 0; i < MAXP; i++) {
     seat *s = &VW.seat[i];
@@ -1023,7 +1064,7 @@ void view_rigs(const int skin[MAXP], int players) {
       s->model = inst;
       if (getenv("SKATE_BOARD_IDS")) hide_all(inst); /* (the board alone: board_ids) */
       t3_release(inst);
-      rig_bind(&s->rig, cw_node3d_object(s->rider));
+      if (rig_bind(&s->rig, cw_node3d_object(s->rider))) hair_spring(s);
     }
   }
   VW.players = players;
@@ -1306,6 +1347,10 @@ void view_frame(const sim *S, const skater prev[MAXP], float alpha, int players,
       t3_mat4_compose(&m, rp, q, V(1, 1, 1));
       rag_tick(i, k, &s->rig, s->rider, &m);
       if (!rag_active(i)) cw_pose_flush(&s->rig.pose);
+      /* the hair spring: how far its tip hangs off the animated hang (metres, last tick), the most seen */
+      cw_value tv;
+      g_view_metrics.hair_tip[i] = cw_node_valid(s->hair) && cw_node_get_prop(s->hair, "tip_distance", &tv) ? (float)tv.f : 0;
+      if (g_view_metrics.hair_tip[i] > g_view_metrics.hair_tip_max) g_view_metrics.hair_tip_max = g_view_metrics.hair_tip[i];
     }
     /* sparks off the trucks while it grinds */
     bool grinding = k->st == SK_GRIND;

@@ -59,7 +59,7 @@ void view_title_camera(const park *k, float t);           /* behind the menus: a
 cw_node view_camera(int i);
 extern int g_view_shadow_size;
 /* what the frames show, measured (debug fields: the feel gate) */
-typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max, foot_place_max; int32_t foot_err_state, foot_place_state; } view_metrics;
+typedef struct view_metrics { float cam_turn_max, cam_dist, foot_err_max, foot_place_max; int32_t foot_err_state, foot_place_state; float hair_tip[MAXP], hair_tip_max; } view_metrics;
 extern view_metrics g_view_metrics;
 extern float g_cam_k, g_cam_side;
 

@@ -173,6 +173,24 @@ static void quit_to_title(void *u) {
 }
 static void draw_background(cw_shell_screen s, cw_vec2 canvas, void *u) { (void)s, (void)canvas, (void)u; } /* the park shows through */
 
+/* the pause menu's own items in a run (cartwheel/shell.h pause_items): the run again from its start, or back to the
+ * setup to pick another park, mode or skater (what holding back does, said on the menu). None on the setup screen. */
+static const char *const PAUSE_RUN[2] = { "Restart run", "Change park" };
+static bool g_pause_run;
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (!G.in_match || G.phase == PH_SETUP) return;
+  if (index == 0) begin_run();
+  else {
+    G.phase = PH_SETUP;
+    park_go(G.ui.park, MODE_FREE, G.players);
+  }
+}
+static void pause_items_sync(void) {
+  bool want = G.in_match && G.phase != PH_SETUP;
+  if (want != g_pause_run) cw_shell_set_pause_items(want ? PAUSE_RUN : NULL), g_pause_run = want;
+}
+
 static bool warmup(void *u) {
   (void)u;
   if (!build_world_step()) return false;
@@ -202,7 +220,7 @@ static void init(void *u) {
   G.reset = cw_action_find("reset");
   cw_shell_init(&(cw_shell_desc){ .title = "SKATE", .subtitle = "parks, lines and combos for one to four", .max_players = MAXP, .game_save_size = sizeof(save_data),
                                   .game_save_version = 1, .start = start, .players_changed = players_changed, .sound = shell_sound, .screen_changed = shell_screen,
-                                  .quit = quit_to_title, .draw_background = draw_background });
+                                  .quit = quit_to_title, .draw_background = draw_background, .pause_item = pause_item });
   G.ui_up = cw_action_find("ui_up"), G.ui_down = cw_action_find("ui_down"), G.ui_left = cw_action_find("ui_left"), G.ui_right = cw_action_find("ui_right");
   G.ui_accept = cw_action_find("ui_accept"), G.ui_back = cw_action_find("ui_back");
   font = cw_ui_font_sans();
@@ -241,6 +259,8 @@ static void init(void *u) {
   cw_debug_i32("view.foot_err_state", &g_view_metrics.foot_err_state); /* what it was doing then: state * 10 + 1 pushing + 2 manual */
   cw_debug_f32("view.foot_place_max", &g_view_metrics.foot_place_max); /* metres, a sole outside where a skater's foot goes on the deck, at worst */
   cw_debug_i32("view.foot_place_state", &g_view_metrics.foot_place_state); /* then: state * 100 + foot (1 front, 2 back) * 10 + 1 pushing + 2 manual */
+  cw_debug_field("view.hair_tip", g_view_metrics.hair_tip, CW_DBG_F32, MAXP); /* metres, each rider's hair tip off its animated hang (the spring) */
+  cw_debug_f32("view.hair_tip_max", &g_view_metrics.hair_tip_max);
   cw_debug_u32("tex.hash", &tex_hash);
   cw_debug_command("run", "run <park> [mode] [players]: start a run now", cmd_run);
 #if AUTO
@@ -405,6 +425,7 @@ static void fixed_update(void *u, double dt) {
   if (G.phase == PH_SETUP) setup_update();
   else if (G.phase == PH_RUN) run_update();
   else results_update();
+  pause_items_sync();
   rag_step();
   /* debug fields */
   G.d_phase = G.phase, G.d_park = G.S.park_id, G.d_mode = G.S.mode, G.d_tick = G.S.tick, G.d_players = G.S.players, G.d_hash = G.S.hash, G.d_clock = G.S.clock;
