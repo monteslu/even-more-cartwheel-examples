@@ -15,7 +15,7 @@ three levels each: chain lightning, freeze fields, beams and mortars. 30 maps in
 | on your tower at its second level: the third level's other branch | east | L |
 | call the next wave early | a shoulder | Q |
 | the storm: lightning round your cursor (every 30 s) | a trigger | E |
-| pause | Start | Escape |
+| pause (in a match the menu also has Restart map and Choose map) | Start | Escape |
 
 The build diamond round your cursor shows which button builds what and its price. The third level comes in two
 branches, each tower's choice for good (bolt storm or arc, frost shatter or blizzard, beam lance or prism, mortar

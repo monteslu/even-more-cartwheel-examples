@@ -77,7 +77,7 @@ whole map on one screen, a fixed camera per map.
 | on a tower of yours: sell (hold) | west | J |
 | call the next wave early (gold for the time left) | either shoulder | Q |
 | the storm: lightning down round the cursor (every 30 s) | either trigger | E |
-| pause | Start | Escape |
+| pause (in a match the menu also has Restart map and Choose map) | Start | Escape |
 
 - The build diamond is drawn round the cursor where the buttons sit: the tower each face button builds, with its
   price, greyed when the gold is short. On a tower the same places show upgrade (with its price; at the second level

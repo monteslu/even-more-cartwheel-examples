@@ -292,6 +292,7 @@ static void cmd_players(int argc, const char **argv, cw_reply *r) {
 #endif
 
 static void cmd_hud(int argc, const char **argv, cw_reply *r); /* the HUD, below */
+static void pause_item(int index, void *u); /* the pause menu's own items, below */
 /* the save's version: 1 since the first release (the stars grew the struct at its end, which needs no new version).
  * TOWERS_SAVE_VERSION (native) is the save check's control: another version with no migrate hook starts the game's
  * data over, so an old save's maps are lost and the check must fail. */
@@ -312,7 +313,7 @@ static void init(void *u) {
   G.power = cw_action_find("power");
   cw_shell_init(&(cw_shell_desc){ .title = "TOWERS", .subtitle = "hold the core together", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = save_version(), .start = start, .players_changed = players_changed,
-                                  .sound = shell_sound, .screen_changed = shell_screen });
+                                  .sound = shell_sound, .screen_changed = shell_screen, .pause_item = pause_item });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true); /* no preset draws below the output size: no upscaling */
@@ -437,6 +438,32 @@ static void pick_update(void) {
   }
 }
 
+/* the pause menu's own items in a match (cartwheel/shell.h pause_items): this map again from its first wave, as a
+ * fallen core starts it, or back to the map choice. None while the map is being chosen. */
+static const char *const PAUSE_PLAY[2] = { "Restart map", "Choose map" };
+static bool g_pause_play;
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (!G.in_match || G.phase != PH_PLAY) return;
+  int players = G.S.players, n = G.S.m.num;
+  if (index == 0) {
+    sim_init(&G.S, players, 4242 + (uint32_t)n);
+    for (int i = 0; i < MAXP; i++) G.S.p[i].active = i < players && (i == 0 || cw_shell_seat_taken(i));
+    G.over_ticks = 0;
+    map_go(n);
+  } else {
+    G.phase = PH_PICK;
+    G.pick_map = CW_MAX(1, n);
+    sim_init(&G.S, players, 4242);
+    map_go(G.pick_map);
+    G.S.no_spawn = true;
+  }
+}
+static void pause_items_sync(void) {
+  bool want = G.in_match && G.phase == PH_PLAY;
+  if (want != g_pause_play) cw_shell_set_pause_items(want ? PAUSE_PLAY : NULL), g_pause_play = want;
+}
+
 static int g_ticks; /* fixed ticks run since the last frame drew: the view's clock and the effects run on them */
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
@@ -444,6 +471,7 @@ static void fixed_update(void *u, double dt) {
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   if (cw_shell_join_press()) {} /* (players_changed adds them) */
+  pause_items_sync();
   G.phase_dbg = G.phase;
   if (G.phase == PH_PICK) { pick_update(); return; }
   input in[MAXP];
