@@ -3,6 +3,14 @@
 ## 0.58.0
 
 - Every game on cartwheel-engine 0.77.0, every program table generated again for it.
+- **skate**'s hair swings. The ponytail, a fall of hair down the back, the headband's tails and a cap's tufts lag
+  behind a pivot, a carve, a pop or a landing, sway and settle back to their hang, kept out of the head and the upper
+  back (cartwheel-engine's SpringBone3D on the two hair bones, which the rider's own pose now leaves to it).
+- The pause menu has the game's own items while you play: **skate** Restart run and Change park (back to the setup),
+  **towers** Restart map and Choose map, **destructo** and **detexto** Restart structure and Choose structure (back
+  to the select screen; the shots so far are not judged or saved).
+- **skate**'s control hints of a run's first seconds are no longer drawn under the pause menu, and **detexto**'s pause
+  plate reaches the prompt line, so the longer menu stays on it.
 
 ## 0.57.0
 
