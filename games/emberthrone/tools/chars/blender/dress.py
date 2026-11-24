@@ -407,6 +407,12 @@ def helm(o, J, w, pieces):
             horn(o, pieces, 'fin%d' % k, b, V((t * 0.8, 0.5, 1)), 0.2 - 0.05 * abs(t), 0.035, w.get('trim', w['color']), {'Head': 1.0}, curl=V((0, 0.8, 0)), metal=1.0, rough=0.3, n=6, seg=6)
 
 
+def tag_skirt(ob):
+    """a robe's, a coat's or a cape's vertices, for their bone chains (build_chars.py swing_chains, 'skirt_chains')"""
+    ob.vertex_groups.new(name='SkirtSrc').add(range(len(ob.data.vertices)), 1.0, 'REPLACE')
+    return ob
+
+
 def skirt(o, J, w, pieces, kind):
     """a robe (to the floor, closed), an open coat (to the calf, open at the front) or a cape (behind, from the
     shoulders): rings lofted round the figure, each vertex weighted to the hips, the thighs (by side) and the trunk"""
@@ -474,7 +480,7 @@ def skirt(o, J, w, pieces, kind):
             r.append((p, wt))
         rings.append(r)
     loft(pc, rings, closed=closed)
-    pieces.append(to_object(pc, o, thickness=0.008, subdiv=0))
+    pieces.append(tag_skirt(to_object(pc, o, thickness=0.008, subdiv=0)))
     if w.get('trim'):
         # a band along the hem
         pc = Piece(kind + '_hem', w['trim'], 0.5, w.get('trim_metal', 0.0), mat='GEN_cloth' if not w.get('trim_metal') else 'GEN_metal', grain='smooth')
@@ -483,7 +489,7 @@ def skirt(o, J, w, pieces, kind):
         band = [[(p.lerp(q, 0.0) + (p - V((0, 0, p.z))).normalized() * 0.006, wt) for (p, wt), (q, _) in zip(hem, up)],
                 [(p.lerp(q, 0.35) + (p - V((0, 0, p.z))).normalized() * 0.006, wt) for (p, wt), (q, _) in zip(hem, up)]]
         loft(pc, band, closed=closed)
-        pieces.append(to_object(pc, o, thickness=0.004, subdiv=1))
+        pieces.append(tag_skirt(to_object(pc, o, thickness=0.004, subdiv=1)))
 
 
 def mask(o, J, w, pieces):

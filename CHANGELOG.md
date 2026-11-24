@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.57.0
+
+- **Ember Throne**'s hair and beards move with the body. The lancers' and the Tidecaller's long hair hangs on five
+  chains of three bones round the back and the sides, the wayfarer's two locks on two bones each (her buns stay tied),
+  and the warden's and the Ember King's beards on one short chain at the chin. The character build finds each chain
+  down the middle of the hair's own shell and weights the hair along it; the crown, the fringe and the jaw line stay on
+  the head. In the game a SpringBone3D after the head's look swings them. The tips lag behind the head on a turn, a
+  start or a stop, then settle back to where they hang. They are kept out of the skull, the jaw, the neck and the tops
+  of the shoulders by capsules the size of each figure's own skin. Measured on the pad script (run, stop, turn right,
+  stop, turn about, stop): the long hair swings 16 to 28 cm on a turn and settles 35 to 42 ticks after a stop, and the
+  locks and beards swing 4 to 9 cm and settle within 30 ticks. At rest it shakes by about 0.2 mm at most, and no joint goes
+  more than 1 mm into the body (the old rig, hair carried by the head, put the lancer's hair 44 mm into his shoulders).
+  A 0.41 m step up a ledge in one tick moves the hair with the body instead of flinging it.
+- **Ember Throne**'s robe and coats have their bone chains in the rig, from the waist: eight of four bones round the
+  Tidecaller's robe, five of three round the coats. They carry no weight yet, and the cloth stays on the legs as built
+  until their springs settle on these figures.
+- tests/emberthrone-hair.mjs: each figure's hair or beard on the play camera through a pad script in one romdev call,
+  the player wearing each figure in turn. The turn swings, the settle after each stop, the jitter at rest, the deepest
+  point in the body, and native-scale strips round the head. Controls, each failing its own check: the old rig (the
+  springs off), the springs without collisions, and slack undamped chains. A beard never reaches the neck even
+  without collisions, which the check reports. The springs cost under half a microsecond a figure over its other
+  skeleton modifiers (13 us a figure on the Steam Machine).
+
 ## 0.56.0
 
 - **jewels**: the pause menu has New board, a fresh board with the score from nothing (the best is kept), on the pad

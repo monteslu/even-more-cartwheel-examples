@@ -32,7 +32,8 @@ bool g_hide_hud;
 typedef struct rig {
   bool made;
   int kind, region; /* region: the foe's colours (tint_outfit) */
-  cw_node root, model, anim, tree, feet, light, flask, trail, shield, look[3], cape;
+  cw_node root, model, anim, tree, feet, light, flask, trail, shield, look[3], cape, swing[3];
+  bool hair_on;      /* its springs (hair, beard: view.c SWING) running (near the camera) */
   int role;
   t3_object *inst;
   const char *clip;
@@ -238,6 +239,132 @@ static t3_vec3 cape_point(int i, const cw_pose *p, int chest, bool *ok) {
   return (t3_vec3){ d.x + iq.w * tx + (iq.y * tz - iq.z * ty), d.y + iq.w * ty + (iq.z * tx - iq.x * tz), d.z + iq.w * tz + (iq.x * ty - iq.y * tx) };
 }
 
+
+/* hair and beards on spring bones (cartwheel/ik.h SpringBone3D). The long hair (the lancers', the Tidecaller's), the
+ * wayfarer's two locks and the warden's and the Ember King's beards hang on bone chains
+ * (tools/chars/blender/build_chars.py swing_chains: down the middle of the part's own shell, the part weighted along
+ * them) that lag behind the head on a turn, a start or a stop, sway and settle back to the pose the clips give them.
+ * Each group is one SpringBone3D after the look (modifiers run in child order), kept out of the body by capsules on its
+ * bones (SWING_SHAPE: the skull, the jaw, the neck and the tops of the shoulders for the hair, the neck for a beard; the
+ * figures' own skin measured in Blender, scaled with each figure). The springs run on the figures near the camera; a
+ * far one's hang as animated (a spring that comes back on starts from the animated pose: no whip). The Tidecaller's
+ * robe and the lancers' coats have their chains in the rig (eight of four bones round the robe, five of three round the
+ * coat's sides and back, from the waist) but carry no weight and no springs yet: on these figures the engine's skirt
+ * mode does not settle (measured: tips 0.7 to 0.9 m off, never settling, legs up to 8 cm in), so the cloth stays on the
+ * legs as built. */
+enum { HS_SKULL, HS_JAW, HS_NECK, HS_SHOULDERS, HS_THIGH_L, HS_THIGH_R, HS_SHIN_L, HS_SHIN_R, HS_FOOT_L, HS_FOOT_R, HS_N };
+#define HSB(k) (1u << (k))
+#define SWING_MAXG 3
+#define SWING_MAXC 16
+typedef struct { const char *node; int n, bones; const char *chain[8]; float stiffness, damping, gravity, radius; unsigned shapes; const char *skirt; } swing_def; /* skirt: RING (a robe), OPEN (a coat), NULL (chains) */
+#define HAIR_SHAPES (HSB(HS_SKULL) | HSB(HS_JAW) | HSB(HS_NECK) | HSB(HS_SHOULDERS))
+#define LEG_SHAPES (HSB(HS_THIGH_L) | HSB(HS_THIGH_R) | HSB(HS_SHIN_L) | HSB(HS_SHIN_R) | HSB(HS_FOOT_L) | HSB(HS_FOOT_R))
+#define LONG_HAIR { "Hair", 5, 3, { "HairBack", "HairBackL", "HairBackR", "HairSideL", "HairSideR" }, 700, 20, 2.0f, 0.012f, HAIR_SHAPES }
+#define BEARD { "Beard", 1, 2, { "Beard" }, 1800, 25, 1.0f, 0.006f, HSB(HS_NECK) }
+static const swing_def SWING[K_KINDS][SWING_MAXG] = {
+  [K_WAYFARER] = { { "Hair", 2, 2, { "HairLockL", "HairLockR" }, 1500, 25, 1.0f, 0.008f, HAIR_SHAPES } },
+  [K_WARDEN] = { BEARD },
+  [K_LANCER] = { LONG_HAIR },
+  [K_TIDE] = { LONG_HAIR },
+  /* (the robe and the coat, when their garments settle on these figures: { "Robe", 8, 4, { "RobeF", "RobeFL", "RobeL",
+   * "RobeBL", "RobeB", "RobeBR", "RobeR", "RobeFR" }, 220, 6, 2.0f, 0.025f, LEG_SHAPES, "RING" } and { "Coat", 5, 3, {
+   * "CoatL", "CoatBL", "CoatB", "CoatBR", "CoatR" }, 240, 6, 2.0f, 0.025f, LEG_SHAPES, "OPEN" }) */
+  [K_EMBER] = { BEARD },
+};
+/* the body the parts stay out of, in the figure's own metres before its kind's scale: a capsule from a to b round the
+ * named bone, along the model's axes at rest (y up, z forward). The neck runs from its joint to the head's, a thigh from
+ * a little below the hip to the knee, a shin to the ankle, a foot from the ankle to the toes (a little fatter than the
+ * mesh: a robe's surface keeps out of them, the feet below its hem too); the shoulders' ends are the upper arms' joints drawn a quarter in, the capsule's top at the tops of the shoulders. The
+ * springs and the recorder use the same shapes. */
+static const struct { const char *name, *bone, *to; t3_vec3 a, b; float r; } SWING_SHAPE[HS_N] = {
+  [HS_SKULL] = { "Skull", "Head", NULL, { 0, 0.10f, -0.016f }, { 0, 0.10f, 0.023f }, 0.088f },
+  [HS_JAW] = { "Jaw", "Head", NULL, { 0, -0.005f, 0 }, { 0, -0.005f, 0.05f }, 0.052f },
+  [HS_NECK] = { "Neck", "Neck", "Head", { 0, 0, 0 }, { 0, 0, 0 }, 0.05f },
+  [HS_SHOULDERS] = { "Shoulders", "Chest", NULL, { 0, 0, 0 }, { 0, 0, 0 }, 0.045f },
+  [HS_THIGH_L] = { "ThighL", "UpperLegL", "LowerLegL", { 0, -0.06f, 0 }, { 0, 0, 0 }, 0.085f },
+  [HS_THIGH_R] = { "ThighR", "UpperLegR", "LowerLegR", { 0, -0.06f, 0 }, { 0, 0, 0 }, 0.085f },
+  [HS_SHIN_L] = { "ShinL", "LowerLegL", "FootL", { 0, -0.02f, 0 }, { 0, 0, 0 }, 0.07f },
+  [HS_SHIN_R] = { "ShinR", "LowerLegR", "FootR", { 0, -0.02f, 0 }, { 0, 0, 0 }, 0.07f },
+  [HS_FOOT_L] = { "FootL", "FootL", "ToesL", { 0, -0.01f, -0.02f }, { 0, 0, 0 }, 0.05f },
+  [HS_FOOT_R] = { "FootR", "FootR", "ToesR", { 0, -0.01f, -0.02f }, { 0, 0, 0 }, 0.05f },
+};
+static int HAIR_WEAR = -1;      /* "hair wear <kind>": the first player wears that kind's figure (the long hair on the pad script) */
+static bool HAIR_OFF;           /* "hair springs 0": the old rig, every part carried by its bone as it hangs (a control) */
+static int HAIR_COLLIDE = 1;    /* "hair collide 0": the springs go through the body (a control) */
+static float HAIR_DAMP = -1;    /* "hair damping <1/s>": every chain's drag (-1: each group's own) */
+static bool HAIR_SKIRT = true; /* "hair skirt 0": a robe's and a coat's chains on their own, not linked into one cloth (a control) */
+static bool HAIR_SOFT;          /* "hair soft 1": every chain slack and undamped (stiffness 30, no drag: a control that never settles) */
+static struct { bool ok; t3_vec3 a[HS_N], b[HS_N]; float r[HS_N]; } SWING_GEO[K_KINDS]; /* the shapes as made, model metres */
+static int swing_chains(int kind) { int n = 0; for (int g = 0; g < SWING_MAXG && SWING[kind][g].node; g++) n += SWING[kind][g].n; return n; }
+static void hair_make(rig *r, int kind) {
+  if (!SWING[kind][0].node || r->swing[0].id) return;
+  const float g = GEN_SCALE[kind];
+  cw_pose pz = { 0 };
+  if (!cw_pose_bind(&pz, r->inst)) return;
+  cw_pose_update_model(&pz);
+  bool ok = true;
+  for (int k = 0; k < HS_N && ok; k++) ok = cw_pose_find(&pz, SWING_SHAPE[k].bone) >= 0 && (!SWING_SHAPE[k].to || cw_pose_find(&pz, SWING_SHAPE[k].to) >= 0);
+  for (int gi = 0; gi < SWING_MAXG && SWING[kind][gi].node && ok; gi++)
+    for (int c = 0; c < SWING[kind][gi].n && ok; c++) {
+      char nm[24];
+      snprintf(nm, sizeof nm, "%s_end", SWING[kind][gi].chain[c]);
+      ok = cw_pose_find(&pz, nm) >= 0; /* (an older figure without its chains: no springs) */
+    }
+  if (!ok) { cw_pose_free(&pz); return; }
+  if (!SWING_GEO[kind].ok) {
+    t3_vec3 chest = cw_pose_model_position(&pz, cw_pose_find(&pz, "Chest")), arm = cw_pose_model_position(&pz, cw_pose_find(&pz, "UpperArmL"));
+    for (int k = 0; k < HS_N; k++) {
+      t3_vec3 a = { SWING_SHAPE[k].a.x * g, SWING_SHAPE[k].a.y * g, SWING_SHAPE[k].a.z * g }, b = { SWING_SHAPE[k].b.x * g, SWING_SHAPE[k].b.y * g, SWING_SHAPE[k].b.z * g };
+      if (SWING_SHAPE[k].to) { /* from the bone's joint to the next one's */
+        t3_vec3 p0 = cw_pose_model_position(&pz, cw_pose_find(&pz, SWING_SHAPE[k].bone)), p1 = cw_pose_model_position(&pz, cw_pose_find(&pz, SWING_SHAPE[k].to));
+        b = (t3_vec3){ p1.x - p0.x, p1.y - p0.y, p1.z - p0.z };
+      }
+      if (k == HS_SHOULDERS) {
+        float x = 0.75f * arm.x, y = arm.y - 0.005f * g - chest.y, z = arm.z - chest.z - 0.01f * g;
+        a = (t3_vec3){ x, y, z }, b = (t3_vec3){ -x, y, z };
+      }
+      SWING_GEO[kind].a[k] = a, SWING_GEO[kind].b[k] = b, SWING_GEO[kind].r[k] = SWING_SHAPE[k].r * g;
+    }
+    SWING_GEO[kind].ok = true;
+  }
+  cw_pose_free(&pz);
+  for (int gi = 0; gi < SWING_MAXG && SWING[kind][gi].node; gi++) {
+    const swing_def *h = &SWING[kind][gi];
+    cw_node sb = r->swing[gi] = cw_node_new("SpringBone3D", h->node);
+    cw_node_add_child(r->model, sb); /* (after the feet and the look: modifiers run in child order) */
+    for (int c = 0; c < h->n; c++) {
+      char a[24], b[24];
+      snprintf(a, sizeof a, "%s0", h->chain[c]);
+      snprintf(b, sizeof b, "%s%d", h->chain[c], h->bones - 1);
+      cw_node n = cw_node_new("SpringBoneChain3D", h->chain[c]);
+      cw_node_add_child(sb, n);
+      cw_node_set(n, "root_bone", cw_val_string(a));
+      cw_node_set(n, "end_bone", cw_val_string(b));
+      cw_node_set(n, "stiffness", cw_val_float(HAIR_SOFT ? 30 : h->stiffness));
+      cw_node_set(n, "damping", cw_val_float(HAIR_SOFT ? 0 : HAIR_DAMP >= 0 ? HAIR_DAMP : h->damping));
+      cw_node_set(n, "gravity_strength", cw_val_float(h->gravity));
+      cw_node_set(n, "radius", cw_val_float(h->radius)); /* (absolute: a big figure's hair is no thicker) */
+    }
+    for (int k = 0; k < HS_N; k++) {
+      if (!(h->shapes & HSB(k))) continue;
+      t3_vec3 a = SWING_GEO[kind].a[k], b = SWING_GEO[kind].b[k];
+      cw_node n = cw_node_new("SpringBoneCollision3D", SWING_SHAPE[k].name);
+      cw_node_add_child(sb, n);
+      cw_node_set(n, "bone", cw_val_string(SWING_SHAPE[k].bone));
+      cw_node_set(n, "shape", cw_val_enum("CAPSULE"));
+      cw_node_set(n, "radius", cw_val_float(SWING_GEO[kind].r[k]));
+      cw_node_set(n, "offset", cw_val_vec3(a.x, a.y, a.z));
+      cw_node_set(n, "tail", cw_val_vec3(b.x, b.y, b.z));
+    }
+    cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
+    if (h->skirt) { /* a garment: its chains linked across into one cloth (cartwheel/ik.h skirt mode), stretching to let a stride through */
+      cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? h->skirt : "OFF"));
+      cw_node_set(sb, "skirt_stretch", cw_val_float(0.3f));
+    }
+  }
+  r->hair_on = true;
+}
+
 static void rig_make(int i, int kind) {
   rig *r = &RIG[i];
   memset(r, 0, sizeof *r);
@@ -309,6 +436,7 @@ static void rig_make(int i, int kind) {
       cw_node_set(r->look[k], "influence", cw_val_float(0));
     }
   }
+  hair_make(r, kind); /* (after the look: the hair follows the head where it turns) */
   /* the weapon in the right fist */
   t3_object *hand = t3_object_get_by_name(inst, "HandR");
   t3_object *w = weapon_obj(KIND[kind].weapon);
@@ -808,10 +936,198 @@ static void anim_hook(cw_tree *tree, double dt, void *u) {
   }
 }
 
+
+/* ── the hair recorder (debug channel): what tests/emberthrone-hair.mjs measures ──────────────────
+ * Each tick, for one figure, from its pose as drawn (after the springs): each chain's lag, the tip from where the head
+ * alone would carry it (the tip's place at rest turned and moved with the head: the old rig, whose hair was skinned to
+ * the head), in the model's frame; and how deep any of the chain's moving joints, or the point halfway between two of
+ * them, is inside the skull, the jaw, the neck or the shoulders (the same capsules the springs keep it out of, placed
+ * from the pose; negative: clear by that much). "hair rec <ticks> [actor]", "hair get <from> <n>", "hair info" (the
+ * chains, each one's clearance at rest); the test switches: "hair wear <kind>", "hair springs 0|1", "hair collide 0|1",
+ * "hair damping <1/s>" (-1: each kind's own). */
+#define HREC_MAX 1800
+typedef struct { int tick, state; float speed, yaw, hyaw; float lag[SWING_MAXC][3], depth[SWING_MAXC], rigid[SWING_MAXC]; t3_vec3 at; float us; int deep[SWING_MAXC]; } hrec_row; /* us: the figure's skeleton modifiers' time that tick (host clock, a profile only) */
+static hrec_row *HREC;
+static int hrec_n, hrec_want, hrec_actor = -1;
+static cw_pose HPOSE;
+static uint32_t HPOSE_ROOT;
+static bool HPOSE_BOUND;
+static t3_vec3 qv(t3_quat q, t3_vec3 v) {
+  float tx = 2 * (q.y * v.z - q.z * v.y), ty = 2 * (q.z * v.x - q.x * v.z), tz = 2 * (q.x * v.y - q.y * v.x);
+  return (t3_vec3){ v.x + q.w * tx + (q.y * tz - q.z * ty), v.y + q.w * ty + (q.z * tx - q.x * tz), v.z + q.w * tz + (q.x * ty - q.y * tx) };
+}
+static float seg_depth(t3_vec3 x, t3_vec3 a, t3_vec3 b, float r) {
+  t3_vec3 ab = { b.x - a.x, b.y - a.y, b.z - a.z };
+  float ll = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z, t = ll > 0 ? ((x.x - a.x) * ab.x + (x.y - a.y) * ab.y + (x.z - a.z) * ab.z) / ll : 0;
+  t = cw_clampf(t, 0, 1);
+  float dx = x.x - a.x - ab.x * t, dy = x.y - a.y - ab.y * t, dz = x.z - a.z - ab.z * t;
+  return r - sqrtf(dx * dx + dy * dy + dz * dz);
+}
+static int HAIR_DEEP_SHAPE[SWING_MAXC]; /* which shape each chain went deepest into on the last probe (HS_* x 10 + the point) */
+static void chain_bone(char *nm, size_t n, const char *chain, int j, int bones) {
+  if (j == bones) snprintf(nm, n, "%s_end", chain); else snprintf(nm, n, "%s%d", chain, j);
+}
+/* every chain of a figure posed as p (model space), in SWING order: each tip's lag from where its parent bone alone
+ * carries it (a chain's bones have no turn of their own at rest, so the carried chain is its bones' own offsets in the
+ * parent's frame), and each chain's depth in its group's shapes as posed and as carried (the old rig's). A chain's depth
+ * is its moving joints' and the points halfway between them; a garment's (skirt) is its surface: the panel from the
+ * chain to the next one sampled five by five between each two levels of joints (the last chain of an open coat, its
+ * own line). */
+static bool hair_probe(int kind, const cw_pose *p, float lag[][3], float depth[], float rigid[], float *hyaw) {
+  if (!SWING[kind][0].node || !SWING_GEO[kind].ok) return false;
+  int ih = cw_pose_find(p, "Head");
+  if (ih < 0) return false;
+  if (hyaw) { t3_vec3 f = qv(cw_pose_model_rotation(p, ih), (t3_vec3){ 0, 0, 1 }); *hyaw = cw_atan2(f.x, f.z); }
+  t3_vec3 sa[HS_N], sb[HS_N];
+  for (int k = 0; k < HS_N; k++) {
+    int b = cw_pose_find(p, SWING_SHAPE[k].bone);
+    if (b < 0) return false;
+    t3_quat q = cw_pose_model_rotation(p, b);
+    t3_vec3 o = cw_pose_model_position(p, b), va = qv(q, SWING_GEO[kind].a[k]), vb = qv(q, SWING_GEO[kind].b[k]);
+    sa[k] = (t3_vec3){ o.x + va.x, o.y + va.y, o.z + va.z }, sb[k] = (t3_vec3){ o.x + vb.x, o.y + vb.y, o.z + vb.z };
+  }
+  int ci = 0;
+  for (int gi = 0; gi < SWING_MAXG && SWING[kind][gi].node; gi++) {
+    const swing_def *h = &SWING[kind][gi];
+    static t3_vec3 PT[2][8][6]; /* [posed, carried][chain][joint 0 (the root's head) .. bones (the tip)] */
+    const int nj = h->bones + 1;
+    for (int c = 0; c < h->n; c++) {
+      char nm[24];
+      t3_vec3 off = { 0, 0, 0 };
+      int par = -1;
+      for (int j = 0; j < nj && j < 6; j++) {
+        chain_bone(nm, sizeof nm, h->chain[c], j, h->bones);
+        int b = cw_pose_find(p, nm);
+        if (b < 0) return false;
+        if (!j) par = p->parent[b];
+        off.x += p->pos[b].x, off.y += p->pos[b].y, off.z += p->pos[b].z;
+        PT[0][c][j] = cw_pose_model_position(p, b), PT[1][c][j] = t3_vec3_apply_mat4(off, &p->model[par]);
+      }
+    }
+    for (int c = 0; c < h->n && ci < SWING_MAXC; c++, ci++) {
+      const t3_vec3 *tp = PT[0][c], *tr = PT[1][c];
+      if (lag) lag[ci][0] = tp[nj - 1].x - tr[nj - 1].x, lag[ci][1] = tp[nj - 1].y - tr[nj - 1].y, lag[ci][2] = tp[nj - 1].z - tr[nj - 1].z;
+      const int nx = h->skirt && (h->skirt[0] == 'R' || c + 1 < h->n) ? (c + 1) % h->n : -1; /* the next chain across the panel */
+      for (int pass = 0; pass < 2; pass++) {
+        const t3_vec3 *q = PT[pass][c], *q2 = nx >= 0 ? PT[pass][nx] : NULL;
+        float d = -1;
+        for (int j = h->skirt ? 0 : 1; j + (h->skirt ? 1 : 0) < nj; j++) {
+          const int nu = h->skirt ? 5 : (j + 1 < nj ? 2 : 1), nv = q2 ? 5 : 1;
+          for (int u = 0; u < nu; u++)
+            for (int v = 0; v < nv; v++) {
+              float s = h->skirt ? (float)u / 4 : (float)u / 2, t = nv > 1 ? (float)v / 4 : 0;
+              t3_vec3 a = q[j], b = j + 1 < nj ? q[j + 1] : q[j];
+              t3_vec3 x = { a.x + (b.x - a.x) * s, a.y + (b.y - a.y) * s, a.z + (b.z - a.z) * s };
+              if (q2) {
+                t3_vec3 a2 = q2[j], b2 = q2[j + 1], y = { a2.x + (b2.x - a2.x) * s, a2.y + (b2.y - a2.y) * s, a2.z + (b2.z - a2.z) * s };
+                x = (t3_vec3){ x.x + (y.x - x.x) * t, x.y + (y.y - x.y) * t, x.z + (y.z - x.z) * t };
+              }
+              if (h->skirt && j == 0 && s == 0) continue; /* (the hips' ring, where the garment is sewn on) */
+              for (int k = 0; k < HS_N; k++) {
+                if (!(h->shapes & HSB(k))) continue;
+                float e = seg_depth(x, sa[k], sb[k], SWING_GEO[kind].r[k]);
+                if (e > d) { d = e; if (!pass) HAIR_DEEP_SHAPE[ci] = k * 10 + (j < 9 ? j : 9); }
+              }
+            }
+        }
+        if (pass && rigid) rigid[ci] = d;
+        if (!pass && depth) depth[ci] = d;
+      }
+    }
+  }
+  return true;
+}
+static float hair_lag_of(const float l[3]) { return sqrtf(l[0] * l[0] + l[1] * l[1] + l[2] * l[2]); }
+static void hair_sample(int i) {
+  rig *r = &RIG[i];
+  if (!r->made || !r->inst || !r->swing[0].id) return;
+  if (HPOSE_BOUND && HPOSE_ROOT != r->root.id) cw_pose_free(&HPOSE), HPOSE_BOUND = false;
+  if (!HPOSE_BOUND) { if (!cw_pose_bind(&HPOSE, r->inst)) return; HPOSE_BOUND = true, HPOSE_ROOT = r->root.id; }
+  cw_pose_capture(&HPOSE);
+  cw_pose_update_model(&HPOSE);
+  float lag[SWING_MAXC][3] = { { 0 } }, depth[SWING_MAXC] = { 0 }, rigid[SWING_MAXC] = { 0 }, hy = 0;
+  if (!hair_probe(r->kind, &HPOSE, lag, depth, rigid, &hy)) return;
+  float worst = 0, deep = -1;
+  for (int c = 0; c < swing_chains(r->kind); c++) worst = fmaxf(worst, hair_lag_of(lag[c])), deep = fmaxf(deep, depth[c]);
+  VST.hair_lag = worst * 1000, VST.hair_clip = deep * 1000;
+  if (!HREC || hrec_n >= hrec_want || i != hrec_actor) return;
+  const actor *a = &S.a[i];
+  hrec_row *w = &HREC[hrec_n++];
+  memset(w, 0, sizeof *w);
+  w->tick = mrec_tick, w->state = a->state, w->speed = a->speed, w->yaw = r->drawn_yaw, w->hyaw = wrapf(r->drawn_yaw + hy), w->at = r->drawn_at, w->us = cw_skeleton_last_us(r->model);
+  memcpy(w->deep, HAIR_DEEP_SHAPE, sizeof w->deep);
+  memcpy(w->lag, lag, sizeof lag), memcpy(w->depth, depth, sizeof depth), memcpy(w->rigid, rigid, sizeof rigid);
+}
+static void hair_apply(void) { /* the switches onto every figure's springs as they are */
+  for (int i = 0; i < MAXA; i++) {
+    rig *r = &RIG[i];
+    if (!r->made) continue;
+    for (int gi = 0; gi < SWING_MAXG; gi++) {
+      cw_node sb = r->swing[gi];
+      if (!sb.id || !cw_node_valid(sb)) continue;
+      cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
+      if (SWING[r->kind][gi].skirt) cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? SWING[r->kind][gi].skirt : "OFF"));
+      for (int c = 0; c < cw_node_child_count(sb); c++) {
+        cw_node ch = cw_node_child(sb, c);
+        if (!cw_node_type_is(cw_node_get_type(ch), "SpringBoneChain3D")) continue;
+        cw_node_set(ch, "stiffness", cw_val_float(HAIR_SOFT ? 30 : SWING[r->kind][gi].stiffness));
+        cw_node_set(ch, "damping", cw_val_float(HAIR_SOFT ? 0 : HAIR_DAMP >= 0 ? HAIR_DAMP : SWING[r->kind][gi].damping));
+      }
+    }
+  }
+}
+static void cmd_hair(int argc, const char **argv, cw_reply *rp) {
+  if (argc >= 3 && !strcmp(argv[1], "wear")) { HAIR_WEAR = atoi(argv[2]) >= 0 && atoi(argv[2]) < K_KINDS ? atoi(argv[2]) : -1; cw_reply_printf(rp, "{\"wear\":%d}", HAIR_WEAR); return; }
+  if (argc >= 3 && !strcmp(argv[1], "springs")) { HAIR_OFF = atoi(argv[2]) == 0; cw_reply_printf(rp, "{\"springs\":%d}", !HAIR_OFF); return; }
+  if (argc >= 3 && !strcmp(argv[1], "collide")) { HAIR_COLLIDE = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"collide\":%d}", HAIR_COLLIDE); return; }
+  if (argc >= 3 && !strcmp(argv[1], "skirt")) { HAIR_SKIRT = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"skirt\":%d}", HAIR_SKIRT); return; }
+  if (argc >= 3 && !strcmp(argv[1], "soft")) { HAIR_SOFT = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"soft\":%d}", HAIR_SOFT); return; }
+  if (argc >= 3 && !strcmp(argv[1], "damping")) { HAIR_DAMP = (float)atof(argv[2]); hair_apply(); cw_reply_printf(rp, "{\"damping\":%g}", HAIR_DAMP); return; }
+  if (argc >= 2 && !strcmp(argv[1], "rec")) {
+    hrec_want = argc >= 3 ? CW_CLAMP(atoi(argv[2]), 1, HREC_MAX) : 600;
+    hrec_actor = argc >= 4 ? atoi(argv[3]) : 0;
+    if (!HREC) HREC = (hrec_row *)calloc(HREC_MAX, sizeof *HREC);
+    hrec_n = 0;
+    cw_reply_printf(rp, "{\"recording\":%d,\"actor\":%d}", hrec_want, hrec_actor);
+    return;
+  }
+  if (argc >= 2 && !strcmp(argv[1], "info")) {
+    int a = hrec_actor >= 0 ? hrec_actor : 0, kind = RIG[a].made ? RIG[a].kind : -1, n = 0;
+    cw_reply_printf(rp, "{\"rows\":%d,\"want\":%d,\"kind\":%d,\"springs\":%d,\"collide\":%d,\"damping\":%g,\"chains\":[", hrec_n, hrec_want, kind, !HAIR_OFF, HAIR_COLLIDE, HAIR_DAMP);
+    for (int gi = 0; kind >= 0 && gi < SWING_MAXG && SWING[kind][gi].node; gi++)
+      for (int c = 0; c < SWING[kind][gi].n; c++) cw_reply_printf(rp, "%s{\"name\":\"%s\",\"group\":\"%s\",\"bones\":%d}", n++ ? "," : "", SWING[kind][gi].chain[c], SWING[kind][gi].node, SWING[kind][gi].bones);
+    cw_reply_printf(rp, "],\"shapes\":[");
+    for (int k = 0; k < HS_N; k++) cw_reply_printf(rp, "%s\"%s\"", k ? "," : "", SWING_SHAPE[k].name);
+    cw_value v;
+    int resets = 0;
+    for (int gi = 0; gi < SWING_MAXG; gi++) if (RIG[a].made && RIG[a].swing[gi].id && cw_node_get_prop(RIG[a].swing[gi], "resets", &v)) resets += (int)v.i;
+    cw_reply_printf(rp, "],\"active\":%d,\"resets\":%d}", RIG[a].made ? RIG[a].hair_on : 0, resets);
+    return;
+  }
+  if (argc >= 4 && !strcmp(argv[1], "get")) {
+    int from = CW_CLAMP(atoi(argv[2]), 0, hrec_n), n = CW_CLAMP(atoi(argv[3]), 0, hrec_n - from);
+    int a = hrec_actor >= 0 ? hrec_actor : 0, nc = RIG[a].made ? swing_chains(RIG[a].kind) : 0;
+    cw_reply_printf(rp, "[");
+    for (int k = 0; k < n; k++) {
+      const hrec_row *w = &HREC[from + k];
+      cw_reply_printf(rp, "%s[%d,%d,%.4f,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f", k ? "," : "", w->tick, w->state, w->speed, w->yaw, w->hyaw, w->at.x, w->at.y, w->at.z, w->us);
+      for (int c = 0; c < nc; c++) cw_reply_printf(rp, ",%.5f,%.5f,%.5f,%.5f,%.5f,%d", w->lag[c][0], w->lag[c][1], w->lag[c][2], w->depth[c], w->rigid[c], w->deep[c]);
+      cw_reply_printf(rp, "]");
+    }
+    cw_reply_printf(rp, "]");
+    return;
+  }
+  cw_reply_error(rp, "hair rec <ticks> [actor] | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1");
+}
+
 /* the rig follows its actor, once per fixed tick (main.c calls it after the rules) */
 void view_fixed(void) {
   static bool mrec_cmd;
-  if (!mrec_cmd) cw_debug_command("motion", "motion rec <ticks> [actor] | info | get <from> <n>: the motion recorder (tests/emberthrone-motion.mjs)", cmd_motion), mrec_cmd = true;
+  if (!mrec_cmd) {
+    cw_debug_command("motion", "motion rec <ticks> [actor] | info | get <from> <n>: the motion recorder (tests/emberthrone-motion.mjs)", cmd_motion);
+    cw_debug_command("hair", "hair rec <ticks> [actor] | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1: the hair's springs (tests/emberthrone-hair.mjs)", cmd_hair);
+    mrec_cmd = true;
+  }
   static bool frm_cmd;
   if (!frm_cmd) cw_debug_command("framing", "framing rec <frames> | get: the lock-on framing recorder (tests/emberthrone-lockon.mjs)", cmd_framing), frm_cmd = true;
   static bool hooked;
@@ -831,10 +1147,11 @@ void view_fixed(void) {
       if (r->made && !a->used) r->still = false;
       continue;
     }
-    if (!r->made || r->kind != a->kind || r->role != a->role || (a->kind >= K_RAIDER && a->kind <= K_LANCER && r->region != a->region)) {
+    const int want = i == 0 && HAIR_WEAR >= 0 ? HAIR_WEAR : a->kind; /* (a test's figure: "hair wear") */
+    if (!r->made || r->kind != want || r->role != a->role || (a->kind >= K_RAIDER && a->kind <= K_LANCER && r->region != a->region)) {
       if (r->made && cw_node_valid(r->root)) cw_node_free(r->root);
       if (r->made && r->trail.id && cw_node_valid(r->trail)) cw_node_free(r->trail);
-      rig_make(i, a->kind);
+      rig_make(i, want);
       if (!r->made) continue;
     }
     VST.rigs++;
@@ -1035,6 +1352,13 @@ void view_fixed(void) {
     r->feet_w += ((plant ? stride : 0.0f) - r->feet_w) * 0.2f;
     cw_node_set(r->feet, "active", cw_val_bool(!r->rd && !r->still && r->feet_w > 0.01f));
     cw_node_set(r->feet, "influence", cw_val_float(cw_clampf(r->feet_w, 0, 1)));
+    if (r->swing[0].id) { /* the springs: a figure near the camera, not a ragdoll (a far one's parts hang as animated) */
+      bool on = !HAIR_OFF && near && !r->rd && !r->still && (i < MAXP || dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z) < 25 * 25);
+      if (on != r->hair_on) {
+        for (int gi = 0; gi < SWING_MAXG; gi++) if (r->swing[gi].id) cw_node_set(r->swing[gi], "active", cw_val_bool(on));
+        r->hair_on = on;
+      }
+    }
     if (plant && i == 0) {
       cw_foot_state fs;
       VST.feet = 0, VST.foot_err = 0;
@@ -1191,7 +1515,10 @@ static void cmd_framing(int argc, const char **argv, cw_reply *rp) {
 void view_sync(float alpha) {
   (void)alpha;
   framing_sample();
-  for (int i = 0; i < MAXA; i++) if (mrec_due[i]) mrec_due[i] = false, mrec_sample(i);
+  for (int i = 0; i < MAXA; i++) {
+    if (mrec_due[i] && (i == 0 || i == hrec_actor)) hair_sample(i);
+    if (mrec_due[i]) mrec_due[i] = false, mrec_sample(i);
+  }
   /* warning rings under the area blows, through their wind-up */
   int n = 0;
   for (int i = MAXP; i < MAXA && n < 8; i++) {

@@ -170,15 +170,17 @@ def fine_joints_of(arm):
     return FJ
 
 
-def fine_weights(o):
-    """per vertex: the fine bones' weights, as an (n, len(FINE_NAMES)) array"""
+def fine_weights(o, names=None):
+    """per vertex: the fine bones' weights (FINE_NAMES and the figure's hair bones), as an (n, len(names)) array"""
+    names = names or FINE_NAMES
     n = len(o.data.vertices)
-    W = np.zeros((n, len(FINE_NAMES)), np.float32)
+    W = np.zeros((n, len(names)), np.float32)
     gi = {g.index: g.name for g in o.vertex_groups}
-    col = {b: i for i, b in enumerate(FINE_NAMES)}
+    col = {b: i for i, b in enumerate(names)}
     for v in o.data.vertices:
         for g in v.groups:
-            t = fine_of(gi.get(g.group))
+            nm = gi.get(g.group)
+            t = nm if nm in col else fine_of(nm)
             if t in col:
                 W[v.index, col[t]] += g.weight
     s = W.sum(1, keepdims=True)
@@ -531,7 +533,8 @@ def skin_atlas(o, skin_mats):
 def dump(o, FJ, sp, mats_info, path_json, path_bin):
     me = o.data
     me.calc_loop_triangles()
-    W = fine_weights(o)
+    names = FINE_NAMES + sp.get('_hair_bones', [])
+    W = fine_weights(o, names)
     order = np.argsort(-W, 1)[:, :4]
     top = np.take_along_axis(W, order, 1)
     top /= np.maximum(top.sum(1, keepdims=True), 1e-9)
@@ -572,11 +575,144 @@ def dump(o, FJ, sp, mats_info, path_json, path_bin):
         for b in blobs:
             f.write(b)
     G = lambda v: [v.x, v.z, -v.y]
-    js = {'name': sp['name'], 'bones': FINE_NAMES, 'parents': {k: FINE_PARENT_SRC[k] for k in FINE_NAMES}, 'joints': {k: G(v) for k, v in FJ.items()}, 'groups': meta,
+    js = {'name': sp['name'], 'bones': names, 'parents': {k: FINE_PARENT_SRC[k] for k in names}, 'joints': {k: G(v) for k, v in FJ.items()}, 'groups': meta,
           'tris': sum(len(g['idx']) // 3 for g in groups.values()), 'source': sp.get('source', [])}
     with open(path_json, 'w') as f:
         json.dump(js, f, indent=1)
     log(sp['name'], 'tris', js['tris'], 'groups', [(m['key'], len(groups[m['key']]['idx']) // 3) for m in meta])
+
+
+# ── hair chains ───────────────────────────────────────────────────────────────────────────────
+def swing_chains(o, FJ, sp, key, src, parent):
+    """parts that swing on bone chains for the game's SpringBone3D (view.c SWING): long hair and beards (key
+    'hair_chains', the hair's own vertices in group src 'HairSrc', the chains under parent 'Head'), robes and coats
+    ('skirt_chains', the generated cloth in 'SkirtSrc', under 'Hips'). Each chain hangs at an angle round the parent
+    joint's vertical (sp[key]: name, az in degrees from the face, + the figure's left; root, the height below which it
+    swings, in metres over the parent joint; bones; share, at most this much of a vertex's weight goes to the chains),
+    its joints down the middle of the part's own shell at that angle, from the root to the ends (its
+    lowest vertices there), and an end marker at the tip (<name>_end). The part's vertices above the root keep their weights; below
+    it each is shared between the two chains either side of it by angle (a chain alone fades out over 'fade' degrees
+    where there is no neighbour, so a fringe and a beard's jaw line stay on the head) and along each
+    chain's bones by its height, the first bone easing in at the root; what it had before gives way by the same share."""
+    chains = sp.get(key)
+    if not chains:
+        return
+    me = o.data
+    n = len(me.vertices)
+    P = np.empty(n * 3, np.float32)
+    me.vertices.foreach_get('co', P)
+    P = P.reshape(n, 3).astype(np.float64)
+    gi = o.vertex_groups[src].index
+    hair = np.zeros(n, bool)
+    for v in me.vertices:
+        for g in v.groups:
+            if g.group == gi and g.weight > 0.5:
+                hair[v.index] = True
+    H = np.array(FJ[parent][:], np.float64)
+    Q = P - H
+    az = np.degrees(np.arctan2(Q[:, 0], -Q[:, 1]))  # 0: the face (-y), +90: the figure's left (+x)
+    wrap = lambda a: (a + 180) % 360 - 180
+    bones = []
+    info = []
+    for c in chains:
+        half = c.get('width', 22)
+        sec = hair & (np.abs(wrap(az - c['az'])) < half)
+        zr = c['root']
+        zh = float(np.percentile(Q[sec & (Q[:, 2] < zr), 2], 2))  # the ends (the lowest hair, a few strays left out)
+        nb = c.get('bones', 3)
+        J = []
+        for k in range(nb + 1):
+            z = zr + (zh - zr) * k / nb
+            band = 0.012
+            m = sec & (np.abs(Q[:, 2] - z) < band)
+            while m.sum() < 12:
+                band *= 1.5
+                m = sec & (np.abs(Q[:, 2] - z) < band)
+            p = Q[m].mean(0)
+            p[2] = z
+            J.append(p)
+        c['_J'], c['_zh'] = J, zh
+        info.append((c['name'], round(zh, 3), [tuple(np.round(j, 3)) for j in J]))
+    # mirrored pairs made exactly symmetric (the source hair is symmetric to a millimetre; the bones should be too)
+    by = {c['name']: c for c in chains}
+    for c in chains:
+        if c['name'].endswith('L') and c['name'][:-1] + 'R' in by:
+            r = by[c['name'][:-1] + 'R']
+            for k in range(len(c['_J'])):
+                a, b = c['_J'][k], r['_J'][k]
+                m = (a + b * np.array([-1, 1, 1])) / 2
+                c['_J'][k], r['_J'][k] = m, m * np.array([-1, 1, 1])
+            c['_zh'] = r['_zh'] = (c['_zh'] + r['_zh']) / 2
+    # the bones (after the figure's own: Head's children) and their joints
+    for c in chains:
+        nb = len(c['_J']) - 1
+        for k in range(nb + 1):
+            nm = '%s_end' % c['name'] if k == nb else '%s%d' % (c['name'], k)  # the tip: an end marker, as glTF exporters write it
+            bones.append(nm)
+            FINE_PARENT_SRC[nm] = parent if k == 0 else '%s%d' % (c['name'], k - 1)
+            FJ[nm] = Vector((H + c['_J'][k]).tolist())
+    sp['_hair_bones'] = sp.get('_hair_bones', []) + bones
+    # the weights
+    order = sorted(chains, key=lambda c: c['az'])
+    W = {nm: np.zeros(n) for nm in bones}
+    share = np.zeros(n)
+    idx = np.nonzero(hair)[0]
+    for i in idx:
+        a = az[i]
+        # the chains either side of this angle and each one's share
+        best = []
+        if len(order) == 1:  # one chain: it fades out either side
+            c0 = order[0]
+            best = [(c0, max(0.0, 1 - abs(wrap(a - c0['az'])) / c0.get('fade', 30)))]
+        for j in range(len(order) if len(order) > 1 else 0):
+            c0, c1 = order[j], order[(j + 1) % len(order)]
+            gap = (c1['az'] - c0['az']) % 360 or 360
+            t = ((a - c0['az']) % 360) / gap
+            if t <= 1:
+                if gap <= sp.get('hair_gap', 80):
+                    best = [(c0, 1 - t), (c1, t)]
+                else:  # no neighbour across (the face): each fades out alone
+                    f0 = max(0.0, 1 - abs(wrap(a - c0['az'])) / c0.get('fade', 30))
+                    f1 = max(0.0, 1 - abs(wrap(a - c1['az'])) / c1.get('fade', 30))
+                    best = [(c0, f0), (c1, f1)]
+                break
+        for c, wa in best:
+            wa *= c.get('share', 1.0)  # at most this share of a vertex goes to the chains (0: the bones only, no weights)
+            if wa <= 0:
+                continue
+            J, nb = c['_J'], len(c['_J']) - 1
+            zr, zh = c['root'], c['_zh']
+            s = (zr - Q[i, 2]) / max(1e-6, zr - zh) * nb  # along the chain, in bones (0: the root, nb: the ends)
+            if s <= 0:
+                continue
+            u = s - 0.5
+            if u < 0:  # the top of the first bone eases in from the head
+                ws = {0: 2 * s}
+            else:
+                k = int(np.floor(u))
+                f = u - k
+                if k >= nb - 1:
+                    ws = {nb - 1: 1.0}
+                else:
+                    ws = {k: 1 - f, k + 1: f}
+            for k, w in ws.items():
+                W['%s%d' % (c['name'], k)][i] += wa * w
+            share[i] += wa * sum(ws.values())
+    share = np.minimum(share, 1)
+    # the hair's head weight scaled down by its share; the chains' weights in
+    for i in idx:
+        v = me.vertices[i]
+        if share[i] <= 0:
+            continue
+        for g in v.groups:
+            if g.group != gi:
+                g.weight *= (1 - share[i])
+    for nm in bones:
+        g = o.vertex_groups.new(name=nm)
+        for i in idx:
+            if W[nm][i] > 1e-4:
+                g.add([int(i)], float(W[nm][i]), 'REPLACE')
+    log(sp['name'], key, info, 'hair verts', len(idx), 'swinging', int((share > 0.01).sum()))
 
 
 # ── one figure ────────────────────────────────────────────────────────────────────────────────
@@ -611,7 +747,11 @@ def build(sp):
             bpy.data.objects.remove(o)
     parts += [o for o in head if o.name in bpy.data.objects]
     for h in sp.get('hair', []):
-        parts += load(h)
+        new = load(h)
+        for ho in new:  # the hair's own vertices, for its spring chains (hair_chains below)
+            if ho.type == 'MESH':
+                ho.vertex_groups.new(name='HairSrc').add(range(len(ho.data.vertices)), 1.0, 'REPLACE')
+        parts += new
     arms = [o for o in bpy.data.objects if o.type == 'ARMATURE']
     for a in arms:
         pose_arms_down(a, sp.get('arm_out', 6))
@@ -637,8 +777,11 @@ def build(sp):
     crown = max(me.vertices[l].co.z for p in me.polygons if p.material_index in skin_idx for l in p.vertices)
     sp['_crown'] = crown
     J, FJ = deform(o, J, sp, FJ)
+    sp['_hair_bones'] = []
+    swing_chains(o, FJ, sp, 'hair_chains', 'HairSrc', 'Head')
     # generated pieces (weighted to the game's bones by name: vertex groups named as GAME_BONES)
     dress.dress(o, J, sp)
+    swing_chains(o, FJ, sp, 'skirt_chains', 'SkirtSrc', 'Hips')
     mats_info = textures(o, sp)
     dump(o, FJ, sp, mats_info, os.path.join(MOUT, sp['name'] + '.json'), os.path.join(MOUT, sp['name'] + '.bin'))
 

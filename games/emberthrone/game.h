@@ -250,7 +250,7 @@ void view_lod(cw_node cam, int height); /* each figure's level of detail from it
 bool view_screen(t3_vec3 p, float *u, float *v);
 void view_reset(void);
 extern bool g_hide_hud;
-typedef struct view_stats { int rigs, drawn, feet; float foot_err; } view_stats;
+typedef struct view_stats { int rigs, drawn, feet; float foot_err, hair_lag, hair_clip; } view_stats; /* hair: the lead player's largest tip lag and deepest point in the body (mm) */
 view_stats view_get_stats(void);
 
 /* ── fx ────────────────────────────────────────────────────────────── */

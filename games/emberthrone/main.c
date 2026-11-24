@@ -56,7 +56,7 @@ static struct {
   int32_t swings, crits, staggers, blocked, held, clears, stones, rumbles;
   int32_t hp[MAXP], stam[MAXP], px[MAXP], py[MAXP], pz[MAXP], pstate[MAXP], target, foes_live, rigs, feet, flags0, flags3, cam_clip_t, world_hash;
   uint32_t hash;
-  float cam_clip, cam_jerk;
+  float cam_clip, cam_jerk, hair_lag, hair_clip;
   int32_t cam_jerks;
   t3_vec3 cam_p[2];
   int cam_n;
@@ -282,6 +282,8 @@ static void init(void *u) {
   cw_debug_i32("world.hash", &G.world_hash);
   cw_debug_i32("view.rigs", &G.rigs);
   cw_debug_i32("view.feet", &G.feet);
+  cw_debug_f32("view.hair_lag", &G.hair_lag);   /* the lead player's hair: its tips' largest lag behind the head (mm) */
+  cw_debug_f32("view.hair_clip", &G.hair_clip); /* and its deepest point in the skull, jaw, neck or shoulders (mm; below 0: clear) */
   cw_debug_i32("view.cam_clip_t", &G.cam_clip_t);
   cw_debug_f32("view.cam_clip", &G.cam_clip);
   cw_debug_i32("view.cam_jerks", &G.cam_jerks);
@@ -367,7 +369,7 @@ static void fixed_update(void *u, double dt) {
     G.px[i] = (int)(a->mv.position.x * 100), G.py[i] = (int)(a->mv.position.y * 100), G.pz[i] = (int)(a->mv.position.z * 100);
   }
   view_stats vs = view_get_stats();
-  G.rigs = vs.rigs, G.feet = vs.feet;
+  G.rigs = vs.rigs, G.feet = vs.feet, G.hair_lag = vs.hair_lag, G.hair_clip = vs.hair_clip;
 }
 
 /* ── the HUD ────────────────────────────────────────────────────────── */

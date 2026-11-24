@@ -7,6 +7,9 @@
 #     read better from a third-person camera; thick: flesh pushed out from each bone (bulk); shoulder: each arm moved out
 #   recolor: hue moves on the outfit's painted texture; outfit_grade/skin_grade: sat, val, tint over all of it
 #   skin_tint: the face's mean colour (sRGB 0..1); hair_color; iris; glow_eyes (emissive colour)
+#   hair_chains, skirt_chains: hair and beards, robes and coats on bone chains for spring bones (build_chars.py hair_chains, view.c HAIR): each chain's name, its angle
+#     round the head (degrees from the face, + the figure's left), the height (m over the head joint) below which it
+#     swings, its bones
 #   wear: generated pieces (dress.py): cuirass, pauldrons, helm (dome, crest, horns, crown, fins), robe, coat, cape,
 #     mask, bracers
 GREEN = 105  # the ranger outfit's green cloth (hue, degrees)
@@ -17,6 +20,22 @@ GOLD = (0.95, 0.68, 0.22)
 # the source rig's elbows sit high and its arms hang short: every figure's upper arm lengthened by this share of its
 # height, the elbow near 0.64 of the stature and the fingertips at mid thigh
 ARM_LEN = 0.025
+# the long hair (Hair_Long, a bob to the jaw or the neck): five chains of three bones round the back and the sides, free
+# below the ears; the fringe and the crown stay on the head
+LONG_HAIR = [dict(name='HairBack', az=180, root=0.08), dict(name='HairBackL', az=125, root=0.08), dict(name='HairBackR', az=-125, root=0.08),
+             dict(name='HairSideL', az=78, root=0.08, fade=36), dict(name='HairSideR', az=-78, root=0.08, fade=36)]
+# a beard's chin swings on one short chain; the jaw line stays on the head
+BEARD = [dict(name='Beard', az=0, root=0.0, bones=2, fade=45)]
+# a robe to the floor: eight chains of four bones round the hips, in order round the body (the engine links each to the
+# next: skirt RING); an open coat to below the knee: five of three round its sides and back, from one front edge to the
+# other (skirt OPEN). Both hang from the waist. They carry no weight yet ('share' 0: the cloth stays on the legs as
+# built) until their springs settle on these figures (view.c SWING)
+ROBE = [dict(name='Robe' + n, az=a, root=0.04, bones=4, share=0.0) for n, a in
+        (('F', 0), ('FL', 45), ('L', 90), ('BL', 135), ('B', 180), ('BR', -135), ('R', -90), ('FR', -45))]
+COAT = [dict(name='Coat' + n, az=a, root=0.04, bones=3, fade=40, share=0.0) for n, a in
+        (('L', 75), ('BL', 125), ('B', 180), ('BR', -125), ('R', -75))]
+# the wayfarer's buns stay tied; the two locks in front of her ears swing (two bones each)
+LOCKS = [dict(name='HairLockL', az=68, root=0.07, bones=2, fade=30), dict(name='HairLockR', az=-68, root=0.07, bones=2, fade=30)]
 # a big frame (the brutes and two of the bosses) is athletic and powerful: broad across the chest, the back and the
 # shoulders (x), a deep chest and a flat front below it (y), the limbs full at the shoulder and the hip and tapering to the
 # elbow, the wrist, the knee and the ankle ('end'). The peasant outfit's loose sleeves and breeches are taken in so the
@@ -26,13 +45,13 @@ BIG = {'Chest': dict(x=1.4, y=1.2), 'Spine': dict(x=1.16, y=0.98), 'Hips': dict(
 SPECS = [
     # the wayfarer (player one): quick and light, a teal tunic under amber leather, copper hair in buns, one steel
     # pauldron, bracers and tall boots
-    dict(name='wayfarer', outfit='Female_Ranger', decimate=0.65, head='Superhero_Female_FullBody', hair=['Hair_Buns'], drop=['Head_Hood'],
+    dict(name='wayfarer', outfit='Female_Ranger', decimate=0.65, head='Superhero_Female_FullBody', hair=['Hair_Buns'], hair_chains=LOCKS, drop=['Head_Hood'],
          height=1.70, head_scale=1.1, hand_scale=1.04, arm_out=7, arm_len=ARM_LEN, foot_scale=0.93, thick={'UpperLeg': dict(x=0.97, y=0.93)},
          recolor=[dict(hue=GREEN, width=40, to=178, sat=1.05, val=1.15), dict(hue=28, width=14, minsat=0.3, to=32, sat=1.15, val=1.1)],
          skin_tint=(0.78, 0.55, 0.42), hair_color=(0.62, 0.2, 0.06), iris=(0.18, 0.5, 0.32), wear=[]),
     # the warden (player two): broad, a crimson tunic, steel plate over it (both shoulders, a breastplate), dark hair
     # and a short beard
-    dict(name='warden', outfit='Male_Ranger', decimate=0.6, head='Superhero_Male_FullBody', hair=['Hair_SimpleParted', 'Hair_Beard'], drop=['Head_Hood', 'Acc_Pauldron'],
+    dict(name='warden', outfit='Male_Ranger', decimate=0.6, head='Superhero_Male_FullBody', hair=['Hair_SimpleParted', 'Hair_Beard'], hair_chains=BEARD, drop=['Head_Hood', 'Acc_Pauldron'],
          height=1.80, head_scale=1.08, hand_scale=1.0, arm_out=9, arm_len=ARM_LEN, thick={'Chest': dict(x=1.12, y=1.06), 'Spine': dict(x=1.04, y=1.0)}, shoulder=0.015,
          recolor=[dict(hue=GREEN, width=40, to=352, sat=1.15, val=1.2), dict(hue=28, width=14, minsat=0.3, sat=0.9, val=0.75)],
          skin_tint=(0.55, 0.36, 0.26), hair_color=(0.16, 0.09, 0.05), iris=(0.25, 0.32, 0.55),
@@ -53,7 +72,7 @@ SPECS = [
                dict(kind='cuirass', color=BRONZE, trim=(0.78, 0.55, 0.25), ridge=0.02),
                dict(kind='bracers', color=BRONZE, rough=0.4)]),
     # tide lancers: tall and lean, a long open teal coat, a pale mane, a dark cloth mask, cyan eyes, a spear
-    dict(name='lancer', outfit='Male_Peasant', head='Superhero_Male_FullBody', hair=['Hair_Long'], drop=[], height=1.84, head_scale=1.05, hand_scale=1.0, arm_out=8, arm_len=ARM_LEN,
+    dict(name='lancer', outfit='Male_Peasant', head='Superhero_Male_FullBody', hair=['Hair_Long'], hair_chains=LONG_HAIR, skirt_chains=COAT, drop=[], height=1.84, head_scale=1.05, hand_scale=1.0, arm_out=8, arm_len=ARM_LEN,
          thick={'Chest': 0.95, 'UpperArm': dict(x=0.68, end=0.66), 'UpperLeg': 0.95}, recolor=[dict(hue=CREAM, width=25, minsat=0.05, to=215, sat=1.8, val=0.45), dict(hue=25, width=20, minsat=0.25, to=210, sat=0.5, val=0.6)],
          skin_tint=(0.62, 0.56, 0.6), skin_grade=dict(sat=0.6), hair_color=(0.7, 0.75, 0.82), iris=(0.2, 0.95, 1.0), glow_eyes=(0.15, 0.9, 1.0),
          wear=[dict(kind='coat', color=(0.05, 0.42, 0.42), trim=(0.55, 0.85, 0.9), trim_metal=1, hem=0.3, open=0.5, flare=0.14, under_arm=0.04),
@@ -68,7 +87,7 @@ SPECS = [
                dict(kind='cuirass', color=(0.13, 0.24, 0.1), trim=(0.45, 0.42, 0.22), ridge=0.025),
                dict(kind='bracers', color=(0.15, 0.27, 0.11))]),
     # the Tidecaller: tall, a violet robe to the floor, silver hair, a shell crown of fins, cyan shoulder shells
-    dict(name='tidecaller', outfit='Female_Peasant', head='Superhero_Female_FullBody', hair=['Hair_Long'], drop=[], height=1.76, head_scale=1.06, hand_scale=1.0, arm_out=9, arm_len=ARM_LEN, foot_scale=0.92,
+    dict(name='tidecaller', outfit='Female_Peasant', head='Superhero_Female_FullBody', hair=['Hair_Long'], hair_chains=LONG_HAIR, skirt_chains=ROBE, drop=[], height=1.76, head_scale=1.06, hand_scale=1.0, arm_out=9, arm_len=ARM_LEN, foot_scale=0.92,
          recolor=[dict(hue=CREAM, width=25, minsat=0.05, to=275, sat=1.8, val=0.5), dict(hue=25, width=20, minsat=0.25, to=260, sat=0.6, val=0.55)],
          skin_tint=(0.66, 0.68, 0.74), skin_grade=dict(sat=0.5), hair_color=(0.58, 0.64, 0.78), iris=(0.75, 0.4, 1.0), glow_eyes=(0.7, 0.35, 1.0),
          wear=[dict(kind='robe', color=(0.2, 0.09, 0.42), trim=(0.4, 0.85, 0.95), trim_metal=1, hem=0.035, flare=0.2, follow=0.5),
@@ -76,7 +95,7 @@ SPECS = [
                dict(kind='helm', color=(0.35, 0.78, 0.86), trim=(0.3, 0.72, 0.84), size=1.06, fins=5, style='fins', dome=False)]),
     # the Ember King: the biggest, gold and crimson plate, a crowned helm, eyes like coals (his crimson cape is cloth in the
     # game: view.c CAPE)
-    dict(name='emberking', outfit='Male_Peasant', head='Superhero_Male_FullBody', hair=['Hair_Beard'], drop=[], height=1.80, head_scale=1.0, hand_scale=1.02, arm_out=14, arm_len=ARM_LEN, foot_scale=0.92,
+    dict(name='emberking', outfit='Male_Peasant', head='Superhero_Male_FullBody', hair=['Hair_Beard'], hair_chains=BEARD, drop=[], height=1.80, head_scale=1.0, hand_scale=1.02, arm_out=14, arm_len=ARM_LEN, foot_scale=0.92,
          thick=BIG, shoulder=0.08,
          recolor=[dict(hue=CREAM, width=25, minsat=0.05, to=355, sat=2.2, val=0.5), dict(hue=25, width=20, minsat=0.25, to=5, sat=0.9, val=0.55)],
          skin_tint=(0.5, 0.33, 0.27), hair_color=(0.35, 0.08, 0.03), iris=(1.0, 0.45, 0.05), glow_eyes=(1.0, 0.42, 0.05),

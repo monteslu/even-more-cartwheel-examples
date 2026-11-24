@@ -139,7 +139,15 @@ threat in front (a foe winding up at it first, else the nearest one on the hunt 
 over the walks while it fights, so a figure comes back to its guard out of a roll, a hit or a cut. The clips advance in
 the engine's node phase, before the skeleton modifiers, so the look and the feet adjust the pose that is drawn; a
 figure turns at most half a radian a tick on screen. The Ember King's cape is cloth
-on his chest bone that swings and settles. Feet are planted on slopes and stairs at a stand and a walk (FootPlacement3D on the physics ground, each kind's
+on his chest bone that swings and settles. Hair moves with the body: the lancers' and the Tidecaller's long hair hangs on
+five chains of three bones round the back and the sides, the wayfarer's two locks on two bones each (her buns stay tied),
+the warden's and the Ember King's beards on one short chain at the chin, each chain found by
+tools/chars/blender/build_chars.py down the middle of the hair's own shell and the hair weighted along it, the crown,
+the fringe and the jaw line left on the head. In the game a SpringBone3D after the look swings them: the tips lag behind
+the head on a turn, a start or a stop and settle back to where they hang, kept out of the skull, the jaw, the neck and
+the tops of the shoulders (capsules the size of the figures' own skin), on the figures near the camera; a step up a
+ledge moves them with the body instead of flinging them. The robe and the coats have their chains in the rig, from the
+waist, and stay on the legs as built until their springs settle on these figures. Feet are planted on slopes and stairs at a stand and a walk (FootPlacement3D on the physics ground, each kind's
 ankle height; off in a run); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
@@ -160,6 +168,12 @@ region's colours (the outfit's material tinted per kind and region).
   leans into a turn, the stand is no sine loop, the head on the locked foe (10 degrees) and on the threat when free (15
   degrees), the hands back in the guard after a recovery (12 cm, in the chest's frame). Its control is the procedural build, which fails every check. It also
   writes a video and native-scale strips of each moment, and measures the frame cost.
+- `tests/emberthrone-hair.mjs` (romdev, the RELEASE cart): the hair and the beards on their springs, from the bones
+  (view.c's hair recorder) through a pad script (run, stop, a turn, a stop, a turn about, a stop) with the player
+  wearing each figure that has them: the tips swing on each turn and each stop and settle within a second, nothing
+  shakes at rest, and no chain goes into the skull, the jaw, the neck or the shoulders. Controls: the old rig (the
+  springs off, the hair carried by the head), the springs without collisions and slack undamped chains, each failing its
+  check. It writes native-scale strips of each turn and stop round the head.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
   just before its busiest moment (its phase roar). Controls: each under the engine's 8 Hz strobe, and the fight under
