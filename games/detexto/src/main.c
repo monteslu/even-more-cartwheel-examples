@@ -511,6 +511,7 @@ static const char *const PAUSE_CARD[3] = {
   "{orbit_left|orbit_right}: go round the structure (right stick)",
   "{fire}: fire   {ammo_prev|ammo}: change ammunition   {view}: wide view",
 };
+static bool g_pause_play; /* the pause menu has the game's two items (pause_items_sync, below): its column is two rows longer */
 static float pause_card_bottom; /* debug field ui.pause_card_bottom: the card's foot, a share of the canvas height (0: not drawn) */
 static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
   (void)u;
@@ -527,7 +528,8 @@ static void draw_background(cw_shell_screen screen, cw_vec2 cs, void *u) {
     float bx = screen == CW_SHELL_SETTINGS && cw_quality_menu_is_open() ? 0.13f : 0.25f;
     bx = fmaxf(0.03f, bx - 0.2f * (ts - 1)); /* 200%: the column all but the width of the screen */
     float hw = fminf(0.96f, 0.46f * ts), hh = 0.075f * fminf(ts, 1.6f);
-    ascii_hud_rect(cs.x * bx, cs.y * 0.05f, cs.x * (1 - 2 * bx), cs.y * 0.76f, 1);
+    float mh = screen == CW_SHELL_PAUSE && g_pause_play ? 0.835f : 0.76f; /* (down to the prompt line's box with the two items) */
+    ascii_hud_rect(cs.x * bx, cs.y * 0.05f, cs.x * (1 - 2 * bx), cs.y * mh, 1);
     ascii_hud_rect(cs.x * (0.5f - hw * 0.5f), cs.y * (0.97f - hh), cs.x * hw, cs.y * hh, 1);
     if (screen == CW_SHELL_PAUSE) ascii_hud_rect(cs.x * 0.5f - cw * 0.5f - 40 * k, y0, cw + 80 * k, ch, 1);
     ascii_hud_end();
@@ -849,7 +851,6 @@ static void level_done(void) {
  * its start, or back to the select screen (as the result card's back does), the shots so far not judged or saved.
  * None on the select screen or the result card (they have their own keys). */
 static const char *const PAUSE_PLAY[2] = { "Restart structure", "Choose structure" };
-static bool g_pause_play;
 static void pause_item(int index, void *u) {
   (void)u;
   if (!G.in_match || G.phase != PH_PLAY || G.loading) return;
