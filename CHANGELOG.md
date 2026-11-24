@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.51.0
+
+- **Ember Throne**'s characters move on captured motion instead of keyed poses and sine loops. The clips come from
+  Quaternius' Universal Animation Library 1 and 2 (CC0), on the same rig the cast is built from: the sword stance,
+  walk and jog, the three-cut combo with its recoveries, the dive roll, the hits, the knock-down and get-up, the kneel
+  at a shrine, the flask, the chest, the push, and the foes' chop, overhead, lunge, shield dash and hook. The clips
+  the libraries lack are made from their motion (tools/chars/blender/build_anims.py): the sidesteps are the walk
+  turned at the hips with the chest kept forward, the back walk the walk run backwards, the heavy (and the bosses'
+  spin and lariat) the wide cut whipped round a full turn with the hips leading, the back step the library's hop; only
+  a boss's roar is keyed, its joints staggered. The packer retargets them onto each figure (`.cwimport`: its legs,
+  its stance, its planted feet), each figure carrying only the clips its kind plays.
+- Every figure is on the source rig's full skeleton (three spine joints, the shoulders, every finger joint, the toes)
+  instead of the old 23-bone one.
+- Each figure runs an AnimationTree: a 2D blend space of the stand, walk, run, back walk and both sidesteps by its
+  velocity in its own frame (each clip at its own ground speed, eased through starts, stops and turns, the cycles in
+  step), every action a one-shot faded over it and timed so the blow still lands on the rules' hit frame, a blow
+  playing out its follow-through while the body stands, leans into turns, starts and stops, the chest, neck and head
+  turned toward what it fights (LookAtModifier3D), the feet's IK eased on and off. The rules are unchanged.
+- The Ember King's cape is cloth (Cloth3D on his chest bone) that swings and settles.
+- tests/emberthrone-motion.mjs: the motion measured from the bones on romdev (the game's motion recorder) through a
+  pad script (run, stop, turn, a lock-on fight with sidesteps, a combo, a roll, a heavy, a back step, a back walk) and
+  the bot at the Ember King's throne: the joints of a cut break one after another (sync 0.36, peaks spread 2.8 ticks),
+  no pop at a clip change (13 degrees at most), the cape swings and settles, the trunk leans into a turn (0.78
+  correlation), the stand has no sine-loop joint. The control is the procedural build, which fails every check (sync
+  0.92, peaks on one tick, pops of 27 degrees, a still cape, no lean, 8 of 12 stand joints pure sines).
+- Checks on this change: Ember Throne's rules (and their 13 controls), soak (won at 19.7 minutes, its control
+  failing), flash, grounding, its gates, and its perf gate on the 890M (GL and WebGPU) and on another GPU. The look check
+  passes in seven regions; the keep's complementary accent reads 3.7% against its 4% bar (4.4% before): in two of its
+  five frames a moving figure no longer stands where it did, the palette is unchanged.
+
 ## 0.49.0
 
 - **Detexto**'s whole picture is two colours under its 1-bit looks. The engine's menus (loading, title, pause,

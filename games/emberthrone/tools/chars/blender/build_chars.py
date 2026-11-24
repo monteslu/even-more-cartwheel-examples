@@ -41,6 +41,36 @@ CHILD = {'Hips': 'Spine', 'Spine': 'Chest', 'Chest': 'Neck', 'Neck': 'Head', 'Up
          'UpperArmR': 'LowerArmR', 'LowerArmR': 'HandR', 'HandR': 'FingR1', 'UpperLegL': 'LowerLegL', 'LowerLegL': 'FootL', 'UpperLegR': 'LowerLegR', 'LowerLegR': 'FootR'}
 
 
+# the skeleton the figures ship with: every bone of the source rig but its root and its leaf markers (the shoulders,
+# three spine joints, every finger joint, the toes), named in the game's style (make-characters.mjs FINE_NAMES); the
+# clips (blender/build_anims.py, the Universal Animation Library on the same rig) are retargeted onto it at pack time
+FINE = {'pelvis': 'Hips', 'spine_01': 'Spine', 'spine_02': 'Spine2', 'spine_03': 'Chest', 'neck_01': 'Neck', 'Head': 'Head'}
+for s, S in (('l', 'L'), ('r', 'R')):
+    FINE.update({'clavicle_' + s: 'Shoulder' + S, 'upperarm_' + s: 'UpperArm' + S, 'lowerarm_' + s: 'LowerArm' + S, 'hand_' + s: 'Hand' + S,
+                 'thigh_' + s: 'UpperLeg' + S, 'calf_' + s: 'LowerLeg' + S, 'foot_' + s: 'Foot' + S, 'ball_' + s: 'Toes' + S})
+    for f, F in (('thumb', 'Thumb'), ('index', 'Index'), ('middle', 'Middle'), ('ring', 'Ring'), ('pinky', 'Pinky')):
+        for k in (1, 2, 3):
+            FINE['%s_0%d_%s' % (f, k, s)] = '%s%s%d' % (F, S, k)
+FINE_PARENT_SRC = {}  # filled from the rig: fine name -> fine parent name (None for the hips)
+FINE_NAMES = list(dict.fromkeys(FINE.values()))
+# a source vertex group onto the fine skeleton: its own bone, a leaf marker onto its parent; the generated pieces
+# (dress.py) are weighted by the game's coarse names, which are fine names too, but for the old finger names
+LEGACY = {'Belly': 'Spine', 'FingL1': 'MiddleL1', 'FingL2': 'MiddleL2', 'ThumbL': 'ThumbL2', 'FingR1': 'MiddleR1', 'FingR2': 'MiddleR2', 'ThumbR': 'ThumbR2'}
+
+
+def fine_of(nm):
+    if nm in FINE:
+        return FINE[nm]
+    if nm == 'root':
+        return 'Hips'
+    if '_leaf_' in nm or '_end_' in nm:
+        base = nm.replace('_04_leaf_', '_03_').replace('ball_leaf_', 'ball_').replace('_04_end_', '_03_')
+        return FINE.get(base)
+    if nm in FINE_NAMES:
+        return nm
+    return LEGACY.get(nm)
+
+
 def log(*a):
     print('[chars]', *a, flush=True)
 
@@ -127,6 +157,35 @@ def joints_of(arm):
     return J
 
 
+def fine_joints_of(arm):
+    """every fine joint (Blender axes) from the posed source rig, and the fine parents"""
+    FJ = {}
+    for pb in arm.pose.bones:
+        if pb.name in FINE:
+            FJ[FINE[pb.name]] = (arm.matrix_world @ pb.head).copy()
+            p = pb.parent
+            while p is not None and p.name not in FINE:
+                p = p.parent
+            FINE_PARENT_SRC[FINE[pb.name]] = FINE[p.name] if p is not None else None
+    return FJ
+
+
+def fine_weights(o):
+    """per vertex: the fine bones' weights, as an (n, len(FINE_NAMES)) array"""
+    n = len(o.data.vertices)
+    W = np.zeros((n, len(FINE_NAMES)), np.float32)
+    gi = {g.index: g.name for g in o.vertex_groups}
+    col = {b: i for i, b in enumerate(FINE_NAMES)}
+    for v in o.data.vertices:
+        for g in v.groups:
+            t = fine_of(gi.get(g.group))
+            if t in col:
+                W[v.index, col[t]] += g.weight
+    s = W.sum(1, keepdims=True)
+    s[s == 0] = 1
+    return W / s
+
+
 # ── per-vertex work on the joined mesh, in numpy ──────────────────────────────────────────────
 def game_weights(o):
     """per vertex: the game bones' weights (summed over the source bones that map to each), as an (n, len(GAME_BONES)) array"""
@@ -151,8 +210,9 @@ def seg_closest(p, a, b):
     return a + t[:, None] * ab
 
 
-def deform(o, J, sp):
-    """size, bulk and the head and hands scale, on the mesh and its joints alike"""
+def deform(o, J, sp, FJ):
+    """size, bulk and the head and hands scale, on the mesh and its joints alike (the fine joints ride along as
+    points weighted wholly to the coarse bone their source bone maps to)"""
     me = o.data
     n = len(me.vertices)
     P = np.empty(n * 3, np.float32)
@@ -160,6 +220,13 @@ def deform(o, J, sp):
     P = P.reshape(n, 3).astype(np.float64)
     W = game_weights(o)
     col = {b: i for i, b in enumerate(GAME_BONES)}
+    inv = {v: k for k, v in FINE.items()}
+    fnames = list(FJ)
+    Wf = np.zeros((len(fnames), len(GAME_BONES)), np.float32)
+    for i, fn in enumerate(fnames):
+        Wf[i, col[MAP[inv[fn]]]] = 1
+    P = np.concatenate([P, np.array([FJ[fn][:] for fn in fnames], np.float64)])
+    W = np.concatenate([W, Wf])
     Jn = {k: np.array(v[:], np.float64) for k, v in J.items()}
     # 1. uniform size: the top of the head (without hair) to sp height
     top = sp.get('height', 1.78)
@@ -238,9 +305,16 @@ def deform(o, J, sp):
             k = 1 + (fs - 1) * w
             P[:, 0] = A[0] + (P[:, 0] - A[0]) * k
             P[:, 1] = A[1] + (P[:, 1] - A[1]) * k
+    Pf = P[n:]
+    P = P[:n]
     me.vertices.foreach_set('co', P.astype(np.float32).ravel())
     me.update()
-    return {j: Vector(v) for j, v in Jn.items()}
+    J2 = {j: Vector(v) for j, v in Jn.items()}
+    FJ2 = {fn: Vector(Pf[i]) for i, fn in enumerate(fnames)}
+    for fn in FJ2:  # where a fine joint is a coarse one, the coarse joint's place
+        if fn in J2:
+            FJ2[fn] = J2[fn].copy()
+    return J2, FJ2
 
 
 # ── textures ──────────────────────────────────────────────────────────────────────────────────
@@ -454,10 +528,10 @@ def skin_atlas(o, skin_mats):
 
 
 # ── the dump ──────────────────────────────────────────────────────────────────────────────────
-def dump(o, J, sp, mats_info, path_json, path_bin):
+def dump(o, FJ, sp, mats_info, path_json, path_bin):
     me = o.data
     me.calc_loop_triangles()
-    W = game_weights(o)
+    W = fine_weights(o)
     order = np.argsort(-W, 1)[:, :4]
     top = np.take_along_axis(W, order, 1)
     top /= np.maximum(top.sum(1, keepdims=True), 1e-9)
@@ -498,7 +572,7 @@ def dump(o, J, sp, mats_info, path_json, path_bin):
         for b in blobs:
             f.write(b)
     G = lambda v: [v.x, v.z, -v.y]
-    js = {'name': sp['name'], 'bones': GAME_BONES, 'joints': {k: G(v) for k, v in J.items()}, 'groups': meta,
+    js = {'name': sp['name'], 'bones': FINE_NAMES, 'parents': {k: FINE_PARENT_SRC[k] for k in FINE_NAMES}, 'joints': {k: G(v) for k, v in FJ.items()}, 'groups': meta,
           'tris': sum(len(g['idx']) // 3 for g in groups.values()), 'source': sp.get('source', [])}
     with open(path_json, 'w') as f:
         json.dump(js, f, indent=1)
@@ -542,6 +616,7 @@ def build(sp):
     for a in arms:
         pose_arms_down(a, sp.get('arm_out', 6))
     J = joints_of(arms[0])
+    FJ = fine_joints_of(arms[0])
     assert J['UpperArmL'].x > 0, 'the source rig must have its left arm at +X'
     meshes = [o for o in bpy.data.objects if o.type == 'MESH']
     bake_pose(meshes)
@@ -561,11 +636,11 @@ def build(sp):
     skin_idx = {i for i, m in enumerate(me.materials) if m.name.startswith('MI_Superhero')}
     crown = max(me.vertices[l].co.z for p in me.polygons if p.material_index in skin_idx for l in p.vertices)
     sp['_crown'] = crown
-    J = deform(o, J, sp)
+    J, FJ = deform(o, J, sp, FJ)
     # generated pieces (weighted to the game's bones by name: vertex groups named as GAME_BONES)
     dress.dress(o, J, sp)
     mats_info = textures(o, sp)
-    dump(o, J, sp, mats_info, os.path.join(MOUT, sp['name'] + '.json'), os.path.join(MOUT, sp['name'] + '.bin'))
+    dump(o, FJ, sp, mats_info, os.path.join(MOUT, sp['name'] + '.json'), os.path.join(MOUT, sp['name'] + '.bin'))
 
 
 def tex_path(m, kind):

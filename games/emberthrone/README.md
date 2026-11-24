@@ -57,7 +57,8 @@ through them); after their biggest blows they stand spent for a moment, open to 
 | `emberthrone` | the game |
 | `emberthrone_auto` | the bot plays the whole game through the controls (hosts that send no input, the gates, the soak) |
 | `emberthrone_bench` | the perf gate's scene: the bot in the Tidecaller's fight |
-| `tools/chars/build-cast.sh` | the characters: CC0 bases dressed and recoloured in headless Blender (`tools/chars/blender`), then put on the game's skeleton with its clips (`tools/chars/make-characters.mjs`) |
+| `tools/chars/build-cast.sh` | the characters: CC0 bases dressed and recoloured in headless Blender (`tools/chars/blender`), then written on the full source skeleton (`tools/chars/make-characters.mjs`) |
+| `tools/chars/fetch-anims.sh` | the motion: the CC0 Universal Animation Library 1 and 2 fetched and checked, the game's clips picked, joined, timed and filled in (`tools/chars/blender/build_anims.py`) into `assets/anim/ual.glb`, which the packer retargets onto each figure (`assets/models/*.glb.cwimport`) |
 | `tools/capture-chars.sh` | close-ups of the cast at the game camera's distance and at a portrait's |
 | `tools/make-world-assets.mjs` | the terrain layers, building textures, props, the trees and glowcaps (leaf cards), the cloud layer and the contrast grade |
 | `tools/survey.sh` | the program table from software GL runs (off the shared GPU) |

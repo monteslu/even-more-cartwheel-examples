@@ -164,3 +164,5 @@ physical+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+sheen+l1001+xcluster_rim_skins
 standard+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+l0001+xcluster_csm_plain_rim
 standard+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+l0001+xcluster_csm_rim
 standard+map+rep+nmap+ao+rmap+mmap+skin+senv+fog2+l1001+xcluster_rim
+physical+senv+fog2+ds+sheen+l0001+xcluster_csm
+physical+senv+fog2+ds+sheen+l0001+xcluster_csm_plain

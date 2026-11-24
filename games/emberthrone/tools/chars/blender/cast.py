@@ -74,7 +74,8 @@ SPECS = [
          wear=[dict(kind='robe', color=(0.2, 0.09, 0.42), trim=(0.4, 0.85, 0.95), trim_metal=1, hem=0.035, flare=0.2, follow=0.5),
                dict(kind='pauldrons', color=(0.35, 0.78, 0.86), trim=(0.85, 0.92, 0.95), size=0.95, layers=2),
                dict(kind='helm', color=(0.35, 0.78, 0.86), trim=(0.3, 0.72, 0.84), size=1.06, fins=5, style='fins', dome=False)]),
-    # the Ember King: the biggest, gold and crimson plate, a crowned helm, a crimson cape, eyes like coals
+    # the Ember King: the biggest, gold and crimson plate, a crowned helm, eyes like coals (his crimson cape is cloth in the
+    # game: view.c CAPE)
     dict(name='emberking', outfit='Male_Peasant', head='Superhero_Male_FullBody', hair=['Hair_Beard'], drop=[], height=1.80, head_scale=1.0, hand_scale=1.02, arm_out=14, arm_len=ARM_LEN, foot_scale=0.92,
          thick=BIG, shoulder=0.08,
          recolor=[dict(hue=CREAM, width=25, minsat=0.05, to=355, sat=2.2, val=0.5), dict(hue=25, width=20, minsat=0.25, to=5, sat=0.9, val=0.55)],
@@ -82,6 +83,5 @@ SPECS = [
          wear=[dict(kind='helm', color=GOLD, trim=(0.85, 0.15, 0.08), size=1.16, crown_len=1.3, style='crown'),
                dict(kind='pauldrons', color=GOLD, trim=(0.72, 0.1, 0.06), size=1.4, layers=3, spikes=2, spike_len=0.1, spike_color=GOLD),
                dict(kind='cuirass', color=(0.75, 0.1, 0.06), trim=GOLD, ridge=0.025),
-               dict(kind='cape', color=(0.6, 0.05, 0.04), trim=GOLD, trim_metal=1, hem=0.35, flare=0.6, waist=1.0),
                dict(kind='bracers', color=GOLD)]),
 ]

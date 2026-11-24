@@ -5,7 +5,7 @@
 // (arms and legs hang along -Y): -x swings a limb forward, +z on the left side (+x) lifts it out sideways, +x on the
 // spine leans forward, +x on a lower leg bends the knee, -x on a lower arm bends the elbow.
 // Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time by the game's spring code.
-import { mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
@@ -1536,7 +1536,47 @@ function cc0Meshes(glb, sp, d, world) {
   return [glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', prims), skin: 0 })];
 }
 
+/**
+ * A figure from the CC0 bases on its full skeleton (tools/chars/blender/build_chars.py: every bone of the source rig, the
+ * shoulders, three spine joints, every finger joint and the toes, named in the game's style), with no clips: each model's
+ * .cwimport retargets the motion (tools/chars/blender/build_anims.py, assets/anim/ual.glb) onto it when the cart is packed.
+ * Joints carry no rest rotation (the retargeting turns each bone from its rest by its source bone's turn from its own).
+ */
+// each figure carries the clips its kind plays (a clip is memory on every model that has it)
+const LOCO = ['idle', 'idle_w', 'walk_w', 'run_w', 'walk_back', 'strafe_l', 'strafe_r', 'rest', 'lying', 'roll', 'backstep', 'hit', 'hit_hard', 'knockdown', 'getup'];
+const clipsOf = (name) => [...LOCO, ...({
+  wayfarer: 'slash1 slash2 slash3 heavy swing slam kneel rise drink pickup push', warden: 'slash1 slash2 slash3 heavy swing slam kneel rise drink pickup push',
+  raider: 'slash1 swing slam stab bash roar', brute: 'slash1 swing slam stab bash roar', lancer: 'slash1 swing slam stab bash roar',
+}[name] ?? 'slash1 swing slam stab haymaker heavy lariat roar').split(' ')];
+const CWIMPORT = readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'cwimport.txt'), 'utf8');
+function emitFine(sp) {
+  const glb = new Glb();
+  const d = cc0Load(sp.name);
+  const h = d.joints.Hips;
+  d.shift = [-h[0], 0, -h[2]];
+  const names = d.bones, world = {};
+  for (const n of names) world[n] = add(d.joints[n], d.shift);
+  const s = sp.scale ?? 1;
+  const nodes = names.map((n) => glb.node({ name: n, translation: d.parents[n] ? sub(world[n], world[d.parents[n]]) : [0, world[n][1] * s, 0] }));
+  glb.nodes[nodes[0]].scale = [s, s, s];
+  names.forEach((n, i) => { if (d.parents[n]) (glb.nodes[nodes[names.indexOf(d.parents[n])]].children ||= []).push(nodes[i]); });
+  const ibm = new Float32Array(names.length * 16);
+  names.forEach((n, i) => { const w = world[n]; ibm.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, -w[0], -w[1], -w[2], 1], i * 16); });
+  glb.skins.push({ name: 'Armature', inverseBindMatrices: glb.acc(ibm, 'MAT4', 5126, 0), joints: nodes, skeleton: nodes[0] });
+  const mats = {}, prims = [];
+  for (const g of d.groups) {
+    mats[g.key] ??= cc0Material(glb, sp, g);
+    const pos = Float32Array.from(g.pos, (v, i) => v + d.shift[i % 3]);
+    prims.push([{ pos, nrm: g.nrm, uv: g.uv, joints: g.joints, weights: g.weights, idx: g.idx }, mats[g.key]]);
+  }
+  glb.sceneNodes.push(glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', prims), skin: 0 }), nodes[0]);
+  glb.write(join(OUT, sp.name + '.glb'));
+  writeFileSync(join(OUT, sp.name + '.glb.cwimport'), CWIMPORT + `# the clips this figure plays (view.c ACTS and the locomotion)\nretarget.clips = ${clipsOf(sp.name).join(' ')}\n`);
+  console.log(sp.name, 'tris', d.tris, 'bones', names.length);
+}
+
 function emit(sp) {
+  if (sp.cc0) return emitFine(sp);
   const glb = new Glb();
   let T, world, FR, meshNodes, tris;
   const BONES = bonesOf(sp);

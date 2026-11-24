@@ -43,7 +43,7 @@ The order through the world:
 - The dodge is a dive roll with invulnerable frames through most of it (2 to 21 of 37 ticks); with no direction, a
   quick back step (1 to 13 of 25). Rolling through a shockwave is the answer to the bosses' later phases.
 - Stamina pays for every swing and roll and comes back after a short wait, so a fight has a rhythm.
-- Lock-on: the player faces the target, moves in a circling walk with sidestep and back-step clips, and the camera
+- Lock-on: the player faces the target, moves in a circling walk blended from the sidesteps and the back walk, and the camera
   turns to keep both in view; a flick of the camera stick moves to the next foe that side.
 - Foes, each kind with one idea: raiders (quick cleavers, a slower overhead), brutes (hyper-armoured through their
   swings, a slam with a ring on the ground, a looping haymaker), lancers (long reach, they keep their distance). Roles
@@ -110,10 +110,23 @@ Built from CC0 bases (Quaternius' Universal Base Characters and Modular Characte
 tools/chars/blender (headless Blender): the outfit and a base head and hair, posed from the T pose to the game's rest,
 sized, bulked bone by bone (the brutes and bosses), recoloured, the skin of head and hands baked into one atlas, and
 the generated pieces (plate, helmets, crowns, horns, robes, coats, capes, masks, bracers) lofted round the measured
-body and baked into their own atlas. tools/chars/make-characters.mjs puts each on the game's skeleton (the joints from
-the source rig) with the game's clips: the sword idle and run, the three cuts, the heavy spin, the dive roll and back
-step, the sidesteps and back walk, the kneel and rest at a shrine, the drink, the push, the roar. Feet are planted on
-slopes and stairs (FootPlacement3D on the physics ground, each kind's ankle height); the dead fall as ragdolls. Each
+body and baked into their own atlas. tools/chars/make-characters.mjs writes each on the source rig's full skeleton
+(three spine joints, the shoulders, every finger joint, the toes).
+
+The motion is captured motion, not keyed poses: Quaternius' Universal Animation Library 1 and 2 (CC0), on the same rig.
+tools/chars/blender/build_anims.py picks the game's clips (the sword stance, walk and jog, the three-cut combo with its
+recoveries, the dive roll, the hits, the knock-down and get-up, the kneel at a shrine, the flask, the chest, the push,
+the foes' chop, overhead, lunge, shield dash and hook) and makes the ones the libraries lack from their motion: the
+sidesteps are the walk turned at the hips with the chest kept on the target, the back walk the walk run backwards, the
+heavy and the bosses' spin the wide cut whipped round a full turn with the hips leading, the back step the library's
+hop. Only a boss's roar is keyed, on the rig, with the joints staggered so the chest leads and the arms and head
+follow. The packer retargets every clip onto each figure (its legs, its stance, its planted feet). In the game each
+figure runs an AnimationTree: a 2D blend space of the stand, walk, run, back walk and both sidesteps by the velocity in
+its own frame (each clip at its own ground speed, the cycles in step), every action a one-shot faded over it and timed
+so the blow lands on the rules' hit frame, a blow playing out its follow-through while the body stands, leans into
+turns, starts and stops, and the chest, neck and head turned toward what it fights. The Ember King's cape is cloth
+on his chest bone that swings and settles. Feet are planted on slopes and stairs (FootPlacement3D on the physics ground, each kind's
+ankle height); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
 
@@ -126,6 +139,12 @@ region's colours (the outfit's material tinted per kind and region).
   still, a quarter or fewer one who keeps moving), waiting foes circling to the player's back (half or more of the blows
   come from beyond the shoulder), a boss spent after a big blow and chaining blows in its later phase, the flask's sip
   for a beaten group, the lurker, rumble on a hit. Controls: each rule off in turn, and its own check must fail.
+- `tests/emberthrone-motion.mjs` (romdev, the RELEASE cart): how the characters move, from their bones (view.c's motion
+  recorder) through a pad script (run, stop, turn, a lock-on fight with sidesteps, a combo, a roll, a heavy, a back
+  step, a back walk) and the bot at the Ember King's throne: the joints of a cut break one after another (their turning
+  speeds weakly correlated, their peaks spread), no pop at a clip change, the King's cape swings and settles, the trunk
+  leans into a turn, the stand is no sine loop. Its control is the procedural build, which fails every check. It also
+  writes a video and native-scale strips of each moment, and measures the frame cost.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
   just before its busiest moment (its phase roar). Controls: each under the engine's 8 Hz strobe, and the fight under

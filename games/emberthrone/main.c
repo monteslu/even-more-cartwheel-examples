@@ -159,7 +159,6 @@ static void jump_ahead(int to) {
   bot_jump(to);
 }
 
-#ifdef ADV_AUTOPILOT
 static void cmd_from(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: from <n>"); return; }
   int n = atoi(argv[1]);
@@ -169,7 +168,6 @@ static void cmd_from(int argc, const char **argv, cw_reply *r) {
   view_reset();
   cw_reply_printf(r, "{\"from\":%d}", n);
 }
-#endif
 
 static void start(int players, void *u) {
   (void)u;
@@ -272,8 +270,9 @@ static void init(void *u) {
   cw_debug_i32("view.cam_jerks", &G.cam_jerks);
   cw_debug_i32("view.cam_blocked", &S.cam_blocked);
   cw_debug_i32("bot.stuck", &G.stuck);
+  /* every build: a test jumps to a fight (tests/emberthrone-motion.mjs) */
+  cw_debug_command("from", "from <n>: further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);
 #ifdef ADV_AUTOPILOT
-  cw_debug_command("from", "from <n>: the bot further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);
   cw_shell_start(getenv("ADV_PLAYERS") ? CW_CLAMP(atoi(getenv("ADV_PLAYERS")), 1, MAXP) : 1);
 #endif
 }

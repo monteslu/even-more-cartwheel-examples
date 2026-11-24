@@ -1,0 +1,12 @@
+# the motion: clips of the Universal Animation Library 1 and 2 (Quaternius, CC0; tools/chars/blender/build_anims.py
+# picks, joins and times them into anim/ual.glb), retargeted onto this figure's own skeleton when the cart is packed.
+# Written by tools/chars/make-characters.mjs.
+retarget.source = anim/ual.glb
+retarget.fps = 30
+retarget.plant = walk_w run_w walk_back strafe_l strafe_r
+# the three spine joints in order (the names alone do not say which is the chest)
+retarget.map.spine = Spine
+retarget.map.chest = Spine2
+retarget.map.upper_chest = Chest
+# the clips this figure plays (view.c ACTS and the locomotion)
+retarget.clips = idle idle_w walk_w run_w walk_back strafe_l strafe_r rest lying roll backstep hit hit_hard knockdown getup slash1 swing slam stab haymaker heavy lariat roar
