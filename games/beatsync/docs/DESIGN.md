@@ -376,7 +376,7 @@ all the styles fading in (each first showing included) and holds each to a 60 Hz
 frame inside a fade (two worlds, and a world's environment capture with its filter) to 8 ms of GPU; its
 control, a cart loaded with neither prewarm (`env CW_TEST_NO_PREWARM=1`, which the game reads too), must go over.
 
-**Known issues with cartwheel-engine 0.70.1** (fixed in 0.71.1): half blocks on a palette under TAA can draw a flat
+**Known engine issues on cartwheel-engine 0.70.1** (an engine fix is coming): half blocks on a palette under TAA can draw a flat
 colour as a checkerboard of two entries, so the arcade maze's readability is held out of its gate (`HELD_READ` in
 tests/beatsync-styles.mjs; 7.9:1 on 0.67.0); a fade out of an engine look can cost more than its two pictures (half
 blocks into the metal hall: 8 to 9 ms on the 890M) and on WebGPU a frame where a look starts or ends its blend can

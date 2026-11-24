@@ -57,7 +57,7 @@ const HUD_TOL = 40, HUD_TWO = 0.995, HUD_FRAMES = 8, JUDGE_APART = 0.08;
 const INK = [255, 237, 204], PAPER = [3, 3, 4]; // src/main.c OB_INK, OB_PAPER as bytes
 // a style's readability held for a known engine issue (reported, its fix in the release named): measured and printed,
 // not failed. Empty it when the pin moves past the fix.
-const HELD_READ = { maze: 'cartwheel-engine 0.70.1 draws a flat colour under half blocks on a palette with TAA as a checkerboard of two entries (fixed in 0.71.0); 7.93:1 on 0.67.0' };
+const HELD_READ = { maze: 'cartwheel-engine 0.70.1 draws a flat colour under half blocks on a palette with TAA as a checkerboard of two entries (an engine fix is coming); 7.93:1 on 0.67.0' };
 const SONG_IN = 420;      // frames from a song's start into its notes (8 beats of lead-in, then a few bars)
 
 let failed = 0;

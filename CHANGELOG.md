@@ -69,12 +69,13 @@
   the game asks again for the worlds it builds in code and its looks; the game's own prewarm stays for what that does
   not cover yet (the night sea's first showing on WebGPU, a world's first environment capture). The hitch check's
   control turns both off (`env CW_TEST_NO_PREWARM=1`, which the game reads too).
-- **beatsync**: known issues with cartwheel-engine 0.70.1, fixed in 0.71.1: half blocks on a palette under TAA can
-  draw a flat colour as a checkerboard of two entries (the arcade maze's readability is held out of its gate until
-  then: 7.9:1 on 0.67.0); a fade between the arcade maze and one bit costs more than its two looks and spikes as it
-  ends (the scheduler leaves that pair out); on WebGPU a frame where an engine look starts or ends its blend can take
-  up to about 9 ms of GPU on a Radeon 890M (the hitch check's 8 ms fade bound is held on WebGPU; every frame stays
-  under 16.7 ms).
+- **beatsync**: known engine issues on cartwheel-engine 0.70.1, an engine fix is coming: half blocks on a palette
+  under TAA can draw a flat colour as a checkerboard of two entries (the arcade maze's readability is held out of its
+  gate until then: 7.9:1 on 0.67.0); a fade between the arcade maze and one bit costs more than its two looks and spikes as it
+  ends (the scheduler leaves that pair out); a fade out of an engine look can cost more than its two pictures (on GL,
+  half blocks from the lava into the metal hall take 8.2 to 9.2 ms a frame on a Radeon 890M), and on WebGPU a frame
+  where an engine look starts or ends its blend can take up to about 9 ms of GPU there (the hitch check's 8 ms fade
+  bound is held; every frame stays under 16.7 ms).
 - Every game on cartwheel-engine 0.70.1 (prewarm of backdrops and looks, fog over transparent surfaces, one-bit 2D
   edges, particle start angles): the program tables of beatsync, Destructo, Detexto and skate take the new states
   for transparent surfaces in fog.

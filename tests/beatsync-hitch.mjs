@@ -27,8 +27,8 @@ const BUDGET_MS = 16.7, FADE_GPU_MS = 8;
 // a fade bound held for a known engine issue (reported, its fix in the release named): measured and printed, not
 // failed. Empty it when the pin moves past the fix.
 const HELD_FADE = {
-  webgpu: 'cartwheel-engine 0.70.1 on WebGPU: a one-frame GPU spike where an engine look starts or ends its blend (fixed in 0.71.1)',
-  gl: 'cartwheel-engine 0.70.1: a fade out of an engine look costs more than its two pictures together (half blocks into the metal hall: 8 to 9 ms on a Radeon 890M; fixed in 0.71.1)',
+  webgpu: 'cartwheel-engine 0.70.1 on WebGPU: a one-frame GPU spike where an engine look starts or ends its blend (an engine fix is coming)',
+  gl: 'cartwheel-engine 0.70.1: a fade out of an engine look costs more than its two pictures together (half blocks into the metal hall: 8 to 9 ms on a Radeon 890M; an engine fix is coming)',
 };
 // --pre "a;b": debug commands before the tour (a look at what a cost comes from, e.g. the worlds' environment off)
 const PRE = process.argv.includes('--pre') ? process.argv[process.argv.indexOf('--pre') + 1].split(';').filter(Boolean) : [];
