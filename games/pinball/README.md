@@ -49,7 +49,8 @@ jackpot, multiball and the wizard mode. The camera never moves for a nudge or a 
 Flippers: west and east, the shoulders, the d-pad's sides or the triggers (the keyboard's shifts, arrows, Z and /).
 Hold the launch button (south, d-pad down, Space) to pull the plunger and let go to fire; once no ball waits on the
 plunger, a fresh press of it flips both flippers. Nudge: north or d-pad up (the stick's sides nudge sideways). Start
-pauses.
+pauses; in a game the pause menu also restarts the game on the same table with the same players, or goes back
+to the table select (a game left either way keeps no score).
 
 A flipper moves on the simulation step of the frame its button arrives in, reaches full stroke 24 ms after it (full
 speed in 9 ms) and is back at rest 28 ms after the button is let go. The flippers stay live until the ball has gone

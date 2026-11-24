@@ -61,5 +61,63 @@
         "romdev"
       ]
     }
+  },
+  {
+    "name": "pinball-restart",
+    "app": "pinball",
+    "frames": 600,
+    "input": "pinball-restart.json",
+    "controlInput": "pinball-pause-control.json",
+    "fields": [
+      "game.phase",
+      "game.launches",
+      "game.table",
+      "game.players",
+      "game.hash"
+    ],
+    "expect": {
+      "game.launches": 0,
+      "game.phase": 1
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "The pause menu's Restart game on the pad alone: a person's start (title, table, plunger, a launch, flips), Start, down to Restart game, accept: the same table from its first ball, the plunger loaded and nothing launched yet. The control accepts Resume instead, so the launch stands. Frames within 0.25% (the lamps lit at the restart differ by a few edge pixels between the native and cart renderers: 0.10% measured).",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    },
+    "maxGt16": 0.25
+  },
+  {
+    "name": "pinball-change-table",
+    "app": "pinball",
+    "frames": 600,
+    "input": "pinball-change-table.json",
+    "controlInput": "pinball-pause-control.json",
+    "fields": [
+      "game.phase",
+      "game.launches",
+      "game.table",
+      "game.players",
+      "game.hash"
+    ],
+    "expect": {
+      "game.phase": 0
+    },
+    "hosts": [
+      "native",
+      "romdev"
+    ],
+    "note": "The pause menu's Change table on the pad alone: the same start, Start, down twice, accept: back on the table select. The control accepts Resume, so the game goes on.",
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ]
+    }
   }
 ]

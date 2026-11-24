@@ -144,6 +144,24 @@ static void start(int players, void *u) {
 #endif
 }
 
+/* the pause menu's own items while a game is on: the same table and players from the first ball, or back to the
+ * table select (a game left this way keeps no score). Elsewhere (the table select, the score entry) none. */
+static const char *const PAUSE_IN_GAME[2] = { "Restart game", "Change table" };
+static const char *const PAUSE_NONE[2] = { NULL, NULL };
+static void to_select(void) {
+  G.phase = PH_SELECT, G.phase_t = 0;
+  game_new(&G.g, G.sel_table, 1, 1); /* the table behind the choice */
+  backbox_table(&G.g.T);
+  sound_silence_balls();
+  music_start(0, 110.0f), music_level(0);
+}
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (!G.in_match || G.phase != PH_PLAY) return;
+  if (index == 0) begin_game();
+  else if (index == 1) to_select();
+}
+
 static bool warmup(void *u) {
   (void)u;
   if (G.built) return true;
@@ -164,7 +182,8 @@ static void init(void *u) {
   /* one seat in the shell (no join screen: players take turns, so the table select counts them) and every pad plays
    * from the table select on (begin_game seats them) */
   cw_shell_init(&(cw_shell_desc){ .title = "PINBALL", .subtitle = "three tables, one to four players", .max_players = 1, .shared_screen = true,
-                                  .game_save_size = sizeof(save_data), .game_save_version = 2, .start = start, .sound = shell_sound, .screen_changed = shell_screen });
+                                  .game_save_size = sizeof(save_data), .game_save_version = 2, .start = start, .sound = shell_sound, .screen_changed = shell_screen,
+                                  .pause_item = pause_item });
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true);
@@ -336,6 +355,7 @@ static void game_finished(void) {
 static void fixed_update(void *u, double dt) {
   (void)u, (void)dt;
   ticks_run++;
+  cw_shell_set_pause_items(G.in_match && G.phase == PH_PLAY ? PAUSE_IN_GAME : PAUSE_NONE);
   if (!cw_shell_update()) return;
   if (!G.in_match) return;
   cw_shell_join_press();
@@ -411,10 +431,7 @@ static void fixed_update(void *u, double dt) {
   case PH_OVER:
     if (G.phase_t > 60 && (ui("ui_accept") || pressed(G.launch))) {
       sound_menu(1);
-      G.phase = PH_SELECT, G.phase_t = 0;
-      game_new(&G.g, G.sel_table, 1, 1);
-      backbox_table(&G.g.T);
-      music_start(0, 110.0f), music_level(0);
+      to_select();
     }
     break;
   }
