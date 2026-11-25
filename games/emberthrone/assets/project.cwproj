@@ -14,11 +14,14 @@ input.cam_right = key:right, axis:rx+
 input.cam_up = key:up, axis:ry-
 input.cam_down = key:down, axis:ry+
 input.attack = key:j, mouse:left, pad:west
-input.heavy = key:k, mouse:right, pad:north, axis:rt+@0.4
+input.heavy = key:k, mouse:right, pad:north
 input.dodge = key:space, pad:south
 input.use = key:e, pad:east
 input.lock = key:l, key:tab, pad:rshoulder, pad:rstick
-input.tonic = key:q, pad:lshoulder, axis:lt+@0.4
+input.tonic = key:q, pad:lshoulder
+; the guard (held; a press just before a blow parries it) and the special (a full ember meter)
+input.guard = key:c, mouse:middle, axis:lt+@0.4
+input.special = key:r, axis:rt+@0.4
 input.swap = key:f, pad:lstick
 render.width = 1280
 render.height = 720

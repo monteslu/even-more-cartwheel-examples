@@ -115,7 +115,11 @@ path, a lantern-lit underway, a spire with a stair round it and a wood of giant
 glowing mushrooms, joined so that the way back is often a shortcut. Lock-on
 sword fights with light and heavy cuts, rolls and stamina; foe groups with
 readable wind-ups and three bosses; hearts, stamina charms, keys and a maul
-that breaks cracked stone open new routes. A bot plays the whole game in CI,
+that breaks cracked stone open new routes. A guard that parries a blow timed
+right, an ember meter spent on a strike, and boss trials from the pause menu.
+A voiced story with choices: the wardens and the shrine keepers speak, faces move
+with their words, the camera cuts like a film and never shakes, and which
+wardens you spare decides who helps you at the end. A bot plays the whole game in CI,
 nothing floats, and every region passes a look check.
 
 ### jewels

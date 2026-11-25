@@ -20,7 +20,14 @@
  *   string    in its later phase a boss chains blows: the next wind-up starts within a few ticks of the last blow
  *   clear     beating a whole group puts a sip back in the flask
  *   lurk      a lurker under the water cannot be targeted, and rises when the player wades close
- *   rumble    a landed cut asks the pad for rumble */
+ *   rumble    a landed cut asks the pad for rumble
+ *   parry     a guard pressed just before a blow lands parries it: no harm, the attacker stumbles open, the meter fills
+ *   block     a guard held through a blow takes a quarter of it and pays the rest in stamina
+ *   meter     the ember meter fills with blows landed (5 a cut) and a quarter of the harm taken
+ *   special   a full meter spent on the ember strike: it fires, empties the meter and lands hard all round
+ *   assist    a spared warden called in the King's fight strikes him (and cannot be called when not spared)
+ *   trials    the boss trials bring a beaten warden back at its ring; beating it again ends them and the journey is
+ *             as it was (the warden still beaten, nothing given twice) */
 #include <math.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -333,6 +340,84 @@ static void t_lurk(void) {
         sqrtf(dist2(e->mv.position.x, e->mv.position.z, S.a[0].mv.position.x, S.a[0].mv.position.z)), fights ? "yes" : "no");
 }
 
+static void t_parry(void) {
+  fresh(true);
+  actor *e = foe_at(K_RAIDER, R_PLAIN, 0, 1.6f, CW_PI, 0);
+  IN[0].guard = IN[0].guard_held = true;
+  step(1);
+  int h0 = S.a[0].hp;
+  IN[0].guard_held = true;
+  sim_test_blow(0, e->idx, A_CLEAVE);
+  bool open = e->state == ST_HURT && e->crit_t > 0;
+  check("parry", S.a[0].hp == h0 && S.parries == 1 && open && S.a[0].meter >= 22, "a blow into a fresh guard: harm %d, parries %d, the attacker open %s, meter %.0f",
+        h0 - S.a[0].hp, S.parries, open ? "yes" : "no", S.a[0].meter);
+}
+static void t_block(void) {
+  fresh(true);
+  actor *e = foe_at(K_RAIDER, R_PLAIN, 0, 1.6f, CW_PI, 0);
+  int full = ATK[A_CLEAVE].dmg * KIND[K_RAIDER].dmg_k;
+  IN[0].guard_held = true; /* held, not pressed now: no parry window */
+  step(1);
+  int h0 = S.a[0].hp;
+  float s0 = S.a[0].stamina;
+  sim_test_blow(0, e->idx, A_CLEAVE);
+  int harm = h0 - S.a[0].hp;
+  check("block", harm == full / 4 && S.guarded == 1 && S.a[0].stamina < s0, "a blow into a held guard: harm %d of %d, guarded %d, stamina %.0f to %.0f", harm, full, S.guarded, s0, S.a[0].stamina);
+}
+static void t_meter(void) {
+  fresh(true);
+  actor *e = foe_at(K_RAIDER, R_PLAIN, 0, 1.6f, CW_PI, 0);
+  e->hp = 9999, e->poise = 9999;
+  for (int k = 0; k < 3; k++) sim_test_blow(e->idx, 0, A_SLASH1);
+  float landed = S.a[0].meter;
+  int h0 = S.a[0].hp;
+  sim_test_blow(0, e->idx, A_CLEAVE);
+  float taken = S.a[0].meter - landed;
+  check("meter", fabsf(landed - 15) < 0.01f && fabsf(taken - (float)(h0 - S.a[0].hp) * 0.25f) < 0.01f, "three cuts fill it to %.1f (15), a blow of %d taken adds %.2f", landed, h0 - S.a[0].hp, taken);
+}
+static void t_special(void) {
+  fresh(true);
+  actor *e = foe_at(K_BRUTE, R_PLAIN, 0, 1.8f, CW_PI, 0);
+  e->hp = 9999;
+  S.a[0].meter = 100;
+  IN[0].special = true;
+  step(70);
+  int dealt = 9999 - e->hp;
+  check("special", S.specials == 1 && S.a[0].meter < 100 && dealt >= ATK[A_SPECIAL].dmg, "a full meter: strikes %d, meter %.0f after, harm %d (at least %d)", S.specials, S.a[0].meter, dealt, ATK[A_SPECIAL].dmg);
+}
+static void t_assist(void) {
+  fresh(true);
+  actor *k = foe_at(K_EMBER, R_PLAIN, 0, 5.0f, CW_PI, 0);
+  k->boss = true, k->hp = 2000, k->hp_max = 2000;
+  S.boss = k->idx;
+  S.assist_mask = 0;
+  bool refused = !sim_call_assist(K_THORN); /* not spared: nobody comes */
+  S.assist_mask = 1;
+  bool came = sim_call_assist(K_THORN);
+  step(175);
+  int dealt = 2000 - k->hp;
+  check("assist", refused && came && S.assists == 1 && dealt >= 80 && !S.a[MAXA - 1].used, "unspared refused %s, the spared Thornwarden comes %s, strikes the King for %d and goes %s",
+        refused ? "yes" : "no", came ? "yes" : "no", dealt, !S.a[MAXA - 1].used ? "yes" : "no");
+}
+static void t_trials(void) {
+  fresh(false);
+  int f = -1;
+  for (int i = 0; i < g_nfoe; i++) if (g_foe[i].kind == K_THORN) f = i;
+  sim_set_flag(g_foe[f].flag);
+  sim_respawn_foes();
+  bool gone = !S.a[MAXP + f].used;
+  bool started = sim_ladder_start();
+  actor *t = &S.a[MAXP + f];
+  bool back = t->used && t->hp == t->hp_max;
+  float d = sqrtf(dist2(S.a[0].mv.position.x, S.a[0].mv.position.z, g_foe[f].x, g_foe[f].z));
+  t->hp = 1, t->active = true;
+  sim_test_blow(t->idx, 0, A_SLASH1);
+  step(160 + 245);
+  bool over = S.ladder == -1 && sim_has_flag(g_foe[f].flag) && S.sv.ladder_wins == 1 && S.sv.keys == 0;
+  check("trials", gone && started && back && d < 30 && over, "beaten %s, trials start %s, the warden back %s with the party %.0f m off, beaten again: the journey back %s (wins %d, keys %d)",
+        gone ? "yes" : "no", started ? "yes" : "no", back ? "yes" : "no", d, over ? "yes" : "no", S.sv.ladder_wins, S.sv.keys);
+}
+
 /* ── the run ──────────────────────────────────────────────────────── */
 typedef struct { const char *name; void (*fn)(void); int rule; } rcheck;
 static const rcheck CHECKS[] = {
@@ -340,6 +425,8 @@ static const rcheck CHECKS[] = {
   { "magnet", t_magnet, FR_MAGNET },    { "guard", t_guard, FR_GUARD },     { "stones", t_stones, FR_STONES }, { "flank", t_flank, FR_FLANK },
   { "spent", t_spent, FR_SPENT },       { "string", t_string, FR_STRING }, { "clear", t_clear, FR_CLEAR },   { "lurk", t_lurk, FR_LURK },
   { "rumble", t_hitstop, FR_RUMBLE },
+  { "parry", t_parry, FR_PARRY },       { "block", t_block, FR_PARRY },     { "meter", t_meter, FR_METER },   { "special", t_special, FR_METER },
+  { "assist", t_assist, FR_ASSIST },    { "trials", t_trials, FR_TRIALS },
 };
 
 int rules_run(void) {

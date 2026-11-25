@@ -5,7 +5,7 @@
 // (arms and legs hang along -Y): -x swings a limb forward, +z on the left side (+x) lifts it out sideways, +x on the
 // spine leans forward, +x on a lower leg bends the knee, -x on a lower arm bends the elbow.
 // Bones the clips never key (HairA, HairB, CoatL, CoatR, Belly) are driven at run time by the game's spring code.
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, existsSync, writeFileSync, copyFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Glb } from './gltf-writer.mjs';
@@ -13,6 +13,7 @@ import { SkinMesh, add, sub, mul, norm } from './charmesh.mjs';
 import { writeSet } from './texlib.mjs';
 import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
 import { faceParams, headModel, buildHead, shellGrid, hairCap, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
+import { addFaceMorphs } from './face-morphs.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
 const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
 
@@ -1481,6 +1482,8 @@ function faceHands(name, u) {
   return out;
 }
 
+const FACED = ['wayfarer', 'warden', 'thornwarden', 'tidecaller', 'emberking'];
+function faceFile(path) { const r = addFaceMorphs(readFileSync(path)); if (r) writeFileSync(path, r.glb); }
 // ── figures from CC0 bases (tools/chars/blender/build_chars.py writes out/cc0/<name>.json and .bin) ──
 const CC0_DIR = join(dirname(fileURLToPath(import.meta.url)), 'out', 'cc0');
 function cc0Load(name) {
@@ -1572,6 +1575,14 @@ function emitFine(sp) {
   glb.sceneNodes.push(glb.node({ name: 'Body', mesh: glb.mesh(sp.name + '_body', prims), skin: 0 }), nodes[0]);
   glb.write(join(OUT, sp.name + '.glb'));
   writeFileSync(join(OUT, sp.name + '.glb.cwimport'), CWIMPORT + `# the clips this figure plays (view.c ACTS and the locomotion)\nretarget.clips = ${clipsOf(sp.name).join(' ')}\n`);
+  // the speaking figures get faces that move (tools/chars/face-morphs.mjs): the wanderers, the wardens, the keepers'
+  // figure (the warden's), and the guide (the raider's figure, its own file so the raiders stay unmorphed)
+  if (FACED.includes(sp.name)) faceFile(join(OUT, sp.name + '.glb'));
+  if (sp.name === 'raider') {
+    copyFileSync(join(OUT, 'raider.glb'), join(OUT, 'guide.glb'));
+    copyFileSync(join(OUT, 'raider.glb.cwimport'), join(OUT, 'guide.glb.cwimport'));
+    faceFile(join(OUT, 'guide.glb'));
+  }
   console.log(sp.name, 'tris', d.tris, 'bones', names.length);
 }
 

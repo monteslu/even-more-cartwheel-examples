@@ -170,6 +170,22 @@ void fx_events(void) {
       spark_ring(at, 8);
       impact(at, 3.6f);
       break;
+    case EV_PARRY: /* a parry: a bright ring of sparks between the blades, the clank pitched up */
+      play(SN_CLANK, 1.0f, 1.35f);
+      spark_ring(at, 7);
+      impact(at, 3.4f);
+      break;
+    case EV_GUARDED: play(SN_CLANK, 0.7f, 0.85f); cw_particles_burst(FX_SPARK, at, (t3_vec3){ 0, 0.6f, 0 }); impact(at, 1.4f); break;
+    case EV_SPECIAL: /* the ember strike: embers up from the blade and a warm light that swells and fades */
+      play(SN_CRIT, 0.9f, 0.7f);
+      for (int k2 = 0; k2 < 3; k2++) cw_particles_burst(FX_EMBER, (t3_vec3){ e->x, e->y + 0.6f + 0.4f * (float)k2, e->z }, (t3_vec3){ 0, 1, 0 });
+      impact((t3_vec3){ e->x, e->y + 1.2f, e->z }, 5.0f);
+      break;
+    case EV_ASSIST: /* a spared warden comes, or goes, in a swirl of motes */
+      play(e->v > 0 ? SN_BOSS : SN_CLEAR, 0.6f, 1.2f);
+      cw_particles_burst(FX_MOTES, (t3_vec3){ e->x, e->y + 1.0f, e->z }, (t3_vec3){ 0, 1, 0 });
+      cw_particles_burst(FX_DUST, (t3_vec3){ e->x, e->y + 0.1f, e->z }, (t3_vec3){ 0, 1, 0 });
+      break;
     case EV_THROW: play(SN_THROW, 0.55f, 1); break;
     case EV_STONE: if (!e->v) cw_particles_burst(FX_DUST, at, (t3_vec3){ 0, 1, 0 }); break;
     case EV_RISE: play(SN_SPLASH, 0.8f, 1); cw_particles_burst(FX_DUST, (t3_vec3){ e->x, e->y + 0.3f, e->z }, (t3_vec3){ 0, 1, 0 }); cw_particles_burst(FX_MOTES, (t3_vec3){ e->x, e->y + 0.3f, e->z }, (t3_vec3){ 0, 1, 0 }); break;
@@ -252,6 +268,10 @@ void fx_feel(void) {
       if (e->a >= MAXP) { int h = S.a[e->a].last_hit_by; if (h >= 0 && h < MAXP) rumble(h, 0.6f, 0.3f, 150); }
       break;
     case EV_BLOCKED: rumble(by, 0.1f, 0.7f, 70); break;
+    case EV_PARRY: rumble(e->a, 0.35f, 0.9f, 140); break;
+    case EV_GUARDED: rumble(e->a, 0.25f, 0.5f, 90); break;
+    case EV_SPECIAL: rumble(e->a, 1.0f, 0.6f, 420); break;
+    case EV_ASSIST: if (e->v > 0) for (int i = 0; i < MAXP; i++) rumble(i, 0.3f, 0.2f, 260); break;
     case EV_GUARD_BREAK: rumble(by, 0.7f, 0.6f, 180); break;
     case EV_KILL: { int h = S.a[e->a].last_hit_by; if (h >= 0 && h < MAXP) rumble(h, 0.45f, 0.2f, 140); break; }
     case EV_SHOCK: /* a slam or a shockwave: by how near */

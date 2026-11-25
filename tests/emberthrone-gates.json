@@ -63,9 +63,9 @@
   },
   {
     "name": "emberthrone-controls",
-    "note": "emberthrone, one player on a pad: Start, Start, then up the road, lock on (right shoulder), three cuts (west), a roll to the right (south with the stick right), a heavy (north), a drink (left shoulder). The stamina spent, where the player stands and the rules' hash are pinned. The control does the same with no cut or heavy pressed: it must differ.",
+    "note": "emberthrone, one player on a pad: Start, Start, East held a second (the guide's welcome skipped), then up the road, lock on (right shoulder), three cuts (west), a roll to the right (south with the stick right), a heavy (north), a drink (left shoulder). The stamina spent, where the player stands and the rules' hash are pinned. The control does the same with no cut or heavy pressed: it must differ.",
     "app": "emberthrone",
-    "frames": 540,
+    "frames": 630,
     "input": "emberthrone-controls.json",
     "controlInput": "emberthrone-controls-control.json",
     "maxGt16": 0.4,
@@ -108,7 +108,191 @@
         0
       ],
       "game.dodges": 1,
-      "game.hash": 1802778484
+      "game.hash": 4084633716
+    }
+  },
+  {
+    "name": "emberthrone-story",
+    "note": "the guide's welcome on a pad alone (games/emberthrone/tale.c on cartwheel/story.h, speech.h, director.h): after Start, Start the scene plays its voiced lines on their own time while the rules wait, the guide's face speaks (tale.mouth_ok: its jaw past 0.3), the director frames her with nothing across her face and no shake; down and South answer \"Why me?\" (story.choice 1) and the scene ends. Control: no down press, the first answer",
+    "app": "emberthrone",
+    "frames": 2000,
+    "input": "emberthrone-story.json",
+    "controlInput": "emberthrone-story-control.json",
+    "maxGt16": 0.4,
+    "fields": [
+      "story.scene",
+      "story.lines",
+      "story.choices",
+      "story.choice",
+      "story.scene_skips",
+      "story.flags_hash",
+      "speech.missing",
+      "speech.played",
+      "tale.mouth_ok",
+      "tale.bark_key",
+      "dir.blocked_frames",
+      "dir.away_frames",
+      "dir.reversals",
+      "dir.cuts",
+      "game.scene"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "story.scene": -1,
+      "story.choices": 1,
+      "story.choice": 1,
+      "story.scene_skips": 0,
+      "speech.missing": 0,
+      "tale.mouth_ok": 1,
+      "dir.blocked_frames": 0,
+      "dir.away_frames": 0,
+      "dir.reversals": 0,
+      "game.scene": 0
+    }
+  },
+  {
+    "name": "emberthrone-story-skip",
+    "note": "East held a second skips the welcome: it ends at once on its default answer and the rules run. Control: East held half a second, which must not skip",
+    "app": "emberthrone",
+    "frames": 400,
+    "input": "emberthrone-story-skip.json",
+    "controlInput": "emberthrone-story-skip-control.json",
+    "maxGt16": 0.4,
+    "fields": [
+      "story.scene",
+      "story.lines",
+      "story.choices",
+      "story.choice",
+      "story.scene_skips",
+      "story.flags_hash",
+      "speech.missing",
+      "speech.played",
+      "tale.mouth_ok",
+      "tale.bark_key",
+      "dir.blocked_frames",
+      "dir.away_frames",
+      "dir.reversals",
+      "dir.cuts",
+      "game.scene"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "story.scene": -1,
+      "story.scene_skips": 1,
+      "story.choices": 1,
+      "story.choice": 0,
+      "game.scene": 0
+    }
+  },
+  {
+    "name": "emberthrone-reactive",
+    "note": "a shrine keeper's line keyed to the state it names: with three falls to the Tidecaller the bot's first rest hears the keeper's advice on her (tale.bark_key). Control: two falls, and the plain first-rest line is said instead",
+    "app": "emberthrone_auto",
+    "frames": 1800,
+    "startCmds": [
+      "@3 tale stat deaths_tide 3"
+    ],
+    "controlStartCmds": [
+      "@3 tale stat deaths_tide 2"
+    ],
+    "controlFrames": 1800,
+    "maxGt16": 0.4,
+    "fields": [
+      "tale.bark_key",
+      "game.rests",
+      "speech.missing"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "tale.bark_key": 1597165237,
+      "game.rests": 1,
+      "speech.missing": 0
+    }
+  },
+  {
+    "name": "emberthrone-boss-intro",
+    "note": "the Tidecaller's intro when she wakes (the autopilot from the edge of her court, scenes let play: ADV_STORY=1): her voiced line over a push-in and a hero shot of the wanderer, her face speaking, nothing across a face, no shake, then the fight. Control: 1 cm of handheld noise on the director (ADV_DIR_NOISE), which the shake count must catch",
+    "app": "emberthrone_auto",
+    "frames": 1500,
+    "env": {
+      "ADV_STORY": "1"
+    },
+    "startCmds": [
+      "@3 from 22"
+    ],
+    "controlEnv": {
+      "ADV_STORY": "1",
+      "ADV_DIR_NOISE": "1"
+    },
+    "controlStartCmds": [
+      "@3 from 22"
+    ],
+    "controlFrames": 1500,
+    "maxGt16": 0.4,
+    "fields": [
+      "story.scene",
+      "story.lines",
+      "story.choices",
+      "story.choice",
+      "story.scene_skips",
+      "story.flags_hash",
+      "speech.missing",
+      "speech.played",
+      "tale.mouth_ok",
+      "tale.bark_key",
+      "dir.blocked_frames",
+      "dir.away_frames",
+      "dir.reversals",
+      "dir.cuts",
+      "game.scene"
+    ],
+    "hosts": [
+      "native"
+    ],
+    "webgpu": {
+      "hosts": [
+        "native",
+        "romdev"
+      ],
+      "maxGt16": 0.4,
+      "vsGl": 0.4
+    },
+    "expect": {
+      "speech.missing": 0,
+      "tale.mouth_ok": 1,
+      "dir.blocked_frames": 0,
+      "dir.away_frames": 0,
+      "dir.reversals": 0
     }
   }
 ]

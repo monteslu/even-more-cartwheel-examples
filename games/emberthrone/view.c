@@ -1594,3 +1594,30 @@ void view_sync(float alpha) {
     if (st->on) cw_node3d_set_position(V_stone[k], (t3_vec3){ st->x, st->y, st->z });
   }
 }
+
+/* ── the story's view of the figures (tale.c): where each one's face, chest and hands are, for the director, and its
+ * model, for the face's morph targets ─────────────────────────────────────────────────────────────────────────── */
+t3_object *view_inst(int i) { return i >= 0 && i < MAXA && RIG[i].made ? RIG[i].inst : NULL; }
+static t3_vec3 bone_at(t3_object *inst, const char *name, t3_vec3 fallback) {
+  t3_object *b = inst ? t3_object_get_by_name(inst, name) : NULL;
+  if (!b) return fallback;
+  t3_object_update_matrix_world(b, false);
+  return t3_object_get_world_position(b);
+}
+bool view_subject(int i, t3_vec3 out[5], float *yaw) {
+  if (i < 0 || i >= MAXA || !S.a[i].used) return false;
+  const actor *a = &S.a[i];
+  float h = KIND[a->kind].height * GEN_SCALE[a->kind] / GEN_SCALE[K_WAYFARER];
+  t3_vec3 p = a->mv.position;
+  t3_vec3 head = { p.x, p.y + h * 0.92f, p.z }, chest = { p.x, p.y + h * 0.72f, p.z };
+  t3_object *inst = RIG[i].made ? RIG[i].inst : NULL;
+  out[0] = bone_at(inst, "Head", head);
+  out[0].y += 0.07f * GEN_SCALE[a->kind]; /* the eyes, over the head joint */
+  out[0].x += cw_sin(a->yaw) * 0.08f * GEN_SCALE[a->kind], out[0].z += cw_cos(a->yaw) * 0.08f * GEN_SCALE[a->kind];
+  out[1] = bone_at(inst, "Chest", chest);
+  out[2] = p;
+  out[3] = bone_at(inst, "HandL", chest);
+  out[4] = bone_at(inst, "HandR", chest);
+  *yaw = a->yaw;
+  return true;
+}

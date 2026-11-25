@@ -22,5 +22,5 @@ console.log(lines.map((l) => `     ${l}`).join('\n'));
 let bad = 0;
 if (r.status !== 0 || !/^rules ok$/m.test(r.stdout)) { console.log('FAIL the rules'); bad++; } else console.log('ok   rules');
 const controls = lines.filter((l) => l.startsWith('control '));
-if (controls.length < 13 || !/^controls ok$/m.test(r.stdout)) { console.log(`FAIL the controls (${controls.length} ran)`); bad++; } else console.log(`ok   ${controls.length} controls fail as they must`);
+if (controls.length < 19 || !/^controls ok$/m.test(r.stdout)) { console.log(`FAIL the controls (${controls.length} ran)`); bad++; } else console.log(`ok   ${controls.length} controls fail as they must`);
 process.exit(bad ? 1 : 0);

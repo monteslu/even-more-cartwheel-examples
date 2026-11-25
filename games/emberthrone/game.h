@@ -92,7 +92,7 @@ enum { K_WAYFARER, K_WARDEN, K_RAIDER, K_BRUTE, K_LANCER, K_THORN, K_TIDE, K_EMB
 #define IS_BOSS(k) ((k) >= K_THORN)
 enum { ST_MOVE, ST_ATTACK, ST_DODGE, ST_HURT, ST_DOWN, ST_DEAD, ST_DRINK, ST_ACT, ST_REST, ST_ROAR, ST_IDLE_HOME };
 enum { A_NONE, A_SLASH1, A_SLASH2, A_SLASH3, A_HEAVY, A_MAUL1, A_MAUL2, A_CLEAVE, A_CHOP, A_STAB, A_SLAM, A_HAY, A_SPIN, A_LARIAT,
-       A_HAMMER, A_WAVE, A_BASH, A_THROW, A_COUNT };
+       A_HAMMER, A_WAVE, A_BASH, A_THROW, A_SPECIAL, A_COUNT };
 
 typedef struct attack_def {
   const char *clip;
@@ -137,6 +137,13 @@ typedef struct actor {
   float magnet;           /* players: the cut's step toward its target (m/s through the wind-up) */
   int string;             /* bosses: blows left in a string (their later phases chain two or three) */
   int target;             /* lock-on target (players) or who it hunts (foes); -1 none */
+  /* players: the guard (held), its parry window and cooldown (ticks), the special meter (0..100) */
+  bool blocking;
+  int parry_t, parry_cd;
+  float meter;
+  /* an ally: a spared warden called into the King's fight (it strikes the foes, never the players), ticks left */
+  bool ally;
+  int ally_t;
   /* foes */
   int foe, group, region, phase, think, token, strafe;
   float home_x, home_z, home_yaw;
@@ -159,6 +166,7 @@ typedef struct input {
   float cx, cy;           /* camera stick */
   bool attack, heavy, dodge, use, lock, tonic, swap;  /* just pressed */
   bool attack_held, heavy_held, dodge_held;
+  bool guard, guard_held, special;                    /* the guard (a press opens the parry window), the special */
 } input;
 
 /* the save: progress only (the shell keeps it) */
@@ -170,11 +178,15 @@ typedef struct save_data {
   int32_t keys, maul;
   int32_t deaths, rests;
   int32_t play_ticks;
+  /* grown at the end only (older saves load with these zero) */
+  int32_t ladder_best;    /* the boss trials' best time (ticks), 0 none */
+  int32_t ladder_runs, ladder_wins;
+  uint8_t story[1024];    /* the story's flags, stats and lines said (cw_story_save) */
 } save_data;
 
 enum { EV_HIT, EV_BLOCKED, EV_KILL, EV_SWING, EV_DODGE, EV_STEP, EV_PICK, EV_OPEN, EV_REST, EV_BOSS, EV_ROAR, EV_SHOCK, EV_DOWN, EV_DRINK,
        EV_BREAK, EV_LEVER, EV_GATE, EV_FALL, EV_TELL, EV_WIN, EV_REGION, EV_LAND, EV_CRIT, EV_STAGGER, EV_THROW, EV_STONE, EV_CLEAR,
-       EV_GUARD_BREAK, EV_RISE };
+       EV_GUARD_BREAK, EV_RISE, EV_PARRY, EV_GUARDED, EV_SPECIAL, EV_ASSIST, EV_METER, EV_LADDER };
 /* a: who it happened to, b: what (the blow), c: who did it (-1 nobody), v: how much */
 typedef struct event { int kind, a, b; float x, y, z, v; int c; } event;
 
@@ -187,7 +199,7 @@ typedef struct stone { bool on; int from, t; float x, y, z, vx, vy, vz; } stone;
 
 /* the feel rules (each can be turned off for its test's control: ADV_RULES_OFF=name,name) */
 enum { FR_HITSTOP = 1, FR_KNOCK = 2, FR_CRIT = 4, FR_MAGNET = 8, FR_GUARD = 16, FR_STONES = 32, FR_FLANK = 64, FR_SPENT = 128, FR_CLEAR = 256, FR_STRING = 512,
-       FR_LURK = 1024, FR_RUMBLE = 2048 };
+       FR_LURK = 1024, FR_RUMBLE = 2048, FR_PARRY = 4096, FR_METER = 8192, FR_ASSIST = 16384, FR_TRIALS = 32768 };
 extern int g_rules_off, g_rules_force; /* force: the rules test sets them directly (-1: from ADV_RULES_OFF) */
 
 typedef struct sim {
@@ -224,6 +236,12 @@ typedef struct sim {
   int heal_ticks;
   int banner_t, banner_kind, banner_item;
   int fall_t;
+  /* the keyholder-style layer: parries, specials, assists, the boss trials */
+  int parries, guarded, specials, assists, finishers;
+  uint32_t assist_mask;   /* which spared wardens can be called (bit K_THORN - K_THORN, ...): the story sets it */
+  int assist_cd;          /* ticks before another call */
+  int ladder;             /* the boss trials: the stage (0..), -1 off */
+  int ladder_n, ladder_kind[3], ladder_t, ladder_wait, ladder_result; /* result: 1 won, 2 fallen */
 } sim;
 
 extern sim S;
@@ -239,6 +257,11 @@ void sim_respawn_foes(void);
 float sim_cam_yaw(void);
 void sim_teleport_party(float x, float z);
 void sim_test_blow(int victim, int attacker, int atk);
+bool sim_call_assist(int kind);     /* a spared warden strikes the boss beside the lead player; false when it cannot now */
+bool sim_assist_ready(int kind);
+bool sim_ladder_start(void);        /* the boss trials: every warden beaten so far, in a row (false: none beaten) */
+void sim_ladder_end(void);
+int sim_ladder_count(void);         /* wardens beaten (the trials' length) */
 extern bool g_held_now;   /* this tick was held (a blow's hit-stop): the view stops the clips */
 extern bool g_foe_passive; /* the rules test: foes stand still */
 
@@ -250,6 +273,8 @@ void view_lod(cw_node cam, int height); /* each figure's level of detail from it
 bool view_screen(t3_vec3 p, float *u, float *v);
 void view_reset(void);
 extern bool g_hide_hud;
+t3_object *view_inst(int actor);                          /* the actor's model now (NULL: no rig) */
+bool view_subject(int actor, t3_vec3 out[5], float *yaw); /* eyes, chest, feet, left and right hand (world) */
 typedef struct view_stats { int rigs, drawn, feet; float foot_err, hair_lag, hair_clip; } view_stats; /* hair: the lead player's largest tip lag and deepest point in the body (mm) */
 view_stats view_get_stats(void);
 

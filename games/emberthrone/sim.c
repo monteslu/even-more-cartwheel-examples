@@ -41,6 +41,8 @@ const attack_def ATK[A_COUNT] = {
   /* the shield bearer's shove and the slinger's throw (no blade: the stone does the harm) */
   [A_BASH] = { "stab", 46, 28, 33, 10, 45, 1.9f, 0.5f, 3.4f, 0, 0, 0, false, false, 0, 0 },
   [A_THROW] = { "swing", 58, 36, 37, 0, 0, -9, 1, 0, 0, 0, 0, false, false, 0, 0 },
+  /* the special (a full meter): the wanderer's ember strike, all round, a ring that warns of nothing (it is ours) */
+  [A_SPECIAL] = { "slam", 60, 30, 40, 70, 150, 3.0f, -1, 1.0f, 0, 0, 0, true, false, 3.0f, 0 },
 };
 
 const kind_def KIND[K_KINDS] = {
@@ -167,6 +169,7 @@ void sim_init(int players, const save_data *sv) {
   S.boss = -1;
   S.interact = -1;
   S.region = -1;
+  S.ladder = -1;
   rules_from_env();
   apply_flags();
   sim_respawn_foes();
@@ -391,7 +394,7 @@ int sim_find_target(int pi, int prefer_dir) {
   float fx = -cw_sin(S.cam_yaw), fz = -cw_cos(S.cam_yaw);
   for (int i = MAXP; i < MAXA; i++) {
     const actor *e = &S.a[i];
-    if (!alive(e) || i == p->target) continue;
+    if (!alive(e) || e->ally || i == p->target) continue;
     float dx = pos(e).x - pos(p).x, dz = pos(e).z - pos(p).z, d = sqrtf(dx * dx + dz * dz);
     if (d > 20 || fabsf(pos(e).y - pos(p).y) > 6) continue;
     float along = (dx * fx + dz * fz) / (d + 1e-3f);
@@ -456,12 +459,47 @@ static void stagger(actor *v, int len, int crit) {
 static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
   if (g_bench) { if (v->idx < MAXP) dmg = 0; else if (v->hp - dmg < 1) dmg = v->hp - 1; }
   if (v->iframes > 0 || v->state == ST_DEAD) {
-    if (v->idx < MAXP && v->iframes > 0) { S.dodged++; ev(EV_DODGE, v->idx, 1, pos(v).x, pos(v).y, pos(v).z, 0); }
+    if (v->idx < MAXP && v->iframes > 0) { S.dodged++; ev(EV_DODGE, v->idx, 1, pos(v).x, pos(v).y, pos(v).z, 0); if (rule(FR_METER)) v->meter = fminf(100, v->meter + 8); }
     return;
   }
   int byi = by ? by->idx : -1;
-  bool heavy = atk == A_HEAVY || atk == A_MAUL1 || atk == A_MAUL2;
+  bool heavy = atk == A_HEAVY || atk == A_MAUL1 || atk == A_MAUL2 || atk == A_SPECIAL;
   float bx = by ? pos(by).x : pos(v).x, bz = by ? pos(by).z : pos(v).z;
+  bool from_player = byi >= 0 && (byi < MAXP || (by && by->ally));
+  /* a player's guard (held, the blow from in front): a press just before the blow parries it, else it is blocked */
+  if (v->idx < MAXP && v->blocking && by && byi >= MAXP && !by->ally && rule(FR_PARRY)) {
+    float dx = bx - pos(v).x, dz = bz - pos(v).z, d = sqrtf(dx * dx + dz * dz) + 1e-4f;
+    if ((dx * cw_sin(v->yaw) + dz * cw_cos(v->yaw)) / d > 0.2f) {
+      if (v->parry_t > 0) { /* the parry: no harm, the attacker thrown off balance and open (the next blow a critical) */
+        v->parry_t = 0, v->parry_cd = 0;
+        S.parries++;
+        if (rule(FR_METER)) v->meter = fminf(100, v->meter + 22);
+        stagger(by, by->boss ? 40 : 48, 60);
+        if (by->boss) by->spent = CW_MAX(by->spent, 40);
+        knock_from(by, pos(v).x, pos(v).z, 40, false);
+        hold(8);
+        evc(EV_PARRY, v->idx, atk, (pos(v).x + bx) * 0.5f, pos(v).y + 1.3f, (pos(v).z + bz) * 0.5f, 0, byi);
+        return;
+      }
+      /* blocked: a quarter of the harm, the rest out of stamina; an empty stamina breaks the guard */
+      S.guarded++;
+      v->stamina -= (float)dmg * 0.9f;
+      v->stam_wait = 40;
+      evc(EV_GUARDED, v->idx, atk, (pos(v).x + bx) * 0.5f, pos(v).y + 1.2f, (pos(v).z + bz) * 0.5f, 0, byi);
+      if (v->stamina > 0) {
+        dmg /= 4, poise = 0, knock = false;
+        hold(4);
+        knock_from(v, bx, bz, 20, false);
+        v->hp -= dmg;
+        if (v->hp <= 0) v->hp = 1; /* a block never kills */
+        if (rule(FR_METER)) v->meter = fminf(100, v->meter + 4);
+        return;
+      }
+      v->stamina = 0;
+      v->blocking = false;
+      stagger(v, 40, 0); /* the guard broken: the blow lands too */
+    }
+  }
   if (byi >= 0 && byi < MAXP && v->idx >= MAXP && guarding(v, by)) {
     v->guard -= heavy ? 999 : poise;
     v->think = 0;
@@ -479,13 +517,17 @@ static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
     v->guard = -300;
   }
   bool crit = false;
-  if (byi >= 0 && byi < MAXP && v->idx >= MAXP && v->crit_t > 0 && rule(FR_CRIT)) {
+  if (from_player && v->idx >= MAXP && v->crit_t > 0 && rule(FR_CRIT)) {
     crit = true, dmg *= 2, v->crit_t = 0;
     S.crits++;
   }
   if (v->idx >= MAXP && v->spent > 0 && rule(FR_SPENT)) poise *= 2; /* a boss catching its breath staggers sooner */
   v->hp -= dmg;
   v->last_hit_by = byi;
+  if (rule(FR_METER)) {
+    if (byi >= 0 && byi < MAXP && v->idx >= MAXP && atk != A_SPECIAL) by->meter = fminf(100, by->meter + (crit ? 12 : heavy ? 8 : 5));
+    if (v->idx < MAXP) v->meter = fminf(100, v->meter + (float)dmg * 0.25f);
+  }
   v->flash = 8;
   evc(crit ? EV_CRIT : EV_HIT, v->idx, atk, pos(v).x, pos(v).y + 1.2f * scale_of(v), pos(v).z, (float)dmg, byi);
   if (v->idx < MAXP) S.hits_taken++;
@@ -507,7 +549,11 @@ static void hurt(actor *v, actor *by, int atk, int dmg, int poise, bool knock) {
           if (S.a[i].used && S.a[i].state != ST_DEAD && S.a[i].tonics < S.a[i].tonic_max) S.a[i].tonics++, filled++;
         evc(EV_CLEAR, v->idx, v->group, pos(v).x, pos(v).y + 1, pos(v).z, (float)filled, byi);
       }
-      if (w->flag >= 0) { /* a boss falls: its reward, the save flag */
+      if (v->boss && S.ladder >= 0) { /* the trials: the next warden after a breath */
+        S.boss = -1, S.ladder_wait = 150;
+        ev(EV_LADDER, v->idx, v->kind, pos(v).x, pos(v).y, pos(v).z, (float)S.ladder);
+        ev(EV_BOSS, v->idx, 2, pos(v).x, pos(v).y, pos(v).z, 0);
+      } else if (w->flag >= 0) { /* a boss falls: its reward, the save flag */
         sim_set_flag(w->flag);
         int item = v->kind == K_THORN ? IT_KEY_SUN : v->kind == K_TIDE ? IT_KEY_MOON : 0;
         if (item == IT_KEY_SUN) S.sv.keys |= 1;
@@ -567,18 +613,20 @@ static void resolve_swing(actor *a) {
   if (a->st_t < d->on || a->st_t > d->off) return;
   float reach = d->reach * scale_of(a);
   float fx = cw_sin(a->yaw), fz = cw_cos(a->yaw);
-  int lo = a->idx < MAXP ? MAXP : 0, hi = a->idx < MAXP ? MAXA : MAXP;
+  bool ours = a->idx < MAXP || a->ally;
+  int lo = ours ? MAXP : 0, hi = ours ? MAXA : MAXP;
   for (int i = lo; i < hi; i++) {
     actor *v = &S.a[i];
-    if (!alive(v) || (a->hit_mask[i >> 5] >> (i & 31)) & 1) continue;
+    if (!alive(v) || v->ally || (a->hit_mask[i >> 5] >> (i & 31)) & 1) continue;
     float dx = pos(v).x - pos(a).x, dz = pos(v).z - pos(a).z, dist = sqrtf(dx * dx + dz * dz);
     float r = KIND[v->kind].radius * scale_of(v);
     if (dist > reach + r || fabsf(pos(v).y - pos(a).y) > 2.2f * scale_of(a)) continue;
     if (d->arc > -1 && dist > 0.3f && (dx * fx + dz * fz) / dist < d->arc) continue;
     a->hit_mask[i >> 5] |= 1u << (i & 31);
     int dmg = d->dmg;
-    if (a->idx >= MAXP) dmg = dmg * KIND[a->kind].dmg_k;
-    hurt(v, a, a->atk, dmg, d->poise, d->knock && (a->idx >= MAXP || !v->boss));
+    if (a->idx >= MAXP && !a->ally) dmg = dmg * KIND[a->kind].dmg_k;
+    if (a->ally) dmg *= 4; /* a warden's blow on the King: a real share of him (about a tenth) */
+    hurt(v, a, a->atk, dmg, d->poise, d->knock && ((a->idx >= MAXP && !a->ally) || !v->boss || a->atk == A_SPECIAL));
   }
   /* the maul breaks cracked walls */
   if (a->idx < MAXP && a->weapon == 1 && a->st_t == d->on) {
@@ -825,17 +873,39 @@ static void player_step(actor *p, const input *in) {
   }
   const actor *t = p->target >= 0 ? &S.a[p->target] : NULL;
   p->st_t++;
+  if (p->parry_t > 0) p->parry_t--;
+  if (p->parry_cd > 0) p->parry_cd--;
+  p->blocking = false;
   float vx = 0, vz = 0;
   switch (p->state) {
   case ST_MOVE: {
     float sp = KIND[p->kind].speed;
     if (t) sp *= 0.72f; /* locked: a circling walk */
+    /* the guard: held, a slow walk behind the blade; a fresh press opens the parry window (0.2 s, then 0.55 s before
+     * the next) */
+    if (in->guard_held && rule(FR_PARRY) && p->stamina > 0) {
+      p->blocking = true, sp *= 0.4f;
+      if (in->guard && p->parry_cd <= 0) p->parry_t = 12, p->parry_cd = 33;
+    }
+    /* the special: a full meter spent on the ember strike */
+    if (in->special && p->meter >= 100 && rule(FR_METER)) {
+      p->meter = 0, p->blocking = false;
+      if (t) p->yaw = bearing(p, t);
+      start_attack(p, A_SPECIAL);
+      p->stamina += (float)ATK[A_SPECIAL].stamina;
+      S.specials++;
+      hold(12);
+      ev(EV_SPECIAL, p->idx, 0, pos(p).x, pos(p).y, pos(p).z, 0);
+      break;
+    }
     vx = wx * sp, vz = wz * sp;
     float face = t ? bearing(p, t) : mag > 0.1f ? cw_atan2(wx, wz) : p->yaw;
     p->yaw = turn_to(p->yaw, face, (t ? 10.0f : 12.0f) * dt);
     int k = S.interact;
     if (in->use && k >= 0 && p->idx == 0) { use_obj(p, k); break; }
     if (in->use && p->idx > 0) { int k2 = interact_obj(p); if (k2 >= 0) { use_obj(p, k2); break; } }
+    /* in the King's fight, with nothing to use near: call a spared warden (the story's choice) */
+    if (in->use && k < 0 && p->idx == 0 && (sim_call_assist(K_THORN) || sim_call_assist(K_TIDE))) break;
     if ((in->swap || (in->use && k < 0)) && S.sv.maul) { p->weapon ^= 1; ev(EV_PICK, p->idx, -1, pos(p).x, pos(p).y + 1, pos(p).z, 0); }
     if (in->tonic && p->tonics > 0) { set_state(p, ST_DRINK, 54); break; }
     if (in->dodge && p->stamina > 0) {
@@ -846,6 +916,7 @@ static void player_step(actor *p, const input *in) {
       ev(EV_DODGE, p->idx, 0, pos(p).x, pos(p).y, pos(p).z, 0);
       break;
     }
+    if (p->blocking && !(in->attack || in->heavy)) { vx = wx * sp, vz = wz * sp; break; }
     if ((in->attack || in->heavy) && p->stamina > 0) {
       int a = p->weapon ? (in->heavy ? A_MAUL2 : A_MAUL1) : (in->heavy ? A_HEAVY : A_SLASH1);
       if (t) p->yaw = bearing(p, t);
@@ -1151,6 +1222,119 @@ static void foe_step(actor *e) {
   move_actor(e, vx, vz);
 }
 
+/* ── allies: a spared warden called into the King's fight ──────────────
+ * It appears beside the lead player, turns to the boss and strikes once with its biggest blow (the Thornwarden's
+ * spin, the Tidecaller's wave), then goes. Its blow hurts foes only; nothing strikes it. */
+#define ALLY_SLOT (MAXA - 1)
+static void ally_step(actor *a) {
+  a->yaw_prev = a->yaw;
+  a->st_t++;
+  if (a->flash > 0) a->flash--;
+  const actor *t = S.boss >= 0 ? &S.a[S.boss] : NULL;
+  float vx = 0, vz = 0;
+  if (a->state == ST_ATTACK) {
+    const attack_def *d = &ATK[a->atk];
+    if (t && a->st_t < d->on - 6) a->yaw = turn_to(a->yaw, bearing(a, t), 6.0f / TPS);
+    if (t && a->st_t < d->on && flat_dist(a, t) > attack_range(a, a->atk) - 0.8f) vx = cw_sin(a->yaw) * 5, vz = cw_cos(a->yaw) * 5; /* closes in through the wind-up */
+    resolve_swing(a);
+    if (a->st_t >= a->st_len) set_state(a, ST_IDLE_HOME, 0);
+  }
+  if (--a->ally_t <= 0) { ev(EV_ASSIST, a->idx, a->kind, pos(a).x, pos(a).y, pos(a).z, -1); a->used = false; return; }
+  move_actor(a, vx, vz);
+}
+bool sim_assist_ready(int kind) {
+  if (!rule(FR_ASSIST)) return false;
+  int bit = kind - K_THORN;
+  if (bit < 0 || bit > 1 || !((S.assist_mask >> bit) & 1)) return false;
+  if (S.boss < 0 || S.a[S.boss].kind != K_EMBER || S.assist_cd > 0 || S.a[ALLY_SLOT].used) return false;
+  return g_nfoe < MAXE - 1 && alive(&S.a[0]);
+}
+bool sim_call_assist(int kind) {
+  if (!sim_assist_ready(kind)) return false;
+  actor *p = &S.a[0], *a = &S.a[ALLY_SLOT], *t = &S.a[S.boss];
+  memset(a, 0, sizeof *a);
+  a->used = a->active = a->ally = true;
+  a->kind = kind, a->idx = ALLY_SLOT, a->foe = -1, a->region = S.region;
+  a->hp_max = a->hp = KIND[kind].hp, a->poise_max = a->poise = KIND[kind].poise;
+  a->target = S.boss, a->ally_t = 160, a->group = -1;
+  float side = cw_sin(p->yaw + 1.2f), front = cw_cos(p->yaw + 1.2f);
+  actor_place(a, pos(p).x + side * 2.2f, pos(p).z + front * 2.2f);
+  a->yaw = a->yaw_prev = bearing(a, t);
+  start_attack(a, kind == K_THORN ? A_SPIN : A_WAVE);
+  a->flash = 0;
+  S.assist_cd = 60 * 25;
+  S.assists++;
+  ev(EV_ASSIST, a->idx, kind, pos(a).x, pos(a).y, pos(a).z, 1);
+  return true;
+}
+
+/* ── the boss trials: every warden beaten so far, again, in a row, against the clock ──
+ * The journey's save is kept aside; each stage brings its warden back at its ring with the party at the ring's edge,
+ * healed. A warden beaten here gives nothing; a fall ends the trials. Then the journey is put back as it was. */
+static save_data LADDER_KEEP;
+static const int LADDER_ORDER[3] = { K_THORN, K_TIDE, K_EMBER };
+static int boss_foe(int kind) { for (int f = 0; f < g_nfoe; f++) if (g_foe[f].kind == kind) return f; return -1; }
+int sim_ladder_count(void) {
+  int n = 0;
+  for (int k = 0; k < 3; k++) { int f = boss_foe(LADDER_ORDER[k]); if (f >= 0 && g_foe[f].flag >= 0 && sim_has_flag(g_foe[f].flag)) n++; }
+  return n;
+}
+static void ladder_stage(int k) {
+  int kind = S.ladder_kind[k], f = boss_foe(kind);
+  if (f < 0) return;
+  for (int i = MAXP; i < MAXA; i++) if (S.a[i].used && S.a[i].boss) S.a[i].used = false;
+  if (g_foe[f].flag >= 0) S.sv.flags[g_foe[f].flag >> 5] &= ~(1u << (g_foe[f].flag & 31)); /* the warden stands again (the journey keeps its own) */
+  foe_spawn(f);
+  /* the party at the ring's edge: on the way the route walks in to this fight */
+  float wx = g_foe[f].x, wz = g_foe[f].z, best = 1e30f; int ri = -1;
+  for (int r = 1; r < g_nroute; r++) if (g_route[r].act == RA_FIGHT) { float d = dist2(g_route[r].x, g_route[r].z, wx, wz); if (d < best) best = d, ri = r; }
+  float x = ri > 0 ? lerpf(g_route[ri - 1].x, g_route[ri].x, 0.55f) : wx + 10, z = ri > 0 ? lerpf(g_route[ri - 1].z, g_route[ri].z, 0.55f) : wz;
+  sim_teleport_party(x, z);
+  for (int i = 0; i < MAXP; i++) if (S.a[i].used) {
+    actor *p = &S.a[i];
+    if (p->state == ST_DEAD) player_reset(p, i, x + (float)i, z + (float)i, 0);
+    p->hp = p->hp_max, p->tonics = p->tonic_max, p->stamina = p->stamina_max, p->yaw = cw_atan2(wx - x, wz - z);
+  }
+  S.cam_yaw = cw_atan2(wx - x, wz - z) + CW_PI, S.cam_idle = 999;
+  S.boss = -1;
+  memset(S.sh, 0, sizeof S.sh);
+  memset(S.st, 0, sizeof S.st);
+}
+bool sim_ladder_start(void) {
+  if (S.ladder >= 0 || S.state != GS_PLAY || !rule(FR_TRIALS)) return false;
+  int n = 0, kinds[3];
+  for (int k = 0; k < 3; k++) { int f = boss_foe(LADDER_ORDER[k]); if (f >= 0 && g_foe[f].flag >= 0 && sim_has_flag(g_foe[f].flag)) kinds[n++] = LADDER_ORDER[k]; }
+  if (!n) return false;
+  LADDER_KEEP = S.sv;
+  S.ladder = 0, S.ladder_n = n, S.ladder_t = 0, S.ladder_wait = 0, S.ladder_result = 0;
+  for (int k = 0; k < n; k++) S.ladder_kind[k] = kinds[k];
+  ladder_stage(0);
+  ev(EV_LADDER, 0, S.ladder_kind[0], 0, 0, 0, -1);
+  return true;
+}
+void sim_ladder_end(void) {
+  if (S.ladder < 0) return;
+  save_data keep = LADDER_KEEP;
+  keep.ladder_runs++;
+  if (S.ladder_result == 1) { keep.ladder_wins++; if (!keep.ladder_best || S.ladder_t < keep.ladder_best) keep.ladder_best = S.ladder_t; }
+  int players = S.players;
+  uint32_t mask = S.assist_mask;
+  sim_init(players, &keep);
+  S.assist_mask = mask;
+  for (int i = 1; i < players; i++) sim_add_player(i);
+}
+/* the trials' clock and their stages; true when the step must end now (the journey was put back) */
+static bool ladder_step(void) {
+  if (S.ladder < 0) return false;
+  if (!S.ladder_result) S.ladder_t++;
+  if (S.ladder_wait > 0 && --S.ladder_wait == 0) {
+    if (S.ladder_result) { sim_ladder_end(); return true; }
+    if (++S.ladder >= S.ladder_n) { S.ladder_result = 1, S.ladder_wait = 240; ev(EV_LADDER, 0, 0, 0, 0, 0, 99); }
+    else { ladder_stage(S.ladder); ev(EV_LADDER, 0, S.ladder_kind[S.ladder], 0, 0, 0, -1); }
+  }
+  return false;
+}
+
 /* ── the step ──────────────────────────────────────────────────────── */
 static void hash_state(void) {
   uint32_t h = S.hash;
@@ -1177,6 +1361,7 @@ void sim_step(const input in_[MAXP]) {
       input *h = &S.held[i];
       const input *q = &in_[i];
       h->attack |= q->attack, h->heavy |= q->heavy, h->dodge |= q->dodge, h->use |= q->use, h->lock |= q->lock, h->tonic |= q->tonic, h->swap |= q->swap;
+      h->guard |= q->guard, h->special |= q->special;
     }
     S.cam_pos_prev = S.cam_pos, S.cam_target_prev = S.cam_target;
     hash_state();
@@ -1188,6 +1373,7 @@ void sim_step(const input in_[MAXP]) {
     const input *h = &S.held[i];
     in[i] = in_[i];
     in[i].attack |= h->attack, in[i].heavy |= h->heavy, in[i].dodge |= h->dodge, in[i].use |= h->use, in[i].lock |= h->lock, in[i].tonic |= h->tonic, in[i].swap |= h->swap;
+    in[i].guard |= h->guard, in[i].special |= h->special;
   }
   memset(S.held, 0, sizeof S.held);
   if (S.banner_t > 0) S.banner_t--;
@@ -1215,14 +1401,19 @@ void sim_step(const input in_[MAXP]) {
     for (int i = 0; i < MAXP; i++)
       if (S.a[i].used) player_step(&S.a[i], &in[i]);
     for (int i = MAXP; i < MAXA; i++)
-      if (S.a[i].used && (S.a[i].active || S.a[i].state == ST_DEAD)) foe_step(&S.a[i]);
+      if (S.a[i].used && S.a[i].ally) ally_step(&S.a[i]);
+      else if (S.a[i].used && (S.a[i].active || S.a[i].state == ST_DEAD)) foe_step(&S.a[i]);
+    if (S.assist_cd > 0) S.assist_cd--;
     separate();
     shocks_step();
     stones_step();
     /* a second player too far from the first comes back to them */
     for (int i = 1; i < MAXP; i++)
       if (alive(&S.a[i]) && alive(lead) && flat_dist(&S.a[i], lead) > 22) cw_mover3d_teleport(&S.a[i].mv, (t3_vec3){ pos(lead).x + 1, pos(lead).y + 0.2f, pos(lead).z + 1 });
-    if (sim_alive_players() == 0) S.state = GS_FALLEN, S.state_t = 0, S.sv.deaths++, S.deaths++;
+    if (sim_alive_players() == 0 && S.ladder >= 0) { /* fallen in the trials: they end there */
+      if (!S.ladder_result) S.ladder_result = 2, S.ladder_wait = 240;
+    } else if (sim_alive_players() == 0) S.state = GS_FALLEN, S.state_t = 0, S.sv.deaths++, S.deaths++;
+    if (ladder_step()) return;
   } else if (S.state == GS_FALLEN) {
     if (++S.state_t > 60 * 4) { /* back at the shrine, the foes back where they stood */
       S.state = GS_PLAY;

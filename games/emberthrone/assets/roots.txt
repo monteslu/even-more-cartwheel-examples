@@ -26,6 +26,8 @@ models/flora_pine.glb
 models/flora_willow.glb
 models/flora_windswept.glb
 models/grass_tuft.glb
+models/guide.glb
+models/guide.glb.cwimport
 models/heart.glb
 models/key_moon.glb
 models/key_sun.glb
@@ -61,6 +63,8 @@ models/wayfarer.glb
 models/wayfarer.glb.cwimport
 project.cwproj
 scenes/main.cwscene
+story/ember.cwspeech
+story/ember.cwstory
 textures/clouds_c.png
 textures/flag_c.png
 textures/flag_n.png

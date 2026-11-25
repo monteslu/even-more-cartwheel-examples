@@ -37,6 +37,7 @@
 #include "cartwheel/shell.h"
 #include "cartwheel/ui.h"
 #include "game.h"
+#include "tale.h"
 #include "../common/coplanar.h"
 
 void view_fixed(void);
@@ -50,13 +51,14 @@ static double wall_s(void) {
 static struct {
   bool in_match, built;
   int players;
-  cw_action move[4], cam[4], attack, heavy, dodge, use, lock, tonic, swap;
+  cw_action move[4], cam[4], attack, heavy, dodge, use, lock, tonic, swap, guard, special;
   cw_node camera;
   int32_t state, tick, region, kills, hits_taken, hits_landed, dodges, dodged, tells, keys, hearts, maul, route, boss_hp, deaths, rests, stuck;
   int32_t swings, crits, staggers, blocked, held, clears, stones, rumbles;
   int32_t hp[MAXP], stam[MAXP], px[MAXP], py[MAXP], pz[MAXP], pstate[MAXP], target, foes_live, rigs, feet, flags0, flags3, cam_clip_t, world_hash;
   uint32_t hash;
-  float cam_clip, cam_jerk, hair_lag, hair_clip;
+  float cam_clip, cam_jerk, hair_lag, hair_clip, cam_fov;
+  int32_t parries, guarded, specials, assists, meter, ladder, ladder_result, scene;
   int32_t cam_jerks;
   t3_vec3 cam_p[2];
   int cam_n;
@@ -105,7 +107,7 @@ static void shell_sound(cw_shell_sound s, void *u) {
 static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
   (void)from, (void)u;
   bool want = to == CW_SHELL_TITLE || to == CW_SHELL_PLAY;
-  if (want && !cw_voice_is_playing(music)) music = cw_audio_play(snd_music, &(cw_play_desc){ .bus = cw_shell_music_bus(), .loop = true, .volume = 0.5f });
+  if (want && !cw_voice_is_playing(music)) music = cw_audio_play(snd_music, &(cw_play_desc){ .bus = cw_shell_music_bus(), .loop = true, .volume = 0.5f * tale_music_duck() });
   if (!want && cw_voice_is_playing(music)) cw_voice_stop(music, 0.3f);
 }
 
@@ -132,6 +134,8 @@ static bool build_step(void) {
     fprintf(stderr, "adv-ground props=%d boxes=%d scatter=%d floating=%d worst_cm=%d\n", world_props(&pp), world_box_count(), world_scatter(&sp, &sl), bad, (int)(worst * 100));
   }
   G.camera = cw_node_get(root, "World/Camera");
+  { cw_value v; G.cam_fov = cw_node_get_prop(G.camera, "fov", &v) && v.f > 1 ? (float)v.f : 60; }
+  tale_build(cw_node_get(root, "World"));
   G.built = true;
   return true;
 }
@@ -159,6 +163,11 @@ static void jump_ahead(int to) {
   bot_jump(to);
 }
 
+static void cmd_trials(int argc, const char **argv, cw_reply *r) {
+  (void)argc, (void)argv;
+  bool ok = sim_ladder_start();
+  cw_reply_printf(r, "{\"trials\":%d,\"wardens\":%d}", ok ? 1 : 0, S.ladder_n);
+}
 static void cmd_from(int argc, const char **argv, cw_reply *r) {
   if (argc < 2) { cw_reply_error(r, "usage: from <n>"); return; }
   int n = atoi(argv[1]);
@@ -207,8 +216,10 @@ static void start(int players, void *u) {
   if (getenv("ADV_GOD")) g_bench = true;
   if (getenv("ADV_RULES")) { extern int rules_run(void); exit(rules_run()); } /* the combat feel rules (tests/emberthrone-rules.mjs) */
   (void)sd;
+  tale_start(true);
 #else
   sim_init(players, sd && sd->version == 1 ? sd : NULL);
+  tale_start(!(sd && sd->version == 1 && sd->play_ticks > 0));
 #endif
   view_reset();
 }
@@ -225,6 +236,26 @@ static bool warmup(void *u) {
   return true;
 }
 
+static cw_shell_setting SETTINGS[2];
+/* the pause menu's game item: the boss trials, once a warden has been beaten */
+static void pause_item(int index, void *u) {
+  (void)u;
+  if (index == 0 && G.in_match && S.ladder < 0 && !tale_blocking()) sim_ladder_start();
+}
+static void pause_items(void) {
+  const char *items[2] = { G.in_match && S.ladder < 0 && sim_ladder_count() > 0 ? "Boss trials" : NULL, NULL };
+  cw_shell_set_pause_items(items);
+}
+/* the journey kept at a rest (the shell's save, the story's state in it) */
+static void save_journey(void) {
+#ifndef ADV_AUTOPILOT
+  save_data *sd = cw_shell_game_save();
+  if (!sd || S.ladder >= 0) return;
+  tale_save();
+  *sd = S.sv;
+  cw_shell_save_commit();
+#endif
+}
 static void init(void *u) {
   (void)u;
   cw_project_load_input();
@@ -232,9 +263,12 @@ static void init(void *u) {
   for (int i = 0; i < 4; i++) G.move[i] = cw_action_find(mv[i]), G.cam[i] = cw_action_find(cm[i]);
   G.attack = cw_action_find("attack"), G.heavy = cw_action_find("heavy"), G.dodge = cw_action_find("dodge"), G.use = cw_action_find("use");
   G.lock = cw_action_find("lock"), G.tonic = cw_action_find("tonic"), G.swap = cw_action_find("swap");
+  G.guard = cw_action_find("guard"), G.special = cw_action_find("special");
   cw_shell_init(&(cw_shell_desc){ .title = "EMBER THRONE", .subtitle = "one world, three wardens, a long way round", .max_players = MAXP, .shared_screen = true,
                                   .game_save_size = sizeof(save_data), .game_save_version = 1, .start = start, .players_changed = players_changed,
-                                  .sound = shell_sound, .screen_changed = shell_screen });
+                                  .sound = shell_sound, .screen_changed = shell_screen, .pause_item = pause_item,
+                                  .settings_items = (tale_settings(SETTINGS), SETTINGS), .settings_item_count = 2 });
+  tale_init();
   font = cw_ui_font_sans();
   cw_prompt_set_font(font);
   cw_quality_full_resolution(true); /* no preset draws below the output size */
@@ -292,6 +326,15 @@ static void init(void *u) {
   cw_debug_f32("view.cam_want", &S.cam_dist_want);
   cw_debug_f32("view.cam_lock", &S.cam_lock);
   cw_debug_i32("bot.stuck", &G.stuck);
+  cw_debug_i32("game.parries", &G.parries);
+  cw_debug_i32("game.guarded", &G.guarded);
+  cw_debug_i32("game.specials", &G.specials);
+  cw_debug_i32("game.assists", &G.assists);
+  cw_debug_i32("game.meter", &G.meter);
+  cw_debug_i32("game.ladder", &G.ladder);
+  cw_debug_i32("game.ladder_result", &G.ladder_result);
+  cw_debug_i32("game.scene", &G.scene);
+  cw_debug_command("trials", "trials: start the boss trials (as the pause menu's item does)", cmd_trials);
   /* every build: a test jumps to a fight (tests/emberthrone-motion.mjs) */
   cw_debug_command("from", "from <n>: further on, at route index n with the progress a player would have there (ADV_FROM on a cart host, which reads the environment only from frame 2)", cmd_from);
 #ifdef ADV_AUTOPILOT
@@ -312,7 +355,8 @@ static void read_input(input in[MAXP]) {
     cw_vec2 c = cw_input_vector(i, G.cam[0], G.cam[1], G.cam[2], G.cam[3], CW_DEADZONE_SCALED_RADIAL, 0.2f);
     in[i] = (input){ m.x, m.y, c.x, c.y, cw_action_just_pressed(i, G.attack), cw_action_just_pressed(i, G.heavy), cw_action_just_pressed(i, G.dodge),
                      cw_action_just_pressed(i, G.use), cw_action_just_pressed(i, G.lock), cw_action_just_pressed(i, G.tonic), cw_action_just_pressed(i, G.swap),
-                     cw_action_pressed(i, G.attack), cw_action_pressed(i, G.heavy), cw_action_pressed(i, G.dodge) };
+                     cw_action_pressed(i, G.attack), cw_action_pressed(i, G.heavy), cw_action_pressed(i, G.dodge),
+                     cw_action_just_pressed(i, G.guard), cw_action_pressed(i, G.guard), cw_action_just_pressed(i, G.special) };
 #endif
   }
 }
@@ -346,14 +390,20 @@ static void fixed_update(void *u, double dt) {
   /* ADV_TURBO=n (native soak runs): n rule ticks per engine tick, the bot reading the state between them */
   static int turbo = -1;
   if (turbo < 0) turbo = getenv("ADV_TURBO") ? CW_CLAMP(atoi(getenv("ADV_TURBO")), 1, 240) : 1;
-  for (int k = 0; k < turbo; k++) {
+  pause_items();
+  bool rested = false;
+  for (int k = 0; k < turbo && !tale_blocking(); k++) {
     if (k) read_input(in);
     sim_step(in);
     fx_feel();
+    tale_events();
+    for (int e = 0; e < S.ev_n; e++) rested |= S.ev[e].kind == EV_REST;
     if (getenv("ADV_LOG") && S.tick % (getenv("ADV_LOG_EVERY") ? atoi(getenv("ADV_LOG_EVERY")) : 3600) == 0) status_line();
     if (getenv("ADV_LOG") && S.state == GS_WON && S.state_t == 1) { status_line(); fprintf(stderr, "adv-won tick=%u kills=%d deaths=%d\n", S.tick, S.kills, S.deaths); fflush(stderr); }
   }
   view_fixed();
+  tale_tick(1.0f / TPS);
+  if (rested) save_journey();
   G.t_sim += (wall_s() - t0) * 1000;
   G.state = S.state, G.tick = (int32_t)S.tick, G.region = S.region, G.kills = S.kills, G.hits_taken = S.hits_taken, G.hits_landed = S.hits_landed;
   G.dodges = S.dodges, G.dodged = S.dodged, G.tells = S.tells, G.keys = S.sv.keys, G.hearts = S.sv.hearts, G.maul = S.sv.maul, G.route = bot_route_index();
@@ -368,6 +418,8 @@ static void fixed_update(void *u, double dt) {
     G.hp[i] = a->used ? a->hp : 0, G.stam[i] = a->used ? (int)a->stamina : 0, G.pstate[i] = a->used ? a->state : -1;
     G.px[i] = (int)(a->mv.position.x * 100), G.py[i] = (int)(a->mv.position.y * 100), G.pz[i] = (int)(a->mv.position.z * 100);
   }
+  G.parries = S.parries, G.guarded = S.guarded, G.specials = S.specials, G.assists = S.assists, G.meter = (int32_t)S.a[0].meter;
+  G.ladder = S.ladder, G.ladder_result = S.ladder_result, G.scene = tale_blocking() ? 1 : 0;
   view_stats vs = view_get_stats();
   G.rigs = vs.rigs, G.feet = vs.feet, G.hair_lag = vs.hair_lag, G.hair_clip = vs.hair_clip;
 }
@@ -400,6 +452,12 @@ static void hud_player(int i, float u, cw_vec2 cs) {
   float pulse = low ? 0.5f - 0.5f * cw_cos((float)S.tick * CW_TAU / 72.0f) : 0; /* low: a slow swell toward a lighter red (never a blink) */
   bar(bx, y, hw, 18 * u, (float)p->hp / (float)p->hp_max, rgba(0.92f + 0.08f * pulse, 0.2f + 0.3f * pulse, 0.25f + 0.15f * pulse, 1), rgba(0.25f, 0.05f, 0.06f, 0.85f));
   bar(bx, y + 28 * u, sw, 12 * u, p->stamina / p->stamina_max, rgba(0.35f, 0.95f, 0.45f, 1), rgba(0.06f, 0.2f, 0.08f, 0.85f));
+  { /* the ember meter: full, the special is ready */
+    bool full = p->meter >= 100;
+    float glow = full ? 0.5f - 0.5f * cw_cos((float)S.tick * CW_TAU / 90.0f) : 0;
+    bar(bx + sw + 18 * u, y + 28 * u, 120 * u, 12 * u, p->meter / 100, rgba(1, 0.55f + 0.25f * glow, 0.15f + 0.3f * glow, 1), rgba(0.22f, 0.1f, 0.03f, 0.85f));
+    if (full && i == 0) cw_prompt_text(font, "{special}: ember strike", 0, cw_v2(bx + sw + 146 * u, y + 20 * u), bs, rgba(1, 0.85f, 0.55f, 1), CW_ALIGN_LEFT);
+  }
   /* the flask: a round shape with its count; the keys */
   float fy = y + 56 * u, iu = u * cw_text_drawn_size(font, bs) / bs;
   cw_r2d_circle(cw_v2(bx + 12 * iu, fy + 14 * iu), 11 * iu, 16, rgba(0.35f, 1, 0.55f, 0.95f));
@@ -422,6 +480,11 @@ static void hud(void) {
   cw_vec2 cs = cw_r2d_canvas_size();
   float u = cs.y / 1080.0f, bs = 26 * u;
   cw_r2d_begin(NULL);
+  if (tale_blocking()) { /* a scene: its subtitles and choices only */
+    tale_draw(font);
+    cw_r2d_end();
+    return;
+  }
   for (int i = 0; i < MAXP; i++) if (S.a[i].used) hud_player(i, u, cs);
   { /* the join line: the first minute of play, and whenever the game is paused (then it fades out of the way) */
     float ja = cw_shell_screen_now() == CW_SHELL_PAUSE ? 0.55f : 0.55f * cw_clampf((float)(3600 - S.sv.play_ticks) / 120.0f, 0, 1);
@@ -455,9 +518,30 @@ static void hud(void) {
     const char *what = o->kind == OB_SHRINE ? "{use}: rest" : o->kind == OB_CHEST ? "{use}: open" : o->kind == OB_LEVER ? "{use}: pull" : o->kind == OB_GATE ? ((S.sv.keys & o->item) == o->item ? "{use}: unlock" : "the gate wants two keys") : "{use}: open";
     cw_prompt_text(font, what, 0, cw_v2(cs.x * 0.5f, cs.y * 0.7f), 30 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
   }
+  /* a spared warden can be called */
+  for (int k = K_THORN; k <= K_TIDE; k++)
+    if (sim_assist_ready(k)) {
+      cw_prompt_text(font, k == K_THORN ? "{use}: call the Thornwarden" : "{use}: call the Tidecaller", 0, cw_v2(cs.x * 0.5f, cs.y * 0.7f), 30 * u, rgba(0.85f, 1, 0.7f, 1), CW_ALIGN_CENTER);
+      break;
+    }
+  /* the boss trials: the stage and the clock, then the result */
+  if (S.ladder >= 0) {
+    char b[96];
+    int t = S.ladder_t / 60;
+    snprintf(b, sizeof b, "BOSS TRIALS  %d / %d   %d:%02d", CW_MIN(S.ladder + 1, S.ladder_n), S.ladder_n, t / 60, t % 60);
+    text(b, cs.x * 0.5f, 26 * u, 30 * u, rgba(1, 0.9f, 0.6f, 1), CW_ALIGN_CENTER);
+    if (S.ladder_result) {
+      text(S.ladder_result == 1 ? "TRIALS CLEARED" : "THE TRIALS END", cs.x * 0.5f, cs.y * 0.36f, 64 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
+      if (S.ladder_result == 1) {
+        int best = S.sv.ladder_best ? S.sv.ladder_best / 60 : 0;
+        snprintf(b, sizeof b, best ? "%d:%02d   best %d:%02d" : "%d:%02d", t / 60, t % 60, best / 60, best % 60);
+        text(b, cs.x * 0.5f, cs.y * 0.36f + 80 * u, 30 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
+      }
+    }
+  }
   /* the first minute: the controls */
   if (S.sv.play_ticks < 60 * 50 && S.sv.rests == 0) {
-    cw_prompt_text(font, "{attack}: cut   {heavy}: heavy   {dodge}: roll   {lock}: lock on   {tonic}: drink", 0, cw_v2(cs.x * 0.5f, cs.y - 60 * u), bs, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
+    cw_prompt_text(font, "{attack}: cut   {heavy}: heavy   {dodge}: roll   {guard}: guard, tap as it lands to parry   {lock}: lock on   {tonic}: drink", 0, cw_v2(cs.x * 0.5f, cs.y - 60 * u), bs, rgba(1, 1, 1, 0.85f), CW_ALIGN_CENTER);
   }
   /* banners: a region's name, an item found, a boss */
   if (S.banner_t > 0 && cw_shell_screen_now() != CW_SHELL_PAUSE) {
@@ -475,6 +559,7 @@ static void hud(void) {
     if (strobe < 0) strobe = getenv("ADV_STROBE_CONTROL") != NULL;
     if (strobe && (S.tick / 3) % 2) cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(1, 1, 1, 0.6f));
   }
+  tale_draw(font); /* barks over play */
   if (S.state == GS_FALLEN) {
     float a = cw_clampf((float)S.state_t / 60.0f, 0, 0.75f);
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0.1f, 0.02f, 0.03f, a));
@@ -484,7 +569,7 @@ static void hud(void) {
   if (S.state == GS_WON) {
     float a = cw_clampf((float)S.state_t / 120.0f, 0, 0.6f);
     cw_r2d_rect(cw_rect_make(0, 0, cs.x, cs.y), rgba(0.05f, 0.03f, 0.0f, a));
-    text("THE EMBER KING HAS FALLEN", cs.x * 0.5f, cs.y * 0.38f, 64 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
+    text(tale_ending() == 2 ? "THE FIRE GOES OUT" : tale_ending() == 1 ? "THE NEW KEEPER" : "THE EMBER KING HAS FALLEN", cs.x * 0.5f, cs.y * 0.38f, 64 * u, rgba(1, 0.85f, 0.45f, 1), CW_ALIGN_CENTER);
     char b[96];
     snprintf(b, sizeof b, "%d foes   %d falls   %d minutes", S.kills, S.sv.deaths, S.sv.play_ticks / 3600);
     text(b, cs.x * 0.5f, cs.y * 0.38f + 84 * u, 30 * u, rgba(1, 1, 1, 1), CW_ALIGN_CENTER);
@@ -503,6 +588,13 @@ static void render(void *u, double alpha) {
     int w, h;
     cw_window_size(&w, &h);
     view_camera(G.camera, (float)alpha, (float)w / (float)h);
+    {
+      cw_dir_camera dc;
+      bool on = tale_camera(&dc);
+      if (on) { cw_node3d_set_position(G.camera, dc.pos); cw_node3d_look_at(G.camera, dc.look, (t3_vec3){ 0, 1, 0 }); }
+      cw_node_set(G.camera, "fov", cw_val_float(on ? dc.fov : G.cam_fov));
+      if (cw_voice_is_playing(music)) cw_voice_set_volume(music, 0.5f * tale_music_duck());
+    }
 #ifdef ADV_AUTOPILOT
     if (GCAM.on) {
       GCAM.x += GCAM.vx, GCAM.z += GCAM.vz;

@@ -67,6 +67,44 @@ The order through the world:
   wind-up, and after a big blow or a string's last the boss stands spent for most of a second, breath steaming, taking
   twice the poise: a fair exam with an answer and an opening.
 
+## The guard, the meter, the wardens' help, the trials
+
+- The guard (held: the left trigger) turns a blow from in front: a quarter of its harm, the rest paid in stamina; an
+  empty stamina breaks the guard and the blow lands. Pressed just as a blow arrives (a window of 0.2 s, then 0.55 s
+  before the next) it parries: no harm, the attacker thrown off balance and wide open (the next blow is a critical), a
+  bright ring of sparks and a sharp rumble. A warden parried also stands spent for a moment.
+- The ember meter fills with blows landed (a cut 5, a heavy 8, a critical 12), a parry (22), a roll through a blow (8)
+  and a quarter of the harm taken. Full, the right trigger spends it on the ember strike: an all-round blow that knocks
+  everything down, with an insert on the blade hand and a hero angle as it lands (the director, below).
+- In the King's fight a warden you spared can be called (with nothing to use near, the use button): it appears beside
+  you, strikes the King once with its biggest blow and goes; again after 25 seconds.
+- Boss trials (the pause menu, once a warden is beaten): every warden beaten so far, again, in a row, against the
+  clock, healed between them. Beating one there gives nothing; a fall ends the trials; then the journey is exactly as it
+  was. The best time is kept in the save.
+
+## The story
+
+The wanderer is the thief. A guide, hooded, waiting at the first shrine, sends you for the Sun Key and the Moon Key so
+the gate of the Ember Keep can be opened and the King on his throne ended. The wardens tell another story as you take
+the keys from them: they guarded a sleeping King who held the fire against the frost, and the guide is the frost's
+voice. The world explains its own rules: the shrines are embers the King keeps lit, so a fall wakes you at the last one
+and the foes come back with them; a warden stands spent after a big blow because its own fire is running out.
+
+- Scenes (story/ember.story, compiled and voiced by tools/story.sh): the guide's welcome; each warden's intro when it
+  wakes; after its last blow, an insert and a pull back, then its defeat and a choice: leave it breathing or take the
+  key from a cold hand (a spared warden is the one you can call in the King's fight); the gate, once both keys open it
+  (the guide's line depends on how merciful you were); the King's intro and defeat, where you choose the ending: take
+  the throne and keep the fire, or give it to the guide; the ending told.
+- Barks over the fights: each warden at a phase change (with a short react shot), when spent, when winning and when
+  losing; the guide when you fall; the keepers at the shrines when you rest, once each and keyed to what happened (three
+  falls to one warden, the keys, a second player).
+- Every line is voiced (Kokoro-82M, generated ahead of time), subtitled at the readable size, skippable (East held),
+  played on the pad alone, and never blocks play except in a scene. Faces speak: their jaws follow the voice and their
+  brows and mouths show the line's feeling (morph targets added to the speaking figures by
+  tools/chars/face-morphs.mjs). The colours and the light stay bright; the darkness is in the words.
+- The cinematics are the engine's director (cartwheel/director.h): shots solved against the people every frame, so a
+  close-up never ends on the back of a head; the camera never shakes (the pad rumbles).
+
 ## The camera
 
 An orbit behind the player, part of the simulation (it decides what "up the stick" means, so the gates compare it).
