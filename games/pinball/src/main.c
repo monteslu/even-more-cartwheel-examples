@@ -825,8 +825,7 @@ static void hud_select(cw_vec2 cs, float u) {
   cw_text_style st = tstyle(bs, rgba(1, 1, 1, 0.85f));
   st.align = CW_ALIGN_CENTER, st.wrap_width = cs.x * 0.3f;
   y += cw_r2d_text(font, T->tagline, cw_v2(x - cs.x * 0.15f, y), &st).height + 24 * u;
-  cw_prompt_text(font, "{ui_left|ui_right}: change table", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
-  y += cw_prompt_text_size(font, "{ui_left}", -1, bs).y + 12 * u;
+  bs = 30 * u; /* (the table's own cue is the chooser at the foot of the screen) */
   char b[64];
   if (G.sel_players == 0) snprintf(b, sizeof b, "{ui_up|ui_down}: practice");
   else snprintf(b, sizeof b, "{ui_up|ui_down}: players (%d)", G.sel_players);
