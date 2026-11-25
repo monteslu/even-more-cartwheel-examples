@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.61.0
+
+- **Every game** moves to cartwheel-engine 0.84.0. Beat Sync's program table gains one state the engine's variant
+  closure now asks for (a double-sided material over the low water); every other table regenerates unchanged. No game
+  here uses game-tree search, title items, the recorded pointer channel or mesh opacity, all opt-in; the scatter
+  crossfade and the matte GRASS tuft touch Ember Throne alone.
+
 ## 0.60.0
 
 - **Every game** moves to cartwheel-engine 0.83.1 (no program table changed; cart smoke, version, art and prompt checks
