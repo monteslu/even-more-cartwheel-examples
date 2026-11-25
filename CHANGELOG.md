@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.59.0
+
+- Every game on cartwheel-engine 0.78.2, every program table generated again for it, now with each material's
+  variants (every environment and preset it can switch into), so no state is left to draw without a program.
+- **Ember Throne**'s terrain asks for the rotated and scaled ground blend by name (`uv_blend`), which the engine no
+  longer turns on by itself.
+
 ## 0.58.0
 
 - Every game on cartwheel-engine 0.77.0, every program table generated again for it.

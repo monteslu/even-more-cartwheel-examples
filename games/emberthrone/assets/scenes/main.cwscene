@@ -78,6 +78,10 @@ far_distance = 85
 cast_shadow = false
 ; side_detile: each small cell of a cliff reads the rock at its own offset and a larger scale, with colour and strata by world position, so no face shows the tile's grid
 side_detile = 1
+; uv_blend: control texels of different uv rotation or scale blended across the texel by height (opt-in since engine 0.77.3).
+; The paint sets no rotation or scale today (world.c), so every texel agrees and the ground draws as before; with it on, a
+; turn painted later fades over its texel instead of drawing a straight seam
+uv_blend = true
 ; the near ground: its brightness and a little of its hue varied over 40 m features (no two stretches of a meadow alike),
 ; the layers meeting with a softer height blend (a narrow band speckled the patches' rims where two heights nearly tie),
 ; and the paving in parallax within 12 m
