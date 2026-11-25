@@ -27,8 +27,11 @@
 #define NLAMPLIGHT 40
 #define NGI 6
 #define NSHAPES 6
+#define NNEON 6
 
-static struct {
+/* one table's view: every table is built once (view_prepare, behind the loading screen) and kept, hidden while another
+ * is on show, so changing table on the select is a switch, not a rebuild (a rebuild froze the screen for seconds) */
+typedef struct table_view {
   cw_node root, table;
   int built;
   /* moving parts */
@@ -56,7 +59,14 @@ static struct {
   float fov, aspect;
   float cam_follow;
   view_stats st;
-} V;
+  struct { t3_material *neon[NNEON]; float base[NNEON][3]; int n; } room; /* the room's neon signs */
+} table_view;
+
+static table_view VS[NTABLES];
+static table_view *vp = &VS[0]; /* the table on show (or being built) */
+static int shown = -1;           /* the table whose view is visible */
+#define V (*vp)
+#define R (V.room)
 
 float g_cam_k = 1.0f;
 
@@ -93,13 +103,33 @@ static cw_node omni(cw_node parent, const char *name, t3_color c, float energy, 
 }
 
 void view_init(cw_node root) {
-  memset(&V, 0, sizeof V);
-  V.root = root;
-  V.built = -1;
-  V.fov = 36;
+  memset(VS, 0, sizeof VS);
+  for (int i = 0; i < NTABLES; i++) VS[i].root = root, VS[i].built = -1, VS[i].fov = 36;
+  vp = &VS[0];
 }
 
 int view_built_table(void) { return V.built; }
+
+/* show table t's view (built already) and hide the others; the camera and the clock carry over */
+static void view_show(int t) {
+  table_view *from = vp;
+  vp = &VS[t];
+  if (from != vp) {
+    V.t = from->t, V.cam_follow = from->cam_follow, V.eye = from->eye, V.at = from->at, V.aspect = from->aspect, V.fov = from->fov;
+  }
+  for (int i = 0; i < NTABLES; i++)
+    if (cw_node_valid(VS[i].table)) cw_node_set(VS[i].table, "visible", cw_val_bool(i == t));
+  shown = t;
+}
+
+bool view_prepare(int t) {
+  if (t < 0 || t >= NTABLES) return false;
+  if (VS[t].built == t) return true;
+  static game tmp; /* a fresh game on that table: the view is built from its table data alone */
+  game_new(&tmp, t, 1, 1);
+  view_build(&tmp);
+  return true;
+}
 
 /* ── the inserts' shapes (flat, local x along the shape's pointing, unit size) ── */
 
@@ -307,9 +337,6 @@ static cw_node room_piece(cw_node parent, const char *name, t3_geometry *g, t3_m
 }
 
 #define FLOOR_Y (-0.86f) /* the floor, under the playfield (world y) */
-#define NNEON 6
-
-static struct { t3_material *neon[NNEON]; float base[NNEON][3]; int n; } R;
 
 /* an unlit picture card (a neighbour's playfield and backbox: they glow by themselves in the dim room) */
 static t3_material *card_mat(uint8_t *px, int w, int h, float k) {
@@ -448,6 +475,8 @@ static void room_sync(void) {
 }
 
 void view_build(const game *g) {
+  table_view *keep = vp;
+  vp = &VS[g->table_id];
   const table *T = &g->T;
   if (cw_node_valid(V.table)) cw_node_free(V.table);
   memset(V.part, 0, sizeof V.part), memset(V.part_mat, 0, sizeof V.part_mat);
@@ -788,12 +817,15 @@ void view_build(const game *g) {
     cw_node_set(V.ball[i], "visible", cw_val_bool(false));
   }
   V.built = g->table_id;
+  cw_node_set(V.table, "visible", cw_val_bool(shown == g->table_id)); /* view_sync shows it */
+  vp = keep;
 }
 
 /* ── every frame ─────────────────────────────────────────────────────── */
 
 void view_sync(const game *g, float alpha, float dt) {
-  if (V.built != g->table_id) view_build(g);
+  if (VS[g->table_id].built != g->table_id) view_build(g); /* (not prepared yet: built now) */
+  if (shown != g->table_id || vp != &VS[g->table_id]) view_show(g->table_id);
   const table *T = &g->T;
   const theme *th = &T->th;
   V.t += dt;

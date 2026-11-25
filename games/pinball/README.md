@@ -25,9 +25,13 @@ Practice (below one player on the table select): the ball always comes back, and
 
 ## Starting
 
-Play on the title goes straight to the table select, on the table played last; the launch button plays it. Two presses
-from the title to the plunger. Players take turns, so the table select counts them; every pad plays (one passed round,
-or each player on their own).
+Play on the title goes straight to the table select, on the table played last; accept (south) plays it. Two presses
+from the title to the plunger. A chooser at the foot of the screen names the table ("TABLE 2 OF 3") between two
+arrows, each with its buttons' glyphs: left and right on the d-pad or the stick, or either flipper, change it, and a
+tap or click on an arrow does too. Every table's view is built behind the loading screen, so a change is instant (it
+used to rebuild the table in one frame, a freeze of seconds). Up and down count the players; d-pad down does not
+start a game there, though it is the plunger in play. Players take turns, so the table select counts them; every pad
+plays (one passed round, or each player on their own).
 
 ## Look and feel
 
@@ -80,4 +84,5 @@ substep (flipper turning included) and passes them all.
 | `pinball_tablemap` | a top-down picture of a table's physics and the bot's ball, for laying tables out |
 | `tests/pinball-perf.mjs` | GPU time at 1080p High on the test GPU, GL and WebGPU, every table, three balls in play: 1.6 ms GL and 1.9 to 2.0 ms WebGPU on the Radeon 890M (bound 4.1) |
 | `tests/pinball-gates.json` | `pinball-play`: a person's start (title, table, plunger, flippers: two presses to the plunger) gives the same game bit for bit natively and in the dual cart on romdev; `pinball-face`: the face buttons alone flip (every press counted), the same on both |
+| `tests/pinball-table-select.mjs` | the table select on romdev with the pad alone: the d-pad, the shoulders, the stick and a second pad change the table, d-pad down does not start a game, every change's frame under 400 ms, and each table chosen and played (its table read back in play, a ball launched, a frame kept in out/pinball-select); the control, the published 0.60.0 cart, must fail |
 | `tests/pinball-flippers.mjs` | every flipper binding (shoulders, triggers, d-pad, face buttons, keyboard) through the real input path, natively and on romdev: each press seen in its frame, the flipper moving on that step, full stroke in 15 to 25 ms, held without sag, back within two ticks; the control delays the buttons a tick and must fail |

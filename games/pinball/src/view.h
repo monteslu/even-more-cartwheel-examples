@@ -18,6 +18,7 @@ void view_sync(const game *g, float alpha, float dt); /* every frame */
 void view_camera(const game *g, cw_node camera, float aspect, float dt);
 bool view_screen(float x, float y, float z, float *u, float *v); /* a table point on screen, 0..1 */
 int view_built_table(void);
+bool view_prepare(int table); /* build table's view ahead (hidden): the warm-up does every table, so a change on the select is instant */
 
 typedef struct view_stats { int lights, lamps_lit; float cam_y; } view_stats;
 view_stats view_get_stats(void);

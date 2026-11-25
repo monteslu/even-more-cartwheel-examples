@@ -57,6 +57,7 @@ static struct {
   bool in_match, built;
   int phase, phase_t;
   int sel_table, sel_players;
+  int sel_dir, sel_t;      /* the table select's last change (-1 back, +1 on) and the ticks since: its arrow swells */
   int entry_player, entry_slot, entry_pos;
   char entry_name[4];
   int entry_order[MAXP], entry_n, entry_i;
@@ -102,6 +103,8 @@ static void shell_screen(cw_shell_screen from, cw_shell_screen to, void *u) {
 static save_data *save(void) { return (save_data *)cw_shell_game_save(); }
 
 static uint32_t ticks_run; /* fixed ticks since the app started */
+static cw_rect sel_hit[3]; /* the table chooser's tap targets in canvas pixels (drawn by hud_select): back, on, play */
+static bool in_rect(cw_rect r, cw_vec2 p) { return r.w > 0 && p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h; }
 
 /* every pad drives a seat: players take turns on one pad passed round or each on their own (any seat's buttons play) */
 static void seat_pads(void) {
@@ -165,11 +168,22 @@ static void pause_item(int index, void *u) {
 static bool warmup(void *u) {
   (void)u;
   if (G.built) return true;
-  cw_node root = cw_tree_root(cw_scene_app_tree());
-  G.camera = cw_node_get(root, "Main/Camera");
-  view_init(root);
-  if (!G.in_match) game_new(&G.g, 0, 1, 1); /* a table to draw behind the title (an autopilot is already playing) */
-  view_build(&G.g);
+  /* every table's view, one a call (the loading bar moves between them): the table select then switches between
+   * views already built instead of building one (a build takes seconds, and froze the screen on every change) */
+  static int step;
+  if (step == 0) {
+    cw_node root = cw_tree_root(cw_scene_app_tree());
+    G.camera = cw_node_get(root, "Main/Camera");
+    view_init(root);
+    if (!G.in_match) game_new(&G.g, 0, 1, 1); /* a table to draw behind the title (an autopilot is already playing) */
+    view_build(&G.g);
+  } else {
+    int t = step - 1 < G.g.table_id ? step - 1 : step; /* the others, in order */
+    view_prepare(t);
+  }
+  step++;
+  cw_loading_set(step, NTABLES, CW_LOAD_MESHES);
+  if (step < NTABLES) return false;
   G.built = true;
   return true;
 }
@@ -362,15 +376,29 @@ static void fixed_update(void *u, double dt) {
   G.phase_t++;
   switch (G.phase) {
   case PH_SELECT: {
+    /* the table: left and right on the d-pad or the stick, or a flipper (a shoulder, west or east), or a tap or click
+     * on the chooser's arrows. Players: up and down. Play: accept (south), or a tap on the chooser's play line. The
+     * plunger's own buttons do not start a game here (d-pad down is the plunger in play, and here it counts players
+     * down: a game that began on it began on whatever table was showing) */
     int dx = (ui("ui_right") || pressed(G.fr)) - (ui("ui_left") || pressed(G.fl));
     int dy = ui("ui_up") - ui("ui_down");
+    bool go = ui("ui_accept");
+    cw_pointer pt = cw_input_pointer();
+    if (pt.pressed) {
+      cw_vec2 c = cw_r2d_window_to_canvas(pt.pos);
+      if (in_rect(sel_hit[0], c)) dx = -1;
+      else if (in_rect(sel_hit[1], c)) dx = 1;
+      else if (in_rect(sel_hit[2], c)) go = true;
+    }
+    G.sel_t++;
     if (dx) {
       G.sel_table = (G.sel_table + dx + NTABLES) % NTABLES, sound_menu(0);
+      G.sel_dir = dx, G.sel_t = 0;
       game_new(&G.g, G.sel_table, 1, 1);
       backbox_table(&G.g.T);
     }
     if (dy) G.sel_players = CW_CLAMP(G.sel_players + dy, 0, MAXP), sound_menu(0); /* 0: practice */
-    if (ui("ui_accept") || pressed(G.launch)) sound_menu(1), begin_game();
+    if (go) sound_menu(1), begin_game();
     break;
   }
   case PH_PLAY: {
@@ -750,6 +778,46 @@ static void hud_play(cw_vec2 cs, float u) {
   if (g->tilt_warn > 0 && !g->tilted) text(g->tilt_warn == 1 ? "TILT WARNING" : "TILT WARNING 2", rx, ry + 8 * u, bs, rgba(1, 0.55f, 0.3f, 1), CW_ALIGN_CENTER);
 }
 
+/* the table chooser, big at the foot of the screen (read from a couch): "TABLE 2 OF 3" over the name between two
+ * arrows, each arrow with its buttons' glyphs (the d-pad side and the flipper on that side, for the device in hand),
+ * and the play line. The arrows and the play line are tap and click targets (sel_hit). The arrow of
+ * the last change swells and fades over half a second (no flash) */
+static void hud_chooser(cw_vec2 cs, float u) {
+  const theme *th = &G.g.T.th;
+  const char *name = table_name(G.sel_table);
+  float ns = 60 * u, gs = 46 * u, cx = cs.x * 0.5f;
+  cw_text_metrics nm = measure(name, ns);
+  float side_w = fmaxf(cw_prompt_text_size(font, "{flip_left} {ui_left}", -1, gs).x, cw_prompt_text_size(font, "{ui_right} {flip_right}", -1, gs).x);
+  float pw = nm.width + 2 * (40 * u + 38 * u + 22 * u + side_w + 26 * u), ph = 188 * u, px = cx - pw * 0.5f, py = cs.y - ph - 8 * u;
+  cw_rect pill = cw_rect_make(px, py, pw, ph);
+  cw_r2d_round_rect(pill, 24 * u, 8, rgba(0.03f, 0.025f, 0.04f, 0.86f));
+  cw_r2d_round_rect_lines(pill, 24 * u, 3 * u, 8, tcol(th->col[2], 0.8f, 0.9f));
+  char b[48];
+  snprintf(b, sizeof b, "TABLE %d OF %d", G.sel_table + 1, NTABLES);
+  float y = py + 14 * u;
+  y += text(b, cx, y, 30 * u, rgba(1, 1, 1, 0.8f), CW_ALIGN_CENTER).height + 4 * u;
+  /* the name, and an arrow each side with its glyphs */
+  float ny = y, mid = ny + ns * 0.62f;
+  text(name, cx, ny, ns, tcol(th->col[2], 1.5f, 1), CW_ALIGN_CENTER);
+  float swell = G.sel_t < 30 ? 1.0f - (float)G.sel_t / 30.0f : 0;
+  for (int side = 0; side < 2; side++) {
+    float sg = side ? 1.0f : -1.0f, k = G.sel_dir == (side ? 1 : -1) ? swell : 0;
+    float ax = cx + sg * (nm.width * 0.5f + 40 * u), ah = (26 + 8 * k) * u;
+    cw_vec2 tri[3] = { cw_v2(ax + sg * ah * 1.1f, mid), cw_v2(ax, mid - ah), cw_v2(ax, mid + ah) };
+    cw_r2d_polygon(tri, 3, rgba(1, 0.95f, 0.6f, 0.75f + 0.25f * k));
+    const char *gl = side ? "{ui_right} {flip_right}" : "{flip_left} {ui_left}";
+    cw_vec2 gsz = cw_prompt_text_size(font, gl, -1, gs);
+    float gx = side ? ax + ah * 1.1f + 22 * u : ax - ah * 1.1f - 22 * u - gsz.x;
+    cw_prompt_text(font, gl, -1, cw_v2(gx, mid - gsz.y * 0.5f), gs, rgba(1, 1, 1, 0.95f), CW_ALIGN_LEFT);
+    float x0 = side ? cx + nm.width * 0.5f + 10 * u : px, x1 = side ? px + pw : cx - nm.width * 0.5f - 10 * u;
+    sel_hit[side] = cw_rect_make(x0, py, x1 - x0, ph);
+  }
+  y = ny + ns * 1.3f;
+  cw_vec2 psz = cw_prompt_text_size(font, "{ui_accept}: play this table", -1, 34 * u);
+  cw_prompt_text(font, "{ui_accept}: play this table", -1, cw_v2(cx, y), 34 * u, rgba(1, 0.95f, 0.6f, 1), CW_ALIGN_CENTER);
+  sel_hit[2] = cw_rect_make(cx - psz.x * 0.5f - 10 * u, y - 6 * u, psz.x + 20 * u, psz.y + 12 * u);
+}
+
 static void hud_select(cw_vec2 cs, float u) {
   float y = panel_dmd(cs, u) + 4 * u;
   float bs = 26 * u, x = cs.x * 0.165f;
@@ -757,7 +825,7 @@ static void hud_select(cw_vec2 cs, float u) {
   cw_text_style st = tstyle(bs, rgba(1, 1, 1, 0.85f));
   st.align = CW_ALIGN_CENTER, st.wrap_width = cs.x * 0.3f;
   y += cw_r2d_text(font, T->tagline, cw_v2(x - cs.x * 0.15f, y), &st).height + 24 * u;
-  cw_prompt_text(font, "{ui_left|ui_right}: table", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
+  cw_prompt_text(font, "{ui_left|ui_right}: change table", -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
   y += cw_prompt_text_size(font, "{ui_left}", -1, bs).y + 12 * u;
   char b[64];
   if (G.sel_players == 0) snprintf(b, sizeof b, "{ui_up|ui_down}: practice");
@@ -765,6 +833,7 @@ static void hud_select(cw_vec2 cs, float u) {
   cw_prompt_text(font, b, -1, cw_v2(x, y), bs, rgba(1, 1, 1, 0.92f), CW_ALIGN_CENTER);
   y += cw_prompt_text_size(font, "{ui_up}", -1, bs).y + 12 * u;
   cw_prompt_text(font, "{ui_accept}: play", -1, cw_v2(x, y), bs, rgba(1, 0.95f, 0.6f, 1), CW_ALIGN_CENTER);
+  hud_chooser(cs, u);
   /* the right: this table's best five */
   float rx = cs.x * 0.835f, ry = cs.y * 0.05f;
   /* this table's modes and its wizard mode: what it plays like */
