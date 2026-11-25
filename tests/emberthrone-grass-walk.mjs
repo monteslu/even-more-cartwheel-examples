@@ -9,8 +9,11 @@
 //            the frame before and the frame after (a tuft that appears, vanishes or switches LOD at once, not one
 //            swaying or the view moving), where the ground does not step; the worst frame and the mean
 // Bars (PASS needs all): flicker excess at most 1.2 times the 0.51.0 grass's on the same ground and walk, grass on 2%
-// or more of the picture; the pops are reported beside it. CONTROL, which must fail: the grass cut off hard at 9 m with no fade (ADV_PROBE_GRASSPOP). The 0.51.0 grass
-// is reported beside it.
+// or more of the picture; the pops are reported beside it. CONTROL, which must fail: the grass as 0.59.0 set it (seven
+// tufts a square metre out to 16 m, shrinking away, each tuft varied by 0.35: ADV_PROBE_GRASSSET), whose field
+// speckled in motion. The 0.51.0 grass and the grass cut off hard at 9 m with no fade (ADV_PROBE_GRASSPOP: since the
+// grass varies less from tuft to tuft, its few near tufts no longer flicker over the bar, so it is no control) are
+// reported beside it.
 //
 //   node tests/emberthrone-grass-walk.mjs [cart dir] [--gpu gl|webgpu] [--keep <dir>]
 import { mkdirSync, openSync, readSync, closeSync, rmSync, writeFileSync } from 'node:fs';
@@ -101,7 +104,8 @@ const none = frames(await run('none', 'ADV_PROBE_NOGRASS=1'));
 const res = {};
 const extra = (process.env.WALK_EXTRA || '').split(',').filter(Boolean).map((s) => s.split(':')); // (WALK_EXTRA=name:ENV=1,...: more variants, reported)
 const raw = {};
-for (const [v, env] of [['old', 'ADV_PROBE_OLDTUFTS=1'], ['grass', ''], ['control', 'ADV_PROBE_GRASSPOP=1'], ...extra]) raw[v] = measure(frames(await run(v, env)), none);
+const GRASS059 = 'ADV_PROBE_GRASSSET=density=7;visible_range=16;fade=6;lod_distance=7;fade_mode=SHRINK;tint_jitter=0.35';
+for (const [v, env] of [['old', 'ADV_PROBE_OLDTUFTS=1'], ['grass', ''], ['control', GRASS059], ['hardcut', 'ADV_PROBE_GRASSPOP=1'], ...extra]) raw[v] = measure(frames(await run(v, env)), none);
 OLD = raw.old.excess;
 for (const [v, r] of Object.entries(raw)) res[v] = judge(r);
 const ok = pass(res.grass) && !pass(res.control);
@@ -109,5 +113,5 @@ for (const [v, r] of Object.entries(res)) console.log(`${pass(r) ? 'pass' : 'FAI
 console.log(ok ? `grass walk ${gpu}: PASS (the control fails, as it must)` : `grass walk ${gpu}: FAIL${pass(res.control) ? ' (the control passed: the check cannot see it)' : ''}`);
 writeFileSync(join(OUT, 'grass-walk.json'), JSON.stringify(res, null, 1));
 if (!argv.includes('--keep')) rmSync(OUT, { recursive: true, force: true });
-else if (!process.env.KEEP_DUMPS) for (const v of ['none', 'grass', 'old', 'control', ...extra.map((e) => e[0])]) rmSync(join(OUT, `${v}.cwfd`), { force: true });
+else if (!process.env.KEEP_DUMPS) for (const v of ['none', 'grass', 'old', 'control', 'hardcut', ...extra.map((e) => e[0])]) rmSync(join(OUT, `${v}.cwfd`), { force: true });
 process.exit(ok ? 0 : 1);

@@ -24,7 +24,7 @@ const { wgpuPin, glPin, scrubDisplay } = await import(join(ENGINE, 'tools/lib/wg
 const exe = JSON.parse(readFileSync(join(ROOT, 'build/native/apps/emberthrone_bench.json'), 'utf8')).binary;
 const rounds = +arg('--rounds', '5');
 const places = arg('--places', 'meadow:1,heights:39,tidecaller:22,wood:28,spire:61').split(',').map((p) => p.split(':'));
-const extraEnv = Object.fromEntries((arg('--env', '') || '').split(',').filter(Boolean).map((kv) => kv.split('=')));
+const extraEnv = Object.fromEntries((arg('--env', '') || '').split(',').filter(Boolean).map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)]));
 
 const other = arg('--compare', '');
 function run(gpu, from, bin = exe) {

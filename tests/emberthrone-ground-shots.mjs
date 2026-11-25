@@ -7,6 +7,7 @@
 //   move<region>-<k>.png  a short camera move at play height (eight frames, 0.4 m apart)
 //
 //   node tests/emberthrone-ground-shots.mjs <out dir> [cart] [--gpu gl|webgpu] [--regions meadow,canyon] [--no-move]
+//   EMBER_SHOT_ENV="ADV_PROBE_GRASSSET=density=12,fade_mode=DITHER" adds to the cart's env (side by side looks)
 import { mkdirSync, existsSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +58,7 @@ function post(tool, a, session) {
 
 const session = `emberthrone-ground-${process.pid}-${gpu}`;
 const loaded = await post('loadMedia', { platform: 'wasmcart', path: CART, wgpu: gpu === 'webgpu', preferredSize: { width: 1920, height: 1080 },
-  firstCommand: 'env ADV_FROM=1 ADV_NO_HUD=1 ADV_PROBE_NOCHARS=1' }, session);
+  firstCommand: `env ADV_FROM=1 ADV_NO_HUD=1 ADV_PROBE_NOCHARS=1${process.env.EMBER_SHOT_ENV ? ' ' + process.env.EMBER_SHOT_ENV : ''}` }, session);
 if (loaded.gpu !== gpu) throw new Error(`asked for ${gpu}, the cart runs on ${loaded.gpu}`);
 const cmd = async (text) => { const r = await post('wasm', { op: 'command', text }, session); return r && typeof r === 'object' && 'reply' in r ? r.reply : r; };
 const shot = (file, frames = 30) => post('frame', { op: 'stepAndShot', frames, path: join(OUT, file) }, session);

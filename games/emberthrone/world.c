@@ -1499,6 +1499,22 @@ void world_build(cw_tree *tree) {
   if (getenv("ADV_PROBE_NOSKYENV")) cw_node_set(W_sky, "environment", cw_val_bool(false));
   if (getenv("ADV_PROBE_NOSKYBG")) cw_node_set(W_sky, "background", cw_val_bool(false));
   /* the anti-aliasing 0.52.0 drew with (FXAA, no TAA): the other side of the motion comparison */
+  /* any of the grass layer's properties, "name=value,name=value" (or ;) (a number, true or false, else an enum name): looking at
+   * the grass's settings side by side (tests/emberthrone-ground-shots.mjs EMBER_SHOT_ENV) */
+  if (getenv("ADV_PROBE_GRASSSET")) {
+    cw_node g = cw_node_get(W_root, "World/Terrain/Grass");
+    char buf[512];
+    snprintf(buf, sizeof buf, "%s", getenv("ADV_PROBE_GRASSSET"));
+    for (char *kv = strtok(buf, ",;"); kv; kv = strtok(NULL, ",;")) {
+      char *eq = strchr(kv, '='), *end;
+      if (!eq) continue;
+      *eq = 0;
+      float v = strtof(eq + 1, &end);
+      if (*end == 0 && end != eq + 1) cw_node_set(g, kv, cw_val_float(v));
+      else if (!strcmp(eq + 1, "true") || !strcmp(eq + 1, "false")) cw_node_set(g, kv, cw_val_bool(eq[1] == 't'));
+      else cw_node_set(g, kv, cw_val_enum(eq + 1));
+    }
+  }
   if (getenv("ADV_PROBE_GRASSDENSITY")) cw_node_set(cw_node_get(W_root, "World/Terrain/Grass"), "density", cw_val_float((float)atof(getenv("ADV_PROBE_GRASSDENSITY")))); /* (looking at density) */
   if (getenv("ADV_PROBE_NOSHARP")) { cw_node t = cw_node_get(W_root, "World/Terrain"); cw_node_set(t, "blend_sharpness", cw_val_float(0.15f)); for (int k = 5; k <= 7; k++) { char p[32]; snprintf(p, sizeof p, "layer%d_blend_sharpness", k); cw_node_set(t, p, cw_val_float(0)); } }
   if (getenv("ADV_PROBE_NOMACRO")) cw_node_set(cw_node_get(W_root, "World/Terrain"), "macro_tint", cw_val_float(0));

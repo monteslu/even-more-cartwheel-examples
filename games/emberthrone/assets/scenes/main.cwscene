@@ -121,22 +121,22 @@ layer7_uv_scale = 0.45
 
 ; the engine's grass: tufts of twelve curved tapering blades, each tuft its own shade (tint_jitter), rooted in the colour
 ; of the ground under it, lit the same from both sides, bending in the wind with gusts running over the meadow, their
-; edges smooth (alpha to coverage, hashed alpha under TAA); they dissolve over their last 6 m and cross-fade into the far
-; LOD (a dither), never shrinking or popping
+; edges smooth (alpha to coverage, hashed alpha under TAA); fourteen tufts a square metre out to 20 m, so the meadow reads
+; as a sward up to the trees rather than clumps on bare ground; each tuft crosses into the far LOD and dissolves over its
+; last 8 m at its own distance (DITHER: one LOD of a tuft at a time, no coincident blades), never popping as a line; the
+; tufts vary by a fifth (more speckles the field in motion: tests/emberthrone-grass-walk.mjs)
 [node name="Grass" parent="Terrain" type="TerrainScatter3D"]
 shape = GRASS
 color = color(0.42, 0.52, 0.26, 1)
-density = 7
+density = 14
 layers = 1
 min_slope = 30
 scale_min = 0.6
 scale_max = 1.25
-visible_range = 16
-fade = 6
-lod_distance = 7
-; SHRINK until cartwheel-engine v0.78.3 (the scatter crossfade without coincident LODs): on 0.77.0 DITHER draws both LODs
-; of a tuft whole through the crossfade band, two surfaces in one plane that fight for the depth test; then DITHER again
-fade_mode = SHRINK
+visible_range = 20
+fade = 8
+lod_distance = 6
+fade_mode = DITHER
 lod_blend = 3
 wind_strength = 0.07
 wind_frequency = 0.7
@@ -145,7 +145,7 @@ wind_gust = 0.45
 wind_gust_scale = 14
 smooth_alpha = true
 two_sided_lighting = true
-tint_jitter = 0.35
+tint_jitter = 0.2
 root_from_terrain = true
 ; bending round the players and the meadow's foes as they walk through it (view.c movers), and each tuft wholly lit or
 ; wholly in shadow (one shadow sample at its root: under TAA a sample per blade stippled every shadow edge in the grass)
