@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.60.0
+
+- **Ember Throne**'s lancers' coats swing with the body. Each coat hangs on five chains of three bones round its sides
+  and back, from a seam at the waist set clear of the thighs; the cloth and its hem are skinned onto the chains, which
+  the engine links across into one open cloth (skirt mode) that a stride spreads. Capsules on the thighs, the shins and
+  the feet keep the legs inside it. On the pad script (run, stop, turn right, stop, turn about, stop) the coat flares
+  0.42 to 0.51 m on a stop and falls under a tenth of that in 41 to 50 ticks; at rest it shakes by 0.28 mm or less
+  (root mean square), and the legs stay 10.9 mm clear of it.
+  tests/emberthrone-hair.mjs covers it, with native-scale strips of the whole figure, and a new control: the coat's
+  chains on their own, not linked (legs 90 mm into the coat). The Tidecaller's robe keeps its 0.57.0 rig: on its
+  springs the outfit's legs came through it and its cloth creased between the chains.
+- Checks on this change, on cartwheel-engine 0.78.2 with a Release cart: the hair test on all five figures with its
+  controls, native-scale strips of the lancer's whole figure through each turn and stop, and cart smoke.
+
 ## 0.59.0
 
 - Every game on cartwheel-engine 0.78.2, every program table generated again for it, now with each material's

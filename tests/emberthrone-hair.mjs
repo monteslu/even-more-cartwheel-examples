@@ -1,13 +1,13 @@
-// emberthrone hair check: the hair, the beards and the garments (the Tidecaller's robe, the lancers' coats) on spring
+// emberthrone hair check: the hair, the beards and the lancers' coats on spring
 // bones (view.c SWING, cartwheel's SpringBone3D), measured from the bones on romdev with a pad script played as one
 // ranged call (seed 1, the play camera): run up the road, stop, run, turn right, run, stop, then turn about at a run and
 // stop. The cart's recorder ("hair rec") keeps, each tick, each chain's lag (its tip from where its bone alone would
-// carry it: the old rig, whose hair was skinned to the head and whose robe to the hips and the legs) and its depth in
+// carry it: the old rig, whose hair was skinned to the head and whose coat to the hips and the legs) and its depth in
 // the body (hair: its moving joints and the points halfway between them in the skull, the jaw, the neck or the
 // shoulders; a garment: its surface, sampled five by five in each panel, in the thighs, the shins or the feet; the same
 // capsules the springs keep them out of), and the figure's skeleton modifier time. Each figure with parts that swing
 // is measured, the player wearing it ("hair wear"): the wayfarer (her own, her two locks), the warden and the Ember
-// King (beards), a lancer (long hair, a coat) and the Tidecaller (long hair, a robe). Per group of chains:
+// King (beards), a lancer (long hair, a coat) and the Tidecaller (long hair; her robe stays on the legs as built). Per group of chains:
 //   turn    each turn (the easing turn right, the turn about): the largest swing of the tips from where they hang at
 //           rest, and the shift at which their swing's rise best follows the head's turn rate (reported)
 //   settle  each stop from a run: the largest swing in the two seconds after it, and the ticks until the swing stays
@@ -19,7 +19,9 @@
 //           much), and the old rig's (the same chains carried by their bone) over the same run, reported
 // Bars (PASS needs all, for every group): each turn swings the tips 10 mm or more (short chains, the locks and the
 // beards, 6); each stop swings them 5 mm or more (short 3) and they settle within 60 ticks; at rest jitter at most
-// 0.1 mm root mean square and 0.3 mm largest; clip at most 1 mm.
+// 0.1 mm root mean square and 0.3 mm largest; clip at most 1 mm. A garment (1 to 1.4 m of cloth, which the body's idle
+// sways a few centimetres): settled under a tenth of its peak, jitter at most 0.5 mm and 2 mm, a leg at most 25 mm into
+// it (where the cloth is sewn on at the waist, for a few ticks).
 // CONTROLS, each of which must fail its check: "springs 0" (the old rig: every part carried by its bone; turn and
 // settle), "collide 0" (the springs go through the body; clip; a beard never reaches the neck even so, reported),
 // "soft 1" (every chain slack and undamped; settle), "skirt 0" (a garment's chains on their own; clip).
@@ -32,7 +34,7 @@ import { spawnSync } from 'node:child_process';
 
 export const FIGURES = { wayfarer: -1, warden: 1, lancer: 4, tidecaller: 6, emberking: 7 }; // game.h K_WARDEN, K_LANCER, K_TIDE, K_EMBER (-1: her own)
 export const VARIANTS = { on: [], springs0: ['hair springs 0'], collide0: ['hair collide 0'], soft: ['hair soft 1'], skirt0: ['hair skirt 0'] };
-const GARMENT = {}; // the figures whose garment swings (skirt0 runs only on them): none yet (view.c SWING: the robe and the coats wait)
+const GARMENT = { lancer: 'Coat' }; // the figures whose garment swings (skirt0 runs only on them; the Tidecaller's robe stays on the legs: view.c SWING)
 
 export function script() {
   const S = [];
@@ -84,7 +86,7 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
         for (let k = 0; k < info.rows; k += 12) rows.push(...(await h.command(`hair get ${k} 12`)));
         writeFileSync(join(o, 'trace.json'), JSON.stringify({ figure: fig, variant: v, info, rows }));
         console.log(`${o}: ${rows.length} rows, kind ${info.kind}, chains ${info.chains.map((c) => c.name).join(' ')}, resets ${info.resets}`);
-        if (keep) crops(dump, o);
+        if (keep) crops(dump, o, !!GARMENT[fig]);
         if (existsSync(dump)) unlinkSync(dump);
       } finally { await h.close(); }
     }
@@ -94,23 +96,27 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
 // native-scale crops round the player's head and shoulders (the camera keeps the figure in the middle of the frame,
 // its head a little above the centre): every 2nd frame of each turn and each stop, a strip of each
 export const MOMENTS = { turn: [404, 470], stop: [528, 592], about: [646, 700], stop2: [708, 770], rest: [790, 826] };
-function crops(dump, out) {
+function crops(dump, out, body = false) {
   const fd = openSync(dump, 'r'), hd = Buffer.alloc(16);
   readSync(fd, hd, 0, 16, 0);
   const w = hd.readUInt32LE(4), hh = hd.readUInt32LE(8), fsz = w * hh * 3, n = Math.floor((statSync(dump).size - 16) / fsz);
   const buf = Buffer.alloc(fsz);
   mkdirSync(join(out, 'frames'), { recursive: true });
-  const cw = Math.round(w * 0.125), ch = Math.round(hh * 0.222), cx = Math.round(w * 0.4375), cy = Math.round(hh * 0.33); // 240 x 240 at 1080p round the head
-  for (const [name, [a, b]] of Object.entries(MOMENTS)) {
-    const list = [];
-    for (let f = a; f < Math.min(b, n); f += 2) {
-      readSync(fd, buf, 0, fsz, 16 + f * fsz);
-      const png = join(out, 'frames', `${name}-${String(f).padStart(4, '0')}.png`);
-      spawnSync('convert', ['-size', `${w}x${hh}`, '-depth', '8', 'rgb:-', '-crop', `${cw}x${ch}+${cx}+${cy}`, '+repage', png], { input: buf });
-      list.push(png);
+  // the head (240 x 240 at 1080p) and, for a figure with a garment, the whole body (480 x 640)
+  const crops = [['', Math.round(w * 0.125), Math.round(hh * 0.222), Math.round(w * 0.4375), Math.round(hh * 0.33)]];
+  if (body) crops.push(['body-', Math.round(w * 0.25), Math.round(hh * 0.593), Math.round(w * 0.375), Math.round(hh * 0.3)]);
+  for (const [tag, cw, ch, cx, cy] of crops)
+    for (const [name, [a, b]] of Object.entries(MOMENTS)) {
+      const list = [];
+      for (let f = a; f < Math.min(b, n); f += 2) {
+        readSync(fd, buf, 0, fsz, 16 + f * fsz);
+        const png = join(out, 'frames', `${tag}${name}-${String(f).padStart(4, '0')}.png`);
+        const c = spawnSync('convert', ['-size', `${w}x${hh}`, '-depth', '8', 'rgb:-', '-crop', `${cw}x${ch}+${cx}+${cy}`, '+repage', png], { input: buf });
+        if (c.status !== 0) throw new Error(`convert (ImageMagick) failed on ${png}: ${c.error || c.stderr}`); // (a host without it writes no strips)
+        list.push(png);
+      }
+      spawnSync('montage', [...list, '-tile', tag ? '8x' : '11x', '-geometry', '+2+2', '-background', '#111', join(out, `strip-${tag}${name}.png`)]);
     }
-    spawnSync('montage', [...list, '-tile', '11x', '-geometry', '+2+2', '-background', '#111', join(out, `strip-${name}.png`)]);
-  }
   // one whole frame mid-turn (where the crops come from)
   readSync(fd, buf, 0, fsz, 16 + 440 * fsz);
   spawnSync('convert', ['-size', `${w}x${hh}`, '-depth', '8', 'rgb:-', join(out, 'frame-0440.png')], { input: buf });
@@ -137,6 +143,7 @@ export function measure(trace) {
   for (const g of groups) {
     const idx = chains.map((c, i) => (c.group === g ? i : -1)).filter((i) => i >= 0), n = idx.length;
     const short = chains[idx[0]].bones <= 2; // the locks and the beards: short chains, small swings
+    const garment = g === 'Robe' || g === 'Coat'; // a garment: a long cloth that the body's idle sways a few centimetres
     const R = all.map((r) => ({ ...r, lag: idx.map((i) => r.lag[i]), depth: idx.map((i) => r.depth[i]), rigid: idx.map((i) => r.rigid[i]), deep: idx.map((i) => r.deep[i]) }));
     // where each tip hangs at rest: its lag over the last half second of the run (the last stand)
     const rest = Array.from({ length: n }, (_, c) => [0, 1, 2].map((x) => mean(R.slice(-30).map((r) => r.lag[c][x]))));
@@ -177,8 +184,8 @@ export function measure(trace) {
       const sw = (r) => Math.max(...r.lag.map((l, c) => Math.hypot(l[0] - hang[c][0], l[1] - hang[c][1], l[2] - hang[c][2])));
       let pk = 0, settled = null;
       for (let k = i; k < end; k++) pk = Math.max(pk, sw(R[k]));
-      // settled: from then on the swing stays under a fifth of its peak (and under 2 cm)
-      const bar = Math.min(0.02, pk / 5);
+      // settled: from then on the swing stays under a fifth of its peak and under 2 cm (a garment: under a tenth)
+      const bar = garment ? pk / 10 : Math.min(0.02, pk / 5);
       for (let k = i; k < end; k++) if (R.slice(k, end).every((r) => sw(r) <= bar)) { settled = R[k].tick - R[i].tick; break; }
       // at rest (the last second of the stand): jitter, what is left of each tip's motion after a 5-tick running mean
       // (the idle's slow sway passes through it; a tick-to-tick shake does not), its root mean square and its largest
@@ -195,8 +202,8 @@ export function measure(trace) {
     m.checks = {
       turn: T.length === 2 && T.every((t) => t && t.swing_mm >= tb),
       settle: stops.length >= 3 && stops.every((s) => s.swing_mm >= sb && s.settle_ticks !== null && s.settle_ticks <= 60),
-      rest: stops.length >= 3 && stops.every((s) => s.rest_ticks >= 50 && s.rest_jitter_max_mm <= 0.3 && s.rest_jitter_mm <= 0.1),
-      clip: m.clip_mm <= 1,
+      rest: stops.length >= 3 && stops.every((s) => s.rest_ticks >= 50 && s.rest_jitter_max_mm <= (garment ? 2 : 0.3) && s.rest_jitter_mm <= (garment ? 0.5 : 0.1)),
+      clip: m.clip_mm <= (garment ? 25 : 1),
     };
     m.pass = Object.values(m.checks).every(Boolean);
     G[g] = m;
@@ -211,7 +218,7 @@ export function measure(trace) {
 const [mode, ...args] = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 if (mode === 'run') {
-  await run(args[0], args[1], { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS) });
+  await run(args[0], resolve(args[1]), { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS) });
 } else if (mode === 'measure') {
   const dir = args[0];
   const runs = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'trace.json'))).sort();
@@ -227,6 +234,11 @@ if (mode === 'run') {
     }
     // a control fails its own check (listed below); 'on' passes every check
     if (m.variant === 'on' && !m.pass) { ok = false; console.log('  FAILED'); }
+  }
+  // every figure's run and its controls must all be there (a run cut short leaves none of its trace)
+  for (const f of Object.keys(FIGURES)) for (const v of Object.keys(VARIANTS)) {
+    if (v === 'skirt0' && !GARMENT[f]) continue;
+    if (!res.some((m) => m.figure === f && m.variant === v)) { ok = false; console.log(`  ${f} ${v}: missing (run it)`); }
   }
   // each control must fail the check it is the control of
   const by = (f, v) => res.find((m) => m.figure === f && m.variant === v);

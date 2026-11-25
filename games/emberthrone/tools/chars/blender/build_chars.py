@@ -643,6 +643,17 @@ def swing_chains(o, FJ, sp, key, src, parent):
                 m = (a + b * np.array([-1, 1, 1])) / 2
                 c['_J'][k], r['_J'][k] = m, m * np.array([-1, 1, 1])
             c['_zh'] = r['_zh'] = (c['_zh'] + r['_zh']) / 2
+    # a garment's roots (root_lift, root_out: metres): each chain's first joint moved up and out from the parent's
+    # vertical, the joints below it left in place, so the seam it is sewn on sits clear of the thighs' reach
+    for c in chains:
+        if c.get('root_lift') or c.get('root_out'):
+            j0 = c['_J'][0].copy()
+            r = np.hypot(j0[0], j0[1])
+            if r > 1e-6:
+                j0[0] += j0[0] / r * c.get('root_out', 0)
+                j0[1] += j0[1] / r * c.get('root_out', 0)
+            j0[2] += c.get('root_lift', 0)
+            c['_J'][0] = j0
     # the bones (after the figure's own: Head's children) and their joints
     for c in chains:
         nb = len(c['_J']) - 1

@@ -149,8 +149,14 @@ tools/chars/blender/build_chars.py down the middle of the hair's own shell and t
 the fringe and the jaw line left on the head. In the game a SpringBone3D after the look swings them: the tips lag behind
 the head on a turn, a start or a stop and settle back to where they hang, kept out of the skull, the jaw, the neck and
 the tops of the shoulders (capsules the size of the figures' own skin), on the figures near the camera; a step up a
-ledge moves them with the body instead of flinging them. The robe and the coats have their chains in the rig, from the
-waist, and stay on the legs as built until their springs settle on these figures. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
+ledge moves them with the body instead of flinging them. The lancers' coats swing too: five chains of three bones round
+the coat's sides and back, from a seam at the waist set clear of the thighs, linked across into one cloth (the engine's
+skirt mode) that a stride spreads, flares on a stop and settles, with capsules on the thighs, the shins and the feet
+keeping the legs inside it. The Tidecaller's robe has its eight chains of four bones in the rig but stays on the legs as
+built: on its springs (skirt mode, a ring) the outfit's thighs and boot tops, which reach 3 to 5 cm past the leg
+capsules, come through the cloth as dark wedges, and the cloth creases into hard facets between its chains. It needs
+the outfit's hidden legs under it taken out of the mesh, capsules the size of the outfit, and a softer blend between
+its chains before it swings. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
 ankle height); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
@@ -174,8 +180,10 @@ region's colours (the outfit's material tinted per kind and region).
 - `tests/emberthrone-hair.mjs` (romdev, the RELEASE cart): the hair and the beards on their springs, from the bones
   (view.c's hair recorder) through a pad script (run, stop, a turn, a stop, a turn about, a stop) with the player
   wearing each figure that has them: the tips swing on each turn and each stop and settle within a second, nothing
-  shakes at rest, and no chain goes into the skull, the jaw, the neck or the shoulders. Controls: the old rig (the
-  springs off, the hair carried by the head), the springs without collisions and slack undamped chains, each failing its
+  shakes at rest, and no chain goes into the skull, the jaw, the neck or the shoulders; the coat swings and settles the same
+  way and no leg goes more than 25 mm into it. Controls: the old rig (the
+  springs off, the hair carried by the head), the springs without collisions, slack undamped chains and the coat's
+  chains left unlinked, each failing its
   check. It writes native-scale strips of each turn and stop round the head.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from

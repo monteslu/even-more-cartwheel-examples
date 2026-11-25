@@ -75,9 +75,9 @@ repeat in any region's ground, from the game's camera on romdev, and every layer
 `--control-textures` the old ground must fail),
 `node tests/emberthrone-grass-walk.mjs [cart dir] [--gpu gl|webgpu]` (the hero walks into the meadow on a pad: the
 grass's flicker over the ground's own, held to the 0.51.0 grass's, with a hard-cut grass as a control that must fail),
-`node tests/emberthrone-hair.mjs run <cart dir> <out dir>` then `measure <out dir>` (the hair and the beards on their
-springs through a pad script: they swing and settle, never shake at rest and stay out of the body, with the old rig,
-no collisions and slack chains as controls that must fail),
+`node tests/emberthrone-hair.mjs run <cart dir> <out dir>` then `measure <out dir>` (the hair, the beards and the
+coats on their springs through a pad script: they swing and settle, never shake at rest and stay out of the body,
+with the old rig, no collisions, slack chains and unlinked garments as controls that must fail),
 `node tests/emberthrone-perf.mjs` (1080p High on the 890M, GL and WebGPU), `node tests/emberthrone-look.mjs out/look` (each
 region mid-key, with real contrast and more than one hue family, with a control that must fail), and the gates in
 `tests/emberthrone-gates.json`.

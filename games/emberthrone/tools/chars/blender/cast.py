@@ -28,11 +28,12 @@ LONG_HAIR = [dict(name='HairBack', az=180, root=0.08), dict(name='HairBackL', az
 BEARD = [dict(name='Beard', az=0, root=0.0, bones=2, fade=45)]
 # a robe to the floor: eight chains of four bones round the hips, in order round the body (the engine links each to the
 # next: skirt RING); an open coat to below the knee: five of three round its sides and back, from one front edge to the
-# other (skirt OPEN). Both hang from the waist. They carry no weight yet ('share' 0: the cloth stays on the legs as
-# built) until their springs settle on these figures (view.c SWING)
+# other (skirt OPEN). The coat's cloth and its hem trim are all on its chains below the waist; each chain's root is moved
+# 5 cm out and 6 cm up, its first joint left where it was, so the seam sits clear of the thighs (view.c SWING keeps the
+# cloth off the legs). The robe's chains carry no weight ('share' 0: the cloth stays on the legs as built; view.c SWING)
 ROBE = [dict(name='Robe' + n, az=a, root=0.04, bones=4, share=0.0) for n, a in
         (('F', 0), ('FL', 45), ('L', 90), ('BL', 135), ('B', 180), ('BR', -135), ('R', -90), ('FR', -45))]
-COAT = [dict(name='Coat' + n, az=a, root=0.04, bones=3, fade=40, share=0.0) for n, a in
+COAT = [dict(name='Coat' + n, az=a, root=0.04, bones=3, fade=40, root_out=0.05, root_lift=0.06) for n, a in
         (('L', 75), ('BL', 125), ('B', 180), ('BR', -125), ('R', -75))]
 # the wayfarer's buns stay tied; the two locks in front of her ears swing (two bones each)
 LOCKS = [dict(name='HairLockL', az=68, root=0.07, bones=2, fade=30), dict(name='HairLockR', az=-68, root=0.07, bones=2, fade=30)]

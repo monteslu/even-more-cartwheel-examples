@@ -239,18 +239,19 @@ static t3_vec3 cape_point(int i, const cw_pose *p, int chest, bool *ok) {
 }
 
 
-/* hair and beards on spring bones (cartwheel/ik.h SpringBone3D). The long hair (the lancers', the Tidecaller's), the
+/* hair, beards and coats on spring bones (cartwheel/ik.h SpringBone3D). The long hair (the lancers', the Tidecaller's), the
  * wayfarer's two locks and the warden's and the Ember King's beards hang on bone chains
  * (tools/chars/blender/build_chars.py swing_chains: down the middle of the part's own shell, the part weighted along
  * them) that lag behind the head on a turn, a start or a stop, sway and settle back to the pose the clips give them.
  * Each group is one SpringBone3D after the look (modifiers run in child order), kept out of the body by capsules on its
  * bones (SWING_SHAPE: the skull, the jaw, the neck and the tops of the shoulders for the hair, the neck for a beard; the
  * figures' own skin measured in Blender, scaled with each figure). The springs run on the figures near the camera; a
- * far one's hang as animated (a spring that comes back on starts from the animated pose: no whip). The Tidecaller's
- * robe and the lancers' coats have their chains in the rig (eight of four bones round the robe, five of three round the
- * coat's sides and back, from the waist) but carry no weight and no springs yet: on these figures the engine's skirt
- * mode does not settle (measured: tips 0.7 to 0.9 m off, never settling, legs up to 8 cm in), so the cloth stays on the
- * legs as built. */
+ * far one's hang as animated (a spring that comes back on starts from the animated pose: no whip). The lancers' coats
+ * are garments: five chains of three bones round the coat's sides and back, from a seam at the waist clear of the
+ * thighs, linked across into one cloth (cartwheel's skirt mode, OPEN) that a stride spreads (it stretches up to twice
+ * its length across) and the legs and feet stay inside. The Tidecaller's robe has its eight chains of four bones in the
+ * rig but no weight and no springs: on springs the legs come through it (the outfit's thighs and boot tops reach past
+ * the leg capsules) and its panels crease between the chains, so it stays on the legs as built (DESIGN.md). */
 enum { HS_SKULL, HS_JAW, HS_NECK, HS_SHOULDERS, HS_THIGH_L, HS_THIGH_R, HS_SHIN_L, HS_SHIN_R, HS_FOOT_L, HS_FOOT_R, HS_N };
 #define HSB(k) (1u << (k))
 #define SWING_MAXG 3
@@ -263,11 +264,8 @@ typedef struct { const char *node; int n, bones; const char *chain[8]; float sti
 static const swing_def SWING[K_KINDS][SWING_MAXG] = {
   [K_WAYFARER] = { { "Hair", 2, 2, { "HairLockL", "HairLockR" }, 1500, 25, 1.0f, 0.008f, HAIR_SHAPES } },
   [K_WARDEN] = { BEARD },
-  [K_LANCER] = { LONG_HAIR },
+  [K_LANCER] = { LONG_HAIR, { "Coat", 5, 3, { "CoatL", "CoatBL", "CoatB", "CoatBR", "CoatR" }, 240, 6, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
   [K_TIDE] = { LONG_HAIR },
-  /* (the robe and the coat, when their garments settle on these figures: { "Robe", 8, 4, { "RobeF", "RobeFL", "RobeL",
-   * "RobeBL", "RobeB", "RobeBR", "RobeR", "RobeFR" }, 220, 6, 2.0f, 0.025f, LEG_SHAPES, "RING" } and { "Coat", 5, 3, {
-   * "CoatL", "CoatBL", "CoatB", "CoatBR", "CoatR" }, 240, 6, 2.0f, 0.025f, LEG_SHAPES, "OPEN" }) */
   [K_EMBER] = { BEARD },
 };
 /* the body the parts stay out of, in the figure's own metres before its kind's scale: a capsule from a to b round the
@@ -358,7 +356,7 @@ static void hair_make(rig *r, int kind) {
     cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
     if (h->skirt) { /* a garment: its chains linked across into one cloth (cartwheel/ik.h skirt mode), stretching to let a stride through */
       cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? h->skirt : "OFF"));
-      cw_node_set(sb, "skirt_stretch", cw_val_float(0.3f));
+      cw_node_set(sb, "skirt_stretch", cw_val_float(1.0f));
     }
   }
   r->hair_on = true;
