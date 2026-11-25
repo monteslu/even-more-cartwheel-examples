@@ -29,7 +29,8 @@
 // hands 12 cm or less from the guard after a recovery.
 // CONTROL, which must fail: the same run on the old build (the procedural clips): --control <cart dir>.
 //
-//   node tests/emberthrone-motion.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu]   the run (trace.json, video, strips)
+//   node tests/emberthrone-motion.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--env "K=V ..."]   the run (trace.json, video,
+//   strips); --env: switches the cart reads (the engine's CW_TEST_* controls among them), sent before its first frame
 //   node tests/emberthrone-motion.mjs measure <run dir> [--control <run dir>] [--json]   (trace.json, boss.json)
 import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -73,11 +74,12 @@ function steps() {
   });
 }
 
-async function run(cartDir, out, { video = false, gpu = 'gl' } = {}) {
+async function run(cartDir, out, { video = false, gpu = 'gl', env = '' } = {}) {
   process.env.DESTRUCTO_CART_DIR = resolve(cartDir);
   const { openCart, call } = await import('./lib/romdev.mjs');
   mkdirSync(out, { recursive: true });
-  const h = await openCart('emberthrone', { gpu, tag: 'motion' });
+  const load = env ? { firstCommand: `env ${env}` } : {};
+  const h = await openCart('emberthrone', { gpu, tag: 'motion', load });
   try {
     const dump = join(out, 'run.cwfd');
     const r = await call('frame', { op: 'record', frames: FRAMES - 1, steps: steps(), commandsAt: [...COMMANDS, { frame: REC_AT, command: `motion rec ${REC_N}` }].sort((x, y) => x.frame - y.frame), path: dump, downscale: video ? 1 : 8, maxSeconds: 1800 }, h.session, { timeoutMs: 2400000 });
@@ -90,7 +92,7 @@ async function run(cartDir, out, { video = false, gpu = 'gl' } = {}) {
     if (existsSync(dump)) unlinkSync(dump);
   } finally { await h.close(); }
   // the cape: the Ember King's (the heroes wear none), as the bot fights him at his throne
-  const b = await openCart('emberthrone_auto', { gpu, tag: 'motion-boss' });
+  const b = await openCart('emberthrone_auto', { gpu, tag: 'motion-boss', load });
   try {
     const dump = join(out, 'boss.cwfd'), o = join(out, 'boss');
     mkdirSync(o, { recursive: true });
@@ -389,7 +391,8 @@ if (!MAIN) { /* a module */ } else if (mode === 'cost') {
   frames(args[0], args[1]);
 } else if (mode === 'run') {
   const gi = args.indexOf('--gpu');
-  await run(args[0], args[1], { video: args.includes('--video'), gpu: gi >= 0 ? args[gi + 1] : 'gl' });
+  const ei = args.indexOf('--env');
+  await run(args[0], args[1], { video: args.includes('--video'), gpu: gi >= 0 ? args[gi + 1] : 'gl', env: ei >= 0 ? args[ei + 1] : '' });
 } else if (mode === 'measure') {
   const load = (d) => measure(JSON.parse(readFileSync(join(d, 'trace.json'), 'utf8')), existsSync(join(d, 'boss.json')) ? JSON.parse(readFileSync(join(d, 'boss.json'), 'utf8')) : null);
   const m = load(args[0]);

@@ -17,6 +17,7 @@
 #include "cartwheel/anim.h"
 #include "cartwheel/cloth.h"
 #include "cartwheel/debug.h"
+#include "cartwheel/foliage.h"
 #include "cartwheel/ik.h"
 #include "cartwheel/ragdoll.h"
 #include "cartwheel/render3d.h"
@@ -46,20 +47,18 @@ typedef struct rig {
   float rd_yaw;
   bool still;        /* the dead, settled: the pose is kept and nothing more runs */
   int shadow;        /* casting the sun's shadow now (-1 unknown) */
-  bool fresh;        /* made this tick: the tree waits a tick, so the skeleton modifiers bind on the bind pose (their rest;
-                      * cartwheel-engine 0.71.0 takes the rest from the skin's bind pose whenever they bind, after which this is
-                      * harmless) */
+  bool fresh;        /* made this tick: placed at once where its actor stands */
   int act;           /* the action playing over the locomotion (ACT index), -1 none */
   float lean_s, lean_f, last_speed, last_yaw, look_w, armed, guard, bx, by, bs, feet_w; /* bx, by, bs: the blend space's place, eased */ /* smoothed leans, the last tick's speed and facing, the look's weight */
   t3_vec3 cape_at;   /* where the cape's top edge hangs (model frame, the figure at rest) */
   t3_vec3 last_pos;  /* the last tick's place (a jump re-hangs the cape) */
   t3_vec3 look_at;   /* the point the look turns to (glides between faces) */
-  bool adv_due;      /* the tree advances by adv_dt in the next tick's node phase (anim_hook), before the modifiers */
+  bool adv_due;      /* the tree advances by adv_dt at the end of this tick's view_fixed (anim_advance) */
   float adv_dt;
   bool root_due;     /* and the root is placed there, at root_at turned root_yaw */
   t3_vec3 root_at;
   float root_yaw;
-  t3_vec3 drawn_at;  /* where the root stands now (placed by anim_hook): what the recorders measure against */
+  t3_vec3 drawn_at;  /* where the root stands now (placed by anim_advance): what the recorders measure against */
   float drawn_yaw;
   float gv[5];       /* ground speed of walk, run, back, strafe left, strafe right (m/s, from the clips' planted feet) */
 } rig;
@@ -487,7 +486,46 @@ static void rig_make(int i, int kind) {
   r->made = true, r->shadow = -1, r->fresh = true;
 }
 
+/* the grass bends round whoever walks through it (cartwheel/foliage.h movers): the players and the meadow's foes, the
+ * only grass a fight crosses. A mover is added the tick its actor is up in the world (in actor order: the player, the
+ * second player, then the foes, so the first ones keep their place when more than 16 bend at once), moved every tick,
+ * and removed when it dies or leaves (its last place recovers); a reset (a start, a jump ahead) clears them all. */
+static int MOVER[MAXA];
+static bool movers_ready;
+/* movers: what bends the grass now (the movers, the discs the shaders get, the push at the player's feet) */
+static void cmd_movers(int argc, const char **argv, cw_reply *rp) {
+  (void)argc, (void)argv;
+  float d[CW_FOLIAGE_MOVER_SLOTS * 4];
+  int n = cw_foliage_mover_slots(d, CW_FOLIAGE_MOVER_SLOTS * 4);
+  const actor *a = &S.a[0];
+  cw_reply_printf(rp, "{\"movers\":%d,\"slots\":%d,\"push_at_player\":%.3f,\"ids\":[", cw_foliage_mover_count(), n,
+                  cw_foliage_push_at(a->mv.position.x, a->mv.position.z, NULL, NULL));
+  for (int i = 0; i < MAXA; i++) cw_reply_printf(rp, "%s%d", i ? "," : "", MOVER[i]);
+  cw_reply_printf(rp, "]}");
+}
+static void movers_tick(void) {
+  static bool cmd;
+  if (!cmd) cw_debug_command("movers", "movers: the grass's movers (count, shader discs, the push at the player, each actor's id)", cmd_movers), cmd = true;
+  if (!movers_ready) {
+    cw_foliage_movers_clear();
+    for (int i = 0; i < MAXA; i++) MOVER[i] = -1;
+    movers_ready = true;
+  }
+  for (int i = 0; i < MAXA; i++) {
+    const actor *a = &S.a[i];
+    bool want = a->used && a->active && a->state != ST_DEAD && (i < MAXP || a->region == RG_MEADOW);
+    if (!want) {
+      if (MOVER[i] >= 0) cw_foliage_mover_remove(MOVER[i]), MOVER[i] = -1;
+      continue;
+    }
+    if (MOVER[i] < 0)
+      MOVER[i] = cw_foliage_mover_add(&(cw_foliage_mover){ .x = a->mv.position.x, .z = a->mv.position.z, .radius = 0.6f, .strength = 1, .recover = 1.5f });
+    else cw_foliage_mover_update(MOVER[i], a->mv.position.x, a->mv.position.z);
+  }
+}
+
 void view_reset(void) {
+  movers_ready = false;
   for (int i = 0; i < MAXA; i++) {
     if (RIG[i].rd) cw_ragdoll_destroy(RIG[i].rd);
     cw_pose_free(&RIG[i].pose);
@@ -817,8 +855,8 @@ static void mrec_sample(int i) {
   cw_pose_update_model(p);
   mrec_row *w = &MREC[mrec_n++];
   memset(w, 0, sizeof *w);
-  /* the state that chose the pose drawn: the clips advance in the next tick's node phase (anim_hook), so the pose drawn now
-   * is the one the last tick's state asked for */
+  /* the state that chose the pose drawn: the clips advance at the end of each tick's view_fixed (anim_advance), so the
+   * pose read now is the one the last tick's state asked for */
   static struct { int state, atk, st_t, target; char clip[sizeof w->clip]; bool ok; } was;
   w->tick = mrec_tick, w->state = was.ok ? was.state : a->state, w->atk = was.ok ? was.atk : a->atk, w->st_t = was.ok ? was.st_t : a->st_t;
   w->target = a->target;
@@ -919,12 +957,10 @@ static void cmd_trail(int argc, const char **argv, cw_reply *rp) {
   cw_reply_printf(rp, "{\"ticks\":%d,\"mean_m\":%.3f,\"max_m\":%.3f}", TRL.n, TRL.n ? TRL.sum / TRL.n : 0, TRL.max);
 }
 
-/* the clips advance in the tree's node phase (a hook just before the skeleton modifiers, cartwheel/ik.h PIPELINE): the
- * look, the feet and the rest then adjust the pose the clips wrote and that is what is drawn. Advanced in the app's
- * fixed_update (after the modifiers) the clips wrote over every solve, and the head never turned to what it fought.
- * view_fixed decides each rig's step (its clips, the hit-stop's hold); the next tick's hook takes it. */
-static void anim_hook(cw_tree *tree, double dt, void *u) {
-  (void)tree, (void)dt, (void)u;
+/* the clips advance and the figures are placed at the end of the app's fixed_update (view_fixed's last step); the engine's
+ * scene runner then solves the skeleton modifiers again on what they wrote (cw_skeleton_modifiers_refresh, cartwheel/ik.h
+ * PIPELINE), so the look, the feet and the rest adjust this tick's pose and that is what is drawn */
+static void anim_advance(void) {
   for (int i = 0; i < MAXA; i++) {
     rig *r = &RIG[i];
     if (r->root_due && r->made && r->root.id && cw_node_valid(r->root) && !r->rd && !r->still)
@@ -1130,11 +1166,10 @@ void view_fixed(void) {
   }
   static bool frm_cmd;
   if (!frm_cmd) cw_debug_command("framing", "framing rec <frames> | get: the lock-on framing recorder (tests/emberthrone-lockon.mjs)", cmd_framing), frm_cmd = true;
-  static bool hooked;
-  if (!hooked) cw_tree_add_hook(cw_current_tree(), 0, 140, anim_hook, NULL), hooked = true; /* (after physics, before the modifiers at 150) */
   static bool trl_cmd;
   if (!trl_cmd) cw_debug_command("trail", "trail rec <ticks> | get: the blade trail recorder (tests/emberthrone-trail.mjs)", cmd_trail), trl_cmd = true;
   mrec_tick++;
+  movers_tick();
   VST.rigs = VST.drawn = 0;
   for (int i = 0; i < MAXA; i++) {
     const actor *a = &S.a[i];
@@ -1186,8 +1221,8 @@ void view_fixed(void) {
       t3_vec3 at = a->mv.position;
       if (lurk && a->state == ST_IDLE_HOME) at.y -= sunk;
       if (lurk && a->state == ST_ROAR) { float k = 1 - (float)a->st_t / (float)CW_MAX(1, a->st_len); at.y -= sunk * k * k; } /* rising out of the water */
-      /* placed with its pose, in the next tick's node phase (anim_hook): the figure drawn is the tick before's as a whole, its
-       * place and its pose together; a figure just made is placed now */
+      /* placed with its pose at the end of the tick (anim_advance): the figure's place and its pose change together; a figure
+       * just made is placed now */
       /* the facing drawn turns at most half a radian a tick: the rules turn a body at once (a roll's way, a cut's foe), the
        * figure swings round over two or three ticks rather than in one */
       float dy = wrapf(a->yaw - r->drawn_yaw);
@@ -1331,8 +1366,10 @@ void view_fixed(void) {
       float d2 = dist2(a->mv.position.x, a->mv.position.z, S.cam_pos.x, S.cam_pos.z);
       cw_animtree_set_update_divisor(t, i < MAXP ? 1 : cw_anim_lod_divisor(sqrtf(d2), 18));
       bool held = (g_held_now || S.hitstop > 0) && a->state != ST_DEAD;
-      if (r->fresh) r->fresh = false; /* (the modifiers bind this tick, on the model as it was built) */
-      else if (near && !r->rd && !r->still) r->adv_due = true, r->adv_dt = held ? 0 : 1.0f / TPS;
+      /* a figure just made poses this tick too (the modifiers take their rest from the skin's bind pose whenever they bind):
+       * held a tick, a jump ahead or a respawn drew every figure for one frame in its rest pose */
+      r->fresh = false;
+      if (near && !r->rd && !r->still) r->adv_due = true, r->adv_dt = held ? 0 : 1.0f / TPS;
     }
     /* the weapon in hand, the flask while drinking */
     if (i < MAXP && r->inst) {
@@ -1345,11 +1382,9 @@ void view_fixed(void) {
     }
     /* the feet: planted while standing and walking; free in the air, the roll, a fall */
     bool plant = !lurk && a->mv.on_floor && (a->state == ST_MOVE || a->state == ST_IDLE_HOME || a->state == ST_ATTACK || a->state == ST_HURT || a->state == ST_DRINK || a->state == ST_ACT || a->state == ST_ROAR);
-    /* eased in and out, so the legs never snap onto the ground or off it (a roll's end, a get-up) */
-    /* and only at a stand or a walk: in a run the feet are off the ground most of the cycle and the solve would fight
-     * the stride (a leg flipped round its knee from one tick to the next) */
-    float stride = cw_clampf((3.2f - fmaxf(a->speed, r->bs)) / 1.6f, 0, 1); /* (bs: the clips' own pace, slowing after a stop) */
-    r->feet_w += ((plant ? stride : 0.0f) - r->feet_w) * 0.2f;
+    /* eased in and out, so the legs never snap onto the ground or off it (a roll's end, a get-up); at every pace, a run's
+     * included (cartwheel-engine 0.77.0 limits each leg bone's turn a tick and keeps a raised ankle below the hip) */
+    r->feet_w += ((plant ? 1.0f : 0.0f) - r->feet_w) * 0.2f;
     cw_node_set(r->feet, "active", cw_val_bool(!r->rd && !r->still && r->feet_w > 0.01f));
     cw_node_set(r->feet, "influence", cw_val_float(cw_clampf(r->feet_w, 0, 1)));
     if (r->swing[0].id) { /* the springs: a figure near the camera, not a ragdoll (a far one's parts hang as animated) */
@@ -1414,6 +1449,7 @@ void view_fixed(void) {
     mrec_due[i] = true;
     r->last_state = a->state, r->last_st_t = a->st_t, r->last_atk = a->atk;
   }
+  anim_advance();
 }
 
 /* ── per frame ─────────────────────────────────────────────────────── */

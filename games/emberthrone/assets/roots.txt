@@ -100,7 +100,6 @@ textures/terrain/sand_ah.png
 textures/terrain/sand_nr.png
 textures/terrain/snow_ah.png
 textures/terrain/snow_nr.png
-textures/terrain/stones_density.png
 textures/wood_c.png
 textures/wood_n.png
 textures/wood_orm.png

@@ -130,7 +130,9 @@ scale_max = 1.25
 visible_range = 16
 fade = 6
 lod_distance = 7
-fade_mode = DITHER
+; SHRINK until cartwheel-engine v0.78.3 (the scatter crossfade without coincident LODs): on 0.77.0 DITHER draws both LODs
+; of a tuft whole through the crossfade band, two surfaces in one plane that fight for the depth test; then DITHER again
+fade_mode = SHRINK
 lod_blend = 3
 wind_strength = 0.07
 wind_frequency = 0.7
@@ -141,17 +143,22 @@ smooth_alpha = true
 two_sided_lighting = true
 tint_jitter = 0.35
 root_from_terrain = true
+; bending round the players and the meadow's foes as they walk through it (view.c movers), and each tuft wholly lit or
+; wholly in shadow (one shadow sample at its root: under TAA a sample per blade stippled every shadow edge in the grass)
+bend = 1.1
+shadow_at_root = true
+shadow_soften = 0
 seed = 1
 
 [node name="Stones" parent="Terrain" type="TerrainScatter3D"]
 ; the game's own rock (textured, its foot below its middle), not the engine's plain one
+; none at the brink of a drop (world.c stones_density_map makes its map from the terrain's tables at each start)
 mesh = "models/rock.glb"
 align = true
 density = 0.012
 layers = 24
 min_slope = 28
-; none at the brink of a drop (world.c stones_density_map makes it from the terrain's tables and checks it at each start)
-density_map = "textures/terrain/stones_density.png"
+density_map = "world/stones_density.png"
 scale_min = 0.3
 scale_max = 1.2
 sink = 0.15
@@ -177,6 +184,26 @@ fade = 6
 lod_distance = 20
 knob = SCATTER
 seed = 3
+
+[node name="CanyonStones" parent="Terrain" type="TerrainScatter3D"]
+; the canyon floor's second layer of the same stones (its floor alone, none at the brink of a drop: world.c
+; stones_density_map makes its map too), so the floor carries twice the stones of
+; elsewhere; after the pebbles, so the other layers place their stones as before
+mesh = "models/rock.glb"
+align = true
+density = 0.012
+layers = 24
+min_slope = 28
+density_map = "world/canyon_stones_density.png"
+scale_min = 0.3
+scale_max = 1.2
+sink = 0.15
+visible_range = 120
+fade = 25
+lod_distance = 40
+knob = SCATTER
+cast_shadow = true
+seed = 4
 
 [node name="Water" parent="." type="Water3D"]
 position = vec3(268, 8.3, 215)

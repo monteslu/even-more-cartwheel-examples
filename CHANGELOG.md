@@ -16,6 +16,36 @@
   controls; cart smoke, version and prompt checks. Each pause item was played through on romdev with the pad (restart,
   then back to the choice). destructo's loading and water gates time the CPU and went over on a machine under a load
   of about 50; the build before this change goes over the same way there.
+- **Ember Throne**'s canyon floor is broken up by its own art: darker strata cropping out in thin broken bands across
+  the sand, darker stretches where the sand lies thin, and twice the stones of elsewhere (a second layer of the same
+  stones on the canyon floor alone, so every other region places its stones as before). The canyon's luma spread is
+  55.9 over its five look frames against the look check's 55 (0.53.0: 54.0).
+- **Ember Throne**'s grass bends aside round the players and the meadow's foes as they walk through it and stands up
+  again over a second and a half behind them (cartwheel-engine foliage movers, `bend` 1.1). Each tuft is wholly lit or
+  wholly in shadow (`shadow_at_root`), and the rim of a figure's shadow in the grass no longer carries a fine dot
+  pattern in a run: at the same framing it has 19.5 isolated dots a thousand pixels, against 44.1 on cartwheel-engine
+  0.76.0's screen-door fade.
+- **Ember Throne**'s clips advance at the end of the game's tick and the engine solves the look and the feet again on
+  that pose the same tick (`cw_skeleton_modifiers_refresh`), in place of a tree hook before the modifiers. The head
+  stays on the locked foe within 4.2 degrees on average and on the threat within 11.3 when free (were 4.9 and 13.8).
+- **Ember Throne**'s feet are planted at every pace, a run's included (they were let go above a walk). In the motion
+  check's run no leg bone turns more than 16 degrees in one tick beyond its neighbours (38 with the engine's turn limit
+  off, `CW_TEST_FOOT_NO_RATE=1`).
+- **Ember Throne** no longer draws every figure for one frame in its rest pose after a jump ahead or a respawn: a
+  figure made on a load poses its first tick.
+- **Ember Throne**'s stone density maps are made from the terrain's tables at each start and written for the engine to
+  read (they were packed images). tests/emberthrone-stones.mjs's control is now the same cart with the map never
+  written, which must fail.
+- **Ember Throne**'s grass shrinks away at the edge of its range and at its level of detail change, for now (`fade_mode`
+  SHRINK): on cartwheel-engine 0.77.0 the dithered cross-fade draws both levels of a tuft whole through the band, two
+  surfaces in one plane that fight for the depth test (150 pairs in the world). The grass goes back to the dither with
+  the engine release whose cross-fade draws no coincident levels. In motion the band changes no more frame to frame
+  than on 0.76.0, and the grass costs the same.
+- Ember Throne's motion check takes `--env` for switches the cart reads (the engine's controls among them).
+- Checks on Ember Throne, on cartwheel-engine 0.77.0 with Release carts: gates on GL and WebGPU, grounding, flash,
+  perf (16 of 16 under 4.5 ms; its controls fail), the look of all eight regions at five frames each, the motion
+  check against the procedural build (which fails), the depth-fighting scan (no pairs; its control and selftest fail as
+  they must), cart smoke and version.
 
 ## 0.57.0
 

@@ -91,10 +91,12 @@ earth), graded to each region's palette, read by the engine at a random offset i
 round again, blended by height where two meet, and read from the side with the engine's detiling on cliffs and steep
 banks; no uv turn or scale is painted per texel (the engine takes both from the nearest texel, and a change between
 neighbours drew a straight seam). The keep's warm hill and paving carry cold teal moss in patches, its complementary
-accent in its own ground whoever stands there. Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
+accent in its own ground whoever stands there. The canyon floor breaks up its sand with darker strata in thin broken bands
+and darker stretches where the sand lies thin, and carries twice the stones of elsewhere (a second layer of them on its floor).
+Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
 larger stones). The stones grow on ground up to 28 degrees and never at the brink of a drop (a density map the game
-makes from the terrain's tables), and each has one box the shape of its rock to bump into. The meadow's moss is as
-matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass is the engine's foliage (TerrainScatter3D GRASS, cartwheel/foliage.h): tufts of twelve curved tapering blades, seven a square metre, each tuft its own shade (dry yellow to deep green), rooted in the colour of the ground under it, lit the same from both sides, bending in the wind with gusts that run over the meadow; out to 16 m, dissolving over the last 6 and cross-fading into the far level of detail (a dither the temporal antialiasing resolves). The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
+makes from the terrain's tables at each start and writes to the project layer), and each has one box the shape of its rock to bump into. The meadow's moss is as
+matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass is the engine's foliage (TerrainScatter3D GRASS, cartwheel/foliage.h): tufts of twelve curved tapering blades, seven a square metre, each tuft its own shade (dry yellow to deep green), rooted in the colour of the ground under it, lit the same from both sides, bending in the wind with gusts that run over the meadow, and bending aside round whoever walks through it (the players and the meadow's foes, standing up again over a second and a half behind them), each tuft wholly lit or wholly in shadow (one shadow sample at its root); out to 16 m, dissolving over the last 6 and cross-fading into the far level of detail (a dither the temporal antialiasing resolves). The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
 regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
@@ -136,8 +138,9 @@ its own frame (each clip at its own ground speed, the cycles in step), every act
 so the blow lands on the rules' hit frame, a blow playing out its follow-through while the body stands, leans into
 turns, starts and stops, and the chest, neck and head turned toward what it fights: the locked foe, or free the
 threat in front (a foe winding up at it first, else the nearest one on the hunt within 9 m). The sword stand's arms ride
-over the walks while it fights, so a figure comes back to its guard out of a roll, a hit or a cut. The clips advance in
-the engine's node phase, before the skeleton modifiers, so the look and the feet adjust the pose that is drawn; a
+over the walks while it fights, so a figure comes back to its guard out of a roll, a hit or a cut. The clips advance at the
+end of the game's tick and the engine solves the skeleton modifiers again on that pose (cw_skeleton_modifiers_refresh), so
+the look and the feet adjust the pose that is drawn, the same tick; a
 figure turns at most half a radian a tick on screen. The Ember King's cape is cloth
 on his chest bone that swings and settles. Hair moves with the body: the lancers' and the Tidecaller's long hair hangs on
 five chains of three bones round the back and the sides, the wayfarer's two locks on two bones each (her buns stay tied),
@@ -147,8 +150,8 @@ the fringe and the jaw line left on the head. In the game a SpringBone3D after t
 the head on a turn, a start or a stop and settle back to where they hang, kept out of the skull, the jaw, the neck and
 the tops of the shoulders (capsules the size of the figures' own skin), on the figures near the camera; a step up a
 ledge moves them with the body instead of flinging them. The robe and the coats have their chains in the rig, from the
-waist, and stay on the legs as built until their springs settle on these figures. Feet are planted on slopes and stairs at a stand and a walk (FootPlacement3D on the physics ground, each kind's
-ankle height; off in a run); the dead fall as ragdolls. Each
+waist, and stay on the legs as built until their springs settle on these figures. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
+ankle height); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
 
