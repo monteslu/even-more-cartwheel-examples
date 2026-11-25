@@ -2,6 +2,20 @@
 
 ## 0.60.0
 
+- **Every game** moves to cartwheel-engine 0.83.1 (no program table changed; cart smoke, version, art and prompt checks
+  pass on all nine).
+- **Ember Throne** gets a voiced story with choices: the wanderer wakes to a guide who sends them for the wardens' keys,
+  and the wardens were guarding something else entirely. 73 voiced, subtitled, skippable lines (engine story and speech
+  modules), shrine keepers whose lines react to what happened (falls at a warden, keys held, a second player), a choice
+  over each beaten warden to spare or take its fire, and two endings. Faces speak: jaw, mouth, brows and expressions move
+  with each line on the wanderer, the wardens, the bosses and the guide. Boss fights open on a cinematic intro, phase
+  changes cut to a short react shot, and a finisher plays an insert and a slow pull back; the camera never shakes.
+- **Ember Throne** combat: a guard that takes a quarter of a blow and parries one pressed as it lands, an ember meter
+  spent on an all-round strike (right trigger; guard is the left trigger), a spared warden you can call into the King's
+  fight, and boss trials from the pause menu.
+- Checks: the rules test (parry, block, meter, special, assist, trials, each with a control that fails), gates
+  emberthrone-story, -story-skip, -reactive and -boss-intro on GL and WebGPU with controls, emberthrone-journey with its
+  pins unchanged.
 - **Ember Throne**'s lancers' coats swing with the body. Each coat hangs on five chains of three bones round its sides
   and back, from a seam at the waist set clear of the thighs; the cloth and its hem are skinned onto the chains, which
   the engine links across into one open cloth (skirt mode) that a stride spreads. Capsules on the thighs, the shins and
