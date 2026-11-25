@@ -357,6 +357,9 @@ static void hair_make(rig *r, int kind) {
     if (h->skirt) { /* a garment: its chains linked across into one cloth (cartwheel/ik.h skirt mode), stretching to let a stride through */
       cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? h->skirt : "OFF"));
       cw_node_set(sb, "skirt_stretch", cw_val_float(1.0f));
+      /* eight passes a tick, not the default four: on cartwheel-engine 0.78 the coat's left panel came 70 mm into the
+       * right thigh on the turn about with four (tests/emberthrone-hair.mjs), 1.4 mm with eight */
+      cw_node_set(sb, "skirt_iterations", cw_val_int(8));
     }
   }
   r->hair_on = true;
