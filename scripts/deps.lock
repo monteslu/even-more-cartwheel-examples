@@ -1,7 +1,7 @@
 # Pinned dependencies. scripts/fetch-deps.sh reads this file.
 # name             source                                               revision
 # cartwheel-engine: its source at the commit of the engine release below (its test tools: tests/gate.mjs).
-cartwheel-engine   https://github.com/monteslu/cartwheel-engine.git    273c3fb4d76f5cae814cbebdf997047ba5f154af
+cartwheel-engine   https://github.com/monteslu/cartwheel-engine.git    a49644ea3182638b2b2d478df71c168076f4c8a7
 # The prebuilt engine SDKs of that release (cartwheel-engine docs/sdk.md), one per target, sha256 checked.
 cartwheel-sdk:linux-x64 https://github.com/monteslu/cartwheel-engine/releases/download/v0.84.0/cartwheel-sdk-0.84.0-linux-x64.tar.gz v0.84.0 cf80cbb2cbe94aadfb5698daf38e0ff542e899eb399bd389d6e19d043df62ae7
 cartwheel-sdk:linux-arm64 https://github.com/monteslu/cartwheel-engine/releases/download/v0.84.0/cartwheel-sdk-0.84.0-linux-arm64.tar.gz v0.84.0 55f6d0bede7beffbd1152c9facbee7194747c1a1fb0286485ebefa09e5943183
