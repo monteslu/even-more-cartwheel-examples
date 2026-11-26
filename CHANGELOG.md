@@ -6,6 +6,13 @@
   closure now asks for (a double-sided material over the low water); every other table regenerates unchanged. No game
   here uses game-tree search, title items, the recorded pointer channel or mesh opacity, all opt-in; the scatter
   crossfade and the matte GRASS tuft touch Ember Throne alone.
+- **Pinball**: the table select changes table at once. A change used to rebuild the whole table in one frame, freezing
+  the screen for one and a half to two and a half seconds per press while presses piled up; every table is now built
+  behind the loading screen and a change only switches which one is shown. A chooser at the foot of the select names
+  the table (TABLE n OF 3) between two arrows with the d-pad and flipper glyphs of the device in hand, and its arrows
+  and play line take taps and clicks. D-pad down no longer starts a game on the select (it counts the players there).
+  Check: `tests/pinball-table-select.mjs` on GL and WebGPU picks and plays all three tables on the pad alone; its
+  control, the 0.60.0 cart, fails it.
 
 ## 0.60.0
 
