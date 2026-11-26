@@ -1399,6 +1399,26 @@ static void stones_density_map(void) {
 }
 static void build_flora(void);
 static void build_sky(cw_node world);
+/* the meadow's grass layer drawn with another mesh (the probes below). A TerrainScatter3D keeps the mesh it loaded
+ * first (cartwheel-engine 0.84.0: setting `mesh` on a live layer leaves the old one drawn), so a new layer takes its
+ * place: every property copied, the mesh set, in the same place among the terrain's children (the layer slot the old one
+ * frees, so the stones and pebbles keep theirs). An empty mesh (the built-in shape) needs no new layer. */
+static cw_node grass_with_mesh(cw_node g, const char *mesh) {
+  if (!*mesh) { cw_node_set(g, "mesh", cw_val_string(mesh)); return g; }
+  cw_node parent = cw_node_parent(g), n = cw_node_new("TerrainScatter3D", "GrassProbe");
+  const cw_prop *props[128];
+  int np = cw_node_props(g, props, NULL, 128);
+  for (int i = 0; i < np; i++) {
+    cw_value v;
+    if (strcmp(props[i]->name, "mesh") && strcmp(props[i]->name, "name") && cw_node_get_prop(g, props[i]->name, &v)) cw_node_set(n, props[i]->name, v);
+  }
+  cw_node_set(n, "mesh", cw_val_string(mesh));
+  int at = cw_node_index(g);
+  cw_node_free(g);
+  cw_node_add_child_at(parent, n, at);
+  return n;
+}
+
 void world_build(cw_tree *tree) {
   W_tree = tree;
   W_root = cw_tree_root(tree);
@@ -1470,11 +1490,13 @@ void world_build(cw_tree *tree) {
   }
   g_world_paged = (1 << RG_COUNT) - 1;
   /* perf probes (development, native): what each part of the picture costs */
-  if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass"));
+  if (getenv("ADV_PROBE_NOGRASS")) cw_node_free(cw_node_get(W_root, "World/Terrain/Grass")), cw_node_free(cw_node_get(W_root, "World/Terrain/Turf"));
+  /* the meadow without its short turf (0.60.0 had none: the old sides of the grass checks) */
+  if (getenv("ADV_PROBE_OLDTUFTS") || getenv("ADV_PROBE_NOTURF")) cw_node_free(cw_node_get(W_root, "World/Terrain/Turf"));
   /* the grass as 0.51.0 drew it (the game's own tuft mesh, shrinking away, no wind): the old side of the tuft checks */
   if (getenv("ADV_PROBE_OLDTUFTS")) {
     cw_node g = cw_node_get(W_root, "World/Terrain/Grass");
-    cw_node_set(g, "mesh", cw_val_string("models/grass_tuft.glb")), cw_node_set(g, "density", cw_val_float(2)), cw_node_set(g, "scale_min", cw_val_float(0.7f));
+    g = grass_with_mesh(g, "models/grass_tuft.glb"), cw_node_set(g, "density", cw_val_float(2)), cw_node_set(g, "scale_min", cw_val_float(0.7f));
     cw_node_set(g, "scale_max", cw_val_float(1.35f)), cw_node_set(g, "visible_range", cw_val_float(15)), cw_node_set(g, "fade", cw_val_float(10));
     cw_node_set(g, "lod_distance", cw_val_float(8)), cw_node_set(g, "fade_mode", cw_val_enum("SHRINK")), cw_node_set(g, "wind_strength", cw_val_float(0));
     cw_node_set(g, "smooth_alpha", cw_val_bool(false)), cw_node_set(g, "two_sided_lighting", cw_val_bool(false)), cw_node_set(g, "tint_jitter", cw_val_float(0));
@@ -1510,7 +1532,9 @@ void world_build(cw_tree *tree) {
       if (!eq) continue;
       *eq = 0;
       float v = strtof(eq + 1, &end);
-      if (*end == 0 && end != eq + 1) cw_node_set(g, kv, cw_val_float(v));
+      if (!strcmp(kv, "mesh")) g = grass_with_mesh(g, eq + 1); /* (mesh= : the built-in shape) */
+      else if (!strcmp(kv, "turf")) { if (v == 0) cw_node_free(cw_node_get(W_root, "World/Terrain/Turf")); } /* (turf=0: no short turf) */
+      else if (*end == 0 && end != eq + 1) cw_node_set(g, kv, cw_val_float(v));
       else if (!strcmp(eq + 1, "true") || !strcmp(eq + 1, "false")) cw_node_set(g, kv, cw_val_bool(eq[1] == 't'));
       else cw_node_set(g, kv, cw_val_enum(eq + 1));
     }

@@ -4,8 +4,9 @@
 // over the rounds of each run's mean of its last three 120-frame windows. Prints a table per API: the passes down, the
 // places across, with each place's frame total and its draws. With --compare <another emberthrone_bench> (a build of
 // another commit, its .cwpak and libwebgpu_dawn.so beside it) every round runs both, place by place, and the table
-// gains that build's totals and the difference.
-//   node tests/emberthrone-perf-passes.mjs [--rounds 5] [--gpu gl|webgpu|both] [--places meadow:1,heights:39,...] [--compare <exe>]
+// gains that build's totals and the difference; with --compare-env k=v,... the comparison is this build run with that
+// env added (a part of the picture against itself without it: the meadow's grass against the engine's, say).
+//   node tests/emberthrone-perf-passes.mjs [--rounds 5] [--gpu gl|webgpu|both] [--places meadow:1,heights:39,...] [--compare <exe>] [--compare-env k=v,...]
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
@@ -26,10 +27,12 @@ const rounds = +arg('--rounds', '5');
 const places = arg('--places', 'meadow:1,heights:39,tidecaller:22,wood:28,spire:61').split(',').map((p) => p.split(':'));
 const extraEnv = Object.fromEntries((arg('--env', '') || '').split(',').filter(Boolean).map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)]));
 
-const other = arg('--compare', '');
-function run(gpu, from, bin = exe) {
+const parseEnv = (s) => Object.fromEntries((s || '').split(',').filter(Boolean).map((kv) => [kv.slice(0, kv.indexOf('=')), kv.slice(kv.indexOf('=') + 1)]));
+const otherEnv = parseEnv(arg('--compare-env', ''));
+const other = arg('--compare', '') || (Object.keys(otherEnv).length ? exe : '');
+function run(gpu, from, bin = exe, more = {}) {
   const env = { ...process.env, CW_FRAMES: '420', SDL_AUDIODRIVER: 'dummy', CW_WGPU_VALIDATION: '0', ADV_BENCH: '1', ADV_NO_HUD: '1', ADV_QUALITY: '3', ADV_FROM: from,
-    CW_RENDER_SCALE: '1.5', CW_GPU_TIMERS: '1', ...extraEnv };
+    CW_RENDER_SCALE: '1.5', CW_GPU_TIMERS: '1', ...extraEnv, ...more };
   const pin = gpu === 'webgpu' ? wgpuPin() : null, gl = pin ? null : glPin();
   if (pin) Object.assign(env, pin.env, { CW_GPU: 'webgpu' }); else { env.CW_GPU = 'gl'; if (gl) Object.assign(env, gl.env); }
   scrubDisplay(env);
@@ -56,7 +59,7 @@ for (const gpu of arg('--gpu', 'both') === 'both' ? ['gl', 'webgpu'] : [arg('--g
   for (let i = 0; i < rounds; i++)
     for (const [n, from] of places) {
       const r = run(gpu, from); if (r.failed) bad++, console.log(`${gpu} ${n}: run failed (${r.failed})`); res[n].push(r);
-      if (other) { const o = run(gpu, from, other); if (o.failed) bad++, console.log(`${gpu} ${n} (compare): run failed (${o.failed})`); base[n].push(o); }
+      if (other) { const o = run(gpu, from, other, otherEnv); if (o.failed) bad++, console.log(`${gpu} ${n} (compare): run failed (${o.failed})`); base[n].push(o); }
     }
   const keys = [...new Set(places.flatMap(([n]) => res[n].flatMap((r) => Object.keys(r))))].filter((k) => k !== 'failed' && k !== 'draws' && k !== 'total');
   const col = (s) => String(s).padStart(11);

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.63.0
+
+- **Ember Throne**: the meadow reads as a sward. Twice the grass tufts (fourteen a square metre) out to 20 m, each
+  dissolving at its own distance into its far level of detail (the engine 0.84 scatter crossfade) instead of shrinking
+  away, each varied less (0.2) so the field no longer speckles in motion, and a short curled turf under them within 8 m
+  of the eye (`tools/make-grass.mjs`), where bare ground showed between the tufts. `tests/emberthrone-grass-walk.mjs`
+  skips the guide's welcome before the walk (the story kept the hero on the road), and the probes that put another
+  mesh on the grass now replace the layer (a live scatter keeps the mesh it loaded first), so its 0.51.0 baseline is
+  real again; GL and WebGPU pass (flicker excess 4.56 against a bar of 5.08) and the 0.59.0 grass, the control, fails
+  (6.08). The turf costs under a tenth of a millisecond of GPU time on the meadow (GL 0.06 ms, WebGPU 0.09 ms
+  on a desktop card, six interleaved rounds).
+
 ## 0.62.0
 
 - **Ember Throne**: the Tidecaller's legs no longer come through her robe. The floor-length robe is now open down the

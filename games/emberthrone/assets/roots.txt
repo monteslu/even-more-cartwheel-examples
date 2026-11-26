@@ -38,6 +38,8 @@ models/lever.glb
 models/lever_arm.glb
 models/mangrove.glb
 models/maul.glb
+models/meadow_turf.glb
+models/meadow_turf.glb.cwimport
 models/pebble.glb
 models/pillar.glb
 models/pine.glb

@@ -1,0 +1,3 @@
+# the far levels of the meadow_turf scatter: its blades simplified (tools/make-grass.mjs)
+mesh.lods = 0.4
+mesh.lod_error = 0.25

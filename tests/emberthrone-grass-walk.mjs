@@ -1,5 +1,5 @@
-// emberthrone grass walk: the hero walks through the meadow's grass on a pad, as a player does (Start, Start, the
-// debug channel's "from 1" puts her on the meadow road, then the stick off the road to the right into the grass and
+// emberthrone grass walk: the hero walks through the meadow's grass on a pad, as a player does (Start, Start, skip held
+// through the guide's welcome, the debug channel's "from 1" puts her on the meadow road, then the stick off the road to the right into the grass and
 // through it at a walk, easing right and left, four seconds), the whole run one ranged romdev call (frame record, 960x540), three times on the same schedule: the grass
 // as it is, the grass as 0.51.0 drew it (ADV_PROBE_OLDTUFTS) and no grass (ADV_PROBE_NOGRASS, the ground moving under
 // the same camera). On the pixels where the grass shows (luma 16 or more from the no-grass frame):
@@ -9,11 +9,10 @@
 //            the frame before and the frame after (a tuft that appears, vanishes or switches LOD at once, not one
 //            swaying or the view moving), where the ground does not step; the worst frame and the mean
 // Bars (PASS needs all): flicker excess at most 1.2 times the 0.51.0 grass's on the same ground and walk, grass on 2%
-// or more of the picture; the pops are reported beside it. CONTROL, which must fail: the grass as 0.59.0 set it (seven
-// tufts a square metre out to 16 m, shrinking away, each tuft varied by 0.35: ADV_PROBE_GRASSSET), whose field
-// speckled in motion. The 0.51.0 grass and the grass cut off hard at 9 m with no fade (ADV_PROBE_GRASSPOP: since the
-// grass varies less from tuft to tuft, its few near tufts no longer flicker over the bar, so it is no control) are
-// reported beside it.
+// or more of the picture; the pops are reported beside it. CONTROL, which must fail: the grass as 0.59.0 set it (the
+// engine's GRASS tuft, seven a square metre out to 16 m, shrinking away, each tuft varied by 0.35, no turf:
+// ADV_PROBE_GRASSSET), whose field speckled in motion. The 0.51.0 grass and the grass cut off hard at 9 m with no fade
+// (ADV_PROBE_GRASSPOP) are reported beside it.
 //
 //   node tests/emberthrone-grass-walk.mjs [cart dir] [--gpu gl|webgpu] [--keep <dir>]
 import { mkdirSync, openSync, readSync, closeSync, rmSync, writeFileSync } from 'node:fs';
@@ -31,11 +30,12 @@ const OUT = resolve(opt('--keep', join(ROOT, `out/grass-walk-${gpu}`)));
 mkdirSync(OUT, { recursive: true });
 const WARM = 150, FRAMES = 240, MASK = 16, POP = 40;
 
-// the pad: the title, the save slot, then walk (frames from the call's first, warm-up included)
+// the pad: the title, the save slot, the welcome skipped, then walk (frames from the call's first, warm-up included)
 function steps() {
   const S = [];
   const add = (frames, port = {}) => S.push({ input: { ports: [port] }, frames });
-  add(20); add(2, { start: true }); add(18); add(2, { start: true }); add(108);
+  // (the guide's welcome plays on a new game: hold skip through it, as a player who has seen it does, frames 50 to 120)
+  add(20); add(2, { start: true }); add(18); add(2, { start: true }); add(8); add(70, { east: true }); add(30);
   add(60, { axes: { lx: 0.55, ly: -0.2 } }); // off the road to the right, into the meadow
   for (let k = 0; k < 18; k++) { const t = k / 18; add(10, { axes: { lx: 0.25 * Math.sin(t * Math.PI * 2), ly: -0.3 } }); } // through it, easing right and left
   return S;
@@ -104,7 +104,7 @@ const none = frames(await run('none', 'ADV_PROBE_NOGRASS=1'));
 const res = {};
 const extra = (process.env.WALK_EXTRA || '').split(',').filter(Boolean).map((s) => s.split(':')); // (WALK_EXTRA=name:ENV=1,...: more variants, reported)
 const raw = {};
-const GRASS059 = 'ADV_PROBE_GRASSSET=density=7;visible_range=16;fade=6;lod_distance=7;fade_mode=SHRINK;tint_jitter=0.35';
+const GRASS059 = 'ADV_PROBE_GRASSSET=mesh=;turf=0;density=7;visible_range=16;fade=6;lod_distance=7;fade_mode=SHRINK;tint_jitter=0.35;root_height=0';
 for (const [v, env] of [['old', 'ADV_PROBE_OLDTUFTS=1'], ['grass', ''], ['control', GRASS059], ['hardcut', 'ADV_PROBE_GRASSPOP=1'], ...extra]) raw[v] = measure(frames(await run(v, env)), none);
 OLD = raw.old.excess;
 for (const [v, r] of Object.entries(raw)) res[v] = judge(r);

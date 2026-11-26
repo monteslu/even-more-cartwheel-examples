@@ -77,7 +77,12 @@ try {
       const r = yaw * Math.PI / 180;
       for (let k = 0; k < 8; k++) { await cmd(`groundcam ${(x - Math.sin(r) * 0.4 * k).toFixed(3)} ${(z - Math.cos(r) * 0.4 * k).toFixed(3)} 2.6 -30 ${yaw}`); await shot(`move${name}-${k}.png`, 2); }
     }
-    console.log(name, JSON.stringify(meta[name].td));
+    // the program states the views asked for that the tables lack (drawn by a near program, or not at all)
+    for (const k of ['missing_states', 'covered_states']) {
+      const r = await post('wasm', { op: 'read', name: `cw.three.${k}` }, session);
+      meta[name][k] = r && typeof r === 'object' && typeof r.hex === 'string' ? Buffer.from(r.hex, 'hex').toString().replace(/\0+$/, '') : r;
+    }
+    console.log(name, JSON.stringify(meta[name].td), 'missing:', JSON.stringify(meta[name].missing_states), 'covered:', JSON.stringify(meta[name].covered_states));
   }
   await cmd('groundcam off');
 } finally {
