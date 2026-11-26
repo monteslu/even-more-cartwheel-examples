@@ -3,6 +3,23 @@
 A third-person action adventure through one connected world, for one player, with a second able to drop in at any
 time. The wanderer gathers the Sun Key and the Moon Key to open the Ember Keep and face the Ember King on his throne. `games/emberthrone/`.
 
+## The story
+
+The journey is told as it is played, from the first new game on, in voiced lines with subtitles: 73 lines, made
+ahead of time with the Kokoro-82M voice model and played on the engine's speech bus.
+
+- A guide meets the wanderer in the Green Hollow, and comes back with a word when you fall.
+- Each warden speaks an intro, calls out in the fight (a new phase, spent, winning, losing), and is framed by the
+  director's shots at the finisher. Over each beaten warden you choose: spare or kill. A spared warden can be called
+  into the Ember King's fight.
+- A keeper at every shrine has once-only lines, keyed to how often you fell to the warden near it.
+- The King has an intro and a defeat, and a choice before the end decides which of two endings you see.
+- The speaking figures move their lips and show what they feel.
+
+Hold the skip button to pass a scene; its choices keep their defaults. Voices and Subtitles are rows in the settings.
+The journey is kept in the save each time you rest at a shrine. Boss trials, each warden and the King on their own,
+are in the pause menu.
+
 ## The world
 
 Eight regions on one 640 m terrain, joined so that the way back is often a shortcut:
