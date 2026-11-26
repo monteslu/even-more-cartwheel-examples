@@ -425,7 +425,9 @@ def skirt(o, J, w, pieces, kind):
     else:
         z_top, z_bot = J['Hips'].z + w.get('top', 0.06), w.get('hem', 0.04)
     N = 32
-    if kind == 'robe':
+    if kind == 'robe' and w.get('open'):  # open down the front: the gap 2 x 'open' radians wide at the hem, 2 x 'open_top' at the waist
+        a0, a1, closed = -math.pi / 2 + w['open'], 3 * math.pi / 2 - w['open'], False
+    elif kind == 'robe':
         a0, a1, closed = 0, 2 * math.pi, True
     elif kind == 'coat':
         op = w.get('open', 0.5)
@@ -458,6 +460,9 @@ def skirt(o, J, w, pieces, kind):
             fl = w.get('flare', 0.18) * tl ** 1.2
             rx, rf, rb = rx0 + 0.035 + fl, rf0 + 0.04 + fl * 0.8, rb0 + 0.04 + fl
         r = []
+        if kind == 'robe' and w.get('open_top'):  # the opening widens from the hem up to the waist, clear of a thigh raised on a step
+            op = w['open'] + (w['open_top'] - w['open']) * (1 - t) ** 2
+            a0, a1 = -math.pi / 2 + op, 3 * math.pi / 2 - op
         for p in ring_pts(V((0, 0, z)), rx, rf, rb, N, a0, a1, closed):
             if kind == 'cape':
                 if z > J['Chest'].z - 0.05:

@@ -190,11 +190,13 @@ the tops of the shoulders (capsules the size of the figures' own skin), on the f
 ledge moves them with the body instead of flinging them. The lancers' coats swing too: five chains of three bones round
 the coat's sides and back, from a seam at the waist set clear of the thighs, linked across into one cloth (the engine's
 skirt mode) that a stride spreads, flares on a stop and settles, with capsules on the thighs, the shins and the feet
-keeping the legs inside it. The Tidecaller's robe has its eight chains of four bones in the rig but stays on the legs as
-built: on its springs (skirt mode, a ring) the outfit's thighs and boot tops, which reach 3 to 5 cm past the leg
-capsules, come through the cloth as dark wedges, and the cloth creases into hard facets between its chains. It needs
-the outfit's hidden legs under it taken out of the mesh, capsules the size of the outfit, and a softer blend between
-its chains before it swings. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
+keeping the legs inside it. The Tidecaller's robe is open down the front: a floor-length robe whose opening is about a sixth
+of its round at the hem and a third at the waist, so a stride steps out through it instead of through the
+cloth. Five chains of four bones round its sides and back swing it the same way (skirt mode, OPEN), damped harder than
+the coat; its front panels go with the thighs; her leg capsules are 10 cm, between the shared 8.5 cm and the outfit's
+fuller legs, so the cloth keeps off them without resting on a knee raised on a stair. On the closed robe it replaced the
+outfit's legs came 18 to 44 cm out through the cloth over the hair test's run (a closed ring cannot let a stair-climbing
+knee through); on the open one at most about 2 cm, where a raised knee meets the cloth below the waist. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
 ankle height); the dead fall as ragdolls. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
@@ -218,11 +220,17 @@ region's colours (the outfit's material tinted per kind and region).
 - `tests/emberthrone-hair.mjs` (romdev, the RELEASE cart): the hair and the beards on their springs, from the bones
   (view.c's hair recorder) through a pad script (run, stop, a turn, a stop, a turn about, a stop) with the player
   wearing each figure that has them: the tips swing on each turn and each stop and settle within a second, nothing
-  shakes at rest, and no chain goes into the skull, the jaw, the neck or the shoulders; the coat swings and settles the same
-  way and no leg goes more than 25 mm into it. Controls: the old rig (the
-  springs off, the hair carried by the head), the springs without collisions, slack undamped chains and the coat's
-  chains left unlinked, each failing its
-  check. It writes native-scale strips of each turn and stop round the head.
+  shakes at rest (at most 0.1 mm, or the figure's own idle jitter at the head where that is more: the clips are keyed at
+  30 Hz and played linearly, so at a stand the body moves in two-tick straight pieces, 0.2 to 0.44 mm at the head by
+  figure, and the hair hanging from it keeps 0.1 to 0.12 mm of that, a thirtieth of a pixel at the play camera; slack
+  undamped chains, the control, shake 2 to 8 mm), and no chain goes
+  into the skull, the jaw, the neck or the shoulders; the coat and the robe swing and settle the same way and no leg
+  goes more than 25 mm into them. For the robe the legs are also measured as drawn: the figure's glb skinned from its
+  recorded skeleton, and no part of the outfit's or the skin's legs more than 25 mm out through the cloth (a leg out
+  through the opening or under the hem is not through it; tests/lib/robe-legs.mjs). Controls: the old rig (the
+  springs off, the hair carried by the head), the springs without collisions, slack undamped chains and the garments'
+  chains left unlinked, each failing its check, and the robe's old rig failing the legs; the closed robe before it, run
+  as an old build, fails the legs too. It writes native-scale strips of each turn and stop round the head and the body.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
   just before its busiest moment (its phase roar). Controls: each under the engine's 8 Hz strobe, and the fight under

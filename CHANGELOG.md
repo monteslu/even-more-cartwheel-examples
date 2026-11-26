@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.62.0
+
+- **Ember Throne**: the Tidecaller's legs no longer come through her robe. The floor-length robe is now open down the
+  front (about a sixth of its round at the hem, a third at the waist) and swings on five chains of four bones round its
+  sides and back like the lancers' coats; its front panels go with the thighs, and a stride or a knee raised on a stair
+  steps out through the opening. Over the hair test's run the legs came up to 44 cm out through the closed robe; through
+  the open one at most about 2 cm. `tests/emberthrone-hair.mjs` now measures the legs as drawn against the cloth (the
+  figure's glb skinned from its recorded skeleton, `tests/lib/robe-legs.mjs`), with the robe's old rig and the closed
+  robe's build as controls that fail it. Its hair rest bar is no lower than the figure's own idle jitter at the head (the
+  clips' 30 Hz keys move the body in two-tick straight pieces, 0.2 to 0.44 mm at the head; the hair keeps a third to a
+  half of that, a thirtieth of a pixel at the play camera), with slack undamped hair as the control that must fail it.
+
 ## 0.61.0
 
 - **Every game** moves to cartwheel-engine 0.84.0. Beat Sync's program table gains one state the engine's variant

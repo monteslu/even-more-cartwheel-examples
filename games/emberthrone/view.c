@@ -249,9 +249,9 @@ static t3_vec3 cape_point(int i, const cw_pose *p, int chest, bool *ok) {
  * far one's hang as animated (a spring that comes back on starts from the animated pose: no whip). The lancers' coats
  * are garments: five chains of three bones round the coat's sides and back, from a seam at the waist clear of the
  * thighs, linked across into one cloth (cartwheel's skirt mode, OPEN) that a stride spreads (it stretches up to twice
- * its length across) and the legs and feet stay inside. The Tidecaller's robe has its eight chains of four bones in the
- * rig but no weight and no springs: on springs the legs come through it (the outfit's thighs and boot tops reach past
- * the leg capsules) and its panels crease between the chains, so it stays on the legs as built (DESIGN.md). */
+ * its length across) and the legs and feet stay inside. The Tidecaller's robe is one too, to the floor and open down the
+ * front: five chains of four bones round its sides and back (OPEN), damped harder than the coat (20, not 6), its
+ * front panels on the thighs; a stride steps out through the opening (DESIGN.md). */
 enum { HS_SKULL, HS_JAW, HS_NECK, HS_SHOULDERS, HS_THIGH_L, HS_THIGH_R, HS_SHIN_L, HS_SHIN_R, HS_FOOT_L, HS_FOOT_R, HS_N };
 #define HSB(k) (1u << (k))
 #define SWING_MAXG 3
@@ -265,7 +265,7 @@ static const swing_def SWING[K_KINDS][SWING_MAXG] = {
   [K_WAYFARER] = { { "Hair", 2, 2, { "HairLockL", "HairLockR" }, 1500, 25, 1.0f, 0.008f, HAIR_SHAPES } },
   [K_WARDEN] = { BEARD },
   [K_LANCER] = { LONG_HAIR, { "Coat", 5, 3, { "CoatL", "CoatBL", "CoatB", "CoatBR", "CoatR" }, 240, 6, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
-  [K_TIDE] = { LONG_HAIR },
+  [K_TIDE] = { LONG_HAIR, { "Robe", 5, 4, { "RobeL", "RobeBL", "RobeB", "RobeBR", "RobeR" }, 240, 20, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
   [K_EMBER] = { BEARD },
 };
 /* the body the parts stay out of, in the figure's own metres before its kind's scale: a capsule from a to b round the
@@ -320,7 +320,13 @@ static void hair_make(rig *r, int kind) {
         float x = 0.75f * arm.x, y = arm.y - 0.005f * g - chest.y, z = arm.z - chest.z - 0.01f * g;
         a = (t3_vec3){ x, y, z }, b = (t3_vec3){ -x, y, z };
       }
-      SWING_GEO[kind].a[k] = a, SWING_GEO[kind].b[k] = b, SWING_GEO[kind].r[k] = SWING_SHAPE[k].r * g;
+      float rr = SWING_SHAPE[k].r;
+      /* the Tidecaller's outfit is fuller in the leg than the others' (its thighs and boot tops reach 3 to 5 cm past the
+       * shared capsules): her robe keeps out of bigger ones. Not the outfit's full size (12 cm): her robe's side chains
+       * then rest on a knee raised on a stair and shake with it at a stand (tests/emberthrone-hair.mjs rest) */
+      static const float TIDE_LEG[3] = { 0.10f, 0.10f, 0.07f };
+      if (k >= HS_THIGH_L && kind == K_TIDE) rr = TIDE_LEG[(k - HS_THIGH_L) / 2];
+      SWING_GEO[kind].a[k] = a, SWING_GEO[kind].b[k] = b, SWING_GEO[kind].r[k] = rr * g;
     }
     SWING_GEO[kind].ok = true;
   }
@@ -983,9 +989,15 @@ static void anim_advance(void) {
  * chains, each one's clearance at rest); the test switches: "hair wear <kind>", "hair springs 0|1", "hair collide 0|1",
  * "hair damping <1/s>" (-1: each kind's own). */
 #define HREC_MAX 1800
-typedef struct { int tick, state; float speed, yaw, hyaw; float lag[SWING_MAXC][3], depth[SWING_MAXC], rigid[SWING_MAXC]; t3_vec3 at; float us; int deep[SWING_MAXC]; } hrec_row; /* us: the figure's skeleton modifiers' time that tick (host clock, a profile only) */
+typedef struct { int tick, state; float speed, yaw, hyaw; float lag[SWING_MAXC][3], depth[SWING_MAXC], rigid[SWING_MAXC]; t3_vec3 at, head; float us; int deep[SWING_MAXC]; } hrec_row; /* us: the figure's skeleton modifiers' time that tick (host clock, a profile only); head: the head's joint in the model (the figure's own idle motion, which the hair hangs from) */
 static hrec_row *HREC;
 static int hrec_n, hrec_want, hrec_actor = -1;
+/* the whole skeleton as drawn (each bone's model-space matrix, its first three rows), every hpose_every-th recorded tick
+ * ("hair rec <ticks> <actor> <every>"; 0: none): the figure's own meshes skinned from it outside the cart
+ * (tests/emberthrone-hair.mjs measures the visible legs against the robe's cloth that way) */
+#define HPOSE_MAXB 128
+static float *HPREC;
+static int hpose_every, hpose_n, hpose_nb, hpose_tick[HREC_MAX];
 static cw_pose HPOSE;
 static uint32_t HPOSE_ROOT;
 static bool HPOSE_BOUND;
@@ -1092,8 +1104,18 @@ static void hair_sample(int i) {
   hrec_row *w = &HREC[hrec_n++];
   memset(w, 0, sizeof *w);
   w->tick = mrec_tick, w->state = a->state, w->speed = a->speed, w->yaw = r->drawn_yaw, w->hyaw = wrapf(r->drawn_yaw + hy), w->at = r->drawn_at, w->us = cw_skeleton_last_us(r->model);
+  { int ih = cw_pose_find(&HPOSE, "Head"); if (ih >= 0) w->head = cw_pose_model_position(&HPOSE, ih); }
   memcpy(w->deep, HAIR_DEEP_SHAPE, sizeof w->deep);
   memcpy(w->lag, lag, sizeof lag), memcpy(w->depth, depth, sizeof depth), memcpy(w->rigid, rigid, sizeof rigid);
+  if (hpose_every > 0 && (hrec_n - 1) % hpose_every == 0 && hpose_n < HREC_MAX) {
+    if (!HPREC) HPREC = (float *)calloc((size_t)HREC_MAX * HPOSE_MAXB * 12, sizeof *HPREC);
+    hpose_nb = HPOSE.count < HPOSE_MAXB ? HPOSE.count : HPOSE_MAXB;
+    float *o = HPREC + (size_t)hpose_n * HPOSE_MAXB * 12;
+    for (int b = 0; b < hpose_nb; b++)
+      for (int row = 0; row < 3; row++)
+        for (int col = 0; col < 4; col++) o[b * 12 + row * 4 + col] = HPOSE.model[b].e[col * 4 + row];
+    hpose_tick[hpose_n++] = w->tick;
+  }
 }
 static void hair_apply(void) { /* the switches onto every figure's springs as they are */
   for (int i = 0; i < MAXA; i++) {
@@ -1124,7 +1146,7 @@ static void cmd_hair(int argc, const char **argv, cw_reply *rp) {
     hrec_want = argc >= 3 ? CW_CLAMP(atoi(argv[2]), 1, HREC_MAX) : 600;
     hrec_actor = argc >= 4 ? atoi(argv[3]) : 0;
     if (!HREC) HREC = (hrec_row *)calloc(HREC_MAX, sizeof *HREC);
-    hrec_n = 0;
+    hrec_n = 0, hpose_n = 0, hpose_every = argc >= 5 ? CW_CLAMP(atoi(argv[4]), 0, 60) : 0;
     cw_reply_printf(rp, "{\"recording\":%d,\"actor\":%d}", hrec_want, hrec_actor);
     return;
   }
@@ -1149,12 +1171,28 @@ static void cmd_hair(int argc, const char **argv, cw_reply *rp) {
       const hrec_row *w = &HREC[from + k];
       cw_reply_printf(rp, "%s[%d,%d,%.4f,%.5f,%.5f,%.4f,%.4f,%.4f,%.2f", k ? "," : "", w->tick, w->state, w->speed, w->yaw, w->hyaw, w->at.x, w->at.y, w->at.z, w->us);
       for (int c = 0; c < nc; c++) cw_reply_printf(rp, ",%.5f,%.5f,%.5f,%.5f,%.5f,%d", w->lag[c][0], w->lag[c][1], w->lag[c][2], w->depth[c], w->rigid[c], w->deep[c]);
-      cw_reply_printf(rp, "]");
+      cw_reply_printf(rp, ",%.6f,%.6f,%.6f]", w->head.x, w->head.y, w->head.z); /* (after the chains) */
     }
     cw_reply_printf(rp, "]");
     return;
   }
-  cw_reply_error(rp, "hair rec <ticks> [actor] | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1");
+  if (argc >= 2 && !strcmp(argv[1], "bones")) { /* the recorded skeleton's bone names, in the order "hair pose" gives them */
+    int a = hrec_actor >= 0 ? hrec_actor : 0;
+    cw_reply_printf(rp, "{\"poses\":%d,\"every\":%d,\"bones\":[", hpose_n, hpose_every);
+    for (int b = 0; RIG[a].made && HPOSE_BOUND && b < hpose_nb; b++) cw_reply_printf(rp, "%s\"%s\"", b ? "," : "", HPOSE.name[b] ? HPOSE.name[b] : "");
+    cw_reply_printf(rp, "]}");
+    return;
+  }
+  if (argc >= 3 && !strcmp(argv[1], "pose")) { /* "hair pose <row>": [tick, then each bone's 3x4 model matrix by rows] */
+    int k = atoi(argv[2]);
+    if (k < 0 || k >= hpose_n) { cw_reply_error(rp, "hair pose: no such row"); return; }
+    const float *o = HPREC + (size_t)k * HPOSE_MAXB * 12;
+    cw_reply_printf(rp, "[%d", hpose_tick[k]);
+    for (int q = 0; q < hpose_nb * 12; q++) cw_reply_printf(rp, ",%.5f", o[q]);
+    cw_reply_printf(rp, "]");
+    return;
+  }
+  cw_reply_error(rp, "hair rec <ticks> [actor] [pose every] | bones | pose <row> | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1");
 }
 
 /* the rig follows its actor, once per fixed tick (main.c calls it after the rules) */

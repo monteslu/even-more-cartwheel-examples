@@ -26,13 +26,14 @@ LONG_HAIR = [dict(name='HairBack', az=180, root=0.08), dict(name='HairBackL', az
              dict(name='HairSideL', az=78, root=0.08, fade=36), dict(name='HairSideR', az=-78, root=0.08, fade=36)]
 # a beard's chin swings on one short chain; the jaw line stays on the head
 BEARD = [dict(name='Beard', az=0, root=0.0, bones=2, fade=45)]
-# a robe to the floor: eight chains of four bones round the hips, in order round the body (the engine links each to the
-# next: skirt RING); an open coat to below the knee: five of three round its sides and back, from one front edge to the
-# other (skirt OPEN). The coat's cloth and its hem trim are all on its chains below the waist; each chain's root is moved
-# 5 cm out and 6 cm up, its first joint left where it was, so the seam sits clear of the thighs (view.c SWING keeps the
-# cloth off the legs). The robe's chains carry no weight ('share' 0: the cloth stays on the legs as built; view.c SWING)
-ROBE = [dict(name='Robe' + n, az=a, root=0.04, bones=4, share=0.0) for n, a in
-        (('F', 0), ('FL', 45), ('L', 90), ('BL', 135), ('B', 180), ('BR', -135), ('R', -90), ('FR', -45))]
+# a robe to the floor, open down the front: five chains of four bones round its sides and back, from one front edge to
+# the other (skirt OPEN); an open coat to below the knee: five of three the same way. Their cloth and hem trim are on
+# the chains below the waist; each chain's root is moved 5 cm out and 6 cm up, its first joint left where it was, so the
+# seam sits clear of the thighs (view.c SWING keeps the cloth off the legs). The robe's front panels, between the side
+# chains and the opening, fade off the chains onto the thighs (follow 1): they go with the legs, and a stride steps out
+# through the opening, which widens from the hem (open) to the waist (open_top) clear of a thigh raised on a stair
+ROBE = [dict(name='Robe' + n, az=a, root=0.04, bones=4, fade=40, root_out=0.05, root_lift=0.06) for n, a in
+        (('L', 80), ('BL', 130), ('B', 180), ('BR', -130), ('R', -80))]
 COAT = [dict(name='Coat' + n, az=a, root=0.04, bones=3, fade=40, root_out=0.05, root_lift=0.06) for n, a in
         (('L', 75), ('BL', 125), ('B', 180), ('BR', -125), ('R', -75))]
 # the wayfarer's buns stay tied; the two locks in front of her ears swing (two bones each)
@@ -91,7 +92,7 @@ SPECS = [
     dict(name='tidecaller', outfit='Female_Peasant', head='Superhero_Female_FullBody', hair=['Hair_Long'], hair_chains=LONG_HAIR, skirt_chains=ROBE, drop=[], height=1.76, head_scale=1.06, hand_scale=1.0, arm_out=9, arm_len=ARM_LEN, foot_scale=0.92,
          recolor=[dict(hue=CREAM, width=25, minsat=0.05, to=275, sat=1.8, val=0.5), dict(hue=25, width=20, minsat=0.25, to=260, sat=0.6, val=0.55)],
          skin_tint=(0.66, 0.68, 0.74), skin_grade=dict(sat=0.5), hair_color=(0.58, 0.64, 0.78), iris=(0.75, 0.4, 1.0), glow_eyes=(0.7, 0.35, 1.0),
-         wear=[dict(kind='robe', color=(0.2, 0.09, 0.42), trim=(0.4, 0.85, 0.95), trim_metal=1, hem=0.035, flare=0.2, follow=0.5),
+         wear=[dict(kind='robe', color=(0.2, 0.09, 0.42), trim=(0.4, 0.85, 0.95), trim_metal=1, hem=0.035, flare=0.2, follow=1.0, open=0.5, open_top=1.15),
                dict(kind='pauldrons', color=(0.35, 0.78, 0.86), trim=(0.85, 0.92, 0.95), size=0.95, layers=2),
                dict(kind='helm', color=(0.35, 0.78, 0.86), trim=(0.3, 0.72, 0.84), size=1.06, fins=5, style='fins', dome=False)]),
     # the Ember King: the biggest, gold and crimson plate, a crowned helm, eyes like coals (his crimson cape is cloth in the

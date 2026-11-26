@@ -7,7 +7,7 @@
 // shoulders; a garment: its surface, sampled five by five in each panel, in the thighs, the shins or the feet; the same
 // capsules the springs keep them out of), and the figure's skeleton modifier time. Each figure with parts that swing
 // is measured, the player wearing it ("hair wear"): the wayfarer (her own, her two locks), the warden and the Ember
-// King (beards), a lancer (long hair, a coat) and the Tidecaller (long hair; her robe stays on the legs as built). Per group of chains:
+// King (beards), a lancer (long hair, a coat) and the Tidecaller (long hair, a robe to the floor open down the front). Per group of chains:
 //   turn    each turn (the easing turn right, the turn about): the largest swing of the tips from where they hang at
 //           rest, and the shift at which their swing's rise best follows the head's turn rate (reported)
 //   settle  each stop from a run: the largest swing in the two seconds after it, and the ticks until the swing stays
@@ -17,29 +17,43 @@
 //           square and largest (mm)
 //   clip    the deepest any chain or garment gets into the body over the whole run (mm; below 0 it stays clear by that
 //           much), and the old rig's (the same chains carried by their bone) over the same run, reported
+//   legs    (a robe to the floor) the legs as drawn against the cloth as drawn: the figure's glb skinned from its whole
+//           skeleton every second tick ("hair pose"), and how far any part of the legs (the outfit's, the skin's) that
+//           came out through the cloth lies outside it (lib/robe-legs.mjs; a leg out through the robe's opening or
+//           under its hem is not through it)
 // Bars (PASS needs all, for every group): each turn swings the tips 10 mm or more (short chains, the locks and the
 // beards, 6); each stop swings them 5 mm or more (short 3) and they settle within 60 ticks; at rest jitter at most
-// 0.1 mm root mean square and 0.3 mm largest; clip at most 1 mm. A garment (1 to 1.4 m of cloth, which the body's idle
+// 0.1 mm root mean square, or the figure's own idle jitter at its head joint where that is more (the hair adds no shake
+// of its own to the body's), and 0.3 mm largest; clip at most 1 mm. (The clips are keyed at 30 Hz and played linearly
+// at 60, so at a stand the whole body moves in straight pieces two ticks long, a kink every second tick: the head
+// joint's jitter through the same filter is 0.2 to 0.44 mm by figure and the hair hanging from it keeps 0.1 to 0.12 mm,
+// about a third to a half of it. At the play camera a pixel is about 4 mm. Slack undamped chains shake 2 to 8 mm.) A garment (1 to 1.4 m of cloth, which the body's idle
 // sways a few centimetres): settled under a tenth of its peak, jitter at most 0.5 mm and 2 mm, a leg at most 25 mm into
-// it (where the cloth is sewn on at the waist, for a few ticks).
+// it (where the cloth is sewn on at the waist, for a few ticks); a robe's legs at most LEG_BAR_MM through it.
 // CONTROLS, each of which must fail its check: "springs 0" (the old rig: every part carried by its bone; turn and
 // settle), "collide 0" (the springs go through the body; clip; a beard never reaches the neck even so, reported),
-// "soft 1" (every chain slack and undamped; settle), "skirt 0" (a garment's chains on their own; clip).
+// "soft 1" (every chain slack and undamped; settle and rest), "skirt 0" (a garment's chains on their own; clip); for a robe the
+// old rig must also fail legs. An old build (--models <its models dir>, its glb) is measured the same way.
 //
-//   node tests/emberthrone-hair.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--only wayfarer,warden,...] [--variants on,springs0,collide0,soft,skirt0]
+//   node tests/emberthrone-hair.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--only wayfarer,warden,...] [--variants on,springs0,collide0,soft,skirt0] [--models <dir>]
 //   node tests/emberthrone-hair.mjs measure <out dir> [--json]
-import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync, readdirSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync, readdirSync, copyFileSync } from 'node:fs';
+import { robeLegs } from './lib/robe-legs.mjs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
 export const FIGURES = { wayfarer: -1, warden: 1, lancer: 4, tidecaller: 6, emberking: 7 }; // game.h K_WARDEN, K_LANCER, K_TIDE, K_EMBER (-1: her own)
 export const VARIANTS = { on: [], springs0: ['hair springs 0'], collide0: ['hair collide 0'], soft: ['hair soft 1'], skirt0: ['hair skirt 0'] };
-const GARMENT = { lancer: 'Coat' }; // the figures whose garment swings (skirt0 runs only on them; the Tidecaller's robe stays on the legs: view.c SWING)
+const GARMENT = { lancer: 'Coat', tidecaller: 'Robe' }; // the figures whose garment swings (skirt0 runs only on them)
+// the figures in a robe to the floor: their whole skeleton is kept every second tick (the run and the old rig) and their
+// visible legs are measured against the cloth (lib/robe-legs.mjs) from their glb, copied into the run's directory
+const ROBED = { tidecaller: 'tidecaller.glb' };
+const LEG_VARIANTS = ['on', 'springs0'];
 
 export function script() {
   const S = [];
   const add = (n, p = {}) => S.push([n, p]);
-  add(20); add(2, { b: ['start'] }); add(18); add(2, { b: ['start'] }); add(68); // the title and the save slot; 60: "from 3", the road
+  add(20); add(2, { b: ['start'] }); add(18); add(2, { b: ['start'] }); add(8); add(60, { b: ['east'] }); // the title and the save slot; East held a second skips the guide's welcome (tale.c); 60: "from 3", the road
   add(120, { ly: -1 });                          // 110: run up the road
   add(120);                                      // 230: stop
   add(60, { ly: -1 });                           // 350: run
@@ -63,7 +77,7 @@ function steps() {
   });
 }
 
-async function run(cartDir, out, { video = false, gpu = 'gl', only = null, variants = Object.keys(VARIANTS) } = {}) {
+async function run(cartDir, out, { video = false, gpu = 'gl', only = null, variants = Object.keys(VARIANTS), models = null } = {}) {
   process.env.DESTRUCTO_CART_DIR = resolve(cartDir);
   const { openCart, call } = await import('./lib/romdev.mjs');
   for (const [fig, kind] of Object.entries(FIGURES)) {
@@ -77,7 +91,8 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
         const cmds = [{ frame: 60, command: 'from 3' }];
         if (kind >= 0) cmds.push({ frame: 62, command: `hair wear ${kind}` });
         VARIANTS[v].forEach((c, k) => cmds.push({ frame: 64 + k, command: c }));
-        cmds.push({ frame: REC_AT, command: `hair rec ${REC_N}` });
+        const poses = ROBED[fig] && LEG_VARIANTS.includes(v);
+        cmds.push({ frame: REC_AT, command: `hair rec ${REC_N} 0 ${poses ? 2 : 0}` });
         const dump = join(o, 'run.cwfd');
         const keep = video && v === 'on';
         await call('frame', { op: 'record', frames: FRAMES - 1, steps: steps(), commandsAt: cmds, path: dump, downscale: keep ? 1 : 8, maxSeconds: 1800 }, h.session, { timeoutMs: 2400000 });
@@ -85,6 +100,14 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
         const rows = [];
         for (let k = 0; k < info.rows; k += 12) rows.push(...(await h.command(`hair get ${k} 12`)));
         writeFileSync(join(o, 'trace.json'), JSON.stringify({ figure: fig, variant: v, info, rows }));
+        if (poses) {
+          const b = await h.command('hair bones'), P = [];
+          for (let k = 0; k < b.poses; k++) P.push(await h.command(`hair pose ${k}`));
+          if (!P.length) throw new Error(`${o}: no poses recorded`);
+          writeFileSync(join(o, 'poses.json'), JSON.stringify({ bones: b.bones, every: b.every, poses: P }));
+          // the figure's glb as the cart was built with it (--models: another build's, for an old-build control)
+          copyFileSync(join(models || resolve(new URL('..', import.meta.url).pathname, 'games/emberthrone/assets/models'), ROBED[fig]), join(o, 'robe.glb'));
+        }
         console.log(`${o}: ${rows.length} rows, kind ${info.kind}, chains ${info.chains.map((c) => c.name).join(' ')}, resets ${info.resets}`);
         if (keep) crops(dump, o, !!GARMENT[fig]);
         if (existsSync(dump)) unlinkSync(dump);
@@ -130,9 +153,26 @@ export function parse(trace) {
   return trace.rows.map((r) => {
     const o = { tick: r[0], state: r[1], speed: r[2], yaw: r[3], hyaw: r[4], at: [r[5], r[6], r[7]], us: r[8], lag: [], depth: [], rigid: [], deep: [] };
     for (let c = 0; c < n; c++) { const k = 9 + c * 6; o.lag.push([r[k], r[k + 1], r[k + 2]]); o.depth.push(r[k + 3]); o.rigid.push(r[k + 4]); o.deep.push(r[k + 5]); }
+    o.head = r.length >= 12 + n * 6 ? [r[9 + n * 6], r[10 + n * 6], r[11 + n * 6]] : null; // the head's joint in the model (after the chains)
     return o;
   });
 }
+// a robed figure's legs against its cloth (lib/robe-legs.mjs): how far any visible vertex of the legs (the outfit's
+// and the skin's) lies outside the robe's outer surface, on a level line from the hips' joint out through it, over every
+// recorded pose (the figure's own metres). A leg in the robe's front opening, or below its hem, crosses no cloth and is
+// not counted. Bar: LEG_BAR_MM at most, the same 25 mm a garment may come into the leg capsules (the thigh against the
+// cloth below the waist, where a raised knee meets it at a stand on a stair)
+export const LEG_BAR_MM = 25;
+function legs(m, dir) {
+  const pj = join(dir, 'poses.json'), gl = join(dir, 'robe.glb');
+  if (!existsSync(pj) || !existsSync(gl)) { m.legs = null; m.checks.legs = false; m.pass = false; return; }
+  const r = robeLegs(gl, JSON.parse(readFileSync(pj, 'utf8')));
+  const seg = (a, b) => r.perTick.filter((x) => x[0] >= a && x[0] < b).reduce((mx, x) => Math.max(mx, x[1]), 0);
+  m.legs = { max_mm: r.max_mm, p99_mm: r.p99_mm, at: r.at, poses: r.ticks, verts: r.verts, by_moment: { run: seg(0, 230), stop: seg(230, 350), turn: seg(350, 530), stop2: seg(530, 650), about: seg(650, 710), stop3: seg(710, 9999) } };
+  m.checks.legs = r.ticks > 100 && r.verts > 0 && r.max_mm <= LEG_BAR_MM;
+  m.pass = Object.values(m.checks).every(Boolean);
+}
+
 export function measure(trace) {
   const all = parse(trace), chains = trace.info.chains;
   const groups = [...new Set(chains.map((c) => c.group))];
@@ -191,7 +231,13 @@ export function measure(trace) {
       // (the idle's slow sway passes through it; a tick-to-tick shake does not), its root mean square and its largest
       const J = [];
       for (let k = 2; k < L.length - 2; k++) for (let c = 0; c < n; c++) J.push(Math.hypot(...[0, 1, 2].map((x) => L[k].lag[c][x] - mean(L.slice(k - 2, k + 3).map((r) => r.lag[c][x])))));
-      stops.push({ tick: R[i].tick, swing_mm: +(pk * 1000).toFixed(1), settle_ticks: settled, rest_jitter_max_mm: +(Math.max(0, ...J) * 1000).toFixed(3), rest_jitter_mm: +(Math.sqrt(mean(J.map((x) => x * x))) * 1000).toFixed(4), rest_ticks: L.length });
+      // the figure's own idle at the same stand: the head joint's motion in the model through the same filter (the clips
+      // are keyed at 30 Hz and played linearly, so the whole body moves in straight pieces two ticks long: about 0.3 mm
+      // root mean square at the head; the hair hangs from it)
+      const HJ = [];
+      for (let k = 2; k < L.length - 2; k++) if (L[k].head) HJ.push(Math.hypot(...[0, 1, 2].map((x) => L[k].head[x] - mean(L.slice(k - 2, k + 3).map((r) => r.head[x])))));
+      const idle = HJ.length ? Math.sqrt(mean(HJ.map((x) => x * x))) * 1000 : null;
+      stops.push({ tick: R[i].tick, idle_jitter_mm: idle === null ? null : +idle.toFixed(4), swing_mm: +(pk * 1000).toFixed(1), settle_ticks: settled, rest_jitter_max_mm: +(Math.max(0, ...J) * 1000).toFixed(3), rest_jitter_mm: +(Math.sqrt(mean(J.map((x) => x * x))) * 1000).toFixed(4), rest_ticks: L.length });
     }
     let clip = -1, clipAt = null, rigid = -1;
     R.forEach((r) => r.depth.forEach((d, c) => { if (d > clip) clip = d, clipAt = { tick: r.tick, chain: chains[idx[c]].name, shape: trace.info.shapes?.[Math.floor(r.deep[c] / 10)], point: r.deep[c] % 10 }; }));
@@ -202,7 +248,7 @@ export function measure(trace) {
     m.checks = {
       turn: T.length === 2 && T.every((t) => t && t.swing_mm >= tb),
       settle: stops.length >= 3 && stops.every((s) => s.swing_mm >= sb && s.settle_ticks !== null && s.settle_ticks <= 60),
-      rest: stops.length >= 3 && stops.every((s) => s.rest_ticks >= 50 && s.rest_jitter_max_mm <= (garment ? 2 : 0.3) && s.rest_jitter_mm <= (garment ? 0.5 : 0.1)),
+      rest: stops.length >= 3 && stops.every((s) => s.rest_ticks >= 50 && s.rest_jitter_max_mm <= (garment ? 2 : 0.3) && s.rest_jitter_mm <= (garment ? 0.5 : Math.max(0.1, s.idle_jitter_mm ?? 0))),
       clip: m.clip_mm <= (garment ? 25 : 1),
     };
     m.pass = Object.values(m.checks).every(Boolean);
@@ -218,18 +264,23 @@ export function measure(trace) {
 const [mode, ...args] = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 if (mode === 'run') {
-  await run(args[0], resolve(args[1]), { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS) });
+  await run(args[0], resolve(args[1]), { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS), models: opt('--models') ? resolve(opt('--models')) : null });
 } else if (mode === 'measure') {
   const dir = args[0];
   const runs = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'trace.json'))).sort();
-  const res = runs.map((d) => measure(JSON.parse(readFileSync(join(dir, d, 'trace.json'), 'utf8'))));
+  const res = runs.map((d) => {
+    const m = measure(JSON.parse(readFileSync(join(dir, d, 'trace.json'), 'utf8')));
+    if (ROBED[m.figure] && LEG_VARIANTS.includes(m.variant)) legs(m, join(dir, d));
+    return m;
+  });
   if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
   let ok = true;
   for (const m of res) {
     console.log(`${(m.figure + ' ' + m.variant).padEnd(22)} ${m.pass ? 'PASS' : 'FAIL'} ${JSON.stringify(m.checks)}  modifiers ${m.modifier_us.mean} us (p95 ${m.modifier_us.p95}), ${m.chains} chains`);
+    if (m.legs !== undefined) console.log(`    legs   ${m.legs ? `outside the robe at most ${m.legs.max_mm}mm (p99 ${m.legs.p99_mm}) ${JSON.stringify(m.legs.by_moment)} at ${JSON.stringify(m.legs.at)}, ${m.legs.verts} verts x ${m.legs.poses} poses` : 'no poses or glb recorded'}`);
     for (const g of Object.values(m.groups)) {
       const t = Object.entries(g.turns).map(([k, x]) => (x ? `${k} ${x.swing_mm}mm +${x.lag_ticks}t (r ${x.corr})` : `${k} -`)).join(', ');
-      const s = g.stops.map((x) => `${x.swing_mm}mm/${x.settle_ticks ?? 'never'}t jitter ${x.rest_jitter_mm}/${x.rest_jitter_max_mm}mm`).join(', ');
+      const s = g.stops.map((x) => `${x.swing_mm}mm/${x.settle_ticks ?? 'never'}t jitter ${x.rest_jitter_mm}/${x.rest_jitter_max_mm}mm (idle ${x.idle_jitter_mm ?? '-'})`).join(', ');
       console.log(`    ${g.group.padEnd(6)} ${g.pass ? 'pass' : 'FAIL'}  turn ${t} | stops ${s} | clip ${g.clip_mm}mm${g.clip_at ? ` (${g.clip_at.chain} in ${g.clip_at.shape} t${g.clip_at.tick})` : ''}, old rig ${g.old_rig_clip_mm}mm`);
     }
     // a control fails its own check (listed below); 'on' passes every check
@@ -243,7 +294,7 @@ if (mode === 'run') {
   // each control must fail the check it is the control of
   const by = (f, v) => res.find((m) => m.figure === f && m.variant === v);
   for (const f of Object.keys(FIGURES)) {
-    const c = [['springs0', ['turn', 'settle']], ['collide0', ['clip']], ['soft', ['settle']], ['skirt0', ['clip']]];
+    const c = [['springs0', ['turn', 'settle', 'legs']], ['collide0', ['clip']], ['soft', ['settle', 'rest']], ['skirt0', ['clip']]];
     for (const [v, ks] of c) {
       const m = by(f, v);
       if (!m) continue;
