@@ -136,14 +136,76 @@ function tuftU(b, k) {
   h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d) >>> 0; h ^= h >>> 12; h = Math.imul(h, 0x297a2d39) >>> 0; h ^= h >>> 15;
   return (h >>> 8) / 16777216;
 }
-export function engineTuft({ blades, seg, width, curl = 0, pw = 2, colour = 1, overMul = 1, dryShare = 0.18, vary = 0.3 }) {
-  const g = { pos: [], nrm: [], col: [], idx: [] };
-  for (let b = 0; b < blades; b++) {
-    const r0 = 0.09 * Math.sqrt(tuftU(b, 1)), a0 = (2 * Math.PI * (b + tuftU(b, 2) * 0.6)) / blades;
-    const ox = r0 * Math.cos(a0), oz = r0 * Math.sin(a0), la = a0 + (tuftU(b, 3) - 0.5) * 1.6, ldx = Math.cos(la), ldz = Math.sin(la), sx = -ldz, sz = ldx;
+// two faces of different blades nearly in one plane where they overlap fight for the depth (tests/coplanar.mjs: facing
+// within 0.999, corners within 1 mm of the other's plane; 2 mm here, for a tuft scaled down to half): a blade arched over
+// can lay its upper part along a neighbour's lower part. Such a blade is turned about its root (0.2 rad at a time) until
+// none of its faces lies so on an earlier blade's.
+const sub3 = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]], dot3 = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+function triOf(P, i0, i1, i2) {
+  const a = P.slice(i0 * 3, i0 * 3 + 3), b = P.slice(i1 * 3, i1 * 3 + 3), c = P.slice(i2 * 3, i2 * 3 + 3), n = cross3(sub3(b, a), sub3(c, a)), l = Math.hypot(...n);
+  return l < 1e-12 ? null : { p: [a, b, c], n: n.map((x) => x / l) };
+}
+// two faces facing within 0.999 of each other: where they overlap, seen along the first's normal (the second clipped to
+// the first, Sutherland-Hodgman), how far apart their planes are at the overlap's corners; a fight when all are within
+// 2 mm (faces crossing at a shallow angle fight along the crossing)
+// (the check at the tuft's own height and squashed to 0.6, 0.35 and 0.2 of it: TerrainScatter3D's DITHER crossfade lowers
+// a tuft to a fifth of its height as it changes level, and lowered blades lie nearer each other's planes; 6 mm, the
+// coplanar check's tolerance a few metres off)
+const SQUASH = [1, 0.6, 0.35, 0.2];
+let FIGHT_TOL = 0.006;
+function fights(A, B) {
+  if (Math.abs(dot3(A.n, B.n)) < 0.999) return false;
+  const u = norm(Math.abs(A.n[0]) < 0.9 ? cross3(A.n, [1, 0, 0]) : cross3(A.n, [0, 1, 0])), v = cross3(A.n, u);
+  const pa = A.p.map((p) => [dot3(p, u), dot3(p, v)]);
+  let poly = B.p.map((p) => [dot3(p, u), dot3(p, v)]);
+  const ccw = (pa[1][0] - pa[0][0]) * (pa[2][1] - pa[0][1]) - (pa[1][1] - pa[0][1]) * (pa[2][0] - pa[0][0]) > 0;
+  for (let k = 0; k < 3 && poly.length; k++) {
+    const e0 = pa[k], e1 = pa[(k + 1) % 3], side = (q) => ((e1[0] - e0[0]) * (q[1] - e0[1]) - (e1[1] - e0[1]) * (q[0] - e0[0])) * (ccw ? 1 : -1);
+    const out = [];
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length], sp = side(p), sq = side(q);
+      if (sp >= 0) out.push(p);
+      if ((sp >= 0) !== (sq >= 0)) { const t = sp / (sp - sq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+    }
+    poly = out;
+  }
+  if (poly.length < 3) return false;
+  let area = 0;
+  for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; area += p[0] * q[1] - q[0] * p[1]; }
+  if (Math.abs(area) / 2 < 1e-9) return false;
+  const dA = dot3(A.n, A.p[0]), dB = dot3(B.n, B.p[0]), nn = dot3(B.n, A.n);
+  return poly.every(([x, y]) => { const p0 = [u[0] * x + v[0] * y + A.n[0] * dA, u[1] * x + v[1] * y + A.n[1] * dA, u[2] * x + v[2] * y + A.n[2] * dA]; return Math.abs((dB - dot3(B.n, p0)) / nn) < FIGHT_TOL; });
+}
+export function engineTuft(o) {
+  const g = { pos: [], nrm: [], col: [], idx: [] }, done = SQUASH.map(() => []);
+  for (let bi = 0; bi < o.blades; bi++) {
+    for (let turn = 0, k = 0; ; turn += 0.2, k++) {
+      const bl = { pos: [], nrm: [], col: [], idx: [] };
+      tuftBlade(o, bi, turn, bl, g.pos.length / 3);
+      const all = [...g.pos, ...bl.pos], mine = SQUASH.map((sq) => {
+        const P = all.map((x, i) => (i % 3 === 1 ? x * sq : x)), out = [];
+        for (let t = 0; t < bl.idx.length; t += 6) { const q = triOf(P, bl.idx[t], bl.idx[t + 1], bl.idx[t + 2]); if (q) out.push(q); }
+        return out;
+      });
+      if (k < 30 && mine.some((m, j) => m.some((a) => done[j].some((b) => fights(a, b))))) continue;
+      if (k >= 30) console.warn(`make-grass: blade ${bi} still lies on another`);
+      g.pos.push(...bl.pos), g.nrm.push(...bl.nrm), g.col.push(...bl.col), g.idx.push(...bl.idx);
+      mine.forEach((m, j) => done[j].push(...m));
+      break;
+    }
+  }
+  return g;
+}
+function tuftBlade({ blades, seg, width, curl = 0, pw = 2, colour = 1, overMul = 1, dryShare = 0.18, vary = 0.3, first = 0, maxTilt = 9 }, bi, turn, g, base0) {
+  {
+    const b = bi + first; // (a far level from blades of its own: one from the same numbers as the near level would grow
+    // from the same roots the same way, its lower part in the plane of the near blade's, the two fighting for the depth)
+    const r0 = 0.09 * Math.sqrt(tuftU(b, 1)), a0 = (2 * Math.PI * (bi + tuftU(b, 2) * 0.6)) / blades;
+    const ox = r0 * Math.cos(a0), oz = r0 * Math.sin(a0), la = a0 + (tuftU(b, 3) - 0.5) * 1.6, ldx = Math.cos(la + turn), ldz = Math.sin(la + turn), sx = -ldz, sz = ldx;
     const hgt = 0.3 + 0.3 * tuftU(b, 4), over = overMul * hgt * (0.18 + 0.42 * tuftU(b, 5)), w = width * (0.75 + 0.5 * tuftU(b, 6));
     const dry = tuftU(b, 7) < dryShare, root = [0.04, 0.075, 0.018], tip = [dry ? 0.28 : 0.14, 0.27, dry ? 0.08 : 0.05].map((v) => v * colour), v = 1 - vary / 2 + vary * tuftU(b, 8);
-    const base = g.pos.length / 3;
+    const base = base0 + g.pos.length / 3;
     // the spine: the engine's (curl 0), or arched over in its upper part by an extra angle growing as t^pw
     let P = [ox, 0, oz];
     const pts = [], tans = [];
@@ -153,11 +215,11 @@ export function engineTuft({ blades, seg, width, curl = 0, pw = 2, colour = 1, o
       let tx = ldx * over * 2 * t, tz = ldz * over * 2 * t, ty = hgt * (1 - 0.44 * (over / hgt) ** 2 * t);
       if (curl > 0) { // integrate a spine whose angle from upright is the engine's plus curl * t^pw
         if (i > 0) {
-          const tm = (i - 0.5) / seg, th = Math.atan2(2 * over * tm, hgt * (1 - 0.44 * (over / hgt) ** 2 * tm)) + curl * tm ** pw, step = hgt / seg;
+          const tm = (i - 0.5) / seg, th = Math.min(maxTilt, Math.atan2(2 * over * tm, hgt * (1 - 0.44 * (over / hgt) ** 2 * tm)) + curl * tm ** pw), step = hgt / seg;
           P = [P[0] + ldx * Math.sin(th) * step, P[1] + Math.cos(th) * step, P[2] + ldz * Math.sin(th) * step];
         }
         [px, py, pz] = P;
-        const th = Math.atan2(2 * over * t, hgt * (1 - 0.44 * (over / hgt) ** 2 * t)) + curl * t ** pw;
+        const th = Math.min(maxTilt, Math.atan2(2 * over * t, hgt * (1 - 0.44 * (over / hgt) ** 2 * t)) + curl * t ** pw);
         tx = ldx * Math.sin(th), ty = Math.cos(th), tz = ldz * Math.sin(th);
       }
       pts.push([px, py, pz]); tans.push([tx, ty, tz]);
@@ -184,12 +246,14 @@ export function engineTuft({ blades, seg, width, curl = 0, pw = 2, colour = 1, o
 // the meadow's grass (assets/models/meadow_blades.glb, the Grass scatter layer's mesh, set in assets/scenes/main.cwscene
 // so it loads with the scene): the engine's tuft curved over. Twelve blades of four segments, 2.6 to 4.3 cm wide, each
 // turning over through its upper half (1.4 radians more than the engine's by its tip, growing as the height share to
-// the 2.4), few drier blades (8%) and each blade's shade varied by 16% (the scatter's tint_jitter varies each tuft).
+// the 2.4, but never more than 1.25 radians from upright: a blade laid flat lies in the plane of the same blade of a
+// neighbouring tuft turned the same way, and the two fight for the depth), no blade lying on another (fights above),
+// few drier blades (8%) and each blade's shade varied by 16% (the scatter's tint_jitter varies each tuft).
 // Its far level (from the layer's lod_distance) is six wide blades of two segments curved over the same way, drawn
 // from the same vertex buffer (writeLods). On tests/emberthrone-grass-walk.mjs this tuft shimmers less in motion than
-// the engine's (flicker excess 3.89 against 4.5 on GL and WebGPU); the straight engine tuft drawn from a glTF the same
+// the engine's (flicker excess 4.05 against 4.5 on GL and WebGPU); the straight engine tuft drawn from a glTF the same
 // way does worse (6.6), and the more each blade curves over, the calmer the field (no curl 6.6, 0.5 rad 5.6, 0.8 4.97,
-// 1.1 4.71, 1.4 with the quieter shades and the curved far level 3.89).
-const NEAR = { blades: 12, seg: 4, width: 0.034, curl: 1.4, pw: 2.4, dryShare: 0.08, vary: 0.16 };
-const FAR = { blades: 6, seg: 2, width: 0.05, curl: 0.6, pw: 2, overMul: 1.6, dryShare: 0.08, vary: 0.16 };
+// 1.1 4.71, 1.4 with the quieter shades and the curved far level 3.89, laid no flatter than 1.25 rad 4.05).
+const NEAR = { blades: 12, seg: 4, width: 0.034, curl: 1.4, pw: 2.4, dryShare: 0.08, vary: 0.16, maxTilt: 1.25 };
+const FAR = { blades: 6, seg: 2, width: 0.05, curl: 0.6, pw: 2, overMul: 1.6, dryShare: 0.08, vary: 0.16, first: 100, maxTilt: 1.25 };
 writeLods('meadow_blades', engineTuft(NEAR), engineTuft(FAR), 1);

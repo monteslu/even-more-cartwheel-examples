@@ -143,8 +143,9 @@ over a second and a half behind them), each tuft wholly lit or wholly in shadow 
 tuft crosses into its own far level of detail (six wide blades of two segments, curved the same way, authored in the
 same file) from 6 m and dissolves over its last 8 m at its own distance (DITHER: one level of detail of a tuft at a time).
 The more each blade curves over, the calmer the field in motion: on the grass walk the engine's straighter tuft drawn
-from a file scored 6.6, curled by 0.5 radians 5.6, by 1.1 4.7, and these (1.4, quieter shades, the curved far level)
-3.89, under the engine's own tuft (4.5) and the bar (4.64). Thin arched blades twenty to a tuft (makeBlades, 1 to 2 cm
+from a file scored 6.6, curled by 0.5 radians 5.6, by 1.1 4.7, and these (1.4, quieter shades, the curved far level,
+no blade laid flatter than 1.25 radians from upright nor lying in another's plane, so none fights for the depth: the
+coplanar check) 4.05, under the engine's own tuft (4.5) and the bar (4.64). Thin arched blades twenty to a tuft (makeBlades, 1 to 2 cm
 wide) shimmered about twice as much (9.85). Under the tufts, within 8 m of the eye, a short turf (thirty-six curled blades a hand high over a 20 cm disc, sixteen a square metre) fills the ground between them, which showed bare between the tufts near the camera; past 8 m the tufts hide the ground at a glancing look. The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the

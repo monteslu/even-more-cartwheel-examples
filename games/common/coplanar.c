@@ -168,6 +168,11 @@ static int region_of(cset *s, const t3_object *o, const t3_object *root) {
   for (const t3_object *a = o; a && a != root && !node; a = a->parent) node = name_of(a);
   if (node) snprintf(nm, sizeof nm, "%s", node);
   else if (o->name && o->name[0]) snprintf(nm, sizeof nm, "%s", o->name);
+  /* a mesh with no node and no name of its own (an engine-made one: a scatter layer's cells, the terrain's patches):
+   * its material's name says what it draws */
+  else if ((o->type == T3_MESH || o->type == T3_INSTANCED_MESH || o->type == T3_SKINNED_MESH) && ((const t3_mesh *)o)->material_count &&
+           ((const t3_mesh *)o)->materials[0] && ((const t3_mesh *)o)->materials[0]->name && ((const t3_mesh *)o)->materials[0]->name[0])
+    snprintf(nm, sizeof nm, "(unnamed, material %s)", ((const t3_mesh *)o)->materials[0]->name);
   else snprintf(nm, sizeof nm, "(unnamed)");
   for (int i = 0; i < s->nr; i++)
     if (!strcmp(s->rname[i], nm)) return i;

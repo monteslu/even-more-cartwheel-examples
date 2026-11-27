@@ -17,8 +17,9 @@
   about 28% to 17%.
 - **Ember Throne**: the meadow's grass is the game's own curved tuft (`tools/make-grass.mjs`, set in the scene so it
   loads with it): twelve blades in the engine tuft's proportions, each turning over through its upper half, with a far
-  level of its own. It shimmers less in motion than the engine's tuft (flicker excess 3.89 against 4.5 on GL and WebGPU,
-  the bar 4.64).
+  level of its own, no blade lying in another's plane (the depth-fighting check). It shimmers less in motion than the
+  engine's tuft (flicker excess 4.05 against 4.5 on GL and WebGPU, the bar 4.64). The depth-fighting check names a mesh
+  with no name of its own by its material.
 - **Ember Throne**: the meadow draws without the depth pass first, which there cost more than it saved (0.43 ms less on
   GL and 0.50 on WebGPU at 1080p High on a desktop card, the same picture); every other region keeps it.
 - `tests/emberthrone-hair.mjs` measures the robe's hem (its control is the 0.63.0 robe on the same poses) and its shading
