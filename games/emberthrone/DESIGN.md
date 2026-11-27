@@ -134,7 +134,18 @@ and darker stretches where the sand lies thin, and carries twice the stones of e
 Pebbles lie on the paths, the canyon floor and the keep's hill (the game's own rock, as are the
 larger stones). The stones grow on ground up to 28 degrees and never at the brink of a drop (a density map the game
 makes from the terrain's tables at each start and writes to the project layer), and each has one box the shape of its rock to bump into. The meadow's moss is as
-matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass is the engine's foliage (TerrainScatter3D GRASS, cartwheel/foliage.h): tufts of twelve curved tapering blades, fourteen tufts a square metre out to 20 m, each tuft its own shade, rooted in the colour of the ground under it, bending in the wind with gusts that run over the meadow, and bending aside round whoever walks through it (the players and the meadow's foes, standing up again over a second and a half behind them), each tuft wholly lit or wholly in shadow (one shadow sample at its root); each tuft crosses into the far level of detail (six wide straight blades) from 6 m and dissolves over its last 8 m at its own distance (DITHER: one level of detail of a tuft at a time). The game's own blades (tools/make-grass.mjs makeBlades: twenty a tuft, 1 to 2 cm wide, arching over in their upper half, twisted, a fifth drooping past level) were tried in their place and shimmered about twice as much on the grass walk (flicker excess 9.85 against the engine tuft's 4.56 on the same walk, the bar 5.08); wider and fewer (12.1), flat-lit (9.9), more upright (11.2), without their far levels (10.7) and with the root colour lower or higher (9.6) all did as badly, while the engine tuft's own far level (six wide straight blades) is worth about 2 of its figure (8.57 without it): a thin arched blade shimmers in motion at this density, so they stay out until a far level of their own can be authored. Under the tufts, within 8 m of the eye, a short turf (thirty-six curled blades a hand high over a 20 cm disc, sixteen a square metre) fills the ground between them, which showed bare between the tufts near the camera; past 8 m the tufts hide the ground at a glancing look. The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
+matte as the grass (roughness 0.9), so a glancing look never turns it pale. The grass is the engine's foliage (TerrainScatter3D, cartwheel/foliage.h) drawing the game's own tufts
+(tools/make-grass.mjs, assets/models/meadow_blades.glb, set in the scene so it loads with it): twelve tapering blades of
+four segments in the engine tuft's proportions, each turning over through its upper half; fourteen tufts a square metre
+out to 20 m, each tuft its own shade, rooted in the colour of the ground under it, bending in the wind with gusts that run
+over the meadow, and bending aside round whoever walks through it (the players and the meadow's foes, standing up again
+over a second and a half behind them), each tuft wholly lit or wholly in shadow (one shadow sample at its root); each
+tuft crosses into its own far level of detail (six wide blades of two segments, curved the same way, authored in the
+same file) from 6 m and dissolves over its last 8 m at its own distance (DITHER: one level of detail of a tuft at a time).
+The more each blade curves over, the calmer the field in motion: on the grass walk the engine's straighter tuft drawn
+from a file scored 6.6, curled by 0.5 radians 5.6, by 1.1 4.7, and these (1.4, quieter shades, the curved far level)
+3.89, under the engine's own tuft (4.5) and the bar (4.64). Thin arched blades twenty to a tuft (makeBlades, 1 to 2 cm
+wide) shimmered about twice as much (9.85). Under the tufts, within 8 m of the eye, a short turf (thirty-six curled blades a hand high over a 20 cm disc, sixteen a square metre) fills the ground between them, which showed bare between the tufts near the camera; past 8 m the tufts hide the ground at a glancing look. The near ground varies its brightness over 30 m features (macro tint), and the meadow carries 25 m swathes of drier yellow-olive and darker blue-green (a light share of the packed earth and of the moss). The layers meet by a softer height blend, the paving stands up in parallax within 12 m, and the keep's moss grows up through the paving's joints (a crisp height blend, never a whole texel). The picture is antialiased in time (TAA), which the grass's fades and edges need. A cloud layer drifts over the sky. Buildings are boxes
 from tables (walls, ruined houses, stairs as solid steps, towers), merged into one mesh per material and region and
 one static body per region. Props are glTF instances seated on the lowest ground under their footprint. Paging: the
 regions more than one step from the player's are hidden and their foes stop. Walls carry broken tops and rubble at
@@ -192,12 +203,18 @@ the coat's sides and back, from a seam at the waist set clear of the thighs, lin
 skirt mode) that a stride spreads, flares on a stop and settles, with capsules on the thighs, the shins and the feet
 keeping the legs inside it. The Tidecaller's robe is open down the front: a floor-length robe whose opening is about a sixth
 of its round at the hem and a third at the waist, so a stride steps out through it instead of through the
-cloth. Five chains of four bones round its sides and back swing it the same way (skirt mode, OPEN), damped harder than
-the coat; its front panels go with the thighs; her leg capsules are 10 cm, between the shared 8.5 cm and the outfit's
+cloth. Seven chains of four bones swing it the same way (skirt mode, OPEN), damped harder than the coat: five round its
+sides and back and one down the middle of each front panel (tools/chars/robe-front.mjs). The front panels were once
+skinned to the thighs from the hips to the hem, and a thigh raised on a stair or swung through a turn about at a run
+stood a whole panel out level with the hips as one stiff board; on their own chains a raised knee lifts the cloth, which
+falls from it and swings back (its hem rises at most about 0.6 of the way to the hips, on the back panels on a turn at
+a run, against 1.8 for the thigh-carried panels). Her leg capsules are 10 cm, between the shared 8.5 cm and the outfit's
 fuller legs, so the cloth keeps off them without resting on a knee raised on a stair. On the closed robe it replaced the
 outfit's legs came 18 to 44 cm out through the cloth over the hair test's run (a closed ring cannot let a stair-climbing
 knee through); on the open one at most about 2 cm, where a raised knee meets the cloth below the waist. Feet are planted on slopes, stairs and stones at every pace (FootPlacement3D on the physics ground, each kind's
-ankle height); the dead fall as ragdolls. Each
+ankle height); the dead fall as ragdolls. The figures' double-sided cloth (the robe, the coats: a thin shell) casts the
+sun's shadow from its back faces only, and the sun's shadow lookups sit 5 cm off each surface along its normal: drawn
+both ways round at the very depth of the cloth it shades, the robe's own shadow fell on it in fine dark streaks. Each
 figure draws its coarser level of detail when it is small on the screen (cwpack's simplified meshes). Foes take their
 region's colours (the outfit's material tinted per kind and region).
 
@@ -230,7 +247,11 @@ region's colours (the outfit's material tinted per kind and region).
   through the opening or under the hem is not through it; tests/lib/robe-legs.mjs). Controls: the old rig (the
   springs off, the hair carried by the head), the springs without collisions, slack undamped chains and the garments'
   chains left unlinked, each failing its check, and the robe's old rig failing the legs; the closed robe before it, run
-  as an old build, fails the legs too. It writes native-scale strips of each turn and stop round the head and the body.
+  as an old build, fails the legs too. The robe's hem rises at most 0.75 of the way to the hips over the run (the same
+  poses through the 0.63.0 robe, its front panels on the thighs, the control: 1.8), and its lit cloth as drawn (the body's
+  native-scale crops of every moment) steps against its neighbours on at most 21% of its pixels (the 0.63.0 shading, the
+  cloth casting both faces with no normal bias, the control: about 30%, shadow acne). It writes native-scale strips of
+  each turn and stop round the head and the body.
 - `tests/emberthrone-flash.mjs`: no strobing, on the engine's flash check (WCAG 2.3.1 and the Harding thresholds,
   every frame). Two runs: eight seconds of the bot's journey, and three and a half seconds of the Tidecaller's fight from
   just before its busiest moment (its phase roar). Controls: each under the engine's 8 Hz strobe, and the fight under
@@ -255,7 +276,7 @@ region's colours (the outfit's material tinted per kind and region).
   on 2% or more of the picture, its one-frame pops reported. Control: the grass as 0.59.0 set it (the engine's
   tuft, seven a square metre to 16 m, shrinking away, varied by 0.35, no turf: `ADV_PROBE_GRASSSET`) must fail; the
   grass cut off hard at 9 m (`ADV_PROBE_GRASSPOP`) is reported beside it. The probes that put another mesh on the grass (the 0.51.0 tuft,
-  `ADV_PROBE_GRASSSET` mesh=) put a new layer in its place: a live TerrainScatter3D keeps the mesh it loaded first.
+  `ADV_PROBE_GRASSSET` mesh=) put a new layer in its place under the same name (cartwheel-engine before 0.85 kept the mesh a live layer loaded first).
 - `tests/emberthrone-grounding.mjs`: 106 props, 546 building boxes and 4460 scattered stones and pebbles on the ground (worst 0 cm).
 - `tests/emberthrone-lockon.mjs` (romdev, the motion pad script, view.c's framing recorder): locked on, the foe whole on
   the screen, the hero over a quarter of its box in 5% of the frames at most, the hero at most 40% of the frame's height
@@ -281,6 +302,9 @@ region's colours (the outfit's material tinted per kind and region).
   marsh, lighter crowns and sparser groves, impostor crowns for far trees, bloom over four levels, the terrain's full
   shading to 85 m. The terrain is most of the frame: a texel that blends two layers reads both, so second layers are
   patches with a narrow blended rim (the wood's moss alone was 1.2 ms on GL, 2.2 on WebGPU as a wide soft blend) and
-  path edges are narrow; foes are drawn within 45 m and cast the sun's shadow within 24 m. The meadow (about 4.8 ms,
-  the most open view of the most painted ground) and, by a hair, the wood and the spire on WebGPU are still over the
-  bound. The probe moves the terrain node to take the terrain out (Terrain3D ignores `visible`).
+  path edges are narrow; foes are drawn within 45 m and cast the sun's shadow within 24 m. The depth pass first is
+  off in the meadow (world.c prepass_for, by the camera's region): it draws every opaque thing a second time with its
+  colour program, and over the meadow's open sward of grass tufts, turf and figures that cost more than the shading it
+  saved (0.43 ms on GL, 0.50 on WebGPU at 1080p High on a desktop card; the same picture). The meadow is still the
+  heaviest place: its frame is the grass and turf (about 0.5 ms), the sun's shadow lookups (0.5), the crowd of figures
+  (0.6) and, on GL, the velocity pass (0.6, a tenth of that on WebGPU). The probe moves the terrain node to take the terrain out (Terrain3D ignores `visible`).

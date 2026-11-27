@@ -1399,12 +1399,14 @@ static void stones_density_map(void) {
 }
 static void build_flora(void);
 static void build_sky(cw_node world);
-/* the meadow's grass layer drawn with another mesh (the probes below). A TerrainScatter3D keeps the mesh it loaded
- * first (cartwheel-engine 0.84.0: setting `mesh` on a live layer leaves the old one drawn), so a new layer takes its
- * place: every property copied, the mesh set, in the same place among the terrain's children (the layer slot the old one
- * frees, so the stones and pebbles keep theirs). An empty mesh (the built-in shape) needs no new layer. */
+/* the meadow's grass layer drawn with another mesh (the probes below). A new layer takes the old one's place (made
+ * when cartwheel-engine before 0.85 left a mesh set on a live layer undrawn; kept so the probes read as they did):
+ * every property copied, the mesh set, in the same place among the terrain's children (the layer slot the old one
+ * frees, so the stones and pebbles keep theirs), under the old one's name (the same placement seed and paths). The mesh
+ * it already draws needs no new layer; an empty mesh is the built-in shape. */
 static cw_node grass_with_mesh(cw_node g, const char *mesh) {
-  if (!*mesh) { cw_node_set(g, "mesh", cw_val_string(mesh)); return g; }
+  cw_value cur;
+  if (cw_node_get_prop(g, "mesh", &cur) && !strcmp(cur.s ? cur.s : "", mesh)) return g;
   cw_node parent = cw_node_parent(g), n = cw_node_new("TerrainScatter3D", "GrassProbe");
   const cw_prop *props[128];
   int np = cw_node_props(g, props, NULL, 128);
@@ -1414,8 +1416,11 @@ static cw_node grass_with_mesh(cw_node g, const char *mesh) {
   }
   cw_node_set(n, "mesh", cw_val_string(mesh));
   int at = cw_node_index(g);
+  char nm[32];
+  snprintf(nm, sizeof nm, "%s", cw_node_name(g));
   cw_node_free(g);
   cw_node_add_child_at(parent, n, at);
+  cw_node_set_name(n, nm); /* (the old one's name: the same placement seed, the same paths) */
   return n;
 }
 
@@ -1534,6 +1539,7 @@ void world_build(cw_tree *tree) {
       float v = strtof(eq + 1, &end);
       if (!strcmp(kv, "mesh")) g = grass_with_mesh(g, eq + 1); /* (mesh= : the built-in shape) */
       else if (!strcmp(kv, "turf")) { if (v == 0) cw_node_free(cw_node_get(W_root, "World/Terrain/Turf")); } /* (turf=0: no short turf) */
+      else if (!strncmp(kv, "turf.", 5) && *end == 0) cw_node_set(cw_node_get(W_root, "World/Terrain/Turf"), kv + 5, cw_val_float(v)); /* (turf.<name>=<number>: the turf's) */
       else if (*end == 0 && end != eq + 1) cw_node_set(g, kv, cw_val_float(v));
       else if (!strcmp(eq + 1, "true") || !strcmp(eq + 1, "false")) cw_node_set(g, kv, cw_val_bool(eq[1] == 't'));
       else cw_node_set(g, kv, cw_val_enum(eq + 1));
@@ -1617,7 +1623,22 @@ static const look LOOK[RG_COUNT] = {
 static look CUR;
 static const float g_amb_k = 0.26f; /* the fill under the sun kept low, so shadows have depth */
 static bool CUR_SET;
+/* the depth pass first (assets/scenes/main.cwscene depth_prepass) everywhere but the meadow. It draws every opaque
+ * thing once more, with the colour program and no colour written, so that the leaf cards, the moss and the paving shade
+ * only what is in front (0.6 ms less in the wood). The meadow's open sward is thousands of grass tufts, the turf and a
+ * crowd of figures over plain ground: there the second pass of them all cost more than it saved (0.38 ms on GL and 0.40
+ * on WebGPU at 1080p High on a desktop card, tests/emberthrone-perf-probe.mjs NOPREPASS). The same picture either way.
+ * The camera's region decides, as the regions' colours blend (world_colour). ADV_PROBE_NOPREPASS / ADV_PROBE_PREPASS
+ * hold it off or on everywhere (the perf checks' sides). */
+static int PREPASS_HELD = -2, PREPASS_ON = -1;
+static void prepass_for(float x, float z) {
+  if (PREPASS_HELD == -2) PREPASS_HELD = getenv("ADV_PROBE_NOPREPASS") ? 0 : getenv("ADV_PROBE_PREPASS") ? 1 : -1;
+  if (PREPASS_HELD >= 0 || !W_post.id) return;
+  int on = world_region_at(x, z) != RG_MEADOW;
+  if (on != PREPASS_ON) cw_node_set(W_post, "depth_prepass", cw_val_bool(on)), PREPASS_ON = on;
+}
 void world_colour(float x, float z, float dt) {
+  prepass_for(x, z);
   /* weights: each zone's pull at the point (the strongest zone of each region), softened */
   float w[RG_COUNT] = { 0 };
   for (int i = 0; i < NZONES; i++) {

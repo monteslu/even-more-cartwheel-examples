@@ -1,0 +1,4 @@
+# the meadow grass: its far level is authored (tools/make-grass.mjs writeLods), one index list over the same vertices
+# as the near one: no simplified levels, no vertex reorder (which would drop the far level's vertices)
+mesh.optimize = false
+mesh.lods =

@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.64.0
+
+- **Every game** moves to cartwheel-engine 0.85.0 (no program table changes): every game builds and passes its cart
+  smoke, art, version and prompt checks, and starts and draws on native WebGPU (the engine's new settle wait after
+  loading); jewels, lanternfall, pinball, skate and towers pass a native WebGPU gate each. Ember Throne's far foes now
+  sample their clips at the update divisor it already set (the engine's `cw_animtree_advance` honours it).
+- **Ember Throne**: the Tidecaller's robe swings like cloth. Its front panels were skinned to the thighs all the way to
+  the hem, so a thigh raised on a stair or swung through a turn about at a run stood a whole panel out as a stiff board
+  (its hem rose to 1.8 times the robe's length, past the hips). Each front panel now hangs from a chain of its own
+  (`tools/chars/robe-front.mjs`, seven chains in all), so a raised knee lifts the cloth and it falls back; the hem rises
+  at most 0.62 of the way to the hips and the legs stay inside (21 mm at most, as before).
+- **Ember Throne**: no more dark streaks on the robe. They were shadow acne: the double-sided cloth cast its shadow from
+  both faces at the very depth of the cloth it shades. The figures' cloth now casts from its back faces and the sun's
+  shadow lookups sit 5 cm off each surface; the share of the lit cloth that steps against its neighbours falls from
+  about 28% to 17%.
+- **Ember Throne**: the meadow's grass is the game's own curved tuft (`tools/make-grass.mjs`, set in the scene so it
+  loads with it): twelve blades in the engine tuft's proportions, each turning over through its upper half, with a far
+  level of its own. It shimmers less in motion than the engine's tuft (flicker excess 3.89 against 4.5 on GL and WebGPU,
+  the bar 4.64).
+- **Ember Throne**: the meadow draws without the depth pass first, which there cost more than it saved (0.43 ms less on
+  GL and 0.50 on WebGPU at 1080p High on a desktop card, the same picture); every other region keeps it.
+- `tests/emberthrone-hair.mjs` measures the robe's hem (its control is the 0.63.0 robe on the same poses) and its shading
+  from native-scale crops (its control is the 0.63.0 shading), and writes its crops without ImageMagick.
+
 ## 0.63.0
 
 - **Ember Throne**: the meadow reads as a sward. Twice the grass tufts (fourteen a square metre) out to 20 m, each

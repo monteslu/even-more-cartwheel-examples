@@ -21,6 +21,12 @@
 //           skeleton every second tick ("hair pose"), and how far any part of the legs (the outfit's, the skin's) that
 //           came out through the cloth lies outside it (lib/robe-legs.mjs; a leg out through the robe's opening or
 //           under its hem is not through it)
+//   sail    (a robe) how high its hem rises toward the hips over the run, as a share of its length (lib/robe-legs.mjs
+//           robeSail): 0.75 at most; the same poses through the robe as 0.63.0 weighted it (its front panels carried
+//           rigidly by the thighs, a raised thigh standing a panel out level with the hips) must fail it
+//   shade   (a robe) its lit cloth as drawn, from the body's native-scale crops: the share of pixels that step against
+//           their neighbours (shadow acne streaks the cloth), SHADE_BAR at most; control "shadow2" (the cloth casting both
+//           faces, the sun with no normal bias, as 0.63.0 drew them) must fail it
 // Bars (PASS needs all, for every group): each turn swings the tips 10 mm or more (short chains, the locks and the
 // beards, 6); each stop swings them 5 mm or more (short 3) and they settle within 60 ticks; at rest jitter at most
 // 0.1 mm root mean square, or the figure's own idle jitter at its head joint where that is more (the hair adds no shake
@@ -32,18 +38,21 @@
 // it (where the cloth is sewn on at the waist, for a few ticks); a robe's legs at most LEG_BAR_MM through it.
 // CONTROLS, each of which must fail its check: "springs 0" (the old rig: every part carried by its bone; turn and
 // settle), "collide 0" (the springs go through the body; clip; a beard never reaches the neck even so, reported),
-// "soft 1" (every chain slack and undamped; settle and rest), "skirt 0" (a garment's chains on their own; clip); for a robe the
+// "soft 1" (every chain slack and undamped; settle and rest), "skirt 0" (a garment's chains on their own; clip), "shadow2" (a robe's
+// shading as 0.63.0 drew it; shade); for a robe the
 // old rig must also fail legs. An old build (--models <its models dir>, its glb) is measured the same way.
 //
 //   node tests/emberthrone-hair.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--only wayfarer,warden,...] [--variants on,springs0,collide0,soft,skirt0] [--models <dir>]
 //   node tests/emberthrone-hair.mjs measure <out dir> [--json]
 import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync, readdirSync, copyFileSync } from 'node:fs';
-import { robeLegs } from './lib/robe-legs.mjs';
+import { robeLegs, robeSail } from './lib/robe-legs.mjs';
+import { writePng, cropRgb, montageRgb, readPng } from './lib/png.mjs';
 import { join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
+const ROOT_DIR = resolve(new URL('..', import.meta.url).pathname);
 
 export const FIGURES = { wayfarer: -1, warden: 1, lancer: 4, tidecaller: 6, emberking: 7 }; // game.h K_WARDEN, K_LANCER, K_TIDE, K_EMBER (-1: her own)
-export const VARIANTS = { on: [], springs0: ['hair springs 0'], collide0: ['hair collide 0'], soft: ['hair soft 1'], skirt0: ['hair skirt 0'] };
+export const VARIANTS = { on: [], springs0: ['hair springs 0'], collide0: ['hair collide 0'], soft: ['hair soft 1'], skirt0: ['hair skirt 0'], shadow2: ['hair clothshadow -1', 'hair sunbias 0 0'] };
 const GARMENT = { lancer: 'Coat', tidecaller: 'Robe' }; // the figures whose garment swings (skirt0 runs only on them)
 // the figures in a robe to the floor: their whole skeleton is kept every second tick (the run and the old rig) and their
 // visible legs are measured against the cloth (lib/robe-legs.mjs) from their glb, copied into the run's directory
@@ -84,6 +93,7 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
     if (only && !only.includes(fig)) continue;
     for (const v of variants) {
       if (v === 'skirt0' && !GARMENT[fig]) continue;
+      if (v === 'shadow2' && !ROBED[fig]) continue;
       const o = join(out, `${fig}-${v}`);
       mkdirSync(o, { recursive: true });
       const h = await openCart('emberthrone', { gpu, tag: `hair-${fig}-${v}` });
@@ -91,10 +101,11 @@ async function run(cartDir, out, { video = false, gpu = 'gl', only = null, varia
         const cmds = [{ frame: 60, command: 'from 3' }];
         if (kind >= 0) cmds.push({ frame: 62, command: `hair wear ${kind}` });
         VARIANTS[v].forEach((c, k) => cmds.push({ frame: 64 + k, command: c }));
-        const poses = ROBED[fig] && LEG_VARIANTS.includes(v);
+        const poses = ROBED[fig] && (LEG_VARIANTS.includes(v) || v.startsWith('x-'));
         cmds.push({ frame: REC_AT, command: `hair rec ${REC_N} 0 ${poses ? 2 : 0}` });
         const dump = join(o, 'run.cwfd');
-        const keep = video && v === 'on';
+        // (a robed figure's own run and its shading control always keep their crops: the shade check reads them)
+        const keep = (video && (v === 'on' || v.startsWith('x-'))) || (ROBED[fig] && (v === 'on' || v === 'shadow2'));
         await call('frame', { op: 'record', frames: FRAMES - 1, steps: steps(), commandsAt: cmds, path: dump, downscale: keep ? 1 : 8, maxSeconds: 1800 }, h.session, { timeoutMs: 2400000 });
         const info = await h.command('hair info');
         const rows = [];
@@ -125,7 +136,8 @@ function crops(dump, out, body = false) {
   const w = hd.readUInt32LE(4), hh = hd.readUInt32LE(8), fsz = w * hh * 3, n = Math.floor((statSync(dump).size - 16) / fsz);
   const buf = Buffer.alloc(fsz);
   mkdirSync(join(out, 'frames'), { recursive: true });
-  // the head (240 x 240 at 1080p) and, for a figure with a garment, the whole body (480 x 640)
+  // the head (240 x 240 at 1080p) and, for a figure with a garment, the whole body (480 x 640) (PNGs written here: the
+  // GPU hosts have no ImageMagick)
   const crops = [['', Math.round(w * 0.125), Math.round(hh * 0.222), Math.round(w * 0.4375), Math.round(hh * 0.33)]];
   if (body) crops.push(['body-', Math.round(w * 0.25), Math.round(hh * 0.593), Math.round(w * 0.375), Math.round(hh * 0.3)]);
   for (const [tag, cw, ch, cx, cy] of crops)
@@ -133,16 +145,16 @@ function crops(dump, out, body = false) {
       const list = [];
       for (let f = a; f < Math.min(b, n); f += 2) {
         readSync(fd, buf, 0, fsz, 16 + f * fsz);
-        const png = join(out, 'frames', `${tag}${name}-${String(f).padStart(4, '0')}.png`);
-        const c = spawnSync('convert', ['-size', `${w}x${hh}`, '-depth', '8', 'rgb:-', '-crop', `${cw}x${ch}+${cx}+${cy}`, '+repage', png], { input: buf });
-        if (c.status !== 0) throw new Error(`convert (ImageMagick) failed on ${png}: ${c.error || c.stderr}`); // (a host without it writes no strips)
-        list.push(png);
+        const im = cropRgb(buf, w, cx, cy, cw, ch);
+        writePng(join(out, 'frames', `${tag}${name}-${String(f).padStart(4, '0')}.png`), cw, ch, im);
+        list.push(im);
       }
-      spawnSync('montage', [...list, '-tile', tag ? '8x' : '11x', '-geometry', '+2+2', '-background', '#111', join(out, `strip-${tag}${name}.png`)]);
+      const m = montageRgb(list, cw, ch, tag ? 8 : 11);
+      writePng(join(out, `strip-${tag}${name}.png`), m.w, m.h, m.rgb);
     }
   // one whole frame mid-turn (where the crops come from)
   readSync(fd, buf, 0, fsz, 16 + 440 * fsz);
-  spawnSync('convert', ['-size', `${w}x${hh}`, '-depth', '8', 'rgb:-', join(out, 'frame-0440.png')], { input: buf });
+  writePng(join(out, 'frame-0440.png'), w, hh, buf);
   closeSync(fd);
 }
 
@@ -166,11 +178,66 @@ export const LEG_BAR_MM = 25;
 function legs(m, dir) {
   const pj = join(dir, 'poses.json'), gl = join(dir, 'robe.glb');
   if (!existsSync(pj) || !existsSync(gl)) { m.legs = null; m.checks.legs = false; m.pass = false; return; }
-  const r = robeLegs(gl, JSON.parse(readFileSync(pj, 'utf8')));
+  const P = JSON.parse(readFileSync(pj, 'utf8')), r = robeLegs(gl, P);
   const seg = (a, b) => r.perTick.filter((x) => x[0] >= a && x[0] < b).reduce((mx, x) => Math.max(mx, x[1]), 0);
   m.legs = { max_mm: r.max_mm, p99_mm: r.p99_mm, at: r.at, poses: r.ticks, verts: r.verts, by_moment: { run: seg(0, 230), stop: seg(230, 350), turn: seg(350, 530), stop2: seg(530, 650), about: seg(650, 710), stop3: seg(710, 9999) } };
   m.checks.legs = r.ticks > 100 && r.verts > 0 && r.max_mm <= LEG_BAR_MM;
+  // the hem (lib/robe-legs.mjs robeSail): how high it rises toward the hips, as a share of the robe's length; and the
+  // same poses through the robe as SAIL_REV weighted it (its front panels carried rigidly by the thighs from the hips to
+  // the hem), the control, which must fail it: a raised thigh stood its hem out level with the hips, a stiff sail
+  const sail = (glb) => {
+    const x = robeSail(glb, P), sg = (a, b) => Math.max(0, ...x.perTick.filter((t) => t[0] >= a && t[0] < b).map((t) => t[1]));
+    return { max_rise: x.max_rise, at: x.at, max_reach_m: x.max_reach_m, about: sg(650, 710), stop3: sg(710, 9999) };
+  };
+  m.sail = sail(gl);
+  m.checks.sail = m.sail.max_rise <= SAIL_BAR;
+  if (m.variant === 'on') { const old = sailControlGlb(); m.sail_control = old ? sail(old) : null; }
   m.pass = Object.values(m.checks).every(Boolean);
+}
+// the robe's shading as drawn (the body's native-scale crops of every moment): on the lit cloth (luma 80 or more of 255,
+// at least 3 px inside the robe's violet all round) the share of pixels whose luma steps against its four neighbours
+// (|4 L - their sum|) by 12 or more. The sun's shadow map drew both faces of the double-sided cloth at the very depth of
+// the cloth it shades, and its own shadow fell on it in fine dark streaks (shadow acne), a third of the lit cloth
+// stippled; the cloth's weave and folds alone step on about a sixth. Control: "hair clothshadow -1" and "hair sunbias 0 0"
+// (the cloth casting both faces, the sun with no normal bias, as 0.63.0 drew them) must fail it.
+export const SHADE_BAR = 21;
+function robeShade(dir) {
+  const fr = join(dir, 'frames');
+  if (!existsSync(fr)) return null;
+  let n = 0, hi = 0, crops = 0;
+  for (const f of readdirSync(fr).filter((x) => x.startsWith('body-')).sort()) {
+    const { w, h, rgb } = readPng(join(fr, f)), L = new Float32Array(w * h), M = new Uint8Array(w * h);
+    for (let i = 0; i < w * h; i++) {
+      const r = rgb[i * 3], g = rgb[i * 3 + 1], bl = rgb[i * 3 + 2];
+      L[i] = 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+      M[i] = bl > g + 25 && r > g + 5 ? 1 : 0; // the robe's violet
+    }
+    for (let y = 3; y < h - 3; y++)
+      for (let x = 3; x < w - 3; x++) {
+        const i = y * w + x;
+        if (!M[i] || L[i] < 80) continue;
+        let inside = true;
+        for (let dy = -3; dy <= 3 && inside; dy++) for (let dx = -3; dx <= 3; dx++) if (!M[i + dy * w + dx]) { inside = false; break; }
+        if (!inside) continue;
+        n++;
+        if (Math.abs(4 * L[i] - L[i - 1] - L[i + 1] - L[i - w] - L[i + w]) >= 12) hi++;
+      }
+    crops++;
+  }
+  return { crops, robe_px: n, streak_share: +((100 * hi) / Math.max(1, n)).toFixed(2) };
+}
+// the hem rises at most this share of the way from the floor to the hips (cloth swung out on a turn at a run lifts it
+// part of the way, the back panels about 0.6; SAIL_REV's thigh-carried front panels 1.8, past the hips)
+export const SAIL_BAR = 0.75;
+const SAIL_REV = 'v0.63.0';
+function sailControlGlb() { // the robe as SAIL_REV built it (from git), kept under out/
+  const out = join(ROOT_DIR, 'out', `robe-${SAIL_REV}.glb`);
+  if (existsSync(out)) return out;
+  const r = spawnSync('git', ['-C', ROOT_DIR, 'show', `${SAIL_REV}:games/emberthrone/assets/models/tidecaller.glb`], { maxBuffer: 1 << 26 });
+  if (r.status !== 0) return null;
+  mkdirSync(join(ROOT_DIR, 'out'), { recursive: true });
+  writeFileSync(out, r.stdout);
+  return out;
 }
 
 export function measure(trace) {
@@ -264,13 +331,19 @@ export function measure(trace) {
 const [mode, ...args] = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
 if (mode === 'run') {
+  // --try name=cmd|cmd,... : variants of a development run ('x-<name>', poses kept like the robe's own run)
+  for (const t of (opt('--try') || '').split(',').filter(Boolean)) { const [n, c] = t.split('='); VARIANTS['x-' + n] = c.split('|'); }
   await run(args[0], resolve(args[1]), { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS), models: opt('--models') ? resolve(opt('--models')) : null });
 } else if (mode === 'measure') {
   const dir = args[0];
   const runs = readdirSync(dir).filter((d) => existsSync(join(dir, d, 'trace.json'))).sort();
   const res = runs.map((d) => {
     const m = measure(JSON.parse(readFileSync(join(dir, d, 'trace.json'), 'utf8')));
-    if (ROBED[m.figure] && LEG_VARIANTS.includes(m.variant)) legs(m, join(dir, d));
+    if (ROBED[m.figure] && (LEG_VARIANTS.includes(m.variant) || m.variant.startsWith('x-'))) legs(m, join(dir, d));
+    if (ROBED[m.figure] && (m.variant === 'on' || m.variant === 'shadow2' || m.variant.startsWith('x-'))) {
+      m.shade = robeShade(join(dir, d));
+      if (m.shade) { m.checks.shade = m.shade.streak_share <= SHADE_BAR; m.pass = Object.values(m.checks).every(Boolean); }
+    }
     return m;
   });
   if (args.includes('--json')) console.log(JSON.stringify(res, null, 1));
@@ -278,6 +351,13 @@ if (mode === 'run') {
   for (const m of res) {
     console.log(`${(m.figure + ' ' + m.variant).padEnd(22)} ${m.pass ? 'PASS' : 'FAIL'} ${JSON.stringify(m.checks)}  modifiers ${m.modifier_us.mean} us (p95 ${m.modifier_us.p95}), ${m.chains} chains`);
     if (m.legs !== undefined) console.log(`    legs   ${m.legs ? `outside the robe at most ${m.legs.max_mm}mm (p99 ${m.legs.p99_mm}) ${JSON.stringify(m.legs.by_moment)} at ${JSON.stringify(m.legs.at)}, ${m.legs.verts} verts x ${m.legs.poses} poses` : 'no poses or glb recorded'}`);
+    const sl = (x) => `hem rises at most ${x.max_rise} of the way to the hips (at ${JSON.stringify(x.at)}; the turn about ${x.about}, the stand after it ${x.stop3}), reaches ${x.max_reach_m} m out`;
+    if (m.shade) console.log(`    shade  the lit cloth stippled on ${m.shade.streak_share}% of ${m.shade.robe_px} px over ${m.shade.crops} crops (bar ${SHADE_BAR}%)`);
+    if (m.sail) console.log(`    sail   ${sl(m.sail)} (bar ${SAIL_BAR})`);
+    if (m.sail_control !== undefined) {
+      console.log(`    sail   control, the robe as ${SAIL_REV} weighted it on the same poses: ${m.sail_control ? sl(m.sail_control) : 'its glb not found (git)'}`);
+      if (!m.sail_control || m.sail_control.max_rise <= SAIL_BAR) { ok = false; console.log(`  ${m.figure} ${m.variant}: the sail control passed or is missing (it must fail)`); }
+    }
     for (const g of Object.values(m.groups)) {
       const t = Object.entries(g.turns).map(([k, x]) => (x ? `${k} ${x.swing_mm}mm +${x.lag_ticks}t (r ${x.corr})` : `${k} -`)).join(', ');
       const s = g.stops.map((x) => `${x.swing_mm}mm/${x.settle_ticks ?? 'never'}t jitter ${x.rest_jitter_mm}/${x.rest_jitter_max_mm}mm (idle ${x.idle_jitter_mm ?? '-'})`).join(', ');
@@ -289,12 +369,13 @@ if (mode === 'run') {
   // every figure's run and its controls must all be there (a run cut short leaves none of its trace)
   for (const f of Object.keys(FIGURES)) for (const v of Object.keys(VARIANTS)) {
     if (v === 'skirt0' && !GARMENT[f]) continue;
+    if (v === 'shadow2' && !ROBED[f]) continue;
     if (!res.some((m) => m.figure === f && m.variant === v)) { ok = false; console.log(`  ${f} ${v}: missing (run it)`); }
   }
   // each control must fail the check it is the control of
   const by = (f, v) => res.find((m) => m.figure === f && m.variant === v);
   for (const f of Object.keys(FIGURES)) {
-    const c = [['springs0', ['turn', 'settle', 'legs']], ['collide0', ['clip']], ['soft', ['settle', 'rest']], ['skirt0', ['clip']]];
+    const c = [['springs0', ['turn', 'settle', 'legs']], ['collide0', ['clip']], ['soft', ['settle', 'rest']], ['skirt0', ['clip']], ['shadow2', ['shade']]];
     for (const [v, ks] of c) {
       const m = by(f, v);
       if (!m) continue;

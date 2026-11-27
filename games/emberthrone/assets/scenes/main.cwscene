@@ -57,6 +57,9 @@ energy = 3.4
 shadow = true
 shadow_cascades = 2
 shadow_distance = 40
+; each shadow lookup 5 cm off the surface along its normal: cloth at a glancing sun no longer shadows itself in
+; streaks (tests/emberthrone-hair.mjs shade)
+shadow_normal_bias = 0.05
 
 [node name="Camera" parent="." type="Camera3D"]
 position = vec3(160, 20, 300)
@@ -119,16 +122,18 @@ layer7_albedo = "textures/terrain/ash_ah.png"
 layer7_normal = "textures/terrain/ash_nr.png"
 layer7_uv_scale = 0.45
 
-; the engine's grass: tufts of twelve curved tapering blades, each tuft its own shade (tint_jitter), rooted in the colour
+; the grass: tufts of twelve tapering blades curved over, each tuft its own shade (tint_jitter), rooted in the colour
 ; of the ground under it, lit the same from both sides, bending in the wind with gusts running over the meadow, their
 ; edges smooth (alpha to coverage, hashed alpha under TAA); fourteen tufts a square metre out to 20 m, so the meadow reads
-; as a sward up to the trees rather than clumps on bare ground; each tuft crosses into the far LOD (six wide straight
-; blades) and dissolves over its last 8 m at its own distance (DITHER: one LOD of a tuft at a time, no coincident
+; as a sward up to the trees rather than clumps on bare ground; each tuft crosses into the far LOD (six wide blades
+; curved the same way) and dissolves over its last 8 m at its own distance (DITHER: one LOD of a tuft at a time, no coincident
 ; blades), never popping as a line; the tufts vary by a fifth (more speckles the field in motion:
-; tests/emberthrone-grass-walk.mjs). The short Turf below fills the ground between them near the eye. (The game's own
-; thinner, more arched blades, tools/make-grass.mjs makeBlades, shimmered twice as much on the walk: DESIGN.md.)
+; tests/emberthrone-grass-walk.mjs). The short Turf below fills the ground between them near the eye. The tufts are the
+; game's (tools/make-grass.mjs: the engine tuft's proportions, each blade turning over through its upper half, a far level
+; of its own; they shimmer less in motion than the engine's straighter tuft); colour tints the engine's built-in tuft only
+; (the walk check's 0.59.0 control draws it)
 [node name="Grass" parent="Terrain" type="TerrainScatter3D"]
-shape = GRASS
+mesh = "models/meadow_blades.glb"
 color = color(0.42, 0.52, 0.26, 1)
 density = 14
 layers = 1

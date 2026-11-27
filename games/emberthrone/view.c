@@ -111,6 +111,22 @@ static void shadows(t3_object *o) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = !(o->name && !strncmp(o->name, "Hair", 4)), o->receive_shadow = true;
   for (int i = 0; i < o->child_count; i++) shadows(o->children[i]);
 }
+/* every double-sided material of a figure: the side it casts the sun's shadow with (-1: its own, both) */
+static int cloth_shadow_side(t3_object *o, int v) {
+  int n = 0;
+  if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) {
+    t3_mesh *m = (t3_mesh *)o;
+    for (int k = 0; k < m->material_count; k++) {
+      t3_material *mat = m->materials[k];
+      if (!mat || mat->side != T3_DOUBLE_SIDE) continue;
+      mat->shadow_side = v;
+      mat->version++;
+      n++;
+    }
+  }
+  for (int i = 0; i < o->child_count; i++) n += cloth_shadow_side(o->children[i], v);
+  return n;
+}
 static void cast_shadows(t3_object *o, bool on) {
   if (o->type == T3_MESH || o->type == T3_SKINNED_MESH) o->cast_shadow = on && !(o->name && !strncmp(o->name, "Hair", 4));
   for (int i = 0; i < o->child_count; i++) cast_shadows(o->children[i], on);
@@ -250,8 +266,9 @@ static t3_vec3 cape_point(int i, const cw_pose *p, int chest, bool *ok) {
  * are garments: five chains of three bones round the coat's sides and back, from a seam at the waist clear of the
  * thighs, linked across into one cloth (cartwheel's skirt mode, OPEN) that a stride spreads (it stretches up to twice
  * its length across) and the legs and feet stay inside. The Tidecaller's robe is one too, to the floor and open down the
- * front: five chains of four bones round its sides and back (OPEN), damped harder than the coat (20, not 6), its
- * front panels on the thighs; a stride steps out through the opening (DESIGN.md). */
+ * front: seven chains of four bones (OPEN), damped harder than the coat (20, not 6), five round its sides and back and
+ * one down each front panel (tools/chars/robe-front.mjs: the panels once rode the thighs as stiff boards); a stride
+ * steps out through the opening and a raised knee lifts the front panel, which falls from it (DESIGN.md). */
 enum { HS_SKULL, HS_JAW, HS_NECK, HS_SHOULDERS, HS_THIGH_L, HS_THIGH_R, HS_SHIN_L, HS_SHIN_R, HS_FOOT_L, HS_FOOT_R, HS_N };
 #define HSB(k) (1u << (k))
 #define SWING_MAXG 3
@@ -265,7 +282,7 @@ static const swing_def SWING[K_KINDS][SWING_MAXG] = {
   [K_WAYFARER] = { { "Hair", 2, 2, { "HairLockL", "HairLockR" }, 1500, 25, 1.0f, 0.008f, HAIR_SHAPES } },
   [K_WARDEN] = { BEARD },
   [K_LANCER] = { LONG_HAIR, { "Coat", 5, 3, { "CoatL", "CoatBL", "CoatB", "CoatBR", "CoatR" }, 240, 6, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
-  [K_TIDE] = { LONG_HAIR, { "Robe", 5, 4, { "RobeL", "RobeBL", "RobeB", "RobeBR", "RobeR" }, 240, 20, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
+  [K_TIDE] = { LONG_HAIR, { "Robe", 7, 4, { "RobeFL", "RobeL", "RobeBL", "RobeB", "RobeBR", "RobeR", "RobeFR" }, 240, 20, 2.0f, 0.025f, LEG_SHAPES, "OPEN" } },
   [K_EMBER] = { BEARD },
 };
 /* the body the parts stay out of, in the figure's own metres before its kind's scale: a capsule from a to b round the
@@ -291,8 +308,28 @@ static int HAIR_COLLIDE = 1;    /* "hair collide 0": the springs go through the 
 static float HAIR_DAMP = -1;    /* "hair damping <1/s>": every chain's drag (-1: each group's own) */
 static bool HAIR_SKIRT = true; /* "hair skirt 0": a robe's and a coat's chains on their own, not linked into one cloth (a control) */
 static bool HAIR_SOFT;          /* "hair soft 1": every chain slack and undamped (stiffness 30, no drag: a control that never settles) */
+
 static struct { bool ok; t3_vec3 a[HS_N], b[HS_N]; float r[HS_N]; } SWING_GEO[K_KINDS]; /* the shapes as made, model metres */
 static int swing_chains(int kind) { int n = 0; for (int g = 0; g < SWING_MAXG && SWING[kind][g].node; g++) n += SWING[kind][g].n; return n; }
+/* a group's settings onto its SpringBone3D and its chains (at the make and on every switch) */
+static void swing_settings(cw_node sb, const swing_def *h) {
+  const bool gar = h->skirt != NULL;
+  cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
+  for (int c = 0; c < cw_node_child_count(sb); c++) {
+    cw_node ch = cw_node_child(sb, c);
+    if (!cw_node_type_is(cw_node_get_type(ch), "SpringBoneChain3D")) continue;
+    cw_node_set(ch, "stiffness", cw_val_float(HAIR_SOFT ? 30 : h->stiffness));
+    cw_node_set(ch, "damping", cw_val_float(HAIR_SOFT ? 0 : HAIR_DAMP >= 0 ? HAIR_DAMP : h->damping));
+    cw_node_set(ch, "gravity_strength", cw_val_float(h->gravity));
+  }
+  if (gar) { /* a garment: its chains linked across into one cloth (cartwheel/ik.h skirt mode), stretching to let a stride through */
+    cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? h->skirt : "OFF"));
+    cw_node_set(sb, "skirt_stretch", cw_val_float(1.0f));
+    /* eight passes a tick, not the default four: on cartwheel-engine 0.78 the coat's left panel came 70 mm into the
+     * right thigh on the turn about with four (tests/emberthrone-hair.mjs), 1.4 mm with eight */
+    cw_node_set(sb, "skirt_iterations", cw_val_int(8));
+  }
+}
 static void hair_make(rig *r, int kind) {
   if (!SWING[kind][0].node || r->swing[0].id) return;
   const float g = GEN_SCALE[kind];
@@ -343,9 +380,6 @@ static void hair_make(rig *r, int kind) {
       cw_node_add_child(sb, n);
       cw_node_set(n, "root_bone", cw_val_string(a));
       cw_node_set(n, "end_bone", cw_val_string(b));
-      cw_node_set(n, "stiffness", cw_val_float(HAIR_SOFT ? 30 : h->stiffness));
-      cw_node_set(n, "damping", cw_val_float(HAIR_SOFT ? 0 : HAIR_DAMP >= 0 ? HAIR_DAMP : h->damping));
-      cw_node_set(n, "gravity_strength", cw_val_float(h->gravity));
       cw_node_set(n, "radius", cw_val_float(h->radius)); /* (absolute: a big figure's hair is no thicker) */
     }
     for (int k = 0; k < HS_N; k++) {
@@ -359,14 +393,7 @@ static void hair_make(rig *r, int kind) {
       cw_node_set(n, "offset", cw_val_vec3(a.x, a.y, a.z));
       cw_node_set(n, "tail", cw_val_vec3(b.x, b.y, b.z));
     }
-    cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
-    if (h->skirt) { /* a garment: its chains linked across into one cloth (cartwheel/ik.h skirt mode), stretching to let a stride through */
-      cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? h->skirt : "OFF"));
-      cw_node_set(sb, "skirt_stretch", cw_val_float(1.0f));
-      /* eight passes a tick, not the default four: on cartwheel-engine 0.78 the coat's left panel came 70 mm into the
-       * right thigh on the turn about with four (tests/emberthrone-hair.mjs), 1.4 mm with eight */
-      cw_node_set(sb, "skirt_iterations", cw_val_int(8));
-    }
+    swing_settings(sb, h);
   }
   r->hair_on = true;
 }
@@ -386,6 +413,10 @@ static void rig_make(int i, int kind) {
   t3_object *inst = cw_gltf_instantiate(RES_KIND[kind]);
   if (!inst) return;
   shadows(inst);
+  /* the figures' double-sided cloth (the robe, the coats: a thin shell) casts the sun's shadow from its back faces only,
+   * as a closed mesh does: drawn both ways round into the shadow map it lay at the very depth of the cloth it shades,
+   * and fell on it in fine dark streaks (shadow acne; with the sun's normal bias, assets/scenes/main.cwscene) */
+  cloth_shadow_side(inst, T3_BACK_SIDE);
   if (kind >= K_RAIDER && kind <= K_LANCER) tint_outfit(inst, kind, CW_CLAMP(S.a[i].region, 0, RG_COUNT - 1));
   rim(inst, kind);
   char nm[24];
@@ -1124,14 +1155,7 @@ static void hair_apply(void) { /* the switches onto every figure's springs as th
     for (int gi = 0; gi < SWING_MAXG; gi++) {
       cw_node sb = r->swing[gi];
       if (!sb.id || !cw_node_valid(sb)) continue;
-      cw_node_set(sb, "collisions", cw_val_bool(HAIR_COLLIDE != 0));
-      if (SWING[r->kind][gi].skirt) cw_node_set(sb, "skirt", cw_val_enum(HAIR_SKIRT ? SWING[r->kind][gi].skirt : "OFF"));
-      for (int c = 0; c < cw_node_child_count(sb); c++) {
-        cw_node ch = cw_node_child(sb, c);
-        if (!cw_node_type_is(cw_node_get_type(ch), "SpringBoneChain3D")) continue;
-        cw_node_set(ch, "stiffness", cw_val_float(HAIR_SOFT ? 30 : SWING[r->kind][gi].stiffness));
-        cw_node_set(ch, "damping", cw_val_float(HAIR_SOFT ? 0 : HAIR_DAMP >= 0 ? HAIR_DAMP : SWING[r->kind][gi].damping));
-      }
+      swing_settings(sb, &SWING[r->kind][gi]);
     }
   }
 }
@@ -1141,6 +1165,19 @@ static void cmd_hair(int argc, const char **argv, cw_reply *rp) {
   if (argc >= 3 && !strcmp(argv[1], "collide")) { HAIR_COLLIDE = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"collide\":%d}", HAIR_COLLIDE); return; }
   if (argc >= 3 && !strcmp(argv[1], "skirt")) { HAIR_SKIRT = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"skirt\":%d}", HAIR_SKIRT); return; }
   if (argc >= 3 && !strcmp(argv[1], "soft")) { HAIR_SOFT = atoi(argv[2]) != 0; hair_apply(); cw_reply_printf(rp, "{\"soft\":%d}", HAIR_SOFT); return; }
+  if (argc >= 3 && !strcmp(argv[1], "clothshadow")) { /* every figure's double-sided material's shadow side (-1 its own: both, 0 front, 1 back, 2 both; shadow2: -1) */
+    int v = atoi(argv[2]), n = 0;
+    for (int i = 0; i < MAXA; i++) if (RIG[i].made && RIG[i].inst) n += cloth_shadow_side(RIG[i].inst, v);
+    cw_reply_printf(rp, "{\"clothshadow\":%d,\"materials\":%d}", v, n);
+    return;
+  }
+  if (argc >= 4 && !strcmp(argv[1], "sunbias")) { /* the sun's shadow bias and normal bias (tests/emberthrone-hair.mjs shadow2: 0 0) */
+    cw_node sun = cw_node_get(V_world, "Sun");
+    cw_node_set(sun, "shadow_bias", cw_val_float((float)atof(argv[2])));
+    cw_node_set(sun, "shadow_normal_bias", cw_val_float((float)atof(argv[3])));
+    cw_reply_printf(rp, "{\"sunbias\":[%g,%g]}", atof(argv[2]), atof(argv[3]));
+    return;
+  }
   if (argc >= 3 && !strcmp(argv[1], "damping")) { HAIR_DAMP = (float)atof(argv[2]); hair_apply(); cw_reply_printf(rp, "{\"damping\":%g}", HAIR_DAMP); return; }
   if (argc >= 2 && !strcmp(argv[1], "rec")) {
     hrec_want = argc >= 3 ? CW_CLAMP(atoi(argv[2]), 1, HREC_MAX) : 600;
@@ -1200,7 +1237,7 @@ void view_fixed(void) {
   static bool mrec_cmd;
   if (!mrec_cmd) {
     cw_debug_command("motion", "motion rec <ticks> [actor] | info | get <from> <n>: the motion recorder (tests/emberthrone-motion.mjs)", cmd_motion);
-    cw_debug_command("hair", "hair rec <ticks> [actor] | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1: the hair's springs (tests/emberthrone-hair.mjs)", cmd_hair);
+    cw_debug_command("hair", "hair rec <ticks> [actor] | info | get <from> <n> | wear <kind> | springs 0|1 | collide 0|1 | damping <1/s> | soft 0|1 | skirt 0|1 | clothshadow <side> | sunbias <bias> <normal>: the hair's springs, the cloth's shadow (tests/emberthrone-hair.mjs)", cmd_hair);
     mrec_cmd = true;
   }
   static bool frm_cmd;

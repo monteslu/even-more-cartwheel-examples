@@ -2,7 +2,7 @@
 // emberthrone_bench from one place (ADV_FROM, default the meadow) with each part taken out in turn (ADV_PROBE_*) and
 // prints the GPU time of each against the full picture. Holds the GPU suite lock for one short run set.
 //   node tests/emberthrone-perf-probe.mjs [--from N] [--gpu gl|webgpu|both] [--only A,B+C,...] [--reps N]
-// (B+C: both parts out in one run; each variant runs against the full picture N times, interleaved, and the medians
+// (NAME:value: ADV_PROBE_NAME set to value; B+C: both parts out in one run; each variant runs against the full picture N times, interleaved, and the medians
 // are compared: the GPU is shared, one run is noise)
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -45,7 +45,7 @@ for (const gpu of arg('--gpu', 'gl') === 'both' ? ['gl', 'webgpu'] : [arg('--gpu
     let last = '';
     for (let i = 0; i < reps; i++) {
       const rb = run(gpu, {}); b.push(rb.gpu); bases.push(rb.gpu);
-      const rv = run(gpu, Object.fromEntries(k.split('+').map((p) => [`ADV_PROBE_${p}`, '1']))); v.push(rv.gpu); last = rv.passes;
+      const rv = run(gpu, Object.fromEntries(k.split('+').map((p) => (p.includes(':') ? [`ADV_PROBE_${p.slice(0, p.indexOf(':'))}`, p.slice(p.indexOf(':') + 1)] : [`ADV_PROBE_${p}`, '1'])))); v.push(rv.gpu); last = rv.passes;
     }
     console.log(`${gpu} without ${k.toLowerCase()}: ${median(v).toFixed(2)} ms against ${median(b).toFixed(2)} (${(median(b) - median(v)).toFixed(2)} saved; runs ${v.map((x) => x.toFixed(2)).join(' ')} / ${b.map((x) => x.toFixed(2)).join(' ')})\n  ${last}`);
   }

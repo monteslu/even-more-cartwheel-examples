@@ -14,6 +14,7 @@ import { writeSet } from './texlib.mjs';
 import { pompDir, pompTA, pompEdge, pompHeight } from './pompadour.mjs';
 import { faceParams, headModel, buildHead, shellGrid, hairCap, paintFace, paintEye, FACE_BONES, EXPRESSIONS, FACE_TARGETS, faceTargets } from './face.mjs';
 import { addFaceMorphs } from './face-morphs.mjs';
+import { addRobeFront } from './robe-front.mjs';
 const HEAD_GROUPS = ['face', 'lash'];
 const HAIR_GROUPS = ['hairCard', 'pomadeCard', 'pomadeShell'];
 
@@ -1578,6 +1579,8 @@ function emitFine(sp) {
   // the speaking figures get faces that move (tools/chars/face-morphs.mjs): the wanderers, the wardens, the keepers'
   // figure (the warden's), and the guide (the raider's figure, its own file so the raiders stay unmorphed)
   if (FACED.includes(sp.name)) faceFile(join(OUT, sp.name + '.glb'));
+  // a robe open down the front: its front panels on chains of their own, not on the thighs (tools/chars/robe-front.mjs)
+  { const p = join(OUT, sp.name + '.glb'), r = addRobeFront(readFileSync(p)); if (r) writeFileSync(p, r.glb); }
   if (sp.name === 'raider') {
     copyFileSync(join(OUT, 'raider.glb'), join(OUT, 'guide.glb'));
     copyFileSync(join(OUT, 'raider.glb.cwimport'), join(OUT, 'guide.glb.cwimport'));

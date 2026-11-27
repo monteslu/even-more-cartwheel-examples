@@ -33,14 +33,14 @@ export function readGlb(path) {
 const LEG = new Set(['Hips', 'UpperLegL', 'UpperLegR', 'LowerLegL', 'LowerLegR', 'FootL', 'FootR', 'ToesL', 'ToesR']);
 
 /** the body mesh's primitives by material name: positions, joints, weights (and indices) */
-function prims(g) {
+export function prims(g) {
   const { j, acc } = g, body = j.nodes.find((x) => x.mesh !== undefined && x.skin !== undefined && x.name === 'Body') || j.nodes.find((x) => x.mesh !== undefined);
   if (body.translation || body.rotation || body.scale || body.matrix) throw new Error('robe-legs: the body mesh node has a transform of its own (not handled)');
   return j.meshes[body.mesh].primitives.map((p) => ({ mat: j.materials[p.material].name, P: acc(p.attributes.POSITION), J: acc(p.attributes.JOINTS_0), W: acc(p.attributes.WEIGHTS_0), N: p.attributes.NORMAL, I: p.indices !== undefined ? acc(p.indices) : null }));
 }
 
 /** the skinning matrices (3x4, rows) of one recorded pose: the bone's model matrix times the joint's inverse bind */
-function skinMats(g, names, row) {
+export function skinMats(g, names, row) {
   const { j, acc } = g, skin = j.skins[0], ibm = acc(skin.inverseBindMatrices);
   const idx = skin.joints.map((k) => names.indexOf(j.nodes[k].name));
   if (idx.some((x) => x < 0)) throw new Error(`robe-legs: the pose lacks joints ${skin.joints.filter((k, i) => idx[i] < 0).map((k) => j.nodes[k].name).join(' ')}`);
@@ -54,7 +54,7 @@ function skinMats(g, names, row) {
   });
 }
 
-function skinVerts(p, mats, sel) {
+export function skinVerts(p, mats, sel) {
   const out = new Float64Array(sel.length * 3);
   sel.forEach((v, k) => {
     let x = 0, y = 0, z = 0;
@@ -213,4 +213,36 @@ export function robeLegs(glbPath, dump, { robeMat = /robe/, bodyMats = /outfit|s
   }
   all.sort((a, b) => a - b);
   return { max_mm: +(max * 1000).toFixed(1), at, p99_mm: +(all[Math.floor(all.length * 0.99)] * 1000 || 0).toFixed(1), ticks: perTick.length, verts: nverts, worst: perTick.slice().sort((a, b) => b[1] - a[1]).slice(0, 8), perTick };
+}
+
+// The robe's hem as drawn, every recorded pose: how high it rises (its highest corner, from where it hangs at the
+// floor toward the hips' joint, as a share of the robe's length: 0 hanging, 1 level with the hips) and how far any of
+// the robe reaches out from the hips' upright axis (the figure's own metres). A panel carried rigidly by a raised thigh
+// stands out level with the hips (a share near 1, well over a metre out); cloth that swings out on a turn lifts its hem
+// part of the way.
+//   robeSail(glbPath, { bones, poses }) -> { max_rise, at, max_reach_m, reach_at, perTick: [[tick, rise, reach], ...] }
+export function robeSail(glbPath, dump, { robeMat = /robe/, hemBand = 0.06 } = {}) {
+  const g = readGlb(glbPath), jn = g.j.skins[0].joints.map((k) => g.j.nodes[k].name), names = dump.bones;
+  const rp = prims(g).find((p) => robeMat.test(p.mat));
+  if (!rp) throw new Error(`robe-sail: no robe primitive in ${glbPath}`);
+  const ibm = g.acc(g.j.skins[0].inverseBindMatrices), hj = jn.indexOf('Hips');
+  const hipsY = -ibm[hj * 16 + 13];
+  const n = rp.P.length / 3, all = Array.from({ length: n }, (_, k) => k);
+  const hem = Math.min(...all.map((k) => rp.P[k * 3 + 1])), L = hipsY - hem;
+  const hemV = all.filter((k) => rp.P[k * 3 + 1] < hem + hemBand);
+  const hb = names.indexOf('Hips');
+  let max_rise = -1, at = null, max_reach = 0, reach_at = null;
+  const perTick = [];
+  for (const row of dump.poses) {
+    const r = row.subarray ? row : Float64Array.from(row), mats = skinMats(g, names, r), V = skinVerts(rp, mats, all);
+    const o = 1 + hb * 12, hip = [r[o + 3], r[o + 7], r[o + 11]], scale = Math.hypot(r[o], r[o + 4], r[o + 8]);
+    let rise = -1, reach = 0, rv = -1, fv = -1;
+    for (const k of hemV) { const h = (V[k * 3 + 1] - hip[1]) / scale, s = (h + L) / L; if (s > rise) rise = s, rv = k; }
+    for (const k of all) { const d = Math.hypot(V[k * 3] - hip[0], V[k * 3 + 2] - hip[2]) / scale; if (d > reach) reach = d, fv = k; }
+    const dom = (v) => { let b = -1, w = 0; for (let q = 0; q < 4; q++) if (rp.W[v * 4 + q] > w) w = rp.W[v * 4 + q], b = rp.J[v * 4 + q]; return jn[b]; };
+    perTick.push([r[0], +rise.toFixed(3), +reach.toFixed(3)]);
+    if (rise > max_rise) max_rise = rise, at = { tick: r[0], bone: dom(rv) };
+    if (reach > max_reach) max_reach = reach, reach_at = { tick: r[0], bone: dom(fv) };
+  }
+  return { max_rise: +max_rise.toFixed(3), at, max_reach_m: +max_reach.toFixed(3), reach_at, perTick };
 }

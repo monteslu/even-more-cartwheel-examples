@@ -1,6 +1,6 @@
 // A PNG as the engine and romdev write it (8-bit RGB or RGBA, any filter), decoded to RGB bytes.
-import { readFileSync } from 'node:fs';
-import { inflateSync } from 'node:zlib';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { inflateSync, deflateSync } from 'node:zlib';
 
 export function readPng(file) {
   const b = readFileSync(file);
@@ -28,4 +28,39 @@ export function readPng(file) {
     cur.copy(prev);
   }
   return { w, h, rgb };
+}
+
+// An 8-bit RGB PNG of w x h from rgb bytes (no filter): for crops on a host without ImageMagick.
+const CRC = new Int32Array(256).map((_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c; });
+function chunk(kind, data) {
+  const out = Buffer.alloc(12 + data.length);
+  out.writeUInt32BE(data.length, 0);
+  out.write(kind, 4, 'latin1');
+  data.copy(out, 8);
+  let c = -1;
+  for (let i = 4; i < 8 + data.length; i++) c = CRC[(c ^ out[i]) & 255] ^ (c >>> 8);
+  out.writeInt32BE(~c, 8 + data.length);
+  return out;
+}
+export function writePng(file, w, h, rgb) {
+  const raw = Buffer.alloc(h * (w * 3 + 1));
+  for (let y = 0; y < h; y++) rgb.copy(raw, y * (w * 3 + 1) + 1, y * w * 3, (y + 1) * w * 3);
+  const hd = Buffer.alloc(13);
+  hd.writeUInt32BE(w, 0), hd.writeUInt32BE(h, 4), hd[8] = 8, hd[9] = 2;
+  writeFileSync(file, Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', hd), chunk('IDAT', deflateSync(raw, { level: 6 })), chunk('IEND', Buffer.alloc(0))]));
+}
+// a crop (x, y, cw, ch) of an rgb image of width w
+export function cropRgb(rgb, w, x, y, cw, ch) {
+  const out = Buffer.alloc(cw * ch * 3);
+  for (let r = 0; r < ch; r++) rgb.copy(out, r * cw * 3, ((y + r) * w + x) * 3, ((y + r) * w + x + cw) * 3);
+  return out;
+}
+// images of one size side by side, `cols` a row, 2 px of #111 between them
+export function montageRgb(imgs, cw, ch, cols) {
+  const rows = Math.ceil(imgs.length / cols), W = cols * (cw + 4), H = rows * (ch + 4), out = Buffer.alloc(W * H * 3, 0x11);
+  imgs.forEach((im, i) => {
+    const ox = (i % cols) * (cw + 4) + 2, oy = Math.floor(i / cols) * (ch + 4) + 2;
+    for (let r = 0; r < ch; r++) im.copy(out, ((oy + r) * W + ox) * 3, r * cw * 3, (r + 1) * cw * 3);
+  });
+  return { w: W, h: H, rgb: out };
 }
