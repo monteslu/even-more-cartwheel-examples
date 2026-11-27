@@ -4,7 +4,7 @@
 // over the rounds of each run's mean of its last three 120-frame windows. Prints a table per API: the passes down, the
 // places across, with each place's frame total and its draws. With --compare <another emberthrone_bench> (a build of
 // another commit, its .cwpak and libwebgpu_dawn.so beside it) every round runs both, place by place, and the table
-// gains that build's totals and the difference; with --compare-env k=v,... the comparison is this build run with that
+// gains that build's passes, totals and the difference; with --compare-env k=v,... the comparison is this build run with that
 // env added (a part of the picture against itself without it: the meadow's grass against the engine's, say).
 //   node tests/emberthrone-perf-passes.mjs [--rounds 5] [--gpu gl|webgpu|both] [--places meadow:1,heights:39,...] [--compare <exe>] [--compare-env k=v,...]
 import { spawnSync } from 'node:child_process';
@@ -67,6 +67,8 @@ for (const gpu of arg('--gpu', 'both') === 'both' ? ['gl', 'webgpu'] : [arg('--g
   for (const k of [...keys, 'total']) console.log(`${k.padEnd(14)}${places.map(([n]) => col(median(res[n].map((r) => r[k] ?? 0)).toFixed(2))).join('')}`);
   console.log(`${'draws'.padEnd(14)}${places.map(([n]) => col(median(res[n].map((r) => r.draws)))).join('')}`);
   if (other) {
+    console.log(`${gpu} compare, pass by pass (the same rounds)`);
+    for (const k of keys) console.log(`${('= ' + k).padEnd(14)}${places.map(([n]) => col(median(base[n].map((r) => r[k] ?? 0)).toFixed(2))).join('')}`);
     console.log(`${'compare total'.padEnd(14)}${places.map(([n]) => col(median(base[n].map((r) => r.total ?? 0)).toFixed(2))).join('')}`);
     console.log(`${'difference'.padEnd(14)}${places.map(([n]) => col((median(res[n].map((r) => r.total ?? 0)) - median(base[n].map((r) => r.total ?? 0))).toFixed(2))).join('')}`);
     console.log(`${'compare draws'.padEnd(14)}${places.map(([n]) => col(median(base[n].map((r) => r.draws)))).join('')}`);
