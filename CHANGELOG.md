@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.65.3
+
+- **Ember Throne**: the sword trail now stays on the blade. It used to be placed before the swing's pose was
+  updated, so in a fast cut it trailed a tick behind the sword, up to a metre and a half. It is now placed on the
+  blade as it is drawn, about 4 cm from the tip on average.
+- **Tests**: the blade trail check measures the trail as drawn against the blade as drawn, and fails with the trail
+  two frames behind (it used to compare two reads of the same pose and could not fail). The lock-on framing check
+  gets a control on the same cart (the framing switched off), and Destructo's loading check runs on a heavier level,
+  where its control (the old blocking load) fails as it must.
+
 ## 0.65.2
 
 - **Destructo**: the replay eases in instead of cutting. From the result camera the view turns round the structure to
