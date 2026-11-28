@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.64.1
+
+- **Every game** moves to cartwheel-engine 0.86.0 (no program table changes): every game builds and passes its cart
+  smoke, art, version and prompt checks and starts and draws natively on GL and WebGPU; jewels, lanternfall, pinball,
+  skate and towers pass a native WebGPU gate each. Ember Throne passes its gates on GL and WebGPU, the hair and garment
+  check, the grass walk (flicker excess 4.05, as in 0.64.0) and the depth-fighting check.
+- **Ember Throne**: the meadow's GL frame is a little lighter. The engine's GL velocity pass now uploads the moving
+  figures' and grass cells' previous poses in one go, which takes 0.10 to 0.18 ms off that pass at 1080p High on a
+  desktop card (WebGPU unchanged).
+- `tests/emberthrone-perf-passes.mjs --compare` prints the other build's passes too, pass by pass, from the same rounds.
+
 ## 0.64.0
 
 - **Every game** moves to cartwheel-engine 0.85.0 (no program table changes): every game builds and passes its cart
