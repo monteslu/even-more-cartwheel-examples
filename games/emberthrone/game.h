@@ -75,6 +75,7 @@ int world_shrine_obj(int shrine);            /* the object index of shrine n */
 cw_world3d world_phys(void);
 uint32_t world_hash(void);
 extern int g_world_paged; /* regions live */
+extern bool g_cam_no_framing; /* tests: the lock-on camera without its framing (debug "framing off 1": tests/emberthrone-lockon.mjs's control) */
 
 /* grounding: every prop the world placed, its base and footprint radius */
 typedef struct wprop { float x, y, z, r; const char *what; int region; } wprop;

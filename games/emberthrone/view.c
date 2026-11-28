@@ -967,32 +967,58 @@ static void cmd_motion(int argc, const char **argv, cw_reply *rp) {
 }
 
 /* ── the blade trail recorder (debug channel): what tests/emberthrone-trail.mjs measures ──────────────────
- * "trail rec <ticks>" checks, each fixed tick the lead player's ribbon is emitting, how far its head is from the tip of
- * the blade in the hand: the tip from the skeleton as posed (the right hand's model transform, the weapon where it hangs
- * in the hand, its length along the weapon), placed in the world by the figure's place and facing. "trail get" returns
- * the ticks, the mean and the largest distance (m). */
-static struct { int want, n; double sum, max; uint32_t root; bool bound; cw_pose pose; } TRL;
+ * "trail rec <ticks>" checks, each frame after a fixed tick the lead player's ribbon was emitting, how far the ribbon's
+ * head (the point its Trail3D sampled that tick, where the ribbon is drawn from) is from the tip of the blade as the
+ * frame draws it: the tip from the skeleton as drawn (after the clips advanced and the skeleton modifiers solved; the
+ * right hand's model transform, the weapon where it hangs in the hand, its length along the weapon), placed in the world
+ * by the figure's place and facing. (It used to read the skeleton in the same tick step that placed the ribbon, before the
+ * clips advanced: the two read the same pose and agreed to the millimetre whatever the ribbon did.) "trail get" returns
+ * the ticks, the mean and the largest distance (m).
+ * Controls: "trail lag <n>" places the ribbon where the tip was that many frames before; "trail offset <m>" moves it
+ * that far along the blade (tests/emberthrone-trail.mjs --control-cmd). */
+#define TRL_LAG_MAX 8
+static struct { int want, n; double sum, max; uint32_t root; bool bound; cw_pose pose; bool due; t3_vec3 head, pre; double msum, mmax; int kind, weapon, lag; float offset; int run; t3_vec3 hist[TRL_LAG_MAX + 1]; int hn; } TRL;
 static float weapon_tip(int kind, int weapon) { /* the blade's tip along the weapon's +z (models/<weapon>.glb), a little in */
   const char *w = kind <= K_WARDEN && weapon == 1 ? "maul" : KIND[kind].weapon;
   return !strcmp(w, "maul") ? 0.88f : !strcmp(w, "bigaxe") ? 1.2f : !strcmp(w, "spear") ? 1.75f : !strcmp(w, "cleaver") ? 0.6f : 0.95f;
 }
+/* the ribbon's head this tick (the tick step; its Trail3D samples it after) */
 static void trail_sample(int i, const actor *a, rig *r, bool on) {
-  if (i != 0 || !on || TRL.n >= TRL.want || !r->inst) return;
+  if (i != 0) return;
+  TRL.run = on ? TRL.run + 1 : 0;
+  TRL.due = TRL.run >= 2 && TRL.n < TRL.want && r->inst; /* (a ribbon of two samples or more is drawn) */
+  if (TRL.due) TRL.kind = a->kind, TRL.weapon = a->weapon;
+}
+/* every frame: the blade's tip as this frame draws it, against the head the ribbon sampled */
+static void trail_measure(void) {
+  if (!TRL.due) return;
+  TRL.due = false;
+  rig *r = &RIG[0];
+  if (!r->inst || !r->trail.id) return;
   if (TRL.bound && TRL.root != r->root.id) cw_pose_free(&TRL.pose), TRL.bound = false;
   if (!TRL.bound) { if (!cw_pose_bind(&TRL.pose, r->inst)) return; TRL.bound = true, TRL.root = r->root.id; }
   cw_pose_capture(&TRL.pose);
   cw_pose_update_model(&TRL.pose);
   int h = cw_pose_find(&TRL.pose, "HandR");
   if (h < 0) return;
-  t3_vec3 m = t3_vec3_apply_mat4((t3_vec3){ 0, -0.075f, 0.015f + weapon_tip(a->kind, a->weapon) }, &TRL.pose.model[h]);
+  t3_vec3 m = t3_vec3_apply_mat4((t3_vec3){ 0, -0.075f, 0.015f + weapon_tip(TRL.kind, TRL.weapon) }, &TRL.pose.model[h]);
   t3_mat4 w = model_to_world(r->drawn_at, r->drawn_yaw); /* (where the pose drawn stands) */
-  t3_vec3 tip = t3_vec3_apply_mat4(m, &w), hd = cw_node3d_position(r->trail);
+  t3_vec3 tip = t3_vec3_apply_mat4(m, &w);
+  /* the ribbon's head as its draw takes it (trail3d.c: the node's rendered world position) */
+  t3_object *o = cw_node3d_object(r->trail);
+  if (!o) return;
+  t3_object_update_world_matrix(o, true, false);
+  t3_vec3 hd = t3_mat4_get_position(&o->matrix_world), pre = TRL.pre;
   float d = sqrtf((tip.x - hd.x) * (tip.x - hd.x) + (tip.y - hd.y) * (tip.y - hd.y) + (tip.z - hd.z) * (tip.z - hd.z));
-  TRL.n++, TRL.sum += d, TRL.max = fmax(TRL.max, d);
+  float dm = sqrtf((tip.x - pre.x) * (tip.x - pre.x) + (tip.y - pre.y) * (tip.y - pre.y) + (tip.z - pre.z) * (tip.z - pre.z));
+  TRL.n++, TRL.sum += d, TRL.max = fmax(TRL.max, d), TRL.msum += dm, TRL.mmax = fmax(TRL.mmax, dm);
 }
 static void cmd_trail(int argc, const char **argv, cw_reply *rp) {
-  if (argc >= 2 && !strcmp(argv[1], "rec")) { TRL.want = argc >= 3 ? atoi(argv[2]) : 600, TRL.n = 0, TRL.sum = TRL.max = 0; cw_reply_printf(rp, "{\"recording\":%d}", TRL.want); return; }
-  cw_reply_printf(rp, "{\"ticks\":%d,\"mean_m\":%.3f,\"max_m\":%.3f}", TRL.n, TRL.n ? TRL.sum / TRL.n : 0, TRL.max);
+  if (argc >= 3 && !strcmp(argv[1], "lag")) { TRL.lag = CW_CLAMP(atoi(argv[2]), 0, TRL_LAG_MAX), TRL.hn = 0; cw_reply_printf(rp, "{\"lag\":%d}", TRL.lag); return; }
+  if (argc >= 3 && !strcmp(argv[1], "offset")) { TRL.offset = (float)atof(argv[2]); cw_reply_printf(rp, "{\"offset\":%.3f}", TRL.offset); return; }
+  if (argc >= 2 && !strcmp(argv[1], "rec")) { TRL.want = argc >= 3 ? atoi(argv[2]) : 600, TRL.n = 0, TRL.sum = TRL.max = TRL.msum = TRL.mmax = 0; cw_reply_printf(rp, "{\"recording\":%d}", TRL.want); return; }
+  /* (solve_*: how far the skeleton modifiers moved the tip after the ribbon was placed, reported) */
+  cw_reply_printf(rp, "{\"ticks\":%d,\"mean_m\":%.3f,\"max_m\":%.3f,\"solve_mean_m\":%.3f,\"solve_max_m\":%.3f}", TRL.n, TRL.n ? TRL.sum / TRL.n : 0, TRL.max, TRL.n ? TRL.msum / TRL.n : 0, TRL.mmax);
 }
 
 /* the clips advance and the figures are placed at the end of the app's fixed_update (view_fixed's last step); the engine's
@@ -1233,6 +1259,38 @@ static void cmd_hair(int argc, const char **argv, cw_reply *rp) {
 }
 
 /* the rig follows its actor, once per fixed tick (main.c calls it after the rules) */
+/* the blade's ribbon: from the tip of the weapon in the hand as the tick draws it, through the live part of the blow
+ * (the rules' hit window, a few ticks either side). Placed at the end of the tick step, after the clips advanced and the
+ * skeleton modifiers solved. (Placed before the clips advanced, it trailed the drawn blade by a tick, up to a metre and a
+ * half in a fast cut; placed after the clips but before the modifiers, by 13 cm on average.) */
+static bool trail_on[MAXA];
+static void trail_place(void) {
+  for (int i = 0; i < MAXA; i++) {
+    rig *r = &RIG[i];
+    const actor *a = &S.a[i];
+    if (!r->trail.id) continue;
+    bool on = trail_on[i];
+    t3_object *hand = on && r->inst ? t3_object_get_by_name(r->inst, "HandR") : NULL, *wp = NULL;
+    if (hand) for (int c = 0; c < hand->child_count; c++) if (hand->children[c]->visible) wp = hand->children[c];
+    t3_vec3 bp = { 0 };
+    if (wp) {
+      t3_object_update_world_matrix(wp, true, false);
+      bp = t3_vec3_apply_mat4((t3_vec3){ 0, 0, weapon_tip(a->kind, a->weapon) + (i == 0 ? TRL.offset : 0) }, &wp->matrix_world);
+      if (i == 0) TRL.pre = bp;
+      if (i == 0 && TRL.lag) { /* the control: where the tip was TRL.lag ticks before */
+        for (int k = TRL_LAG_MAX; k > 0; k--) TRL.hist[k] = TRL.hist[k - 1];
+        TRL.hist[0] = bp;
+        if (TRL.hn < TRL_LAG_MAX + 1) TRL.hn++;
+        bp = TRL.hist[CW_MIN(TRL.lag, TRL.hn - 1)];
+      }
+    }
+    on = on && wp;
+    if (on) cw_node3d_set_position(r->trail, bp);
+    cw_node_set(r->trail, "emitting", cw_val_bool(on));
+    trail_sample(i, a, r, on);
+  }
+}
+
 void view_fixed(void) {
   static bool mrec_cmd;
   if (!mrec_cmd) {
@@ -1241,12 +1299,13 @@ void view_fixed(void) {
     mrec_cmd = true;
   }
   static bool frm_cmd;
-  if (!frm_cmd) cw_debug_command("framing", "framing rec <frames> | get: the lock-on framing recorder (tests/emberthrone-lockon.mjs)", cmd_framing), frm_cmd = true;
+  if (!frm_cmd) cw_debug_command("framing", "framing rec <frames> | get | off 0|1: the lock-on framing recorder (tests/emberthrone-lockon.mjs); off 1, its control: the lock-on camera without its framing", cmd_framing), frm_cmd = true;
   static bool trl_cmd;
-  if (!trl_cmd) cw_debug_command("trail", "trail rec <ticks> | get: the blade trail recorder (tests/emberthrone-trail.mjs)", cmd_trail), trl_cmd = true;
+  if (!trl_cmd) cw_debug_command("trail", "trail rec <ticks> | get | lag <ticks> | offset <m>: the blade trail recorder (tests/emberthrone-trail.mjs); lag and offset, its controls: the ribbon behind or off the tip", cmd_trail), trl_cmd = true;
   mrec_tick++;
   movers_tick();
   VST.rigs = VST.drawn = 0;
+  memset(trail_on, 0, sizeof trail_on);
   for (int i = 0; i < MAXA; i++) {
     const actor *a = &S.a[i];
     rig *r = &RIG[i];
@@ -1498,22 +1557,8 @@ void view_fixed(void) {
         r->still = true;
       }
     } else if (r->still && r->bound) cw_pose_flush(&r->pose);
-    /* the blade's ribbon: from the tip of the weapon in the hand (as the clip swings it), through the live part of the
-     * blow (the rules' hit window, a few ticks either side) */
-    if (r->trail.id) {
-      t3_vec3 bp;
-      bool on = near && blade_at(a, &bp);
-      t3_object *hand = on && r->inst ? t3_object_get_by_name(r->inst, "HandR") : NULL, *wp = NULL;
-      if (hand) for (int c = 0; c < hand->child_count; c++) if (hand->children[c]->visible) wp = hand->children[c];
-      if (wp) {
-        t3_object_update_world_matrix(wp, true, false);
-        bp = t3_vec3_apply_mat4((t3_vec3){ 0, 0, weapon_tip(a->kind, a->weapon) }, &wp->matrix_world);
-      }
-      on = on && wp;
-      if (on) cw_node3d_set_position(r->trail, bp);
-      cw_node_set(r->trail, "emitting", cw_val_bool(on));
-      trail_sample(i, a, r, on);
-    }
+    /* the blade's ribbon: placed as the frame draws it (trail_place) */
+    trail_on[i] = r->trail.id && near && blade_at(a, &(t3_vec3){ 0 });
     /* the shield: up in front while it holds, down at the side once it is knocked aside */
     if (r->shield.id) {
       bool up = a->guard > 0 && a->state != ST_DEAD;
@@ -1526,6 +1571,11 @@ void view_fixed(void) {
     r->last_state = a->state, r->last_st_t = a->st_t, r->last_atk = a->atk;
   }
   anim_advance();
+  /* the skeleton modifiers (the look at the foe, the feet, ik.h) solve this tick's pose now, not after the app's
+   * fixed_update as the scene runner would (its call is then a no-op, once per phase): the ribbon is placed on the blade as
+   * it is drawn */
+  cw_skeleton_modifiers_refresh(cw_current_tree());
+  trail_place();
 }
 
 /* ── per frame ─────────────────────────────────────────────────────── */
@@ -1613,6 +1663,7 @@ static void framing_sample(void) {
   FRM.dist_sum += sqrtf(dist2(p->mv.position.x, p->mv.position.z, t->mv.position.x, t->mv.position.z));
 }
 static void cmd_framing(int argc, const char **argv, cw_reply *rp) {
+  if (argc >= 3 && !strcmp(argv[1], "off")) { g_cam_no_framing = atoi(argv[2]) != 0; cw_reply_printf(rp, "{\"off\":%d}", g_cam_no_framing); return; }
   if (argc >= 2 && !strcmp(argv[1], "rec")) {
     memset(&FRM, 0, sizeof FRM);
     FRM.want = argc >= 3 ? atoi(argv[2]) : 600, FRM.vis_min = 1;
@@ -1627,6 +1678,7 @@ static void cmd_framing(int argc, const char **argv, cw_reply *rp) {
 void view_sync(float alpha) {
   (void)alpha;
   framing_sample();
+  trail_measure();
   for (int i = 0; i < MAXA; i++) {
     if (mrec_due[i] && (i == 0 || i == hrec_actor)) hair_sample(i);
     if (mrec_due[i]) mrec_due[i] = false, mrec_sample(i);

@@ -8,13 +8,17 @@
 //   frame     the slowest frame (its CPU time: ticks and render) from the ask to the level playable is under GAP_MS (a frame
 //             that blocks on a build or does a level's heavy work shows here; ui.load_*), nothing recording
 // Control, which must fail: the old path (dm set OLD_WAIT 1: the main thread waits for the build, the screen still).
-// Run: node tests/destructo-loading.mjs [--gpu gl|webgpu] [--level "The Empire"] [--gap ms] [--keep dir]
+// The level is the Colosseum, a heavy build: there the old path holds one frame 319 to 342 ms and the real path's slowest
+// frame is 43 to 45 ms (RELEASE cart, GL, three runs each), both far from GAP_MS. On The Empire, the gate's level until
+// 0.65.2, a RELEASE cart's old wait was 62 to 70 ms and passed the frame check, so the control proved nothing (its real
+// path ran 28 to 35 ms on RELEASE carts and 34 to 39 on dev carts, five runs per backend; --spread N measures this).
+// Run: node tests/destructo-loading.mjs [--gpu gl|webgpu] [--level Colosseum] [--gap ms] [--keep dir] [--spread N]
 import { mkdirSync, readdirSync, rmSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { openCart, call, gpusArg, ROOT } from './lib/romdev.mjs';
 const { readImage } = await import(join(ROOT, 'deps/cartwheel-engine/tools/lib/png.mjs'));
 const arg = (n, d) => { const i = process.argv.indexOf(n); return i > 0 ? process.argv[i + 1] : d; };
-const LEVEL = arg('--level', 'The Empire'), GAP_MS = +arg('--gap', 100), KEEP = arg('--keep', '');
+const LEVEL = arg('--level', 'Colosseum'), GAP_MS = +arg('--gap', 100), KEEP = arg('--keep', '');
 const SPAN = 60, MAX_SPANS = 80, STEP = 300;
 
 async function transition(gpu, opts, record = true) {
@@ -93,6 +97,15 @@ function judge(r, { frames = true, gapOnly = false } = {}) {
   return { why, top, shown: shown.length, pairs, gap, last: shown.length ? shown[shown.length - 1].p : 0 };
 }
 
+const SPREAD = +arg('--spread', 0);
+if (SPREAD) { /* development: the slowest frame of N unrecorded transitions, the real path and OLD_WAIT, per backend */
+  for (const gpu of gpusArg()) for (const [name, opts] of [['real', {}], ['OLD_WAIT', { OLD_WAIT: 1 }]]) {
+    const v = [];
+    for (let k = 0; k < SPREAD; k++) { const t = await transition(gpu, opts, false); v.push(name === 'real' ? t.workMax : Math.max(t.workMax, t.gapMax)); }
+    console.log(`${gpu} ${name}: ${v.map((x) => x.toFixed(0)).join(' ')} ms (min ${Math.min(...v).toFixed(0)}, max ${Math.max(...v).toFixed(0)})`);
+  }
+  process.exit(0);
+}
 let bad = 0;
 const say = (good, text, why = []) => { if (!good) bad++; console.log(`${good ? "ok  " : "FAIL"} ${text}${why.length ? "\n     " + why.join("\n     ") : ""}`); };
 for (const gpu of gpusArg()) {

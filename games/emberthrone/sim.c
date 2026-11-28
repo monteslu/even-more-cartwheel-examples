@@ -56,6 +56,8 @@ const kind_def KIND[K_KINDS] = {
   [K_EMBER] = { "emberking", "bigaxe", 1.0f, 950, 500, 3.0f, 0.9f, 3.5f, 1, 18, "THE EMBER KING" },
 };
 
+bool g_cam_no_framing;
+
 static void evc(int kind, int a, int b, float x, float y, float z, float v, int c) {
   if (S.ev_n < (int)(sizeof S.ev / sizeof S.ev[0])) S.ev[S.ev_n++] = (event){ kind, a, b, x, y, z, v, c };
 }
@@ -272,7 +274,7 @@ static void camera_step(const input *in) {
   float side_off = 0; /* the camera's swing off cam_yaw (the lock-on framing) */
   const float hx = tx, hy = ty, hz = tz; /* the head(s) the camera orbits */
   {
-    bool lk = t && alive(t);
+    bool lk = t && alive(t) && !g_cam_no_framing;
     S.cam_lock += ((lk ? 1.0f : 0.0f) - S.cam_lock) * 0.1f;
     if (S.cam_lock < 0.002f) S.cam_lock = 0;
     const float SIDE = 0.5f;

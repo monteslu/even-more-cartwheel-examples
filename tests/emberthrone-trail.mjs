@@ -1,13 +1,17 @@
 // emberthrone blade trail: the motion check's pad script (tests/emberthrone-motion.mjs: a three-cut combo, a heavy and
-// a cut locked on to a raider) on romdev, with the cart's trail recorder (view.c "trail") checking, every fixed tick the
-// hero's ribbon draws, how far its head is from the tip of the blade in her hand: the tip from the skeleton as posed
-// (the right hand's model transform, the sword where it hangs in the hand, its length), placed by the figure's place
-// and facing. Screenshots in the swings (SHOTS).
+// a cut locked on to a raider) on romdev, with the cart's trail recorder (view.c "trail") checking, every frame the
+// hero's ribbon is drawn, how far its head as drawn (the Trail3D node's rendered position, where trail3d.c draws the
+// head) is from the tip of the blade as the frame draws it: the tip from the skeleton after the clips advanced and the
+// skeleton modifiers solved (the right hand's model transform, the sword where it hangs in the hand, its length), placed
+// by the figure's place and facing. Screenshots in the swings (SHOTS). The recorder also reports how far the modifiers
+// moved the tip after the ribbon was placed (solve_*). (Until 0.65.2 it read the skeleton in the tick step that placed
+// the ribbon, the same pose the ribbon was placed from: it read 0.000 m whatever the ribbon did.)
 // Bars (PASS needs all): 20 ticks or more drawn, the head 6 cm or less from the tip on average and 15 cm at most.
-// CONTROL, which must fail: --control <cart dir>, the build before (the ribbon on the rules' arc round the body) with the
-// recorder.
+// CONTROL, which must fail: the same run on the same cart with the ribbon two frames behind the tip (debug "trail lag
+// 2"; "trail offset <m>" is the other switch, EMBER_CONTROL_CMD picks one), or --control <cart dir>: another build with
+// the recorder. --no-control skips it.
 //
-//   node tests/emberthrone-trail.mjs <cart dir> <out dir> [--control <cart dir>] [--gpu gl|webgpu]
+//   node tests/emberthrone-trail.mjs <cart dir> <out dir> [--control <cart dir> | --no-control] [--gpu gl|webgpu]
 import { mkdirSync, writeFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { script, COMMANDS } from './emberthrone-motion.mjs';
@@ -31,12 +35,12 @@ function steps(from, to) {
   return out;
 }
 
-async function run(cartDir, out, gpu) {
+async function run(cartDir, out, gpu, extra = []) {
   process.env.DESTRUCTO_CART_DIR = resolve(cartDir);
   const { openCart, call } = await import('./lib/romdev.mjs');
   mkdirSync(out, { recursive: true });
   const h = await openCart('emberthrone', { gpu, tag: 'trail' });
-  const cmds = [...COMMANDS.filter((c) => !/cape/.test(c.command)), { frame: REC_AT, command: `trail rec ${END - REC_AT}` }].sort((x, y) => x.frame - y.frame);
+  const cmds = [...COMMANDS.filter((c) => !/cape/.test(c.command)), { frame: REC_AT, command: `trail rec ${END - REC_AT}` }, ...extra.map((command) => ({ frame: 66, command }))].sort((x, y) => x.frame - y.frame);
   try {
     let at = 0;
     for (const stop of [...SHOTS, END]) {
@@ -57,11 +61,15 @@ const judge = (r) => {
   return { ...r, checks, pass: Object.values(checks).every(Boolean) };
 };
 
+// the control on the same cart (debug "trail lag 2": the ribbon placed where the tip was two ticks before), run unless --control <cart dir> names another build or
+// --no-control skips it
+const CONTROL_CMD = process.env.EMBER_CONTROL_CMD || 'trail lag 2';
 const [, , cart, out, ...rest] = process.argv;
 const opt = (k) => { const i = rest.indexOf(k); return i >= 0 ? rest[i + 1] : null; };
 const gpu = opt('--gpu') || 'gl';
 const res = { run: judge(await run(cart, join(out, 'run'), gpu)) };
 if (opt('--control')) res.control = judge(await run(opt('--control'), join(out, 'control'), gpu));
+else if (!rest.includes('--no-control')) res.control = judge(await run(cart, join(out, 'control'), gpu, [CONTROL_CMD]));
 const ok = res.run.pass && (!res.control || !res.control.pass);
 console.log(JSON.stringify({ ...res, verdict: ok ? 'PASS' : 'FAIL' }, null, 1));
 writeFileSync(join(out, 'trail.json'), JSON.stringify(res, null, 1));
