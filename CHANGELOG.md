@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.65.1
+
+- **Destructo**: the replay no longer flashes. It used to cut to a turn round the structure, then swing across the
+  scene to the shot a few frames later and back to the impact, so bright sky and dark rock crossed a sixth of the
+  screen four times in a second. It now cuts to the launcher's side and follows the shot from there. The result
+  camera turns round the structure instead of flying through it, so its falling blocks no longer sweep across the
+  lens. The bot's play passes the flash rules on GL and WebGPU (at most three flashes in a second over its first
+  three levels, and over about nine on GL). The flash sweep gets two new entries: the bot's first two levels, and a
+  control that brings back the old cameras (`dm set CAM_CONTROL 1`) and must fail. The sweep's Destructo entry now
+  runs: it plays the first level through the pad script instead of naming a script gate, which the sweep skips.
+- **Ember Throne**: the motion check measures again. Its pad script now holds East to skip the guide's welcome, since
+  the rules wait while that scene plays. It passes on GL and WebGPU, and the procedural build's run still fails
+  every check. The hair check's sail control keeps the 0.63.0 robe under `build/controls/`, so a test machine
+  without the repository's history gets it with the build.
+
 ## 0.65.0
 
 - **Every game** moves to cartwheel-engine 0.88.0. The engine's water draws the line where things meet it from the

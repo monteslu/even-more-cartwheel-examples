@@ -43,7 +43,8 @@ const TPS = 60;
 export function script() {
   const S = [];
   const add = (n, p = {}) => S.push([n, p]);
-  add(20); add(2, { b: ['start'] }); add(18); add(2, { b: ['start'] }); add(68); // the title and the save slot; 60: "from 3", the road
+  add(20); add(2, { b: ['start'] }); add(18); add(2, { b: ['start'] }); // the title and the save slot
+  add(1); add(56, { b: ['east'] }); add(11);     // 43: East held (the story's skip, CW_STORY_SKIP_HOLD 0.8 s): the guide's welcome, which holds the rules while it plays, skipped as a player would; 60: "from 3", the road
   add(120, { ly: -1 });                          // 110: run up the road
   add(120);                                      // 230: stop (the cape settles)
   add(60, { ly: -1 });                           // 350: run
@@ -75,6 +76,7 @@ function steps() {
 }
 
 async function run(cartDir, out, { video = false, gpu = 'gl', env = '' } = {}) {
+  out = resolve(out); // (romdev writes the dump: an absolute path)
   process.env.DESTRUCTO_CART_DIR = resolve(cartDir);
   const { openCart, call } = await import('./lib/romdev.mjs');
   mkdirSync(out, { recursive: true });

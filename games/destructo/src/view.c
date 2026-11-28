@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "cartwheel/core.h"
+#include "cartwheel/debug.h"
 #include "cartwheel/math.h"
 #include "cartwheel/profile.h"
 #include "cartwheel/render3d.h"
@@ -304,8 +305,19 @@ static t3_quat qaxis(float x, float y, float z, float a) { return t3_quat_from_a
 
 /* ── building ──────────────────────────────────────────────────────── */
 
+/* view.cam: the camera of the last frame (eye x y z, target x y z) and which camera drew it (0 play, 1 the replay's
+ * chase, 2 the replay's turn round the impact, 3 the replay's wait at the launcher before the shot) */
+static float cam_dbg[7];
+
+static void cam_note(int which) {
+  cam_dbg[0] = V.eye.x, cam_dbg[1] = V.eye.y, cam_dbg[2] = V.eye.z, cam_dbg[3] = V.at.x, cam_dbg[4] = V.at.y, cam_dbg[5] = V.at.z;
+  cam_dbg[6] = (float)which;
+}
+
 void view_init(cw_node root) {
   memset(&V, 0, sizeof V);
+  static bool registered;
+  if (!registered) registered = true, cw_debug_field("view.cam", cam_dbg, CW_DBG_F32, 7);
   V.root = root;
   V.built_level = -1;
   V.fov = 50;
@@ -1433,6 +1445,24 @@ void view_sync(const game *g, float alpha) {
 
 static t3_vec3 lerp3(t3_vec3 a, t3_vec3 b, float t) { return (t3_vec3){ a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t }; }
 
+/* the cameras that circle the structure ease round it, not across it: the bearing from c (the shorter way), the
+ * distance and the height each eased by t. A straight ease from one side to the other flew the camera through the
+ * middle of the structure, its falling blocks across the lens and gone again within a few frames (a flash by the
+ * photosensitive rules, with the replay's cut after it). CAM_CONTROL: the straight ease, as it was (the flash sweep's
+ * control). */
+static bool cam_control(void) { return opt_on("CAM_CONTROL"); }
+static t3_vec3 ease_round(t3_vec3 from, t3_vec3 to, t3_vec3 c, float t) {
+  if (cam_control()) return lerp3(from, to, t);
+  float fx = from.x - c.x, fz = from.z - c.z, tx = to.x - c.x, tz = to.z - c.z;
+  float fr = sqrtf(fx * fx + fz * fz), tr = sqrtf(tx * tx + tz * tz);
+  if (fr < 0.5f || tr < 0.5f) return lerp3(from, to, t);
+  float fa = atan2f(fx, fz), ta = atan2f(tx, tz), d = ta - fa;
+  while (d > 3.14159265f) d -= 6.2831853f;
+  while (d < -3.14159265f) d += 6.2831853f;
+  float a = fa + d * t, r = fr + (tr - fr) * t;
+  return (t3_vec3){ c.x + sinf(a) * r, from.y + (to.y - from.y) * t, c.z + cosf(a) * r };
+}
+
 void view_camera(const game *g, cw_node camera, float aspect, float dt, bool overview, float alpha) {
   t3_vec3 eye, at;
   float k = 3.0f; /* how fast the camera follows */
@@ -1442,6 +1472,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   float ext = g->extent, top = g->top;
   t3_vec3 mid = { 0, top * 0.42f, 0 };
   bool aimv = false; /* the camera is in the aim view */
+  bool circling = false; /* the camera circles the structure (ease_round about its middle) */
   if (overview) {
     float ox = ext * 1.6f + 10, oz = g->ring * 0.55f; /* to the launcher's right and out toward it */
     eye = (t3_vec3){ ox * co + oz * so, top * 0.9f + 8, -ox * so + oz * co };
@@ -1485,6 +1516,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
     eye = (t3_vec3){ sinf(V.orbit + g->orbit + 0.7f) * r, top * 0.6f + 6, cosf(V.orbit + g->orbit + 0.7f) * r };
     at = mid;
     k = 1.5f;
+    circling = true;
   } else {
     /* side-on to the collapse: off the shot's line, far enough for the whole structure */
     t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
@@ -1503,7 +1535,7 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   trees_sway(V.wind);
   if (!V.cam_init) V.eye = eye, V.at = at, V.cam_init = true;
   float t = 1 - expf(-k * dt);
-  V.eye = lerp3(V.eye, eye, t);
+  V.eye = circling ? ease_round(V.eye, eye, (t3_vec3){ 0, 0, 0 }, t) : lerp3(V.eye, eye, t);
   V.at = lerp3(V.at, at, t);
   if (V.eye.y < 0.6f) V.eye.y = 0.6f;
   V.last_state = g->state;
@@ -1517,22 +1549,36 @@ void view_camera(const game *g, cw_node camera, float aspect, float dt, bool ove
   cw_node_set(camera, "far", cw_val_float(600));
   float dx = V.eye.x - V.at.x, dy = V.eye.y - V.at.y, dz = V.eye.z - V.at.z;
   V.st.cam_dist = sqrtf(dx * dx + dy * dy + dz * dz);
+  cam_note(0);
 }
 
 /* the replay's camera: close behind and beside the shot in flight, then a low, slow turn round where it hit on a
  * longer lens while the slow motion runs, widening as the structure settles. cut: the replay's first frame */
-void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, bool slow, bool cut, float alpha) {
+void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, bool slow, bool cut, bool fired, float alpha) {
   t3_vec3 eye, at;
   float ext = g->extent, top = g->top, k = 3;
   t3_vec3 mid = { 0, top * 0.42f, 0 };
+  int which = 2;
   if (cut) V.rp_orbit = 0;
-  if (g->proj_hit_tick < 0 && g->proj_live) {
-    cw_xform3 x = cw_body3d_interpolated(g->proj, alpha);
-    t3_vec3 v = g->proj_vel;
+  /* the chase starts where the shot will: the replay cuts to the launcher's side on its first frame and follows the shot
+   * from there. (It used to cut to the turn round the structure while the shadow stood on the tick before the shot,
+   * then whip across the scene to the shot a few frames later and back to the impact: bright sky and dark rock swept
+   * through a sixth of the screen four times in a second, a strobe by the flash rules. CAM_CONTROL brings it back.) */
+  bool before = !fired && !cam_control(), chase = before || (g->proj_hit_tick < 0 && g->proj_live);
+  if (chase) {
+    which = before ? 3 : 1;
+    t3_vec3 p, v;
+    if (before) {
+      v = game_aim_dir(g);
+      p = (t3_vec3){ g->muzzle.x + v.x * 1.4f, g->muzzle.y + v.y * 1.4f, g->muzzle.z + v.z * 1.4f }; /* where game_fire puts it */
+    } else {
+      p = cw_body3d_interpolated(g->proj, alpha).p;
+      v = g->proj_vel;
+    }
     float vl = sqrtf(v.x * v.x + v.z * v.z) + 1e-3f;
     t3_vec3 vd = { v.x / vl, 0, v.z / vl };
-    eye = (t3_vec3){ x.p.x - vd.x * 6 - vd.z * 3.2f, x.p.y + 1.6f, x.p.z - vd.z * 6 + vd.x * 3.2f };
-    at = (t3_vec3){ x.p.x + vd.x * 5, x.p.y, x.p.z + vd.z * 5 };
+    eye = (t3_vec3){ p.x - vd.x * 6 - vd.z * 3.2f, p.y + 1.6f, p.z - vd.z * 6 + vd.x * 3.2f };
+    at = (t3_vec3){ p.x + vd.x * 5, p.y, p.z + vd.z * 5 };
     k = 8;
   } else {
     t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
@@ -1549,7 +1595,7 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
   trees_sway(V.wind);
   if (cut || !V.cam_init) V.eye = eye, V.at = at, V.cam_init = true;
   float t = 1 - expf(-k * dt);
-  V.eye = lerp3(V.eye, eye, t);
+  V.eye = chase ? lerp3(V.eye, eye, t) : ease_round(V.eye, eye, at, t);
   V.at = lerp3(V.at, at, t);
   if (V.eye.y < 0.6f) V.eye.y = 0.6f;
   V.aspect = aspect;
@@ -1560,6 +1606,7 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
   V.fov += (want_fov - V.fov) * (1 - expf(-2 * dt));
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   V.last_state = -1; /* back in play the camera eases from here */
+  cam_note(which);
 }
 
 bool view_screen(t3_vec3 p, float *u, float *v) {

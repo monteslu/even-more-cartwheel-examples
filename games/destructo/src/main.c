@@ -1304,7 +1304,7 @@ static void render(void *u, double alpha) {
     float a = playing ? (float)alpha : 1.0f;
     if (replay_running()) {
       view_sync(replay_game(), replay_alpha());
-      view_camera_replay(replay_game(), G.camera, (float)w / (float)h, dt * (replay_slow() ? 0.34f : 1.0f), replay_slow(), G.replay_cut, replay_alpha());
+      view_camera_replay(replay_game(), G.camera, (float)w / (float)h, dt * (replay_slow() ? 0.34f : 1.0f), replay_slow(), G.replay_cut, replay_fired(), replay_alpha());
       G.replay_cut = false;
     } else {
       view_sync(&G.g, a);

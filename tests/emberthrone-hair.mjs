@@ -47,7 +47,7 @@
 import { writeFileSync, readFileSync, mkdirSync, existsSync, statSync, unlinkSync, openSync, readSync, closeSync, readdirSync, copyFileSync } from 'node:fs';
 import { robeLegs, robeSail } from './lib/robe-legs.mjs';
 import { writePng, cropRgb, montageRgb, readPng } from './lib/png.mjs';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 const ROOT_DIR = resolve(new URL('..', import.meta.url).pathname);
 
@@ -230,12 +230,15 @@ function robeShade(dir) {
 // part of the way, the back panels about 0.6; SAIL_REV's thigh-carried front panels 1.8, past the hips)
 export const SAIL_BAR = 0.75;
 const SAIL_REV = 'v0.63.0';
-function sailControlGlb() { // the robe as SAIL_REV built it (from git), kept under out/
-  const out = join(ROOT_DIR, 'out', `robe-${SAIL_REV}.glb`);
+// the robe as SAIL_REV built it, from git, kept under build/controls/: a tree synced to another machine without its
+// .git (a remote test lane) gets build/ and so the glb, once a checkout has made it (a run in a checkout makes it
+// first, or: node tests/emberthrone-hair.mjs control-glb)
+function sailControlGlb() {
+  const out = join(ROOT_DIR, 'build', 'controls', `robe-${SAIL_REV}.glb`);
   if (existsSync(out)) return out;
   const r = spawnSync('git', ['-C', ROOT_DIR, 'show', `${SAIL_REV}:games/emberthrone/assets/models/tidecaller.glb`], { maxBuffer: 1 << 26 });
-  if (r.status !== 0) return null;
-  mkdirSync(join(ROOT_DIR, 'out'), { recursive: true });
+  if (r.status !== 0 || !r.stdout.length) return null;
+  mkdirSync(dirname(out), { recursive: true });
   writeFileSync(out, r.stdout);
   return out;
 }
@@ -330,7 +333,12 @@ export function measure(trace) {
 
 const [mode, ...args] = process.argv.slice(2);
 const opt = (k) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : null; };
-if (mode === 'run') {
+if (mode === 'control-glb') {
+  const g = sailControlGlb();
+  console.log(g ? `ok   ${g}` : `FAIL no ${SAIL_REV} in git here: the sail control's glb (git show ${SAIL_REV}:games/emberthrone/assets/models/tidecaller.glb)`);
+  process.exit(g ? 0 : 1);
+} else if (mode === 'run') {
+  sailControlGlb(); /* while git is at hand */
   // --try name=cmd|cmd,... : variants of a development run ('x-<name>', poses kept like the robe's own run)
   for (const t of (opt('--try') || '').split(',').filter(Boolean)) { const [n, c] = t.split('='); VARIANTS['x-' + n] = c.split('|'); }
   await run(args[0], resolve(args[1]), { video: args.includes('--video'), gpu: opt('--gpu') || 'gl', only: opt('--only') ? opt('--only').split(',') : null, variants: opt('--variants') ? opt('--variants').split(',') : Object.keys(VARIANTS), models: opt('--models') ? resolve(opt('--models')) : null });
@@ -355,7 +363,7 @@ if (mode === 'run') {
     if (m.shade) console.log(`    shade  the lit cloth stippled on ${m.shade.streak_share}% of ${m.shade.robe_px} px over ${m.shade.crops} crops (bar ${SHADE_BAR}%)`);
     if (m.sail) console.log(`    sail   ${sl(m.sail)} (bar ${SAIL_BAR})`);
     if (m.sail_control !== undefined) {
-      console.log(`    sail   control, the robe as ${SAIL_REV} weighted it on the same poses: ${m.sail_control ? sl(m.sail_control) : 'its glb not found (git)'}`);
+      console.log(`    sail   control, the robe as ${SAIL_REV} weighted it on the same poses: ${m.sail_control ? sl(m.sail_control) : `its glb not found (build/controls; node tests/emberthrone-hair.mjs control-glb in a checkout)`}`);
       if (!m.sail_control || m.sail_control.max_rise <= SAIL_BAR) { ok = false; console.log(`  ${m.figure} ${m.variant}: the sail control passed or is missing (it must fail)`); }
     }
     for (const g of Object.values(m.groups)) {
@@ -389,6 +397,6 @@ if (mode === 'run') {
   }
   process.exit(ok ? 0 : 1);
 } else {
-  console.error('usage: emberthrone-hair.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--only figs] [--variants list] | measure <out dir> [--json]');
+  console.error('usage: emberthrone-hair.mjs run <cart dir> <out dir> [--video] [--gpu gl|webgpu] [--only figs] [--variants list] | measure <out dir> [--json] | control-glb');
   process.exit(2);
 }

@@ -3,6 +3,7 @@
 
 #include "cartwheel/profile.h"
 #include "loader.h"
+#include "opts.h"
 #include "replay.h"
 
 #define LOG_MAX 24576 /* ticks with something held: about 7 minutes of steady aiming; past it the level has no replay */
@@ -140,7 +141,11 @@ void replay_start(void) {
 
 bool replay_running(void) { return R.running; }
 
-bool replay_slow(void) { return R.running && R.r.proj_hit_tick >= 0 && R.r.tick - R.r.proj_hit_tick < SLOW_TICKS; }
+/* the shadow has fired the last shot (it starts on the tick before) */
+bool replay_fired(void) { return R.running && (R.r.tick >= R.fire_tick || opt_on("CAM_CONTROL")); }
+
+/* (before the shot the shadow's proj_hit_tick is the level's start or an earlier shot's: not this shot's impact) */
+bool replay_slow(void) { return replay_fired() && R.r.proj_hit_tick >= 0 && R.r.tick - R.r.proj_hit_tick < SLOW_TICKS; }
 
 bool replay_tick(void) {
   if (!R.running) return false;

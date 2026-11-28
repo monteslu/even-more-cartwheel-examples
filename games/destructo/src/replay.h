@@ -33,6 +33,10 @@ void replay_skip(void);      /* a button pressed during it: the replay ends (one
 const game *replay_game(void);
 float replay_alpha(void);    /* the view's interpolation between the shadow's last two steps (slow motion) */
 bool replay_slow(void);      /* in the slow motion after the impact */
+/* the shadow has fired the replayed shot (false on the replay's first ticks, at the launcher); always true with the
+ * control CAM_CONTROL (dm set CAM_CONTROL 1: the cameras as they were before the flash fix, for the flash sweep's
+ * must-fail entry) */
+bool replay_fired(void);
 /* 1: the replay ended on the live game's judged hash; 0: it did not; -1: no replay has ended this level */
 int replay_match(void);
 uint32_t replay_hash(void);

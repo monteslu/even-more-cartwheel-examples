@@ -11,8 +11,9 @@ int view_level_step(const game *g, int step);
 void view_sync(const game *g, float alpha);      /* every frame: blocks, launcher, shot, aim path */
 /* every frame; overview: the player holds the wide view */
 void view_camera(const game *g, cw_node camera, float aspect, float dt, bool overview, float alpha);
-/* every frame of a replay: the shot followed, then a slow low turn round the impact (slow: the slow motion; cut: its first frame) */
-void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, bool slow, bool cut, float alpha);
+/* every frame of a replay: the shot followed from the launcher, then a slow low turn round the impact (slow: the slow
+ * motion; cut: its first frame; fired: the shadow has fired the shot, before it the camera waits beside the launcher) */
+void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, bool slow, bool cut, bool fired, float alpha);
 bool view_screen(t3_vec3 p, float *u, float *v); /* a world point on screen (0..1), false behind the camera */
 
 typedef struct view_stats { int instances, lights; float cam_dist; } view_stats;
