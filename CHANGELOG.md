@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.65.0
+
+- **Every game** moves to cartwheel-engine 0.88.0. The engine's water draws the line where things meet it from the
+  water itself, so the program tables of the four games that draw water (beatsync, destructo, detexto and Ember Throne)
+  are generated again; the other tables are unchanged. Every game builds, passes its cart smoke, art, version and prompt
+  checks, and has no missing program state on GL or WebGPU at any preset or preset switch.
+- **GL particles** now simulate in a fragment pass instead of transform feedback. Sparks, smoke, flames and bursts in
+  every game draw on GL as they do on WebGPU, and the flash sweep passes on both for every entry it can run.
+- **Ember Throne**: in the marsh, the hero's legs show through the water down from the surface instead of being cut
+  off at it, and a dark slab that covered the bottom of the screen near the water is gone. The bot's journey
+  gate, the hair and garment check for every figure that wears them and the grass walk (flicker excess 4.01) pass on GL and
+  WebGPU.
+- **Skinned figures on GL** cost less main-thread time: the engine packs bone matrices with each render call. The GL
+  velocity pass draws only the meshes that moved, and the meadow's grass cells no longer go through it.
+- **Destructo**: the dam's water gate passes on GL and WebGPU.
+
 ## 0.64.1
 
 - **Every game** moves to cartwheel-engine 0.86.0 (no program table changes): every game builds and passes its cart
