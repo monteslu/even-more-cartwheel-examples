@@ -23,6 +23,7 @@
 #include "cartwheel/render3d.h"
 #include "../../common/coplanar.h"
 #include "opts.h"
+#include "replay.h"
 #include "trees.h"
 #include "view.h"
 
@@ -51,6 +52,7 @@ static struct {
   int last_state;
   float orbit;
   float rp_orbit;    /* the replay camera's turn round the impact */
+  t3_vec3 rp_eye0, rp_at0; /* where the replay's opening ease set off from */
   float beam_w;      /* the beacons' width: narrower on a landmark (a tower's silhouette shows through) */
   float cliff;       /* the sea setting: the z of the headland's cliff, clear of the launcher's circle */
   float front;       /* the structure's near face toward the launcher (game_front), for the aim path */
@@ -1560,7 +1562,7 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
   t3_vec3 mid = { 0, top * 0.42f, 0 };
   int which = 2;
   if (cut) V.rp_orbit = 0;
-  /* the chase starts where the shot will: the replay cuts to the launcher's side on its first frame and follows the shot
+  /* the chase starts where the shot will: the replay eases round to the launcher's side while the shot waits, then follows
    * from there. (It used to cut to the turn round the structure while the shadow stood on the tick before the shot,
    * then whip across the scene to the shot a few frames later and back to the impact: bright sky and dark rock swept
    * through a sixth of the screen four times in a second, a strobe by the flash rules. CAM_CONTROL brings it back.) */
@@ -1578,7 +1580,15 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
     float vl = sqrtf(v.x * v.x + v.z * v.z) + 1e-3f;
     t3_vec3 vd = { v.x / vl, 0, v.z / vl };
     eye = (t3_vec3){ p.x - vd.x * 6 - vd.z * 3.2f, p.y + 1.6f, p.z - vd.z * 6 + vd.x * 3.2f };
+    if (!cam_control()) { /* never behind the muzzle: the launcher's dark barrel and wheels stay out of the picture (they
+                           * swept in and out of its lower corner as the chase set off) */
+      float back = (eye.x - g->muzzle.x) * vd.x + (eye.z - g->muzzle.z) * vd.z;
+      if (back < 0.5f) eye.x += vd.x * (0.5f - back), eye.z += vd.z * (0.5f - back);
+    }
     at = (t3_vec3){ p.x + vd.x * 5, p.y, p.z + vd.z * 5 };
+    if (!cam_control()) /* between the shot and the structure, the same before and after it fires: the view never swings
+                         * away from the structure, and never lurches down to the shot as it sets off */
+      at = lerp3(p, (t3_vec3){ mid.x, mid.y * 0.6f, mid.z }, 0.6f);
     k = 8;
   } else {
     t3_vec3 c = g->proj_hit_tick >= 0 ? g->impact : mid;
@@ -1593,16 +1603,27 @@ void view_camera_replay(const game *g, cw_node camera, float aspect, float dt, b
   }
   V.wind += dt;
   trees_sway(V.wind);
-  if (cut || !V.cam_init) V.eye = eye, V.at = at, V.cam_init = true;
+  /* no cut: the replay eases in from where the result camera stands, round the structure to the launcher's side while
+   * the shot waits there (replay.c HOLD_TICKS); a cut swapped the whole picture at once and the launcher's dark barrel
+   * swept in and out of the corner within the same second (CAM_CONTROL: the cut) */
+  if ((cut && cam_control()) || !V.cam_init) V.eye = eye, V.at = at, V.cam_init = true;
+  if (cut) V.rp_eye0 = V.eye, V.rp_at0 = V.at;
   float t = 1 - expf(-k * dt);
-  V.eye = chase ? lerp3(V.eye, eye, t) : ease_round(V.eye, eye, at, t);
-  V.at = lerp3(V.at, at, t);
+  if (before) { /* the opening: round from the result camera to the launcher's side over the wait, eased in and out */
+    float s = cw_clampf(replay_hold_done(), 0, 1);
+    s = s * s * (3 - 2 * s);
+    V.eye = ease_round(V.rp_eye0, eye, (t3_vec3){ 0, 0, 0 }, s);
+    V.at = lerp3(V.rp_at0, at, s);
+  } else {
+    V.eye = chase ? lerp3(V.eye, eye, t) : ease_round(V.eye, eye, at, t);
+    V.at = lerp3(V.at, at, t);
+  }
   if (V.eye.y < 0.6f) V.eye.y = 0.6f;
   V.aspect = aspect;
   cw_node3d_set_position(camera, V.eye);
   cw_node3d_look_at(camera, V.at, (t3_vec3){ 0, 1, 0 });
   float want_fov = slow ? 36.0f : 46.0f;
-  if (cut) V.fov = want_fov;
+  if (cut && cam_control()) V.fov = want_fov;
   V.fov += (want_fov - V.fov) * (1 - expf(-2 * dt));
   cw_node_set(camera, "fov", cw_val_float(V.fov));
   V.last_state = -1; /* back in play the camera eases from here */

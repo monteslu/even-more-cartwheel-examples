@@ -9,6 +9,7 @@
 #define LOG_MAX 24576 /* ticks with something held: about 7 minutes of steady aiming; past it the level has no replay */
 #define SLOW 3        /* slow motion: a step every third tick */
 #define SLOW_TICKS 75 /* ... for this many steps from the shot's first hit */
+#define HOLD_TICKS 60 /* the shot waits at the launcher while the camera eases round to it (view_camera_replay) */
 
 typedef struct logged { int tick; input in; } logged;
 
@@ -24,6 +25,7 @@ static struct {
   int last_state;
   bool running;
   int sub;                /* slow motion: ticks since the shadow's last step */
+  int hold;               /* ticks the shadow still waits at the start (HOLD_TICKS; none with CAM_CONTROL) */
   int match;
   uint32_t hash;
   int start_gap;          /* how far the shadow had to go when the level was judged (progress) */
@@ -136,10 +138,12 @@ float replay_progress(void) {
 
 void replay_start(void) {
   if (!replay_ready()) return;
-  R.running = true, R.sub = 0;
+  R.running = true, R.sub = 0, R.hold = opt_on("CAM_CONTROL") ? 0 : HOLD_TICKS;
 }
 
 bool replay_running(void) { return R.running; }
+
+float replay_hold_done(void) { return R.running ? 1.0f - (float)R.hold / HOLD_TICKS : 1.0f; }
 
 /* the shadow has fired the last shot (it starts on the tick before) */
 bool replay_fired(void) { return R.running && (R.r.tick >= R.fire_tick || opt_on("CAM_CONTROL")); }
@@ -149,6 +153,7 @@ bool replay_slow(void) { return replay_fired() && R.r.proj_hit_tick >= 0 && R.r.
 
 bool replay_tick(void) {
   if (!R.running) return false;
+  if (R.hold > 0) { R.hold--; return true; }
   int steps = 1;
   if (replay_slow()) {
     if (++R.sub < SLOW) return true;

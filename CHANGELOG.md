@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.65.2
+
+- **Destructo**: the replay eases in instead of cutting. From the result camera the view turns round the structure to
+  the launcher's side over a second, keeping the structure in view, while the shot waits. Then it follows the shot
+  from just ahead of the muzzle, so the launcher's barrel and wheels no longer sweep through the lower corner. The
+  view stays between the shot and the structure, so it does not dip to the shot as it fires. The bot's play now has
+  at most two flashes in any second on GL and WebGPU (about nine levels on GL, six on WebGPU; it was three, the
+  limit). `dm set CAM_CONTROL 1` still brings back the old cameras and fails the flash sweep.
+
 ## 0.65.1
 
 - **Destructo**: the replay no longer flashes. It used to cut to a turn round the structure, then swing across the

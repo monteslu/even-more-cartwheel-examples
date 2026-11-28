@@ -37,6 +37,8 @@ bool replay_slow(void);      /* in the slow motion after the impact */
  * control CAM_CONTROL (dm set CAM_CONTROL 1: the cameras as they were before the flash fix, for the flash sweep's
  * must-fail entry) */
 bool replay_fired(void);
+/* how far the replay's opening wait has gone (0 at its start, 1 once the shot may fire) */
+float replay_hold_done(void);
 /* 1: the replay ended on the live game's judged hash; 0: it did not; -1: no replay has ended this level */
 int replay_match(void);
 uint32_t replay_hash(void);
